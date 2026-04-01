@@ -20,12 +20,7 @@ from supabase import create_client, Client
 # ── Load environment ──────────────────────────────────────────────────────────
 _here     = os.path.dirname(os.path.abspath(__file__))
 _env_file = os.path.join(_here, '.env')
-load_dotenv(dotenv_path=_env_file, override=True)
-
-from dotenv import dotenv_values as _dv
-_found_keys = list(_dv(_env_file).keys())
-print(f"[ENV] Loaded from: {_env_file}")
-print(f"[ENV] Keys found:  {_found_keys}")
+print("🚀 Using Render environment variables")
 
 SUPABASE_URL   = os.getenv("SUPABASE_URL")
 SUPABASE_KEY   = os.getenv("SUPABASE_KEY")
@@ -334,6 +329,11 @@ def monitoring_stats():
     uptime = round(time.time() - _stats["start_time"])
     from services.job_queue import queue_stats
     return jsonify({**_stats, "uptime_seconds": uptime, "queue": queue_stats()})
+
+
+@app.route("/")
+def home():
+    return {"status": "Curabook AI backend running 🚀"}
 
 
 if __name__ == "__main__":
