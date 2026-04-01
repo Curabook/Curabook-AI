@@ -1,0 +1,28 @@
+# Curabook PHI — Backend Dependencies
+# Install with: pip install -r requirements.txt
+
+# Web framework
+flask>=3.0.0
+flask-cors>=4.0.0
+
+# Database
+supabase>=2.3.0
+
+# AI
+openai>=1.12.0
+groq>=0.4.0
+
+# Document processing
+pypdf>=4.0.0
+pdf2image>=1.17.0   # for OCR of scanned PDFs
+pytesseract>=0.3.10  # for OCR (also install Tesseract binary)
+pillow>=10.0.0
+
+# Payments
+stripe>=8.0.0
+
+# Environment
+python-dotenv>=1.0.0
+
+# Optional: semantic search (heavy, comment out if not using)
+# sentence-transformers>=2.6.0

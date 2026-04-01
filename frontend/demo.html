@@ -1,0 +1,1033 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Curabook PHI — Understand Your Health. Prepare for Your Doctor. Remember Everything.</title>
+    <meta name="description" content="PHI reads your lab reports, explains every finding in plain language, prepares you for your doctor visit, and remembers your health history — all in one place. Free to try, no signup.">
+    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+        --brand:       #00BCD5;
+        --brand-dark:  #0097a7;
+        --brand-soft:  rgba(0,188,213,.08);
+        --text:        #111;
+        --muted:       #6b7280;
+        --border:      #e5e7eb;
+        --bg:          #f8fafc;
+        --white:       #fff;
+        --font:        'Plus Jakarta Sans', sans-serif;
+        --serif:       'Instrument Serif', Georgia, serif;
+        --radius:      14px;
+        --shadow:      0 4px 24px rgba(0,0,0,.08);
+    }
+
+    body {
+        font-family: var(--font);
+        background: var(--bg);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        -webkit-font-smoothing: antialiased;
+        color: var(--text);
+    }
+
+    /* ── Header ── */
+    .header {
+        padding: 16px 24px;
+        background: var(--white);
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        position: sticky;
+        top: 0;
+        z-index: 100;
+    }
+    .logo {
+        font-family: var(--serif);
+        font-size: 1.3rem;
+        color: var(--text);
+        font-weight: 400;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .logo i { color: var(--brand); }
+    .logo-tag {
+        font-size: 10px;
+        font-family: var(--font);
+        background: var(--brand-soft);
+        color: var(--brand);
+        padding: 2px 8px;
+        border-radius: 20px;
+        font-weight: 700;
+        letter-spacing: .5px;
+    }
+    .header-cta {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+    .btn-signup {
+        padding: 8px 18px;
+        background: var(--brand);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-size: 13.5px;
+        font-weight: 600;
+        font-family: var(--font);
+        cursor: pointer;
+        text-decoration: none;
+        transition: all .15s;
+    }
+    .btn-signup:hover { background: var(--brand-dark); }
+    .demo-badge {
+        font-size: 12px;
+        background: #fef3c7;
+        color: #92400e;
+        border: 1px solid #fde68a;
+        padding: 4px 10px;
+        border-radius: 20px;
+        font-weight: 600;
+    }
+
+    /* ── Hero ── */
+    .hero {
+        text-align: center;
+        padding: 48px 24px 32px;
+        max-width: 620px;
+        margin: 0 auto;
+    }
+    .hero h1 {
+        font-family: var(--serif);
+        font-size: clamp(1.9rem, 4vw, 2.6rem);
+        font-weight: 400;
+        line-height: 1.2;
+        letter-spacing: -.5px;
+        margin-bottom: 14px;
+    }
+    .hero h1 em { color: var(--brand); font-style: italic; }
+    .hero p {
+        font-size: 16px;
+        color: var(--muted);
+        line-height: 1.65;
+        margin-bottom: 28px;
+        max-width: 480px;
+        margin-left: auto;
+        margin-right: auto;
+    }
+    .hero-trust {
+        display: flex;
+        justify-content: center;
+        gap: 20px;
+        flex-wrap: wrap;
+        font-size: 12px;
+        color: var(--muted);
+        margin-bottom: 16px;
+    }
+    .hero-trust span {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+    .hero-trust i { color: var(--brand); }
+
+    /* ── Main layout ── */
+    .main {
+        flex: 1;
+        max-width: 880px;
+        width: 100%;
+        margin: 0 auto;
+        padding: 0 16px 60px;
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+
+    /* ── Upload zone ── */
+    .upload-zone {
+        background: var(--white);
+        border: 2px dashed var(--border);
+        border-radius: var(--radius);
+        padding: 40px 24px;
+        text-align: center;
+        cursor: pointer;
+        transition: all .2s;
+        position: relative;
+    }
+    .upload-zone:hover, .upload-zone.drag-over {
+        border-color: var(--brand);
+        background: var(--brand-soft);
+    }
+    .upload-zone i {
+        font-size: 2.2rem;
+        color: var(--brand);
+        margin-bottom: 12px;
+        display: block;
+    }
+    .upload-zone h3 {
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin-bottom: 6px;
+    }
+    .upload-zone p {
+        font-size: 13.5px;
+        color: var(--muted);
+        margin-bottom: 18px;
+    }
+    .upload-zone input[type="file"] {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        cursor: pointer;
+    }
+    .btn-upload {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 11px 24px;
+        background: var(--brand);
+        color: white;
+        border: none;
+        border-radius: 10px;
+        font-size: 14.5px;
+        font-weight: 600;
+        font-family: var(--font);
+        cursor: pointer;
+        transition: all .15s;
+        pointer-events: none;
+    }
+    .upload-zone:hover .btn-upload { background: var(--brand-dark); }
+    .file-types {
+        margin-top: 12px;
+        font-size: 11.5px;
+        color: #9ca3af;
+    }
+
+    /* ── Chat area ── */
+    .chat-area {
+        background: var(--white);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        display: flex;
+        flex-direction: column;
+        min-height: 420px;
+        box-shadow: var(--shadow);
+    }
+
+    .chat-header {
+        padding: 14px 18px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .chat-header .phi-icon {
+        width: 32px;
+        height: 32px;
+        background: var(--brand);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 14px;
+        font-family: var(--serif);
+        flex-shrink: 0;
+    }
+    .chat-header-text h4 {
+        font-size: 14px;
+        font-weight: 600;
+    }
+    .chat-header-text p {
+        font-size: 12px;
+        color: var(--muted);
+    }
+    .online-dot {
+        width: 7px;
+        height: 7px;
+        background: #22c55e;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 4px;
+    }
+
+    .chat-messages {
+        flex: 1;
+        overflow-y: auto;
+        padding: 20px 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        min-height: 280px;
+        max-height: 480px;
+    }
+
+    /* Message bubbles */
+    .msg {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+    }
+    .msg.user { flex-direction: row-reverse; }
+    .msg-av {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 13px;
+        font-weight: 700;
+        flex-shrink: 0;
+        margin-top: 2px;
+    }
+    .msg-av.ai  { background: var(--brand); color: white; font-family: var(--serif); }
+    .msg-av.usr { background: #e5e7eb; color: #374151; }
+    .msg-bubble {
+        max-width: 78%;
+        padding: 12px 16px;
+        border-radius: 14px;
+        font-size: 14.5px;
+        line-height: 1.65;
+    }
+    .msg.ai  .msg-bubble {
+        background: #f8fafc;
+        border: 1px solid var(--border);
+        border-top-left-radius: 4px;
+        color: var(--text);
+    }
+    .msg.user .msg-bubble {
+        background: var(--brand);
+        color: white;
+        border-top-right-radius: 4px;
+    }
+
+    /* Markdown inside bubbles */
+    .msg-bubble h2 { font-size: .92rem; font-weight: 700; color: var(--brand); margin: 16px 0 6px; padding-bottom: 4px; border-bottom: 1.5px solid rgba(0,188,213,.2); }
+    .msg-bubble h2:first-child { margin-top: 4px; }
+    .msg-bubble h3 { font-size: .9rem; font-weight: 600; margin: 12px 0 5px; }
+    .msg-bubble p  { margin-bottom: 8px; }
+    .msg-bubble p:last-child { margin-bottom: 0; }
+    .msg-bubble ul, .msg-bubble ol { margin: 6px 0 10px; padding-left: 20px; }
+    .msg-bubble li { padding: 2px 0; line-height: 1.65; }
+    .msg-bubble strong { font-weight: 600; }
+    .msg.user .msg-bubble h2,
+    .msg.user .msg-bubble h3,
+    .msg.user .msg-bubble strong { color: rgba(255,255,255,.9); }
+    .msg.user .msg-bubble h2 { border-color: rgba(255,255,255,.2); }
+
+    /* Typing indicator */
+    .typing {
+        display: flex;
+        gap: 4px;
+        align-items: center;
+        padding: 4px 0;
+    }
+    .typing-dot {
+        width: 7px;
+        height: 7px;
+        background: var(--brand);
+        border-radius: 50%;
+        animation: bounce .9s infinite ease-in-out;
+    }
+    .typing-dot:nth-child(2) { animation-delay: .15s; }
+    .typing-dot:nth-child(3) { animation-delay: .3s; }
+    @keyframes bounce {
+        0%, 60%, 100% { transform: translateY(0); }
+        30% { transform: translateY(-6px); }
+    }
+
+    /* Suggestion chips */
+    .suggestions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 8px 0 4px;
+    }
+    .chip {
+        padding: 7px 14px;
+        border: 1.5px solid var(--border);
+        border-radius: 20px;
+        font-size: 12.5px;
+        color: var(--muted);
+        background: var(--white);
+        cursor: pointer;
+        font-family: var(--font);
+        transition: all .15s;
+    }
+    .chip:hover { border-color: var(--brand); color: var(--brand); background: var(--brand-soft); }
+
+    /* Chat input */
+    .chat-input-area {
+        padding: 14px 18px;
+        border-top: 1px solid var(--border);
+        display: flex;
+        gap: 10px;
+        align-items: flex-end;
+    }
+    .chat-input {
+        flex: 1;
+        resize: none;
+        border: 1.5px solid var(--border);
+        border-radius: 10px;
+        padding: 10px 14px;
+        font-size: 14.5px;
+        font-family: var(--font);
+        outline: none;
+        min-height: 44px;
+        max-height: 120px;
+        line-height: 1.5;
+        transition: border-color .2s;
+        color: var(--text);
+        background: var(--white);
+    }
+    .chat-input:focus { border-color: var(--brand); }
+    .chat-input::placeholder { color: #9ca3af; }
+    .send-btn {
+        width: 44px;
+        height: 44px;
+        background: var(--brand);
+        border: none;
+        border-radius: 10px;
+        color: white;
+        font-size: 16px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all .15s;
+        flex-shrink: 0;
+    }
+    .send-btn:hover { background: var(--brand-dark); }
+    .send-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+    /* Chat disclaimer */
+    .chat-disclaimer {
+        text-align: center;
+        font-size: 11px;
+        color: #9ca3af;
+        padding: 8px 18px 14px;
+    }
+
+    /* ── CTA panel ── */
+    .cta-panel {
+        background: linear-gradient(135deg, #0a0a0a 0%, #0d1b1e 100%);
+        border-radius: var(--radius);
+        padding: 32px 28px;
+        color: white;
+        text-align: center;
+    }
+    .cta-panel h3 {
+        font-family: var(--serif);
+        font-size: 1.6rem;
+        font-weight: 400;
+        margin-bottom: 10px;
+    }
+    .cta-panel h3 em { color: var(--brand); font-style: italic; }
+    .cta-panel p { font-size: 14px; color: rgba(255,255,255,.55); margin-bottom: 24px; line-height: 1.6; }
+    .cta-features {
+        display: flex;
+        justify-content: center;
+        gap: 20px;
+        flex-wrap: wrap;
+        margin-bottom: 24px;
+    }
+    .cta-feat {
+        font-size: 12.5px;
+        color: rgba(255,255,255,.5);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .cta-feat i { color: var(--brand); }
+    .btn-cta-signup {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 14px 32px;
+        background: var(--brand);
+        color: white;
+        border: none;
+        border-radius: 10px;
+        font-size: 15px;
+        font-weight: 700;
+        font-family: var(--font);
+        cursor: pointer;
+        text-decoration: none;
+        transition: all .15s;
+        box-shadow: 0 4px 20px rgba(0,188,213,.4);
+    }
+    .btn-cta-signup:hover { background: var(--brand-dark); transform: translateY(-1px); }
+    .cta-compare {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        margin-bottom: 24px;
+        text-align: left;
+    }
+    .compare-col {
+        background: rgba(255,255,255,.05);
+        border: 1px solid rgba(255,255,255,.1);
+        border-radius: 10px;
+        padding: 14px;
+    }
+    .compare-col.highlight {
+        background: rgba(0,188,213,.12);
+        border-color: rgba(0,188,213,.35);
+    }
+    .compare-head {
+        font-size: 12px;
+        font-weight: 700;
+        color: rgba(255,255,255,.5);
+        text-transform: uppercase;
+        letter-spacing: .5px;
+        margin-bottom: 10px;
+    }
+    .compare-head.branded { color: #00BCD5; }
+    .compare-item {
+        font-size: 12.5px;
+        padding: 4px 0;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+    }
+    .compare-item.yes { color: rgba(255,255,255,.85); }
+    .compare-item.no  { color: rgba(255,255,255,.3); }
+    .compare-item i   { font-size: 10px; flex-shrink: 0; }
+    .compare-item.yes i { color: #22c55e; }
+    .compare-item.no  i { color: rgba(255,255,255,.25); }
+    @media (max-width: 480px) {
+        .cta-compare { grid-template-columns: 1fr; }
+    }
+
+    .cta-sub {
+        margin-top: 12px;
+        font-size: 12px;
+        color: rgba(255,255,255,.3);
+    }
+
+    /* ── Status indicator ── */
+    .file-status {
+        display: none;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 16px;
+        background: var(--brand-soft);
+        border: 1px solid rgba(0,188,213,.2);
+        border-radius: 10px;
+        font-size: 13.5px;
+        color: var(--brand);
+        font-weight: 500;
+    }
+    .file-status.visible { display: flex; }
+    .file-status i { font-size: 16px; }
+
+    /* ── Three pillars ── */
+    .pillars {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        margin: 0 auto 24px;
+        max-width: 520px;
+        text-align: left;
+    }
+    .pillar {
+        display: flex;
+        align-items: flex-start;
+        gap: 14px;
+        padding: 14px 16px;
+        background: var(--white);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        transition: border-color .15s, box-shadow .15s;
+    }
+    .pillar:hover {
+        border-color: var(--brand);
+        box-shadow: 0 2px 12px rgba(0,188,213,.1);
+    }
+    .pillar-icon {
+        width: 38px;
+        height: 38px;
+        background: rgba(0,188,213,.1);
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--brand);
+        font-size: 15px;
+        flex-shrink: 0;
+    }
+    .pillar-text {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+    }
+    .pillar-text strong {
+        font-size: 13.5px;
+        font-weight: 700;
+        color: var(--text);
+    }
+    .pillar-text span {
+        font-size: 12.5px;
+        color: var(--muted);
+        line-height: 1.5;
+    }
+
+    /* ── Toast notifications ── */
+    .toast {
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        padding: 12px 18px;
+        border-radius: 10px;
+        font-size: 13.5px;
+        font-weight: 500;
+        box-shadow: 0 4px 20px rgba(0,0,0,.15);
+        z-index: 9999;
+        animation: slideIn .25s ease;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        max-width: 320px;
+    }
+    .toast.success { background: #10b981; color: white; }
+    .toast.error   { background: #ef4444; color: white; }
+    @keyframes slideIn {
+        from { opacity: 0; transform: translateY(12px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 600px) {
+        .hero { padding: 32px 16px 24px; }
+        .hero h1 { font-size: 1.7rem; }
+        .cta-features { gap: 12px; }
+        .chat-messages { max-height: 340px; }
+    }
+    </style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="header">
+    <div class="logo">
+        <i class="fa-solid fa-heart-pulse"></i>
+        Curabook
+        <span class="logo-tag">PHI</span>
+    </div>
+    <div class="header-cta">
+        <span class="demo-badge">🧪 Demo Mode</span>
+        <a href="signup.html" class="btn-signup">Create Free Account</a>
+    </div>
+</header>
+
+<!-- Hero -->
+<div class="hero">
+    <h1>Your personal<br><em>health intelligence</em> system</h1>
+    <p>PHI reads your lab reports, explains every finding in plain language, prepares a personalised brief for your doctor visit, and <strong>remembers your health history</strong> over time. Try it free — no signup.</p>
+
+    <!-- Three pillars -->
+    <div class="pillars">
+        <div class="pillar">
+            <div class="pillar-icon"><i class="fa-solid fa-file-medical"></i></div>
+            <div class="pillar-text">
+                <strong>Report Decoder</strong>
+                <span>Explains every lab value in plain English — what's normal, what's not, what it means for you</span>
+            </div>
+        </div>
+        <div class="pillar">
+            <div class="pillar-icon"><i class="fa-solid fa-stethoscope"></i></div>
+            <div class="pillar-text">
+                <strong>Doctor Visit Prep</strong>
+                <span>Generates a personalised brief — 5 questions to ask, what your doctor will check, warning signs</span>
+            </div>
+        </div>
+        <div class="pillar">
+            <div class="pillar-icon"><i class="fa-solid fa-brain"></i></div>
+            <div class="pillar-text">
+                <strong>Health Memory</strong>
+                <span>Tracks your markers over time, detects trends, and alerts you when something changes</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="hero-trust">
+        <span><i class="fa-solid fa-shield-halved"></i> No account needed to try</span>
+        <span><i class="fa-solid fa-lock"></i> Not stored in demo mode</span>
+        <span><i class="fa-solid fa-user-secret"></i> AI never sees your name or ID</span>
+    </div>
+</div>
+
+<!-- Main -->
+<div class="main">
+
+    <!-- Upload zone -->
+    <div class="upload-zone" id="uploadZone">
+        <input type="file" id="fileInput" accept=".pdf,.txt">
+        <i class="fa-solid fa-file-medical-alt"></i>
+        <h3>Upload your lab report to get started</h3>
+        <p>PHI will explain every finding, flag anything outside normal range, and generate your Doctor Visit Prep card — all in under 30 seconds.</p>
+        <p style="font-size:12px;color:#9ca3af;margin-top:-8px">Works with SRL, Dr Lal, Thyrocare, Apollo, Quest, LabCorp, and any standard lab format.</p>
+        <div class="btn-upload"><i class="fa-solid fa-upload"></i> Choose File</div>
+        <div class="file-types">PDF · TXT · Max 5MB</div>
+    </div>
+
+    <!-- File status -->
+    <div class="file-status" id="fileStatus">
+        <i class="fa-solid fa-file-medical fa-spin"></i>
+        <span id="fileStatusText">Processing your report…</span>
+    </div>
+
+    <!-- Chat area -->
+    <div class="chat-area" id="chatArea">
+        <div class="chat-header">
+            <div class="phi-icon">φ</div>
+            <div class="chat-header-text">
+                <h4>PHI — Personal Health Intelligence</h4>
+                <p><span class="online-dot"></span>Ready to help · Demo session</p>
+            </div>
+        </div>
+
+        <div class="chat-messages" id="chatMessages">
+            <!-- Welcome message -->
+            <div class="msg ai">
+                <div class="msg-av ai">φ</div>
+                <div class="msg-bubble">
+                    <strong>Hi, I'm PHI — your Personal Health Intelligence assistant.</strong>
+                    <p style="margin-top:10px">I do three things most health apps don't:</p>
+                    <p style="margin-top:8px">
+                        <strong>📋 Decode your reports</strong> — I read any lab report and explain every value in plain language. No medical jargon. No anxiety-inducing numbers without context.
+                    </p>
+                    <p>
+                        <strong>🩺 Prepare you for your doctor</strong> — After reading your report, I generate a personalised Doctor Visit Prep card: the 5 questions to ask, what your doctor will likely check next, and warning signs to watch for.
+                    </p>
+                    <p>
+                        <strong>🧠 Remember your health over time</strong> — In a full account, I store every report you upload, track how your markers change, and alert you when trends appear. Most people see a doctor once a year. I stay with you every day.
+                    </p>
+                    <p style="margin-top:10px; color: var(--brand); font-weight:600">
+                        → Upload your lab report above to see all three in action.
+                    </p>
+                    <p style="margin-top:4px">Or ask me anything about your health right now:</p>
+                    <div class="suggestions" id="suggestionChips">
+                        <button class="chip" onclick="useSuggestion(this)">What does my HbA1c tell me?</button>
+                        <button class="chip" onclick="useSuggestion(this)">My LDL is high — what does that mean?</button>
+                        <button class="chip" onclick="useSuggestion(this)">How should I prepare for my doctor visit?</button>
+                        <button class="chip" onclick="useSuggestion(this)">What is Vitamin D deficiency?</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="chat-input-area">
+            <textarea class="chat-input" id="chatInput"
+                placeholder="Ask PHI about your health…"
+                rows="1"></textarea>
+            <button class="send-btn" id="sendBtn" title="Send">
+                <i class="fa-solid fa-arrow-up"></i>
+            </button>
+        </div>
+        <div class="chat-disclaimer">
+            PHI is not a doctor. Always consult a healthcare professional for medical decisions.
+        </div>
+    </div>
+
+    <!-- CTA panel — shown after first interaction -->
+    <div class="cta-panel" id="ctaPanel" style="display:none">
+        <h3>This was the <em>demo</em>.<br>The real PHI is much more.</h3>
+        <p>In demo mode your data disappears when you close this tab. Create a free account and PHI becomes your permanent health intelligence system — remembering every report, tracking every trend, and preparing you for every doctor visit, forever.</p>
+
+        <div class="cta-compare">
+            <div class="compare-col">
+                <div class="compare-head">Demo (now)</div>
+                <div class="compare-item no"><i class="fa-solid fa-xmark"></i> Data lost on close</div>
+                <div class="compare-item no"><i class="fa-solid fa-xmark"></i> No trend tracking</div>
+                <div class="compare-item no"><i class="fa-solid fa-xmark"></i> No health alerts</div>
+                <div class="compare-item yes"><i class="fa-solid fa-check"></i> Report decoding</div>
+                <div class="compare-item yes"><i class="fa-solid fa-check"></i> Doctor prep card</div>
+            </div>
+            <div class="compare-col highlight">
+                <div class="compare-head branded">Free Account</div>
+                <div class="compare-item yes"><i class="fa-solid fa-check"></i> Permanent health memory</div>
+                <div class="compare-item yes"><i class="fa-solid fa-check"></i> Trend tracking over time</div>
+                <div class="compare-item yes"><i class="fa-solid fa-check"></i> Proactive health alerts</div>
+                <div class="compare-item yes"><i class="fa-solid fa-check"></i> Unlimited report decoding</div>
+                <div class="compare-item yes"><i class="fa-solid fa-check"></i> Doctor prep for every visit</div>
+            </div>
+        </div>
+
+        <a href="signup.html" class="btn-cta-signup">
+            <i class="fa-solid fa-user-plus"></i> Create Your Free Account
+        </a>
+        <div class="cta-sub">Free to start · No credit card · Takes 30 seconds</div>
+    </div>
+
+</div>
+
+<script>
+// ── Config ──────────────────────────────────────────────────────────────────
+const API = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+    ? 'http://127.0.0.1:5000' : location.origin;
+
+let demoSessionId = localStorage.getItem('phi_demo_session') || '';
+let demoConvId    = 'demo-conv-' + Date.now();
+let lastDocText   = '';
+let hasDocument   = false;
+let interactionCount = 0;
+
+// ── Init demo session ────────────────────────────────────────────────────────
+async function initSession() {
+    try {
+        const headers = demoSessionId ? { 'X-Demo-Session': demoSessionId } : {};
+        const res = await fetch(`${API}/demo/session`, { method: 'POST', headers });
+        const data = await res.json();
+        if (data.session_id) {
+            demoSessionId = data.session_id;
+            localStorage.setItem('phi_demo_session', demoSessionId);
+        }
+    } catch(e) {
+        console.warn('Session init:', e);
+    }
+}
+
+function getDemoHeaders() {
+    return { 'X-Demo-Session': demoSessionId };
+}
+
+// ── Toast ────────────────────────────────────────────────────────────────────
+function toast(msg, type = 'success') {
+    const el = document.createElement('div');
+    el.className = `toast ${type}`;
+    el.innerHTML = `<i class="fa-solid fa-${type==='success'?'circle-check':'circle-exclamation'}"></i> ${msg}`;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 4000);
+}
+
+// ── File upload ──────────────────────────────────────────────────────────────
+const fileInput   = document.getElementById('fileInput');
+const uploadZone  = document.getElementById('uploadZone');
+const fileStatus  = document.getElementById('fileStatus');
+const fileStatusT = document.getElementById('fileStatusText');
+
+fileInput.addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { toast('File too large. Max 5MB.', 'error'); return; }
+    uploadFile(file);
+    fileInput.value = '';
+});
+
+// Drag and drop
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+uploadZone.addEventListener('drop', e => {
+    e.preventDefault();
+    uploadZone.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file) uploadFile(file);
+});
+
+async function uploadFile(file) {
+    fileStatus.classList.add('visible');
+    fileStatusT.textContent = `Reading ${file.name}…`;
+    uploadZone.style.opacity = '.5';
+    uploadZone.style.pointerEvents = 'none';
+
+    const form = new FormData();
+    form.append('file', file);
+
+    try {
+        const res = await fetch(`${API}/demo/analyze`, {
+            method: 'POST',
+            headers: getDemoHeaders(),
+            body: form,
+        });
+
+        const data = await res.json();
+
+        if (!res.ok || !data.success) {
+            toast(data.error || 'Could not read this file. Try a clear PDF.', 'error');
+            return;
+        }
+
+        fileStatus.classList.remove('visible');
+        uploadZone.style.opacity = '1';
+        uploadZone.style.pointerEvents = 'auto';
+
+        // Store doc text for follow-up questions
+        lastDocText = data.document_text || '';
+        hasDocument = true;
+
+        // Hide suggestion chips
+        const chips = document.getElementById('suggestionChips');
+        if (chips) chips.style.display = 'none';
+
+        // Auto-send full explanation request — user gets PHI's analysis immediately
+        // without needing to type anything
+        const explainMsg = "Please read my uploaded medical report and explain every finding. Tell me what each value means, what is normal, what needs attention, and what I should discuss with my doctor.";
+        addMsg(explainMsg, 'user');
+        const botDiv = addMsg('', 'ai', true);
+        sendBtn.disabled = true;
+
+        try {
+            const res2 = await fetch(`${API}/demo/chat`, {
+                method: 'POST',
+                headers: { ...getDemoHeaders(), 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    message:          explainMsg,
+                    conversation_id:  demoConvId,
+                    has_documents:    true,
+                    document_text:    lastDocText,
+                }),
+            });
+            const d2 = await res2.json();
+            updateMsg(botDiv, d2.reply || 'Could not generate explanation. Please try asking a question below.');
+
+            // Show doctor prep AFTER PHI explanation so it flows naturally
+            if (data.doctor_prep) {
+                addMsg(data.doctor_prep, 'ai');
+            }
+
+            // Update chips with specific questions based on report
+            if (chips) {
+                chips.innerHTML = [
+                    'What should I do about the abnormal results?',
+                    'How urgent is this — do I need to see a doctor this week?',
+                    'What lifestyle changes will help most?',
+                ].map(q => `<button class="chip" onclick="useSuggestion(this)">${q}</button>`).join('');
+                chips.style.display = 'flex';
+            }
+        } catch(e) {
+            updateMsg(botDiv, 'Could not generate explanation. Please ask a question below.');
+        }
+        sendBtn.disabled = false;
+
+        toast('Report analyzed ✓', 'success');
+        showCta();
+
+    } catch(e) {
+        toast('Upload failed. Is the backend running?', 'error');
+        fileStatus.classList.remove('visible');
+        uploadZone.style.opacity = '1';
+        uploadZone.style.pointerEvents = 'auto';
+    }
+}
+
+// ── Chat ─────────────────────────────────────────────────────────────────────
+const chatMessages = document.getElementById('chatMessages');
+const chatInput    = document.getElementById('chatInput');
+const sendBtn      = document.getElementById('sendBtn');
+
+chatInput.addEventListener('input', () => {
+    chatInput.style.height = 'auto';
+    chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px';
+});
+
+chatInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+sendBtn.addEventListener('click', sendMessage);
+
+function useSuggestion(btn) {
+    chatInput.value = btn.textContent.trim();
+    sendMessage();
+}
+
+async function sendMessage() {
+    const text = chatInput.value.trim();
+    if (!text || sendBtn.disabled) return;
+
+    chatInput.value = '';
+    chatInput.style.height = 'auto';
+
+    // Hide suggestion chips after first use
+    const chips = document.getElementById('suggestionChips');
+    if (chips) chips.style.display = 'none';
+
+    addMsg(text, 'user');
+    const botDiv = addMsg('', 'ai', true); // typing indicator
+    sendBtn.disabled = true;
+
+    try {
+        const res = await fetch(`${API}/demo/chat`, {
+            method: 'POST',
+            headers: { ...getDemoHeaders(), 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                message:          text,
+                conversation_id:  demoConvId,
+                has_documents:    hasDocument,
+                document_text:    lastDocText,
+            }),
+        });
+
+        const data = await res.json();
+        updateMsg(botDiv, data.reply || 'Something went wrong. Please try again.');
+
+    } catch(e) {
+        updateMsg(botDiv, 'Connection error. Is the backend running?');
+    }
+
+    sendBtn.disabled = false;
+
+    interactionCount++;
+    if (interactionCount >= 2) showCta();
+}
+
+function addMsg(text, role, typing = false) {
+    const wrap = document.createElement('div');
+    wrap.className = `msg ${role === 'user' ? 'user' : 'ai'}`;
+
+    const av = document.createElement('div');
+    av.className = `msg-av ${role === 'user' ? 'usr' : 'ai'}`;
+    av.textContent = role === 'user' ? 'Y' : 'φ';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'msg-bubble';
+
+    if (typing) {
+        bubble.innerHTML = '<div class="typing"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>';
+    } else {
+        bubble.innerHTML = role === 'user'
+            ? esc(text)
+            : (typeof marked !== 'undefined' ? marked.parse(text) : text);
+    }
+
+    if (role === 'user') { wrap.appendChild(bubble); wrap.appendChild(av); }
+    else                  { wrap.appendChild(av);     wrap.appendChild(bubble); }
+
+    chatMessages.appendChild(wrap);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    return wrap;
+}
+
+function updateMsg(wrap, text) {
+    const bubble = wrap.querySelector('.msg-bubble');
+    if (bubble) {
+        bubble.innerHTML = typeof marked !== 'undefined' ? marked.parse(text) : text;
+    }
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function esc(s) {
+    return String(s)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── CTA ───────────────────────────────────────────────────────────────────────
+function showCta() {
+    const panel = document.getElementById('ctaPanel');
+    if (panel) panel.style.display = 'block';
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+initSession();
+</script>
+</body>
+</html>
