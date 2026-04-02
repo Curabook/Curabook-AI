@@ -185,15 +185,15 @@
 </div>
 
 <script>
-const API_BASE = (location.hostname === 'https://curabook-ai.onrender.com' || location.hostname === 'https://curabook-ai.onrender.com')
-    ? 'http://https://curabook-ai.onrender.com:5000' : location.origin;
+const API_BASE = "https://curabook-ai.onrender.com";
 
 let supabaseClient = null;
 
 async function initSupabase() {
-    const res = await fetch(`${API_BASE}/api/config`);
-    const cfg = await res.json();
-    supabaseClient = supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_KEY);
+    const SUPABASE_URL = "https://hxfiymzpngxltjbpbgur.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4Zml5bXpwbmd4bHRqYnBiZ3VyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc5NDk1NTQsImV4cCI6MjA4MzUyNTU1NH0.aU5JDyhwFyzOoCrflqaFJ6N-3Tvy92RO9nP2HP9v6sc";
+
+supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 }
 
 function setStatus(msg, type='') {
@@ -203,6 +203,11 @@ function setStatus(msg, type='') {
 }
 
 document.getElementById('signupBtn').addEventListener('click', async () => {
+    if (!supabaseClient) {
+    setStatus("App loading... please wait", "error");
+    return;
+}
+
     const firstName = document.getElementById('firstName').value.trim();
     const lastName  = document.getElementById('lastName').value.trim();
     const email     = document.getElementById('email').value.trim();

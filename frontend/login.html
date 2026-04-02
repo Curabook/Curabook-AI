@@ -7,6 +7,7 @@
     <meta name="description" content="Sign in to your Curabook PHI health intelligence dashboard">
     <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -418,15 +419,15 @@
 <!-- Google OAuth Terms Modal (injected dynamically) -->
 
 <script>
-const API_BASE = (location.hostname === 'https://curabook-ai.onrender.com' || location.hostname === 'https://curabook-ai.onrender.com')
-    ? 'http://https://curabook-ai.onrender.com:5000' : location.origin;
+const API_BASE = "https://curabook-ai.onrender.com";
 
 let supabaseClient = null;
 
 async function initSupabase() {
-    const res = await fetch(`${API_BASE}/api/config`);
-    const cfg = await res.json();
-    supabaseClient = supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_KEY);
+    const SUPABASE_URL = "https://hxfiymzpngxltjbpbgur.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4Zml5bXpwbmd4bHRqYnBiZ3VyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc5NDk1NTQsImV4cCI6MjA4MzUyNTU1NH0.aU5JDyhwFyzOoCrflqaFJ6N-3Tvy92RO9nP2HP9v6sc";
+
+supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 }
 
 function setStatus(msg, type = '') {
@@ -454,6 +455,10 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
     if (!email || !password) { setStatus('Please enter your email and password.', 'error'); return; }
     setLoading(btn, true);
 
+    if (!supabaseClient) {
+    setStatus("App not ready. Please wait...", "error");
+    return;
+}
     const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
     if (error) { setStatus(error.message, 'error'); setLoading(btn, false); return; }
 
