@@ -3,11 +3,129 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Curabook PHI — Understand Your Health. Prepare for Your Doctor. Remember Everything.</title>
-    <meta name="description" content="PHI reads your lab reports, explains every finding in plain language, prepares you for your doctor visit, and remembers your health history — all in one place. Free to try, no signup.">
+
+    <!-- Primary SEO -->
+    <title>Curabook PHI — AI Health Assistant That Reads Your Lab Reports &amp; Remembers Everything</title>
+    <meta name="description" content="Upload your lab report and PHI explains every finding in plain language, flags what needs attention, prepares you for your doctor visit, and remembers your health history over time. Free to try — no signup required.">
+    <meta name="keywords" content="AI health assistant, lab report analysis, blood test results explained, health AI, doctor visit prep, health tracking, PHI Curabook">
+    <meta name="author" content="Curabook">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://curabook.com/demo">
+
+    <!-- Open Graph (Facebook, WhatsApp, LinkedIn) -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://curabook.com/demo">
+    <meta property="og:title" content="PHI — AI That Reads Your Lab Reports &amp; Explains Everything">
+    <meta property="og:description" content="Upload your blood test or lab report. PHI explains every value in plain language, flags what's abnormal, and prepares you for your next doctor visit. Free to try.">
+    <meta property="og:image" content="https://curabook.com/og-image.png">
+    <meta property="og:site_name" content="Curabook PHI">
+    <meta property="og:locale" content="en_IN">
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:site" content="@CurabookPHI">
+    <meta name="twitter:title" content="PHI — AI Health Intelligence. Understands Your Lab Reports Instantly.">
+    <meta name="twitter:description" content="Free AI tool that reads your lab reports, explains findings in plain language, and prepares you for your doctor visit.">
+    <meta name="twitter:image" content="https://curabook.com/og-image.png">
+
+    <!-- Structured Data: SoftwareApplication -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "Curabook PHI",
+      "applicationCategory": "HealthApplication",
+      "description": "AI health assistant that reads lab reports, explains every finding in plain language, tracks health trends over time, and prepares personalised doctor visit briefs.",
+      "url": "https://curabook.com/demo",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "INR"
+      },
+      "operatingSystem": "Web Browser",
+      "featureList": [
+        "Lab report analysis",
+        "Plain-language health explanations",
+        "Doctor visit preparation",
+        "Health trend tracking",
+        "AI-powered health memory"
+      ]
+    }
+    </script>
+
+    <!-- Structured Data: FAQPage (boosts rich results in Google Search) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "What is Curabook PHI?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Curabook PHI is an AI health assistant that reads your lab reports, explains every finding in plain language, tracks your health trends over time, and prepares a personalised brief for your doctor visit."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can PHI read my blood test results?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes. Upload any PDF lab report from SRL, Dr Lal, Thyrocare, Apollo, Quest, LabCorp or any standard lab. PHI extracts all values, flags anything outside normal range, and explains what each result means for you."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Do I need to sign up to try PHI?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. You can use the full demo — including uploading a sample report and chatting with PHI — without creating an account. Sign up to save your health history permanently."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Is my health data safe with PHI?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "PHI uses AES-256 encryption and anonymises your data before any AI processing. Your name and ID are never sent to AI models. Your data is never sold to third parties."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Which lab report formats does PHI support?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "PHI supports PDF and TXT files up to 5MB. It works with digital and scanned reports from all major Indian, UK, and US labs including SRL, Thyrocare, Dr Lal Pathlabs, Apollo Diagnostics, Quest Diagnostics, and LabCorp."
+          }
+        }
+      ]
+    }
+    </script>
+
+    <!-- Structured Data: WebSite with SearchAction -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "Curabook PHI",
+      "url": "https://curabook.com",
+      "description": "AI-powered personal health intelligence — lab report analysis, health trend tracking, and doctor visit preparation.",
+      "potentialAction": {
+        "@type": "SearchAction",
+        "target": "https://curabook.com/demo?q={search_term_string}",
+        "query-input": "required name=search_term_string"
+      }
+    }
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com">
+    <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
+
     <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" defer></script>
     <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -624,14 +742,49 @@
     </div>
     <div class="header-cta">
         <span class="demo-badge">🧪 Demo Mode</span>
-        <a href="signup.html" class="btn-signup">Create Free Account</a>
+        <a href="/signup" class="btn-signup">Create Free Account</a>
     </div>
 </header>
 
 <!-- Hero -->
 <div class="hero">
-    <h1>Your personal<br><em>health intelligence</em> system</h1>
+    <h1>Your <em>personal<br>health intelligence</em> system</h1>
+    <style>
+        .hero h1 em {
+            font-style: italic;
+            background: linear-gradient(135deg, #00BCD5 0%, #0097a7 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            position: relative;
+        }
+        .hero h1 em::after {
+            content: '';
+            position: absolute;
+            left: 0; right: 0; bottom: -2px;
+            height: 3px;
+            background: linear-gradient(90deg, #00BCD5, #0097a7);
+            border-radius: 2px;
+        }
+    </style>
     <p>PHI reads your lab reports, explains every finding in plain language, prepares a personalised brief for your doctor visit, and <strong>remembers your health history</strong> over time. Try it free — no signup.</p>
+
+    <div style="display:flex;justify-content:center;gap:12px;flex-wrap:wrap;margin-bottom:8px;margin-top:4px;">
+        <a href="#uploadZone" onclick="document.getElementById('uploadZone').scrollIntoView({behavior:'smooth'});return false;"
+           style="display:inline-flex;align-items:center;gap:7px;padding:11px 22px;background:var(--brand);color:#fff;border-radius:10px;font-weight:700;font-size:14px;text-decoration:none;box-shadow:0 4px 14px rgba(0,188,213,.35);transition:all .15s;"
+           onmouseover="this.style.background='#0097a7'" onmouseout="this.style.background='var(--brand)'">
+            <i class="fa-solid fa-upload"></i> Upload Your Report Free
+        </a>
+        <a href="/signup"
+           style="display:inline-flex;align-items:center;gap:7px;padding:11px 22px;background:#fff;color:var(--brand);border:2px solid var(--brand);border-radius:10px;font-weight:700;font-size:14px;text-decoration:none;transition:all .15s;"
+           onmouseover="this.style.background='var(--brand);color:#fff'" onmouseout="this.style.background='#fff'">
+            <i class="fa-solid fa-user-plus"></i> Create Free Account
+        </a>
+    </div>
+
+    <p style="font-size:14px;color:var(--brand);font-weight:600;margin-bottom:16px;margin-top:-8px;">
+        ✦ Trusted by patients across India, UK &amp; US &nbsp;·&nbsp; Works with SRL, Thyrocare, Dr Lal, Apollo &amp; all major labs
+    </p>
 
     <!-- Three pillars -->
     <div class="pillars">
@@ -740,8 +893,8 @@
 
     <!-- CTA panel — shown after first interaction -->
     <div class="cta-panel" id="ctaPanel" style="display:none">
-        <h3>This was the <em>demo</em>.<br>The real PHI is much more.</h3>
-        <p>In demo mode your data disappears when you close this tab. Create a free account and PHI becomes your permanent health intelligence system — remembering every report, tracking every trend, and preparing you for every doctor visit, forever.</p>
+        <h3>You've just seen how PHI <em>understands</em> your health.</h3>
+        <p>Now imagine this: PHI remembers every report you upload, tracks your health over time, and alerts you before problems become serious. Your complete health picture — always with you, always up to date.</p>
 
         <div class="cta-compare">
             <div class="compare-col">
@@ -762,7 +915,7 @@
             </div>
         </div>
 
-        <a href="signup.html" class="btn-cta-signup">
+        <a href="/signup" class="btn-cta-signup">
             <i class="fa-solid fa-user-plus"></i> Create Your Free Account
         </a>
         <div class="cta-sub">Free to start · No credit card · Takes 30 seconds</div>
@@ -772,8 +925,9 @@
 
 <script>
 // ── Config ──────────────────────────────────────────────────────────────────
-const API = (location.hostname === 'https://curabook-ai.onrender.com' || location.hostname === 'https://curabook-ai.onrender.com')
-    ? 'http://https://curabook-ai.onrender.com:5000' : location.origin;
+const API = location.hostname.includes('curabook.com.onrender.com')
+    ? 'https://curabook.com.onrender.com'
+    : 'http://localhost:5000';
 
 let demoSessionId = localStorage.getItem('phi_demo_session') || '';
 let demoConvId    = 'demo-conv-' + Date.now();
@@ -1029,5 +1183,22 @@ function showCta() {
 // ── Init ─────────────────────────────────────────────────────────────────────
 initSession();
 </script>
+<!-- SEO Footer -->
+<footer style="background:#fff;border-top:1px solid #e5e7eb;padding:24px;text-align:center;font-size:12.5px;color:#9ca3af;flex-shrink:0;">
+    <nav aria-label="Site links" style="display:flex;justify-content:center;flex-wrap:wrap;gap:16px;margin-bottom:10px;">
+        <a href="/demo" style="color:#6b7280;text-decoration:none;" title="Try PHI free — no signup">Try Demo Free</a>
+        <a href="/signup" style="color:#6b7280;text-decoration:none;" title="Create a free Curabook account">Create Account</a>
+        <a href="/login" style="color:#6b7280;text-decoration:none;" title="Sign in to Curabook PHI">Sign In</a>
+        <a href="https://curabook.com/how-it-works" style="color:#6b7280;text-decoration:none;" title="How PHI reads your lab reports">How It Works</a>
+        <a href="https://curabook.com/ai-medical-analysis" style="color:#6b7280;text-decoration:none;" title="AI-powered medical report analysis">AI Medical Analysis</a>
+        <a href="https://curabook.com/symptom-checker" style="color:#6b7280;text-decoration:none;" title="AI symptom checker and health guide">Symptom Checker</a>
+        <a href="https://curabook.com/health-ai" style="color:#6b7280;text-decoration:none;" title="Health AI — personal health intelligence">Health AI</a>
+        <a href="https://curabook.com/privacy" style="color:#6b7280;text-decoration:none;" title="Privacy Policy">Privacy Policy</a>
+        <a href="https://curabook.com/terms" style="color:#6b7280;text-decoration:none;" title="Terms of Service">Terms</a>
+    </nav>
+    <p>© 2025 Curabook PHI · AI-powered health intelligence · Security-first · AES-256 Encrypted · Privacy-focused · Your data is never sold</p>
+    <p style="margin-top:4px;">PHI is not a doctor. Always consult a qualified healthcare professional for medical advice.</p>
+</footer>
+
 </body>
 </html>

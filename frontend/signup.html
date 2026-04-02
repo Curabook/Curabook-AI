@@ -185,7 +185,7 @@
 </div>
 
 <script>
-const API_BASE = "https://curabook-ai.onrender.com";
+const API_BASE = "https://curabook.com.onrender.com";
 
 let supabaseClient = null;
 
@@ -226,7 +226,7 @@ document.getElementById('signupBtn').addEventListener('click', async () => {
         email, password,
         options: {
             data: { first_name: firstName, last_name: lastName },
-            emailRedirectTo: `${location.origin}/login.html`
+            redirectTo: "https://curabook.com/login.html"
         }
     });
 

@@ -33,7 +33,7 @@ class DemoUser:
     """Mimics a Supabase User object so all routes work unchanged."""
     def __init__(self, session_id: str):
         self.id        = "demo-" + session_id
-        self.email     = "demo@curabook.ai"
+        self.email     = "demo@curabook.com"
         self.created_at = datetime.now(timezone.utc).isoformat()
         self.app_metadata = {"provider": "demo"}
 

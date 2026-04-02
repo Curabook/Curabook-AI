@@ -326,7 +326,7 @@ def monitoring_stats():
 
 @app.route("/")
 def home():
-    return {"status": "Curabook AI backend running 🚀"}
+    return {"status": "Curabook.com backend running 🚀"}
 
 
 if __name__ == "__main__":

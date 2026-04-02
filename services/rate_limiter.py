@@ -10,7 +10,7 @@ Setup:
   pip install redis
 
 Environment variable:
-  REDIS_URL=redis://https://curabook-ai.onrender.com:6379/0        # local
+  REDIS_URL=redis://https://curabook.com.onrender.com:6379/0        # local
   REDIS_URL=redis://:password@host:6379/0  # with auth
   REDIS_URL=rediss://...                   # TLS (Upstash, Railway, Render)
 

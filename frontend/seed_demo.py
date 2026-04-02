@@ -11,13 +11,13 @@ Requirements:
   - pip install supabase python-dotenv
 
 What this creates:
-  - Demo user account (email: demo@curabook.ai, password: DemoUser2025!)
+  - Demo user account (email: demo@curabook.com, password: DemoUser2025!)
   - 3 report cycles with realistic health markers showing trends
   - Conversation memories simulating past PHI interactions
   - Consents pre-accepted
   - Profile set up
 
-After running this, log in as demo@curabook.ai and every feature works.
+After running this, log in as demo@curabook.com and every feature works.
 ─────────────────────────────────────────────────────────────────────────────
 """
 
@@ -39,7 +39,7 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 from supabase import create_client
 sb = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-DEMO_EMAIL    = "demo@curabook.ai"
+DEMO_EMAIL    = "demo@curabook.com"
 DEMO_PASSWORD = "DemoUser2025!"
 
 # ── Realistic demo health data (3 report cycles showing trends) ──────────────
