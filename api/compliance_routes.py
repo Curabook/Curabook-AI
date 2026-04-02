@@ -46,11 +46,8 @@ def config():
     rather than fetching them from a runtime endpoint.
     """
     return jsonify({
-        "SUPABASE_URL": os.getenv("SUPABASE_URL", ""),
-        "SUPABASE_KEY": os.getenv("SUPABASE_KEY", ""),   # anon key ONLY
-        "HIPAA_MODE":   True,
-        # BAA status intentionally omitted from public endpoint
-    })
+    "HIPAA_MODE": True
+})
 
 
 # ── Authenticated config (for dashboard, admin panels) ────────────────────────

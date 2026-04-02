@@ -19,12 +19,7 @@
    CONSTANTS & STATE
 ══════════════════════════════════════════════════════════════ */
 
-const API_BASE = (
-    window.location.hostname === "https://curabook-ai.onrender.com" ||
-    window.location.hostname === "https://curabook-ai.onrender.com"
-)
-    ? "https://curabook-ai.onrender.com"
-    : window.location.origin;
+const API_BASE = "https://curabook-ai.onrender.com";
 
 // Global state
 let supabaseClient     = null;
@@ -150,9 +145,10 @@ function setProcessing(loading) {
 ══════════════════════════════════════════════════════════════ */
 
 async function initSupabase() {
-    const res  = await fetch(`${API_BASE}/api/config`);
-    const cfg  = await res.json();
-    supabaseClient = supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_KEY);
+   const SUPABASE_URL = "https://hxfiymzpngxltjbpbgur.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4Zml5bXpwbmd4bHRqYnBiZ3VyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc5NDk1NTQsImV4cCI6MjA4MzUyNTU1NH0.aU5JDyhwFyzOoCrflqaFJ6N-3Tvy92RO9nP2HP9v6sc";
+
+supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
     window.supabaseClient = supabaseClient;
 }
 
