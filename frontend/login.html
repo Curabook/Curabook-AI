@@ -418,8 +418,8 @@
 <!-- Google OAuth Terms Modal (injected dynamically) -->
 
 <script>
-const API_BASE = (location.hostname === 'https://curabook-ai.onrender.com' || location.hostname === '127.0.0.1')
-    ? 'http://127.0.0.1:5000' : location.origin;
+const API_BASE = (location.hostname === 'https://curabook-ai.onrender.com' || location.hostname === 'https://curabook-ai.onrender.com')
+    ? 'http://https://curabook-ai.onrender.com:5000' : location.origin;
 
 let supabaseClient = null;
 
@@ -482,7 +482,7 @@ document.getElementById('forgotLink').addEventListener('click', async e => {
 document.getElementById('googleBtn').addEventListener('click', async () => {
     sessionStorage.setItem('oauth_pending_terms', 'true');
     // Use location.origin so redirect goes back to wherever THIS PAGE is served from.
-    // If you use VS Code Live Server it's http://127.0.0.1:5500
+    // If you use VS Code Live Server it's http://https://curabook-ai.onrender.com:5500
     // In production it's your domain.
     // This URL must also be added to: Supabase Dashboard → Auth → URL Configuration → Redirect URLs
     await supabaseClient.auth.signInWithOAuth({

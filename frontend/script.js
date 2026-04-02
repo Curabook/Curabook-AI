@@ -21,9 +21,9 @@
 
 const API_BASE = (
     window.location.hostname === "https://curabook-ai.onrender.com" ||
-    window.location.hostname === "127.0.0.1"
+    window.location.hostname === "https://curabook-ai.onrender.com"
 )
-    ? "http://127.0.0.1:5000"
+    ? "https://curabook-ai.onrender.com"
     : window.location.origin;
 
 // Global state

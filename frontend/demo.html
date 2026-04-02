@@ -772,8 +772,8 @@
 
 <script>
 // ── Config ──────────────────────────────────────────────────────────────────
-const API = (location.hostname === 'https://curabook-ai.onrender.com' || location.hostname === '127.0.0.1')
-    ? 'http://127.0.0.1:5000' : location.origin;
+const API = (location.hostname === 'https://curabook-ai.onrender.com' || location.hostname === 'https://curabook-ai.onrender.com')
+    ? 'http://https://curabook-ai.onrender.com:5000' : location.origin;
 
 let demoSessionId = localStorage.getItem('phi_demo_session') || '';
 let demoConvId    = 'demo-conv-' + Date.now();
