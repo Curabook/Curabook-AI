@@ -186,14 +186,7 @@ def track(key: str, inc: int = 1):
 app = Flask(__name__)
 
 _raw_origins    = os.getenv("ALLOWED_ORIGINS", "")
-_allowed_origins = (
-    [o.strip() for o in _raw_origins.split(",") if o.strip()]
-    if _raw_origins else
-    [
-        "http://https://curabook-ai.onrender.com:5000", "http://https://curabook-ai.onrender.com:5000",
-        "http://https://curabook-ai.onrender.com:5500", "http://https://curabook-ai.onrender.com:5500",
-    ]
-)
+_allowed_origins = ["*"]
 CORS(
     app,
     resources       = {r"/*": {"origins": _allowed_origins}},
