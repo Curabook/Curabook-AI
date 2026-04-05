@@ -17,7 +17,7 @@ from typing import Optional
 
 _STALE_DAYS      = 180   # markers older than this are historical
 _TREND_MIN_PCT   = 10    # % change to qualify as a trend worth mentioning
-_MAX_MEMORIES    = 10    # max conversation memory facts to inject
+_MAX_MEMORIES    = 15    # Fix #5 — raised from 10; more facts = richer context
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -271,7 +271,9 @@ def build_health_context_block(supabase, user_id: str) -> str:
     trends  = get_health_trends(supabase, user_id)
     memories = get_conversation_memories(supabase, user_id)
 
-    if not latest and not memories:
+    # Fix #5 — previously returned "" for only-memories or only-trends datasets.
+    # Now always builds whatever context exists; empty string only if truly nothing.
+    if not latest and not memories and not trends:
         return ""
 
     lines = []

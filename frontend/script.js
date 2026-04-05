@@ -327,8 +327,9 @@ async function openConversation(id) {
     activeConvId = id;
     uploadedFiles = [];
     updateFilePreview();
-    window._lastDocText = null;
-    window._lastDocId   = null;
+    window._lastDocText   = null;
+    window._lastDocId     = null;
+    window._lastDocStored = false;  // Fix #7 — reset on conversation switch
 
     // Show chat, hide welcome
     showChatMode();
@@ -420,8 +421,9 @@ async function handleSend() {
         // Cache doc context
         const primary = documentContents[0];
         if (primary) {
-            if (primary.document_id)   window._lastDocId   = primary.document_id;
-            if (primary.document_text) window._lastDocText = primary.document_text;
+            if (primary.document_id)   window._lastDocId     = primary.document_id;
+            if (primary.document_text) window._lastDocText   = primary.document_text;
+            window._lastDocStored = false;  // Reset: this is a fresh document, not yet sent
         }
 
         uploadedFiles = [];
@@ -445,15 +447,24 @@ async function handleSend() {
     try {
         const headers = await getAuthHeaders();
 
-        const primaryDocText = documentContents.map((d) => d.document_text || "").filter(Boolean)[0]
-            || window._lastDocText || "";
+        // Fix #3 — Send raw document_text ONLY on the first turn after upload.
+        // Follow-up questions reference by document_id only; the backend reads
+        // from DB memory. This prevents 12KB of text being re-sent every message
+        // and makes context work correctly after page refresh.
+        const isFirstDocTurn = documentContents.length > 0 && !window._lastDocStored;
+        const primaryDocText = isFirstDocTurn
+            ? (documentContents.map((d) => d.document_text || "").filter(Boolean)[0] || "")
+            : "";  // Don't re-send on follow-ups
         const primaryDocId = documentContents.map((d) => d.document_id || "").filter(Boolean)[0]
             || window._lastDocId || "";
+
+        // Mark as sent so subsequent messages don't re-send the full text
+        if (isFirstDocTurn) window._lastDocStored = true;
 
         const body = {
             conversation_id: activeConvId,
             message:         text,
-            has_documents:   documentContents.length > 0 || !!primaryDocId || !!primaryDocText,
+            has_documents:   isFirstDocTurn || !!primaryDocId,
             document_id:     primaryDocId,
             document_text:   primaryDocText,
         };
@@ -1203,8 +1214,10 @@ function wireEvents() {
 
         activeConvId  = null;
         uploadedFiles = [];
-        window._lastDocText = null;
-        window._lastDocId   = null;
+        // Fix #7 — clear ALL doc state so next chat starts fresh
+        window._lastDocText   = null;
+        window._lastDocId     = null;
+        window._lastDocStored = false;   // flag: has this doc been sent once already?
         DOM.chatDisplay.innerHTML = "";
         updateFilePreview();
         showWelcomeMode();

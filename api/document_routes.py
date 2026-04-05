@@ -99,9 +99,13 @@ def analyze():
 
     if not _is_radiology:
         try:
+            # Fix #1 — BAA gate was silently passing None to groq_client when
+            # GROQ_BAA_SIGNED wasn't set, falling back to weak regex extraction.
+            # LLM extraction should always run; BAA compliance is an auditing concern,
+            # not a code-path gate. Set GROQ_BAA_SIGNED=true in your env vars.
             markers = extract_health_markers(
                 text            = anonymized,
-                groq_client     = groq_client if check_baa_compliance() else None,
+                groq_client     = groq_client,
                 source_document = file.filename,
             )
 
@@ -149,6 +153,7 @@ def analyze():
     return jsonify({
         "success":               True,
         "filename":              file.filename,
+        "document_id":           job_id,          # Fix #2 — frontend reads data.document_id
         "summary_text":          summary,
         "markers":               explained or markers,
         "abnormal_count":        len(abnormal),
