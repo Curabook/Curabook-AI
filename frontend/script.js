@@ -19,7 +19,7 @@
    CONSTANTS & STATE
 ══════════════════════════════════════════════════════════════ */
 
-const API_BASE = "https://curabook.com.onrender.com";
+const API_BASE = "https://api.curabook.com";
 
 // Global state
 let supabaseClient     = null;

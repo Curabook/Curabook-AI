@@ -419,7 +419,7 @@
 <!-- Google OAuth Terms Modal (injected dynamically) -->
 
 <script>
-const API_BASE = "https://curabook.com.onrender.com";
+const API_BASE = "https://api.curabook.com";
 
 let supabaseClient = null;
 
@@ -487,7 +487,7 @@ document.getElementById('forgotLink').addEventListener('click', async e => {
 document.getElementById('googleBtn').addEventListener('click', async () => {
     sessionStorage.setItem('oauth_pending_terms', 'true');
     // Use location.origin so redirect goes back to wherever THIS PAGE is served from.
-    // If you use VS Code Live Server it's http://https://curabook.com.onrender.com:5500
+    // If you use VS Code Live Server it's http://https://api.curabook.com:5500
     // In production it's your domain.
     // This URL must also be added to: Supabase Dashboard → Auth → URL Configuration → Redirect URLs
     await supabaseClient.auth.signInWithOAuth({
