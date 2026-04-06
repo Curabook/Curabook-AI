@@ -463,7 +463,7 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
     if (error) { setStatus(error.message, 'error'); setLoading(btn, false); return; }
 
     setStatus('Signing in…', 'success');
-    window.location.href = 'index.html';
+    window.location.href = 'https://curabook.com/';
 });
 
 // Enter key
@@ -477,7 +477,7 @@ document.getElementById('forgotLink').addEventListener('click', async e => {
     const email = document.getElementById('email').value.trim();
     if (!email) { setStatus('Enter your email address first.', 'error'); return; }
     const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
-        redirectTo: `${location.origin}/index.html`
+        redirectTo: "https://curabook.com/"
     });
     if (error) { setStatus(error.message, 'error'); return; }
     setStatus('Password reset email sent. Check your inbox.', 'success');
@@ -487,12 +487,12 @@ document.getElementById('forgotLink').addEventListener('click', async e => {
 document.getElementById('googleBtn').addEventListener('click', async () => {
     sessionStorage.setItem('oauth_pending_terms', 'true');
     // Use location.origin so redirect goes back to wherever THIS PAGE is served from.
-    // If you use VS Code Live Server it's http://https://api.curabook.com:5500
+    // If you use VS Code Live Server it's http://https://curabook.com.onrender.com:5500
     // In production it's your domain.
     // This URL must also be added to: Supabase Dashboard → Auth → URL Configuration → Redirect URLs
     await supabaseClient.auth.signInWithOAuth({
         provider: 'google',
-        options: { redirectTo: "https://curabook.com/login.html"}
+        options: { redirectTo: "https://curabook.com/login"}
     });
 });
 
@@ -526,7 +526,7 @@ async function handleOAuthReturn() {
     }
 
     // Step 4: All good — go to app
-    window.location.href = 'index.html';
+    window.location.href = 'https://curabook.com/';
 }
 
 function showGoogleTermsModal(user) {
@@ -585,7 +585,7 @@ function showGoogleTermsModal(user) {
                 });
             }
         } catch(e) { console.warn('Consent save:', e); }
-        window.location.href = 'index.html';
+        window.location.href = 'https://curabook.com/';
     });
 }
 

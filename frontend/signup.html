@@ -226,7 +226,7 @@ document.getElementById('signupBtn').addEventListener('click', async () => {
         email, password,
         options: {
             data: { first_name: firstName, last_name: lastName },
-            redirectTo: "https://curabook.com/login.html"
+            redirectTo: "https://curabook.com/login"
         }
     });
 
@@ -240,7 +240,7 @@ document.getElementById('signupBtn').addEventListener('click', async () => {
     if (data.session) {
         // Auto-confirmed (email confirmation disabled) — go straight to app
         setStatus('Account created! Taking you to PHI…', 'success');
-        setTimeout(() => window.location.href = 'index.html', 800);
+        setTimeout(() => window.location.href = 'https://curabook.com/', 800);
     } else {
         // Email confirmation required
         setStatus('Check your email to confirm your account, then sign in.', 'success');
@@ -252,7 +252,7 @@ document.getElementById('googleBtn').addEventListener('click', async () => {
     sessionStorage.setItem('oauth_pending_terms', 'true');
     await supabaseClient.auth.signInWithOAuth({
         provider: 'google',
-        options: { redirectTo: `${location.origin}/frontend/login.html` }
+        options: { redirectTo: "https://curabook.com/login" }
     });
 });
 

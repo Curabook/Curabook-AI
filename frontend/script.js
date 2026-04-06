@@ -219,7 +219,7 @@ async function saveUserConsents() {
 async function handleLogout() {
     if (!confirm("Sign out of Curabook PHI?")) return;
     await supabaseClient.auth.signOut();
-    window.location.href = "login.html";
+    window.location.href = "https://curabook.com/login";
 }
 
 function _carryOverDemoDoc() {
@@ -327,9 +327,8 @@ async function openConversation(id) {
     activeConvId = id;
     uploadedFiles = [];
     updateFilePreview();
-    window._lastDocText   = null;
-    window._lastDocId     = null;
-    window._lastDocStored = false;  // Fix #7 — reset on conversation switch
+    window._lastDocText = null;
+    window._lastDocId   = null;
 
     // Show chat, hide welcome
     showChatMode();
@@ -421,9 +420,8 @@ async function handleSend() {
         // Cache doc context
         const primary = documentContents[0];
         if (primary) {
-            if (primary.document_id)   window._lastDocId     = primary.document_id;
-            if (primary.document_text) window._lastDocText   = primary.document_text;
-            window._lastDocStored = false;  // Reset: this is a fresh document, not yet sent
+            if (primary.document_id)   window._lastDocId   = primary.document_id;
+            if (primary.document_text) window._lastDocText = primary.document_text;
         }
 
         uploadedFiles = [];
@@ -447,24 +445,15 @@ async function handleSend() {
     try {
         const headers = await getAuthHeaders();
 
-        // Fix #3 — Send raw document_text ONLY on the first turn after upload.
-        // Follow-up questions reference by document_id only; the backend reads
-        // from DB memory. This prevents 12KB of text being re-sent every message
-        // and makes context work correctly after page refresh.
-        const isFirstDocTurn = documentContents.length > 0 && !window._lastDocStored;
-        const primaryDocText = isFirstDocTurn
-            ? (documentContents.map((d) => d.document_text || "").filter(Boolean)[0] || "")
-            : "";  // Don't re-send on follow-ups
+        const primaryDocText = documentContents.map((d) => d.document_text || "").filter(Boolean)[0]
+            || window._lastDocText || "";
         const primaryDocId = documentContents.map((d) => d.document_id || "").filter(Boolean)[0]
             || window._lastDocId || "";
-
-        // Mark as sent so subsequent messages don't re-send the full text
-        if (isFirstDocTurn) window._lastDocStored = true;
 
         const body = {
             conversation_id: activeConvId,
             message:         text,
-            has_documents:   isFirstDocTurn || !!primaryDocId,
+            has_documents:   documentContents.length > 0 || !!primaryDocId || !!primaryDocText,
             document_id:     primaryDocId,
             document_text:   primaryDocText,
         };
@@ -1145,7 +1134,7 @@ function initSettings() {
             const res = await fetch(`${API_BASE}/delete-account`, { method: "POST", headers });
             if (res.ok) {
                 showToast("Account deleted. Goodbye.");
-                setTimeout(() => window.location.href = "login.html", 2000);
+                setTimeout(() => window.location.href = "https://curabook.com/login", 2000);
             } else {
                 showToast("Failed to delete account. Contact support.", "error");
             }
@@ -1214,10 +1203,8 @@ function wireEvents() {
 
         activeConvId  = null;
         uploadedFiles = [];
-        // Fix #7 — clear ALL doc state so next chat starts fresh
-        window._lastDocText   = null;
-        window._lastDocId     = null;
-        window._lastDocStored = false;   // flag: has this doc been sent once already?
+        window._lastDocText = null;
+        window._lastDocId   = null;
         DOM.chatDisplay.innerHTML = "";
         updateFilePreview();
         showWelcomeMode();
@@ -1327,7 +1314,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     // Check auth
     const session = await getSession();
     if (!session?.user) {
-        window.location.href = "login.html";
+        window.location.href = "https://curabook.com/login";
         return;
     }
 
@@ -1338,7 +1325,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         const termsKey = `phi_terms_${user.id}`;
         if (!localStorage.getItem(termsKey)) {
             // Redirect to login.html which handles the terms modal
-            window.location.href = "login.html";
+            window.location.href = "https://curabook.com/login";
             return;
         }
     }

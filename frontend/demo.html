@@ -925,9 +925,9 @@
 
 <script>
 // ── Config ──────────────────────────────────────────────────────────────────
-const API = location.hostname.includes('curabook.com.onrender.com')
+const API = location.hostname.includes('api.curabook.com')
     ? 'https://api.curabook.com'
-    : 'http://localhost:5000';
+    : 'https://api.curabook.com';
 
 let demoSessionId = localStorage.getItem('phi_demo_session') || '';
 let demoConvId    = 'demo-conv-' + Date.now();
