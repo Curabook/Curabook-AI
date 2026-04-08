@@ -4,58 +4,66 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Curabook PHI — Personal Health Intelligence</title>
-    <meta name="description" content="Your AI-powered health copilot. Upload lab reports, track trends, and get actionable insights.">
+    <meta name="description" content="Your AI health co-pilot for metabolic and chronic disease management. Upload lab reports, track trends, get personalised insights.">
 
-    <!-- PWA / Mobile -->
-    <meta name="theme-color" content="#00BCD5">
+    <!-- PWA -->
+    <meta name="theme-color" content="#0a0a0f">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Curabook PHI">
 
     <!-- Security -->
     <meta http-equiv="X-Content-Type-Options" content="nosniff">
     <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
 
-    <!-- Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Fonts: DM Serif Display (distinctive medical-luxury) + DM Sans (readable) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
-    <!-- App Styles -->
+    <!-- App -->
     <link rel="stylesheet" href="style.css">
-
-    <!-- Dependencies -->
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
 
-<!-- ═══════════════════════════════════════════════════════
-     MOBILE SIDEBAR OVERLAY
-═══════════════════════════════════════════════════════ -->
+<!-- Mobile overlay -->
 <div id="overlay" class="overlay" aria-hidden="true"></div>
 
-<!-- ═══════════════════════════════════════════════════════
-     SIDEBAR — Navigation + Chat History
-═══════════════════════════════════════════════════════ -->
-<aside class="sidebar" id="sidebar" role="navigation" aria-label="Sidebar">
-    <button id="close-sidebar-btn" class="close-sidebar-btn" aria-label="Close sidebar">
+<!-- ═══════════════════════════════════════════════════════════════════
+     SIDEBAR
+═══════════════════════════════════════════════════════════════════ -->
+<aside class="sidebar" id="sidebar" role="navigation" aria-label="Navigation">
+    <button id="close-sidebar-btn" class="close-sidebar-btn" aria-label="Close menu">
         <i class="fa-solid fa-xmark"></i>
     </button>
 
+    <!-- Logo -->
+    <div class="sidebar-brand">
+        <span class="brand-phi">φ</span>
+        <span class="brand-name">Curabook <span class="brand-tag">PHI</span></span>
+    </div>
+
     <!-- New Chat -->
     <div class="sidebar-top">
-        <button class="new-chat-btn" id="newChatBtn" title="New Chat (Ctrl+K)">
+        <button class="new-chat-btn" id="newChatBtn" title="New Chat (⌘K)">
             <i class="fa-solid fa-plus"></i>
             <span>New Chat</span>
             <i class="fa-regular fa-pen-to-square sidebar-icon-right"></i>
         </button>
     </div>
 
-    <!-- Sidebar Navigation -->
+    <!-- Actions -->
     <nav class="sidebar-nav" aria-label="Actions">
-        <button id="btn-upload-nav" class="nav-item" title="Upload Lab Report">
+        <button id="btn-upload-nav" class="nav-item">
             <i class="fa-solid fa-file-medical"></i>
             <span>Upload Report</span>
+        </button>
+        <button id="btn-health-pulse" class="nav-item">
+            <i class="fa-solid fa-heart-pulse"></i>
+            <span>Health Pulse</span>
         </button>
     </nav>
 
@@ -63,13 +71,13 @@
 
     <!-- Chat History -->
     <div class="sidebar-content">
-        <div class="section-label">Recent Chats</div>
-        <div id="historyList" class="history-list" role="list" aria-label="Chat history"></div>
+        <div class="section-label">Conversations</div>
+        <div id="historyList" class="history-list" role="list"></div>
     </div>
 
-    <!-- User Footer -->
+    <!-- Footer -->
     <div class="sidebar-footer">
-        <div id="user-email-display" class="user-email-display" aria-label="Logged in user"></div>
+        <div id="user-email-display" class="user-email-display"></div>
         <button id="btn-sidebar-profile" class="nav-item">
             <i class="fa-regular fa-user"></i>
             <span>Profile</span>
@@ -81,12 +89,12 @@
     </div>
 </aside>
 
-<!-- ═══════════════════════════════════════════════════════
-     MAIN CONTENT — Chat-First Layout
-═══════════════════════════════════════════════════════ -->
+<!-- ═══════════════════════════════════════════════════════════════════
+     MAIN
+═══════════════════════════════════════════════════════════════════ -->
 <main class="main-content" role="main">
 
-    <!-- Top Navigation Bar -->
+    <!-- Top Bar -->
     <header class="top-nav" role="banner">
         <div class="nav-left">
             <button id="mobile-menu-btn" class="mobile-menu-btn" aria-label="Open menu">
@@ -97,17 +105,17 @@
             </div>
         </div>
         <div class="nav-right">
-            <div class="nav-status-indicator" id="statusIndicator" aria-live="polite">
+            <div class="nav-status-indicator" id="statusIndicator">
                 <span class="status-dot"></span>
-                <span id="statusLabel">PHI Chat</span>
+                <span id="statusLabel">PHI Active</span>
             </div>
             <div class="profile-container">
-                <button id="profileBtn" class="profile-avatar" aria-label="User menu" aria-haspopup="true" aria-expanded="false">
+                <button id="profileBtn" class="profile-avatar" aria-label="User menu">
                     <span id="avatar-initial">?</span>
                 </button>
                 <div id="profileDropdown" class="profile-dropdown hidden" role="menu">
                     <div class="dropdown-info">
-                        <div id="dropdown-email" class="dropdown-email">Loading...</div>
+                        <div id="dropdown-email" class="dropdown-email">Loading…</div>
                         <div class="dropdown-label" id="dropdown-plan-label">PHI Free</div>
                     </div>
                     <hr class="dropdown-divider">
@@ -119,102 +127,84 @@
         </div>
     </header>
 
-    <!-- ═══════════════════════════════════════════════
-         CHAT INTERFACE — Always visible
-    ═══════════════════════════════════════════════ -->
+    <!-- ═══════════════════════════════════════════════════════════
+         CHAT AREA
+    ═══════════════════════════════════════════════════════════ -->
     <div class="chat-container" id="centerContainer">
 
-        <!-- Welcome Screen (shown when no messages) -->
-        <div class="welcome-screen" id="welcomeScreen" aria-label="Welcome">
-            <div class="welcome-logo">
+        <!-- ── INTELLIGENCE WELCOME (shown when no messages) ── -->
+        <div class="welcome-screen" id="welcomeScreen" aria-label="Health Intelligence Dashboard">
+
+            <!-- Health Pulse Card — loads dynamically from API -->
+            <div class="pulse-card" id="pulseCard">
+                <div class="pulse-card-loading" id="pulseLoading">
+                    <div class="pulse-spinner"></div>
+                    <span>Loading your health status…</span>
+                </div>
+                <div class="pulse-card-content hidden" id="pulseContent">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+
+            <!-- Welcome header (shown when no health data yet) -->
+            <div class="welcome-hero" id="welcomeHero" style="display:none">
                 <div class="phi-avatar-large">φ</div>
+                <h1 class="welcome-title">
+                    Your health <em>co-pilot</em>
+                </h1>
+                <p class="welcome-subtitle">
+                    Upload your lab report and PHI builds a complete picture of your health —
+                    tracking trends, detecting patterns, and preparing you for every doctor visit.
+                </p>
             </div>
-            <h1 class="welcome-title">
-                PHI <span class="welcome-title-accent">Chat</span>
-            </h1>
-            <p class="welcome-subtitle">
-                Upload your lab report or ask anything about your health
-            </p>
 
-            <!-- Suggestion Chips -->
+            <!-- Contextual chips — populated dynamically based on health data -->
             <div class="suggestion-chips" id="welcomeChips" role="list">
-                <button class="chip" role="listitem" data-suggestion="Explain my uploaded report in detail">
-                    <i class="fa-solid fa-file-medical"></i> Explain my report
-                </button>
-                <button class="chip" role="listitem" data-suggestion="What are my biggest health risks based on my data?">
-                    <i class="fa-solid fa-triangle-exclamation"></i> What are my risks?
-                </button>
-                <button class="chip" role="listitem" data-suggestion="Prepare me for my upcoming doctor visit with a personalised brief">
-                    <i class="fa-solid fa-stethoscope"></i> Prepare for doctor
-                </button>
-                <button class="chip" role="listitem" data-suggestion="Show me the trends in my health markers over time">
-                    <i class="fa-solid fa-chart-line"></i> Show my trends
-                </button>
+                <!-- Populated by script.js based on health state -->
             </div>
-        </div>
 
-        <!-- Chat Message Display -->
+            <!-- Nudge to upload if no data -->
+            <div class="upload-nudge hidden" id="uploadNudge">
+                <button class="upload-nudge-btn" id="uploadNudgeBtn">
+                    <i class="fa-solid fa-file-medical"></i>
+                    Upload your first lab report
+                </button>
+                <p>PDF or TXT · Max 5MB · Analyzed in 30 seconds</p>
+            </div>
+
+        </div><!-- /welcome-screen -->
+
+        <!-- Chat messages -->
         <div id="chat-display" class="chat-display" role="log" aria-live="polite" aria-label="Conversation"></div>
 
-        <!-- File attachment preview area (populated by JS) -->
+        <!-- File chips -->
         <div id="file-preview-container" class="file-preview-container" aria-label="Attached files"></div>
 
-        <!-- Input Bar -->
+        <!-- Input bar -->
         <div class="input-bar-wrapper" role="region" aria-label="Message input">
-            <!-- Hidden file input -->
-            <input
-                type="file"
-                id="fileInput"
-                accept=".pdf,.txt"
-                multiple
-                style="display:none;"
-                aria-label="Upload medical document"
-            >
+            <input type="file" id="fileInput" accept=".pdf,.txt" multiple style="display:none" aria-label="Upload report">
 
             <div class="input-bar" id="inputBar">
-                <!-- Attachment button -->
-                <button
-                    class="input-action-btn"
-                    id="attachBtn"
-                    title="Upload lab report (PDF or TXT)"
-                    aria-label="Upload file"
-                >
+                <button class="input-action-btn" id="attachBtn" title="Upload report (PDF or TXT)" aria-label="Attach file">
                     <i class="fa-solid fa-paperclip"></i>
                 </button>
-
-                <!-- Text input -->
                 <textarea
                     id="userInput"
                     class="chat-textarea"
-                    placeholder="Ask PHI about your health, upload a report, or type a question…"
+                    placeholder="Ask PHI about your health…"
                     rows="1"
                     aria-label="Message PHI"
-                    aria-multiline="true"
                 ></textarea>
-
-                <!-- Voice button -->
-                <button
-                    class="input-action-btn"
-                    id="micBtn"
-                    title="Voice input"
-                    aria-label="Voice input"
-                >
+                <button class="input-action-btn" id="micBtn" title="Voice input" aria-label="Voice input">
                     <i class="fa-solid fa-microphone"></i>
                 </button>
-
-                <!-- Send button -->
-                <button
-                    class="send-btn"
-                    id="sendBtn"
-                    title="Send (Enter)"
-                    aria-label="Send message"
-                >
+                <button class="send-btn" id="sendBtn" title="Send (Enter)" aria-label="Send message">
                     <i class="fa-solid fa-arrow-up"></i>
                 </button>
             </div>
 
             <p class="input-disclaimer">
-                PHI is not a doctor. Always consult a qualified healthcare professional.
+                PHI provides health information only — not medical advice. Always consult your doctor.
             </p>
         </div>
 
@@ -222,54 +212,60 @@
 
 </main>
 
-<!-- ═══════════════════════════════════════════════════════
+<!-- ═══════════════════════════════════════════════════════════════════
+     HEALTH PULSE MODAL (full detail view)
+═══════════════════════════════════════════════════════════════════ -->
+<div id="pulse-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="pulse-modal-title">
+    <div class="modal-box modal-box-wide">
+        <div class="modal-header">
+            <h3 id="pulse-modal-title"><i class="fa-solid fa-heart-pulse" style="color:var(--brand)"></i> Health Pulse</h3>
+            <button class="close-btn" onclick="window.closeModals()" aria-label="Close">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+        <div id="pulse-modal-body">
+            <div class="loading-text">Loading health intelligence…</div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════
      PROFILE MODAL
-═══════════════════════════════════════════════════════ -->
+═══════════════════════════════════════════════════════════════════ -->
 <div id="profile-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="profile-modal-title">
     <div class="modal-box">
         <div class="modal-header">
-            <h3 id="profile-modal-title">My Health Profile</h3>
-            <button class="close-btn" onclick="window.closeModals && window.closeModals()" aria-label="Close">
+            <h3 id="profile-modal-title">My Profile</h3>
+            <button class="close-btn" onclick="window.closeModals()" aria-label="Close">
                 <i class="fa-solid fa-xmark"></i>
             </button>
         </div>
         <div class="profile-details">
             <div class="profile-pic-large" id="modal-avatar">?</div>
             <div class="profile-text">
-                <h4 id="modal-email">...</h4>
+                <h4 id="modal-email">…</h4>
                 <span class="badge">PHI Member</span>
             </div>
         </div>
         <hr>
         <div class="setting-item">
-            <div class="setting-info">
-                <h4><i class="fa-solid fa-calendar-check"></i> Member Since</h4>
-                <p id="account-created">Loading...</p>
-            </div>
+            <div class="setting-info"><h4><i class="fa-solid fa-calendar-check"></i> Member Since</h4><p id="account-created">…</p></div>
         </div>
         <div class="setting-item">
-            <div class="setting-info">
-                <h4><i class="fa-solid fa-comments"></i> Total Conversations</h4>
-                <p id="total-conversations">Loading...</p>
-            </div>
+            <div class="setting-info"><h4><i class="fa-solid fa-comments"></i> Conversations</h4><p id="total-conversations">…</p></div>
         </div>
         <div class="setting-item">
-            <div class="setting-info">
-                <h4><i class="fa-solid fa-file-medical"></i> Documents Analyzed</h4>
-                <p id="documents-analyzed">Loading...</p>
-            </div>
+            <div class="setting-info"><h4><i class="fa-solid fa-file-medical"></i> Reports Analyzed</h4><p id="documents-analyzed">…</p></div>
         </div>
         <hr>
-        <div class="setting-item" style="display:block;">
+        <div class="setting-item" style="display:block">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-                <h4 style="margin:0"><i class="fa-solid fa-heart-pulse" style="color:#ef4444"></i> Health Memory</h4>
+                <h4 style="margin:0"><i class="fa-solid fa-heart-pulse" style="color:var(--accent-warn)"></i> Health Memory</h4>
                 <button id="doctorBriefBtn" class="btn-doctor-brief">
                     <i class="fa-solid fa-stethoscope"></i> Doctor Visit Prep
                 </button>
             </div>
-            <div id="health-dashboard">
-                <div class="loading-text">Open profile to load health data.</div>
-            </div>
+            <div id="health-dashboard"><div class="loading-text">Open profile to load health data.</div></div>
         </div>
         <hr>
         <div class="modal-actions">
@@ -280,86 +276,46 @@
     </div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════
+<!-- ═══════════════════════════════════════════════════════════════════
      SETTINGS MODAL
-═══════════════════════════════════════════════════════ -->
+═══════════════════════════════════════════════════════════════════ -->
 <div id="settings-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="settings-modal-title">
     <div class="modal-box">
         <div class="modal-header">
             <h3 id="settings-modal-title">Settings</h3>
-            <button class="close-btn" onclick="window.closeModals && window.closeModals()" aria-label="Close">
+            <button class="close-btn" onclick="window.closeModals()" aria-label="Close">
                 <i class="fa-solid fa-xmark"></i>
             </button>
         </div>
-
         <div class="setting-item">
-            <div class="setting-info">
-                <h4><i class="fa-solid fa-moon"></i> Dark Mode</h4>
-                <p>Reduce eye strain in low light</p>
-            </div>
-            <label class="switch">
-                <input type="checkbox" id="themeToggle">
-                <span class="slider round"></span>
-            </label>
+            <div class="setting-info"><h4><i class="fa-solid fa-moon"></i> Dark Mode</h4><p>Easier on the eyes</p></div>
+            <label class="switch"><input type="checkbox" id="themeToggle"><span class="slider round"></span></label>
         </div>
-
         <div class="setting-item">
-            <div class="setting-info">
-                <h4><i class="fa-solid fa-text-height"></i> Chat Font Size</h4>
-                <p>Adjust for better readability</p>
-            </div>
+            <div class="setting-info"><h4><i class="fa-solid fa-text-height"></i> Text Size</h4><p>Adjust readability</p></div>
             <div class="setting-control">
-                <input type="range" id="fontSizeInput" min="12" max="20" value="15" step="1">
+                <input type="range" id="fontSizeInput" min="13" max="20" value="15" step="1">
                 <span id="fontSizeValue">15px</span>
             </div>
         </div>
-
         <div class="setting-item">
-            <div class="setting-info">
-                <h4><i class="fa-solid fa-download"></i> Export Chat</h4>
-                <p>Download current conversation as text</p>
-            </div>
-            <button id="exportChatBtn" class="danger-link">
-                <i class="fa-solid fa-file-export"></i> Export
-            </button>
+            <div class="setting-info"><h4><i class="fa-solid fa-download"></i> Export Chat</h4><p>Download this conversation</p></div>
+            <button id="exportChatBtn" class="danger-link"><i class="fa-solid fa-file-export"></i> Export</button>
         </div>
-
         <div class="setting-item">
-            <div class="setting-info">
-                <h4><i class="fa-solid fa-trash"></i> Clear All History</h4>
-                <p>Delete all conversations permanently</p>
-            </div>
-            <button id="clearHistoryBtn" class="danger-link">
-                <i class="fa-solid fa-trash-can"></i> Clear
-            </button>
+            <div class="setting-info"><h4><i class="fa-solid fa-trash"></i> Clear History</h4><p>Delete all conversations</p></div>
+            <button id="clearHistoryBtn" class="danger-link"><i class="fa-solid fa-trash-can"></i> Clear</button>
         </div>
-
         <hr>
-
-        <div class="section-label" style="margin: 16px 0 12px;">
-            <i class="fa-solid fa-shield-halved"></i> Privacy &amp; Data Rights
-        </div>
-
+        <div class="section-label" style="margin:16px 0 12px"><i class="fa-solid fa-shield-halved"></i> Privacy & Data Rights</div>
         <div class="setting-item">
-            <div class="setting-info">
-                <h4><i class="fa-solid fa-file-export"></i> Export All My Data</h4>
-                <p>Download complete health record (JSON)</p>
-            </div>
-            <button id="exportDataBtn" class="danger-link">
-                <i class="fa-solid fa-download"></i> Export
-            </button>
+            <div class="setting-info"><h4><i class="fa-solid fa-file-export"></i> Export My Data</h4><p>Download complete health record (JSON)</p></div>
+            <button id="exportDataBtn" class="danger-link"><i class="fa-solid fa-download"></i> Export</button>
         </div>
-
         <div class="setting-item">
-            <div class="setting-info">
-                <h4><i class="fa-solid fa-user-slash"></i> Delete Account</h4>
-                <p class="text-danger">⚠️ Permanently deletes all your data</p>
-            </div>
-            <button id="deleteAccountBtn" class="danger-link text-danger-btn">
-                <i class="fa-solid fa-trash-alt"></i> Delete Forever
-            </button>
+            <div class="setting-info"><h4><i class="fa-solid fa-user-slash"></i> Delete Account</h4><p class="text-danger">⚠️ Permanently deletes everything</p></div>
+            <button id="deleteAccountBtn" class="danger-link text-danger-btn"><i class="fa-solid fa-trash-alt"></i> Delete Forever</button>
         </div>
-
         <hr>
         <div class="compliance-footer">
             <p><strong>🔒 Curabook PHI</strong></p>
@@ -368,39 +324,24 @@
     </div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════
-     DELETE CONVERSATION CONFIRMATION MODAL
-═══════════════════════════════════════════════════════ -->
+<!-- DELETE CONVERSATION MODAL -->
 <div id="delete-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="delete-modal-title">
     <div class="modal-box warning-box">
         <div class="modal-header">
-            <h3 id="delete-modal-title" class="text-danger">
-                <i class="fa-solid fa-triangle-exclamation"></i> Delete Chat?
-            </h3>
-            <button class="close-btn" onclick="window.closeModals && window.closeModals()" aria-label="Close">
-                <i class="fa-solid fa-xmark"></i>
-            </button>
+            <h3 id="delete-modal-title" class="text-danger"><i class="fa-solid fa-triangle-exclamation"></i> Delete Chat?</h3>
+            <button class="close-btn" onclick="window.closeModals()" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
         </div>
         <div class="modal-body">
-            <p>Are you sure you want to delete this conversation?</p>
-            <div class="warning-text">
-                <i class="fa-solid fa-info-circle"></i>
-                This action cannot be undone. All messages will be permanently deleted.
-            </div>
+            <p>This will permanently delete all messages in this conversation.</p>
+            <div class="warning-text"><i class="fa-solid fa-info-circle"></i> This cannot be undone.</div>
         </div>
         <div class="modal-actions">
-            <button class="btn-cancel" onclick="window.closeModals && window.closeModals()">Cancel</button>
-            <button id="confirmDeleteBtn" class="btn-danger">
-                <i class="fa-solid fa-trash"></i> Yes, Delete
-            </button>
+            <button class="btn-cancel" onclick="window.closeModals()">Cancel</button>
+            <button id="confirmDeleteBtn" class="btn-danger"><i class="fa-solid fa-trash"></i> Delete</button>
         </div>
     </div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════
-     APP SCRIPT
-═══════════════════════════════════════════════════════ -->
 <script src="script.js"></script>
-
 </body>
 </html>

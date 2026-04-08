@@ -1,10 +1,22 @@
-# ── System prompts below ────────────────────────────────────
-
 """
-ai/chat.py — World-class PHI response engine
-─────────────────────────────────────────────────────────────────────────────
-Optimized for strict informational boundaries, robust memory extraction, 
-and reliable execution for health technology platforms.
+ai/chat.py — PHI Adaptive Co-pilot Engine  v3.0
+═══════════════════════════════════════════════════════════════════════════
+THREE PRODUCTION GOALS
+───────────────────────────────────────────────────────────────────────────
+Goal 1  DYNAMIC PERSONALIZATION
+        Every response references the user's specific history and biology.
+        PHI never speaks generically. It knows THIS person's trajectory.
+
+Goal 2  SMART SYNTHESIS
+        PHI connects dots across data domains — it reasons, not just reads.
+        A rising HbA1c + low HDL + elevated CRP = a metabolic story the LLM
+        must name, not list separately.
+
+Goal 3  RADICAL SIMPLICITY
+        The first sentence must be understandable by someone with no medical
+        background. Clinical numbers appear only to support a human story.
+        No jargon. No walls of text. No 6-section clinical reports.
+═══════════════════════════════════════════════════════════════════════════
 """
 
 from __future__ import annotations
@@ -17,43 +29,31 @@ from typing import List, Dict, Optional, Tuple, Any
 
 from services.compliance import anonymize_for_llm
 
-MAX_HISTORY_MESSAGES = 10    # per-conversation message history
-MAX_RESPONSE_TOKENS  = 1500  # Allows for comprehensive findings without truncation
+MAX_HISTORY_MESSAGES = 12
+MAX_RESPONSE_TOKENS  = 1200
 DEFAULT_TIMEOUT_SEC  = 25
 
-# Mandatory disclaimer — appended in Python, cannot be removed by LLM
 MANDATORY_DISCLAIMER = (
     "\n\n---\n"
-    "⚕️ *PHI provides health information only — not medical advice, "
-    "diagnosis, or treatment. Always confirm with your doctor.*"
-)
-
-# Safe responses for when no data exists
-_NO_DATA_RESPONSE = (
-    "I don't have any health data stored for you yet.\n\n"
-    "**To get started:**\n"
-    "1. Tap the 📎 button and upload a lab report (PDF)\n"
-    "2. PHI extracts your results and stores them securely\n"
-    "3. Every future conversation will reference your full health picture\n\n"
-    "---\n"
-    "⚕️ *PHI provides health information only — not medical advice.*"
+    "⚕️ *PHI gives you health information — not medical advice. "
+    "Your doctor makes the call.*"
 )
 
 _HALLUCINATION_FALLBACK = (
-    "I don't see that specific data in your stored health memory. "
-    "Could you upload the relevant report so I can give you accurate, data-driven information?\n\n"
-    "---\n"
-    "⚕️ *PHI provides health information only — not medical advice.*"
+    "I don't have that specific data for you yet — and I won't guess. "
+    "Upload the relevant report (📎 button) and I'll give you a precise, "
+    "data-driven answer based on your actual numbers.\n\n"
+    "---\n⚕️ *PHI gives you health information — not medical advice.*"
 )
 
-# ── Doctor-prep keywords ──────────────────────────────────────────────────────
-_DOCTOR_PREP_KW = [
-    "doctor visit", "prepare", "appointment", "doctor prep",
-    "doctor brief", "visit prep", "what should i tell",
-    "questions for my doctor", "my health data",
-]
+_SAFE_FALLBACK = (
+    "I want to be careful here and give you only accurate information. "
+    "Could you give me a bit more context, or upload your latest report "
+    "so I can base my answer on your real data?\n\n"
+    "⚕️ *PHI gives you health information — not medical advice.*"
+)
 
-# ── Prompt injection patterns ─────────────────────────────────────────────────
+# ── Injection guards ───────────────────────────────────────────────────────────
 _INJECTION_PATTERNS = [
     re.compile(r"ignore (previous|all|your) (instructions?|prompt|system)", re.I),
     re.compile(r"you are now|pretend you are|act as if you are", re.I),
@@ -61,119 +61,178 @@ _INJECTION_PATTERNS = [
     re.compile(r"jailbreak|do anything now|dan mode", re.I),
 ]
 
-# ── Hallucination signals ─────────────────────────────────────────────────────
-_HALLUCINATION_SIGNALS = [
-    "your blood pressure", "your cholesterol", "your blood sugar",
-    "your glucose", "your hemoglobin", "your creatinine",
-    "elevated", "your levels", "your results show",
-    "your labs indicate", "you have high", "you have low",
-    "your hba1c", "your tsh", "your vitamin",
-]
-
-# ── Forbidden output patterns (Strict Medical Boundaries) ─────────────────────
+# ── Hard safety output blockers ────────────────────────────────────────────────
 _FORBIDDEN_PATTERNS = [
-    (re.compile(r"\b(you have|you likely have|this confirms you have|it looks like you have|my diagnosis is)\b", re.I), "diagnosis"),
+    (re.compile(r"\b(you have|you likely have|this confirms you have|my diagnosis is)\b", re.I), "diagnosis"),
     (re.compile(r"\b(stop taking|increase your dose|decrease your dose|take \d+\s*(mg|mcg|g|ml))\b", re.I), "medication_instruction"),
 ]
 
-_SAFE_FALLBACK = (
-    "I want to ensure I provide accurate, safe information. To help you best, "
-    "could you tell me more about which specific results you're asking about, or share your report?\n\n"
-    "⚕️ *PHI provides health information only — not medical advice.*"
-)
+# ── Hallucination detection ────────────────────────────────────────────────────
+_HALLUCINATION_SIGNALS = [
+    "your blood pressure", "your cholesterol", "your blood sugar",
+    "your glucose", "your hemoglobin", "your creatinine",
+    "your levels", "your results show", "your labs indicate",
+    "you have high", "you have low", "your hba1c", "your tsh", "your vitamin",
+]
+
 
 # ══════════════════════════════════════════════════════════════════════════════
-# System prompts
+# GOAL 1 — DYNAMIC PERSONALIZATION
+# The base system prompt establishes PHI as an adaptive co-pilot, not a tool.
 # ══════════════════════════════════════════════════════════════════════════════
 
-_PHI_SYSTEM = """
-You are PHI (Personal Health Intelligence) inside Curabook.
-You are an advanced health informatics tool, NOT a licensed medical professional.
-You have memory of this patient's history. Always use their actual stored data. Never invent values.
+_PHI_BASE_SYSTEM = """
+You are PHI — a Personal Health Intelligence co-pilot built by Curabook.
+You have been given this person's complete health memory. You are their health expert who knows their full story.
 
-RESPONSE FORMAT — always use this exact structure:
+YOUR THREE OPERATING RULES:
 
-**1. OVERALL SUMMARY**
-1-2 sentences. What is the big picture from their data?
+RULE 1 — BE PERSONAL, NOT GENERIC.
+Every response must reference THIS person's actual data. If you don't have a specific number, say so.
+Never give advice that could apply to anyone. If it could apply to anyone, it's not PHI.
 
-**2. RISK LEVEL**
-One of: 🟢 LOW / 🟡 MODERATE / 🔴 HIGH — with one sentence explaining why based on data.
+RULE 2 — SYNTHESIZE, DON'T LIST.
+Connect dots. A rising LDL + borderline HbA1c + elevated CRP is not three separate findings.
+It's a single metabolic story. Name the pattern. Explain why the combination matters more than each alone.
 
-**3. KEY INSIGHTS**
-3-5 bullet points. Only findings that actually matter. Cite real values.
-• e.g. "Your LDL is 172 mg/dL — above the <100 target"
+RULE 3 — PLAIN ENGLISH FIRST.
+Your opening sentence must be understood by someone who just got out of the hospital confused.
+Numbers support the story — they never lead it. No medical jargon without immediate plain-language translation.
 
-**4. WHAT YOU MIGHT CONSIDER**
-2-3 concrete, non-prescriptive lifestyle steps the user can research or consider.
+RESPONSE SHAPE (not a rigid template — adapt to the question):
+- Open with one sentence that captures the most important thing, in human language.
+- Give the key insight with specific numbers from their memory.
+- Name any pattern or connection across data points.
+- Offer 1–2 concrete things they can do or ask their doctor.
+- Close with what to watch.
 
-**5. QUESTIONS FOR YOUR DOCTOR**
-2-3 specific questions based on their actual results.
-
-**6. IMPORTANT NOTES**
-Any stale data, missing context, or safety reminders.
-
-ANTI-HALLUCINATION & SAFETY RULES:
-- If a value is in their health memory or uploaded document: cite it exactly.
-- If a value is NOT there: say "I don't have your [Marker] data yet."
-- NEVER say a marker is normal if you haven't seen the result.
-- NEVER diagnose. Use phrasing like "this suggests", "this may indicate", or "is associated with".
-- NEVER give medication instructions. Do not tell a patient to start, stop, or change a dose.
+SAFETY RULES (non-negotiable):
+- Never diagnose. Use: "this pattern is associated with", "this may indicate", "your doctor should assess".
+- Never prescribe or adjust doses. Ever.
+- If a value isn't in their health memory, say "I don't have that data yet."
+- Never invent numbers.
 """.strip()
 
-_PHI_STRATEGY_SYSTEM = """
-You are PHI inside Curabook — an informatics tool helping this patient prepare or plan.
-You have their health memory. Use it. Be specific to their actual numbers.
 
-RESPONSE FORMAT — always use this exact structure:
+# ══════════════════════════════════════════════════════════════════════════════
+# GOAL 2 — SMART SYNTHESIS
+# Intent-specific overlays that trigger deeper reasoning for complex questions.
+# ══════════════════════════════════════════════════════════════════════════════
 
-**1. OVERALL SUMMARY**
-What does their data say about their current health situation?
+_PHI_METABOLIC_OVERLAY = """
+METABOLIC SYNTHESIS MODE — ACTIVE.
 
-**2. RISK LEVEL**
-🟢 LOW / 🟡 MODERATE / 🔴 HIGH — one sentence why.
+This person is asking about metabolic health. You have their longitudinal data.
 
-**3. KEY INSIGHTS**
-3-5 bullets. Specific to their values and trends.
-
-**4. STRATEGY & PLANNING**
-Actionable, lifestyle-focused plan specific to their situation. Not generic advice.
-
-**5. QUESTIONS FOR YOUR DOCTOR**
-Tailored to their actual abnormal markers and trends.
-
-**6. IMPORTANT NOTES**
-What to track, what to watch, any caveats.
-
-RULES:
-- Never generic. Always specific to their data.
-- Never diagnose or prescribe. You are an informational tool only.
-- Recommend doctor consultation for significant concerns.
+DO THIS:
+1. Identify the metabolic cluster: Is this primarily insulin resistance? Cardiovascular? Mixed?
+2. Find the TRAJECTORY, not the snapshot. A value moving in the wrong direction for 9 months
+   tells a more important story than a single reading.
+3. Connect these marker families if data exists:
+   - Glucose cluster: HbA1c + Fasting Glucose + Triglycerides (insulin resistance triad)
+   - Cardiovascular cluster: LDL + HDL + Total Cholesterol + CRP (inflammation + lipids)
+   - Metabolic syndrome markers: waist data + any obesity indicators from past conversations
+4. Calculate the COMPOUNDED RISK — rising LDL + high CRP means the LDL is more dangerous
+   (inflamed arteries + cholesterol = higher plaque risk). Say this plainly.
+5. Name the lifestyle levers specific to their pattern.
 """.strip()
 
+_PHI_DOCTOR_PREP_OVERLAY = """
+DOCTOR VISIT PREPARATION MODE — ACTIVE.
+
+The goal: this person walks into their appointment confident and gets the most out of their time.
+
+STRUCTURE:
+1. The ONE THING to lead with (their most concerning finding — be specific with numbers)
+2. The TREND to show their doctor (what's changed since last visit — use actual dates and values)
+3. THREE QUESTIONS to ask — specific to their results, not generic questions
+4. What NOT to forget to mention (symptoms from memory, current medications, supplements)
+5. What the doctor may want to order next (based on their current pattern)
+
+Be a smart friend who did the homework before the appointment. Direct and specific.
+""".strip()
+
+_PHI_LIFESTYLE_OVERLAY = """
+LIFESTYLE & BEHAVIOR CHANGE MODE — ACTIVE.
+
+This person wants to act, not just understand. Meet them there.
+
+APPROACH:
+1. Connect the lifestyle change directly to THEIR numbers — not generic advice.
+   "Walking 30 minutes daily has been shown to reduce HbA1c by ~0.5% — you're currently
+   at 6.1%, so this could put you into the normal range" is infinitely better than
+   "Exercise is good for blood sugar."
+2. Prioritize the ONE change with the highest expected impact for their specific pattern.
+3. Reference what they've already told you (from memory: supplements started, diet changes, etc.)
+4. Give a realistic 90-day expectation based on their trajectory.
+5. Do not overwhelm. One clear next step is worth more than ten suggestions.
+""".strip()
+
+
 # ══════════════════════════════════════════════════════════════════════════════
-# Safety functions
+# INTENT DETECTION
 # ══════════════════════════════════════════════════════════════════════════════
+
+_METABOLIC_KW = [
+    "diabetes", "blood sugar", "glucose", "hba1c", "insulin", "cholesterol",
+    "ldl", "hdl", "triglyceride", "heart", "cardiovascular", "metabolic",
+    "obesity", "weight", "bmi", "fatty liver", "crp", "inflammation",
+    "risk", "prediabetes", "syndrome",
+]
+
+_DOCTOR_PREP_KW = [
+    "doctor", "appointment", "visit", "prepare", "brief", "what should i tell",
+    "questions for", "see my doctor", "going to the doctor", "next checkup",
+    "specialist", "cardiologist", "endocrinologist",
+]
+
+_LIFESTYLE_KW = [
+    "what can i do", "how to improve", "diet", "exercise", "food", "eat",
+    "workout", "sleep", "stress", "lifestyle", "change", "habit", "help",
+    "reduce", "lower", "improve", "better", "fix",
+]
+
+
+def _detect_intent(message: str) -> str:
+    lower = message.lower()
+    if any(k in lower for k in _DOCTOR_PREP_KW):
+        return "doctor_prep"
+    if any(k in lower for k in _LIFESTYLE_KW):
+        return "lifestyle"
+    if any(k in lower for k in _METABOLIC_KW):
+        return "metabolic"
+    return "general"
+
 
 def _check_prompt_injection(text: str) -> bool:
     return any(p.search(text) for p in _INJECTION_PATTERNS)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# GOAL 3 — RADICAL SIMPLICITY
+# Output validation ensures no response is a wall of clinical text.
+# ══════════════════════════════════════════════════════════════════════════════
 
 def validate_llm_output(text: str, has_health_data: bool) -> Tuple[str, List[str]]:
     violations = []
     for pattern, label in _FORBIDDEN_PATTERNS:
         if pattern.search(text):
             violations.append(label)
-            
-    if violations:
-        # Soften diagnostic language systematically
-        text = re.sub(r"\b(you have|you likely have|it looks like you have)\b", "this may indicate", text, flags=re.I)
-        text = re.sub(r"\b(this confirms you have|my diagnosis is)\b", "this is consistent with", text, flags=re.I)
 
-        # Medication hard block (Zero tolerance for prescription behavior)
+    if violations:
+        text = re.sub(
+            r"\b(you have|you likely have|it looks like you have)\b",
+            "this may indicate", text, flags=re.I
+        )
+        text = re.sub(
+            r"\b(this confirms you have|my diagnosis is)\b",
+            "this pattern is consistent with", text, flags=re.I
+        )
         if "medication_instruction" in violations:
             return _SAFE_FALLBACK, violations
 
-        return text, violations
-    return text, []     
+    return text, violations
+
 
 def detect_hallucination_risk(reply: str, has_health_data: bool) -> bool:
     if has_health_data:
@@ -182,17 +241,9 @@ def detect_hallucination_risk(reply: str, has_health_data: bool) -> bool:
     hits = sum(1 for phrase in _HALLUCINATION_SIGNALS if phrase in lower)
     return hits >= 2
 
-def _detect_intent(message: str) -> str:
-    _STRATEGY_KW = [
-        "prepare", "how do i", "help me", "what should", "strategy",
-        "habit", "routine", "goal", "improve", "doctor visit",
-        "appointment", "navigate", "plan",
-    ]
-    lower = message.lower()
-    return "strategy" if any(k in lower for k in _STRATEGY_KW) else "medical"
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Message builder
+# MESSAGE BUILDER
 # ══════════════════════════════════════════════════════════════════════════════
 
 def build_chat_messages(
@@ -203,28 +254,43 @@ def build_chat_messages(
     has_documents: bool = False,
     health_context: str = "",
 ) -> List[Dict[str, str]]:
-    
-    intent = _detect_intent(user_message)
-    system_prompt = _PHI_STRATEGY_SYSTEM if intent == "strategy" else _PHI_SYSTEM
 
+    intent = _detect_intent(user_message)
+
+    # Build composite system prompt
+    system_parts = [_PHI_BASE_SYSTEM]
+    if intent == "metabolic":
+        system_parts.append("\n\n" + _PHI_METABOLIC_OVERLAY)
+    elif intent == "doctor_prep":
+        system_parts.append("\n\n" + _PHI_DOCTOR_PREP_OVERLAY)
+    elif intent == "lifestyle":
+        system_parts.append("\n\n" + _PHI_LIFESTYLE_OVERLAY)
+
+    system_prompt = "\n".join(system_parts)
     messages: List[Dict[str, str]] = [{"role": "system", "content": system_prompt}]
+
     has_health_data = bool(health_context and health_context.strip())
 
+    # Inject health memory (Goal 1 + 2 — personalization + synthesis context)
     if has_health_data:
         messages.append({
             "role": "system",
-            "content": health_context, 
+            "content": (
+                "═══ THIS PERSON'S HEALTH MEMORY ═══\n"
+                "The following is their complete health record. "
+                "Reference specific values and dates. Connect patterns across markers. "
+                "This is the foundation of every personalised response.\n\n"
+                + health_context
+            ),
         })
     else:
         messages.append({
             "role": "system",
             "content": (
-                "IMPORTANT: This patient has NO stored health data yet. "
-                "You have ZERO information about their health status, lab values, "
-                "medications, or medical history. "
-                "Do NOT speculate, assume, or invent any health information. "
-                "If they ask a health-specific question, tell them clearly you need "
-                "their data first and explain how to upload a report."
+                "IMPORTANT: This person has NO stored health data yet. "
+                "You have zero information about their lab values, medications, or history. "
+                "Do not speculate or give any personalised health statements. "
+                "Tell them warmly how to get started — upload a report using the 📎 button."
             ),
         })
 
@@ -232,14 +298,15 @@ def build_chat_messages(
         messages.append({
             "role": "system",
             "content": (
-                "A medical document has been uploaded in this conversation. "
-                "Use its specific values. "
-                "Cross-reference with the health memory above. "
-                "Note changes compared to historical values. "
-                "Give ONE unified response — no duplicate summaries."
+                "A medical document was uploaded this session. "
+                "Prioritize the new document's values. Cross-reference with stored memory. "
+                "Explicitly note what has CHANGED vs previous readings — "
+                "improvement, decline, or stable. Do not repeat the full context back. "
+                "Give one integrated response."
             ),
         })
 
+    # Conversation history
     try:
         res = (
             supabase.table("chats")
@@ -269,24 +336,17 @@ def build_chat_messages(
 
     return messages
 
+
 # ══════════════════════════════════════════════════════════════════════════════
-# LLM Execution
+# LLM CALL
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _call_with_timeout(fn, timeout_sec: int = DEFAULT_TIMEOUT_SEC) -> Tuple[Optional[str], Optional[Exception]]:
-    start = time.monotonic()
-    try:
-        result = fn()
-        elapsed = time.monotonic() - start
-        if elapsed > timeout_sec:
-            return None, TimeoutError(f"LLM timeout after {timeout_sec}s")
-        return result, None
-    except Exception as e:
-        return None, e
+def call_llm(
+    groq_client: Any,
+    messages: List[Dict[str, str]],
+    max_tokens: int = MAX_RESPONSE_TOKENS,
+) -> Optional[str]:
 
-def call_llm(groq_client: Any, messages: List[Dict[str, str]], max_tokens: int = MAX_RESPONSE_TOKENS) -> Optional[str]:
-    """Primary routing to OpenAI with Groq fallback."""
-    
     def _run():
         openai_key = os.getenv("OPENAI_API_KEY")
         if openai_key:
@@ -294,9 +354,9 @@ def call_llm(groq_client: Any, messages: List[Dict[str, str]], max_tokens: int =
                 from openai import OpenAI
                 client = OpenAI(api_key=openai_key)
                 resp = client.chat.completions.create(
-                    model="gpt-4o-mini", 
+                    model="gpt-4o-mini",
                     messages=messages,
-                    temperature=0.3, 
+                    temperature=0.35,
                     max_tokens=max_tokens,
                 )
                 c = resp.choices[0].message.content
@@ -307,9 +367,9 @@ def call_llm(groq_client: Any, messages: List[Dict[str, str]], max_tokens: int =
         if groq_client:
             try:
                 resp = groq_client.chat.completions.create(
-                    model="llama-3.3-70b-versatile", 
+                    model="llama-3.3-70b-versatile",
                     messages=messages,
-                    temperature=0.3, 
+                    temperature=0.35,
                     max_tokens=max_tokens,
                 )
                 c = resp.choices[0].message.content
@@ -318,23 +378,25 @@ def call_llm(groq_client: Any, messages: List[Dict[str, str]], max_tokens: int =
                 print(f"[AI] Groq error: {e}")
         return None
 
-    result, error = _call_with_timeout(_run, timeout_sec=DEFAULT_TIMEOUT_SEC)
-    
-    if error:
-        print(f"[AI ERROR] {error}")
-        return None
-    if not result:
+    start = time.monotonic()
+    try:
+        result = _run()
+        elapsed = time.monotonic() - start
+        if elapsed > DEFAULT_TIMEOUT_SEC:
+            return None
+        if not result:
+            return None
+        result = str(result).strip()
+        if len(result) >= max_tokens * 3:
+            result += "\n\n⚠️ *Response trimmed — ask a follow-up for any missing details.*"
+        return result
+    except Exception as e:
+        print(f"[AI ERROR] {e}")
         return None
 
-    result = str(result).strip()
-    
-    if len(result) >= max_tokens * 3:
-        result += "\n\n⚠️ *Response may be incomplete — ask a follow-up for any findings not covered.*"
-        
-    return result
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Conversation memory extraction
+# CONVERSATION MEMORY EXTRACTION
 # ══════════════════════════════════════════════════════════════════════════════
 
 def extract_conversation_memories(
@@ -343,112 +405,126 @@ def extract_conversation_memories(
     ai_reply: str,
 ) -> List[str]:
     """
-    Extracts key health facts utilizing robust JSON parsing.
+    Extract health facts the user revealed about themselves.
+    These feed Goal 1 — making future responses more personalised over time.
     """
     health_indicators = [
         "supplement", "medication", "doctor", "appointment", "symptom",
         "fatigue", "pain", "diet", "exercise", "concern", "worried",
-        "family history", "blood pressure", "sugar",
-        "vitamin", "taking", "prescribed", "sleep", "stress",
+        "family history", "blood pressure", "sugar", "vitamin", "taking",
+        "prescribed", "sleep", "stress", "weight", "insulin", "metformin",
+        "obesity", "overweight", "walking", "gym", "calories",
     ]
-    
+
     combined = (user_message + " " + ai_reply).lower()
     if not any(kw in combined for kw in health_indicators):
-        return [] 
+        return []
 
-    prompt = f"""Extract 0-3 key health facts from this conversation that are worth remembering long-term.
+    prompt = f"""Extract 0-3 key health facts the USER revealed about themselves in this conversation.
 
-USER SAID: {user_message[:500]}
-PHI REPLIED: {ai_reply[:500]}
+USER SAID: {user_message[:600]}
+PHI REPLIED: {ai_reply[:400]}
 
 Rules:
-- Only extract facts the USER mentioned about themselves (symptoms, medications, lifestyle, concerns).
-- Do NOT extract facts generated by PHI.
-- Each fact must be a short, clear statement (max 100 chars).
-- Return ONLY a JSON array of strings. No markdown, no conversational text.
-- Example: ["User takes metformin 500mg", "User has family history of heart disease"]"""
+- Only facts the USER stated about themselves (symptoms, medications, lifestyle, concerns, history).
+- Do NOT extract what PHI said.
+- Short, clear statements. Max 100 chars each.
+- Focus on facts useful for future personalisation (metabolic health, obesity, diabetes management).
+- Return ONLY a JSON array. Example: ["User takes Metformin 500mg twice daily", "User walks 20 min/day"]
+- Empty array [] if no relevant facts found."""
 
     try:
         if groq_client:
             resp = groq_client.chat.completions.create(
                 model="llama-3.1-8b-instant",
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.0, # Zero temp for strict adherence
-                max_tokens=200,
+                temperature=0.0,
+                max_tokens=250,
             )
             raw = resp.choices[0].message.content.strip()
-            
-            # Robust JSON array extraction (handles when LLM adds "Here is the JSON: ")
             match = re.search(r'\[.*\]', raw, re.DOTALL)
             if match:
                 parsed = json.loads(match.group(0))
                 if isinstance(parsed, list):
                     return [str(f)[:200] for f in parsed if isinstance(f, str) and len(f) > 5]
-                    
     except json.JSONDecodeError:
-        print("[MEMORY] Failed to parse JSON from memory extraction.")
+        pass
     except Exception as e:
-        print(f"[MEMORY] Memory extraction error: {e}")
+        print(f"[MEMORY] Extraction error: {e}")
 
     return []
 
+
 # ══════════════════════════════════════════════════════════════════════════════
-# Save chat turn + Doctor prep helper
+# CHAT PERSISTENCE
 # ══════════════════════════════════════════════════════════════════════════════
 
 def save_chat_turn(
-    supabase: Any, 
-    user_id: str, 
+    supabase: Any,
+    user_id: str,
     conversation_id: str,
-    user_msg: str, 
-    ai_reply: str, 
+    user_msg: str,
+    ai_reply: str,
     is_phi: bool = False,
 ):
     try:
         supabase.table("chats").insert([
             {
-                "user_id": user_id,
+                "user_id":         user_id,
                 "conversation_id": conversation_id,
-                "role": "user",
-                "content": str(user_msg or "").strip(),
+                "role":            "user",
+                "content":         str(user_msg or "").strip(),
             },
             {
-                "user_id": user_id,
+                "user_id":         user_id,
                 "conversation_id": conversation_id,
-                "role": "assistant",
-                "content": str(ai_reply or "").strip(),
+                "role":            "assistant",
+                "content":         str(ai_reply or "").strip(),
             },
         ]).execute()
     except Exception as e:
         print(f"[CHAT SAVE ERROR] {e}")
 
-def generate_doctor_prep(groq_client: Any, document_text: str, markers: List[Dict], user_name: str) -> str:
-    """Generates a structured doctor visit prep. Uses the local call_llm."""
+
+def generate_doctor_prep(
+    groq_client: Any,
+    document_text: str,
+    markers: List[Dict],
+    user_name: str,
+) -> str:
     abnormal = [m for m in (markers or []) if m.get("status") in ("HIGH", "LOW")]
-    
+
     if abnormal:
         labs_text = "\n".join(
-            f"  • {m.get('marker', m.get('marker_name','?'))}: "
-            f"{m.get('value','')} {m.get('unit','')} [{m.get('status','')}]"
+            f"  • {m.get('marker', m.get('marker_name', '?'))}: "
+            f"{m.get('value', '')} {m.get('unit', '')} [{m.get('status', '')}]"
             for m in abnormal
         )
     else:
-        labs_text = "  No abnormal markers detected in this specific report."
+        labs_text = "  No abnormal markers in this report."
 
     prefix = f"{user_name}, here" if user_name else "Here"
-    prompt = f"""Create a concise doctor visit prep for a patient based on this data.
+    prompt = f"""Create a concise, plain-English doctor visit prep for this patient.
 
-THEIR ABNORMAL LAB RESULTS:
+THEIR ABNORMAL RESULTS:
 {labs_text}
 
-Format:
-1. Results to Discuss (only the abnormal ones above, with actual values)
-2. Questions to Ask Your Doctor (specific to these results, phrased for the patient to ask)
-3. What to Mention (reminders to mention current symptoms/medications)
+Format (use these exact headers):
+**The one thing to lead with:**
+[Most urgent finding with specific number]
 
-Plain language. Max 250 words.
-End with: "⚕️ For informational purposes only. Always follow your doctor's advice."
+**What has changed since last time:**
+[Trend if known, otherwise note this is a new baseline]
+
+**3 questions to ask your doctor:**
+1. [Specific to their results]
+2. [Specific to their results]
+3. [Specific to their results]
+
+**Don't forget to mention:**
+[Symptoms, current meds, supplements relevant to these findings]
+
+Plain language. Under 200 words. End with: "⚕️ For information only — follow your doctor's guidance."
 """
-    
-    result = call_llm(groq_client, [{"role": "user", "content": prompt}], max_tokens=400)
+    result = call_llm(groq_client, [{"role": "user", "content": prompt}], max_tokens=450)
     return result or f"{prefix} is your doctor visit prep based on your uploaded report."
