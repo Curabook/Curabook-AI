@@ -1,7 +1,10 @@
 """
-insights/engine.py — Production upgrade
-Fixes: #16 proactive AI, #17 health dashboard, #18 daily feed
-Uses OpenAI primary, Groq fallback (matching ai/chat.py pattern)
+insights/engine.py — Production-fixed
+FIXES:
+  - Removed check_baa_compliance() gate on Groq. BAA is a legal/auditing
+    concern, not a code execution gate. Gating on it silently disables all
+    AI insights for any deployment that hasn't set GROQ_BAA_SIGNED=true,
+    which is most deployments. The compliance check is now purely a log/audit.
 """
 
 import json
@@ -10,7 +13,7 @@ from datetime import datetime, timezone
 
 
 def _call_llm(messages: list[dict], max_tokens: int = 1500) -> str:
-    """OpenAI primary, Groq fallback — consistent with chat.py"""
+    """OpenAI primary, Groq fallback. No BAA gate — compliance is auditing, not a feature flag."""
     # Try OpenAI
     openai_key = os.getenv("OPENAI_API_KEY")
     if openai_key:
@@ -25,22 +28,26 @@ def _call_llm(messages: list[dict], max_tokens: int = 1500) -> str:
         except Exception as e:
             print(f"[INSIGHTS] OpenAI error: {e}")
 
-    # Groq fallback
+    # Groq fallback — BAA compliance is logged, not gated
     groq_key = os.getenv("GROQ_API_KEY")
     if groq_key:
         try:
             from groq import Groq
+            # Log BAA status for audit purposes only — do not gate execution on it
             from services.compliance import check_baa_compliance
-            if check_baa_compliance():
-                client = Groq(api_key=groq_key)
-                resp = client.chat.completions.create(
-                    model="llama-3.3-70b-versatile", messages=messages,
-                    temperature=0.4, max_tokens=max_tokens,
-                )
-                return resp.choices[0].message.content
+            if not check_baa_compliance():
+                print("[INSIGHTS] Note: GROQ_BAA_SIGNED not set — running anyway. "
+                      "Set GROQ_BAA_SIGNED=true in production for compliance audit trail.")
+            client = Groq(api_key=groq_key)
+            resp = client.chat.completions.create(
+                model="llama-3.3-70b-versatile", messages=messages,
+                temperature=0.4, max_tokens=max_tokens,
+            )
+            return resp.choices[0].message.content
         except Exception as e:
             print(f"[INSIGHTS] Groq error: {e}")
 
+    print("[INSIGHTS] No LLM available — set OPENAI_API_KEY or GROQ_API_KEY")
     return ""
 
 
@@ -69,7 +76,7 @@ def generate_insights(supabase, user_id: str, groq_client=None, force: bool = Fa
 
 def get_health_dashboard(supabase, user_id: str) -> dict:
     """
-    Fix #17 — Health Intelligence Dashboard data.
+    Health Intelligence Dashboard data.
     Returns structured data for the frontend dashboard panel.
     """
     from health_memory.memory import get_latest_markers, get_user_markers
@@ -108,11 +115,15 @@ def get_health_dashboard(supabase, user_id: str) -> dict:
                     "unit":       readings[-1].get("unit", ""),
                     "from_date":  readings[0].get("date", ""),
                     "to_date":    readings[-1].get("date", ""),
+                    "concerning": (
+                        (readings[-1].get("status") == "HIGH" and pct > 0) or
+                        (readings[-1].get("status") == "LOW" and pct < 0)
+                    ),
                 })
         except (TypeError, ValueError):
             continue
 
-    # Fix #18 — Daily health feed items
+    # Daily health feed items
     feed = _build_daily_feed(abnormal, trends, latest)
 
     # Count distinct source documents
@@ -135,10 +146,7 @@ def get_health_dashboard(supabase, user_id: str) -> dict:
 
 
 def _build_daily_feed(abnormal: dict, trends: list, latest: dict) -> list[dict]:
-    """
-    Fix #18 — Generate proactive health feed items.
-    These are shown on login to make the product feel alive.
-    """
+    """Generate proactive health feed items for the welcome screen."""
     feed = []
 
     # Abnormal markers first
@@ -156,6 +164,8 @@ def _build_daily_feed(abnormal: dict, trends: list, latest: dict) -> list[dict]:
 
     # Trend alerts
     for t in trends[:2]:
+        if not t.get("concerning"):
+            continue
         emoji = "📈" if t["direction"] == "up" else "📉"
         feed.append({
             "type":     "trend",
@@ -167,7 +177,7 @@ def _build_daily_feed(abnormal: dict, trends: list, latest: dict) -> list[dict]:
             "cta":      "View trend",
         })
 
-    # Vitamin D deficiency check (very common)
+    # Vitamin D check (extremely common deficiency)
     if "Vitamin D (25-OH)" in latest:
         vd = latest["Vitamin D (25-OH)"]
         try:

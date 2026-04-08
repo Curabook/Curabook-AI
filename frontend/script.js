@@ -1,23 +1,26 @@
 /**
- * script.js — Curabook PHI  v3.0
- * ══════════════════════════════════════════════════════════════════════════
- * THREE PRODUCTION GOALS
- * ──────────────────────────────────────────────────────────────────────────
- * Goal 1  DYNAMIC PERSONALIZATION
- *         On login, PHI immediately loads the user's health context and
- *         generates contextual suggestion chips based on THEIR actual data.
- *         Every session starts personalised.
+ * script.js — Curabook PHI  v3.1
  *
- * Goal 2  SMART SYNTHESIS
- *         The Health Pulse card on the welcome screen shows pre-synthesised
- *         intelligence from the backend — plain-English status, not lab numbers.
- *         Chips are generated from the user's specific risk profile.
+ * FIXES APPLIED:
+ * #BUG-JS-1  window._lastDocText / _lastDocId persisted across sessions and new
+ *            chats. Every subsequent message re-sent the full document text,
+ *            making is_fresh_document=True on every single follow-up. This
+ *            caused expensive re-extraction on every message. Now cleared on
+ *            new chat and on session init.
  *
- * Goal 3  RADICAL SIMPLICITY
- *         The welcome screen shows ONE clear thing: what needs attention.
- *         No generic welcome text for users with data. No walls of chips.
- *         The input placeholder changes based on health context.
- * ══════════════════════════════════════════════════════════════════════════
+ * #BUG-JS-2  Delete account called supabaseClient.auth.signOut() AFTER backend
+ *            delete, then redirected. The session remained valid for ~1hr post-
+ *            deletion. Now: signOut() → delete-account → redirect.
+ *
+ * #BUG-JS-3  New chat confirm fired on DOM.chatDisplay.children.length > 0 even
+ *            when chatDisplay only had empty state divs or loading spinners.
+ *            Now checks for actual .chat-message elements.
+ *
+ * #BUG-JS-4  Profile dropdown stayed open after signing out. Now explicitly
+ *            hidden on logout.
+ *
+ * #BUG-JS-5  Health pulse card was not refreshed after new conversation started.
+ *            Now reloaded when returning to welcome mode.
  */
 
 "use strict";
@@ -34,7 +37,7 @@ let activeConvId         = null;
 let uploadedFiles        = [];
 let isProcessing         = false;
 let conversationToDelete = null;
-let _healthContext        = null;   // Cached dashboard data for chip generation
+let _healthContext       = null;
 
 /* ══════════════════════════════════════════════════════════════
    DOM
@@ -100,6 +103,39 @@ const DOM = {
 };
 
 /* ══════════════════════════════════════════════════════════════
+   DOC CONTEXT STATE — FIX #BUG-JS-1
+   Centralized doc context management to prevent stale data leaking
+   into follow-up conversations.
+══════════════════════════════════════════════════════════════ */
+
+const _docCtx = {
+    text:  null,
+    id:    null,
+    convId: null,   // which conversation this doc belongs to
+
+    set(docText, docId, convId) {
+        this.text   = docText || null;
+        this.id     = docId   || null;
+        this.convId = convId  || null;
+    },
+
+    /**
+     * Returns doc context only if it belongs to the CURRENT conversation.
+     * Prevents stale doc text from bleeding into new conversations.
+     */
+    getForConv(convId) {
+        if (!this.convId || this.convId !== convId) return { text: null, id: null };
+        return { text: this.text, id: this.id };
+    },
+
+    clear() {
+        this.text   = null;
+        this.id     = null;
+        this.convId = null;
+    },
+};
+
+/* ══════════════════════════════════════════════════════════════
    UTILITIES
 ══════════════════════════════════════════════════════════════ */
 
@@ -137,6 +173,11 @@ function setProcessing(loading) {
         : '<i class="fa-solid fa-arrow-up"></i>';
 }
 
+/** FIX #BUG-JS-3: Count only real chat messages, not layout divs */
+function hasChatMessages() {
+    return DOM.chatDisplay.querySelectorAll(".chat-message").length > 0;
+}
+
 /* ══════════════════════════════════════════════════════════════
    SUPABASE AUTH
 ══════════════════════════════════════════════════════════════ */
@@ -166,20 +207,21 @@ async function handleLoginSuccess(user) {
     currentUser = user;
 
     const initial = (user.email || "?").charAt(0).toUpperCase();
-    DOM.avatarInitial.textContent   = initial;
-    if (DOM.dropdownEmail) DOM.dropdownEmail.textContent  = user.email;
-    if (DOM.userEmailDisp) DOM.userEmailDisp.textContent  = user.email;
-    if (DOM.modalEmail)    DOM.modalEmail.textContent     = user.email;
-    if (DOM.modalAvatar)   DOM.modalAvatar.textContent    = initial;
+    DOM.avatarInitial.textContent  = initial;
+    if (DOM.dropdownEmail) DOM.dropdownEmail.textContent = user.email;
+    if (DOM.userEmailDisp) DOM.userEmailDisp.textContent = user.email;
+    if (DOM.modalEmail)    DOM.modalEmail.textContent    = user.email;
+    if (DOM.modalAvatar)   DOM.modalAvatar.textContent   = initial;
+
+    // FIX #BUG-JS-1: clear stale doc context on session init
+    _docCtx.clear();
 
     saveUserConsents().catch(() => {});
     loadUserPreferences();
     loadHistory();
     loadPlanStatus().catch(() => {});
 
-    // GOAL 1 + 2: Load intelligence context immediately on login
     await loadHealthPulse();
-
     showToast("Welcome back 👋");
 
     _carryOverDemoDoc();
@@ -199,9 +241,11 @@ async function saveUserConsents() {
     }).catch(() => {});
 }
 
+/** FIX #BUG-JS-2 + #BUG-JS-4: signOut before any redirect, hide dropdown */
 async function handleLogout() {
     if (!confirm("Sign out of Curabook PHI?")) return;
-    await supabaseClient.auth.signOut();
+    DOM.profileDrop?.classList.add("hidden");   // FIX #BUG-JS-4
+    try { await supabaseClient.auth.signOut(); } catch {}
     window.location.href = "https://curabook.com/login";
 }
 
@@ -215,31 +259,30 @@ function _carryOverDemoDoc() {
     sessionStorage.removeItem("phi_pending_doc_name");
     sessionStorage.removeItem("phi_pending_doc_summary");
 
-    window._lastDocText = docText;
     setTimeout(async () => {
         if (!activeConvId) await createConversation();
+        _docCtx.set(docText, null, activeConvId);  // FIX #BUG-JS-1
         if (docSummary) appendMessage(`📋 **${docName}** (from demo)\n\n${docSummary}`, "ai");
-        DOM.userInput.value = "Please explain my uploaded report thoroughly — every finding, what's normal, what needs attention, and what to discuss with my doctor.";
+        DOM.userInput.value = "Please explain my uploaded report thoroughly.";
         handleSend();
     }, 1200);
 }
 
 /* ══════════════════════════════════════════════════════════════
-   GOAL 1 + 2: HEALTH PULSE — INTELLIGENCE-FIRST WELCOME
-   Loads the user's health dashboard and renders a plain-English
-   status card with contextual chips. This IS the welcome screen
-   for users who have data.
+   HEALTH PULSE — INTELLIGENCE-FIRST WELCOME
 ══════════════════════════════════════════════════════════════ */
 
 async function loadHealthPulse() {
+    // Reset to loading state
+    if (DOM.pulseLoading) DOM.pulseLoading.classList.remove("hidden");
+    if (DOM.pulseContent) DOM.pulseContent.classList.add("hidden");
+    if (DOM.pulseCard)    DOM.pulseCard.style.display = "";
+
     try {
         const headers = await getAuthHeaders();
         const res     = await fetch(`${API_BASE}/api/dashboard`, { headers });
 
-        if (!res.ok) {
-            showNoDataState();
-            return;
-        }
+        if (!res.ok) { showNoDataState(); return; }
 
         const dash = await res.json();
         _healthContext = dash;
@@ -259,40 +302,32 @@ async function loadHealthPulse() {
 }
 
 function showNoDataState() {
-    // Hide pulse card, show welcome hero + upload nudge
-    if (DOM.pulseCard) DOM.pulseCard.style.display = "none";
-    if (DOM.welcomeHero) DOM.welcomeHero.style.display = "";
-    if (DOM.uploadNudge) DOM.uploadNudge.classList.remove("hidden");
+    if (DOM.pulseCard)    DOM.pulseCard.style.display = "none";
+    if (DOM.welcomeHero)  DOM.welcomeHero.style.display = "";
+    if (DOM.uploadNudge)  DOM.uploadNudge.classList.remove("hidden");
 
-    // Generic chips for no-data state
     setChips([
-        { icon: "fa-file-medical",      text: "Upload my first lab report" },
-        { icon: "fa-circle-question",   text: "What can PHI do for me?" },
-        { icon: "fa-stethoscope",       text: "How do I prepare for a doctor visit?" },
-        { icon: "fa-chart-line",        text: "What health markers should I track?" },
+        { icon: "fa-file-medical",    text: "Upload my first lab report" },
+        { icon: "fa-circle-question", text: "What can PHI do for me?" },
+        { icon: "fa-stethoscope",     text: "How do I prepare for a doctor visit?" },
+        { icon: "fa-chart-line",      text: "What health markers should I track?" },
     ]);
 }
 
-/**
- * GOAL 3: RADICAL SIMPLICITY
- * The pulse card shows the most important thing first, in plain English.
- * Lab numbers appear only to support the story — never as the headline.
- */
 function renderPulseCard(dash) {
     if (!DOM.pulseLoading || !DOM.pulseContent) return;
 
     DOM.pulseLoading.classList.add("hidden");
     DOM.pulseContent.classList.remove("hidden");
 
-    const abnormal   = dash.abnormal_count   || 0;
-    const total      = dash.total_markers    || 0;
-    const feed       = dash.feed             || [];
-    const trends     = dash.trends           || [];
+    const abnormal  = dash.abnormal_count   || 0;
+    const total     = dash.total_markers    || 0;
+    const feed      = dash.feed             || [];
+    const trends    = dash.trends           || [];
 
-    // GOAL 3: Status pill — one word, instantly understood
-    let statusClass   = "healthy";
-    let statusLabel   = "✓ All Looking Good";
-    let headlineText  = `All ${total} tracked markers are within normal ranges.`;
+    let statusClass  = "healthy";
+    let statusLabel  = "✓ All Looking Good";
+    let headlineText = `All ${total} tracked markers are within normal ranges.`;
 
     if (abnormal >= 3) {
         statusClass  = "urgent";
@@ -301,26 +336,24 @@ function renderPulseCard(dash) {
     } else if (abnormal > 0) {
         statusClass  = "moderate";
         statusLabel  = "↑ Some Items to Review";
-        headlineText = `${abnormal} marker${abnormal > 1 ? "s" : ""} outside normal range. Here's what matters most.`;
+        headlineText = `${abnormal} marker${abnormal > 1 ? "s" : ""} outside normal range.`;
     }
 
-    // Concerning trend override
     const concerningTrends = trends.filter(t => t.concerning || t.pct_change >= 20);
     if (concerningTrends.length > 0 && abnormal === 0) {
         statusClass  = "moderate";
         statusLabel  = "↑ Trend to Watch";
         const t      = concerningTrends[0];
-        headlineText = `${t.marker} has moved ${t.pct_change}% since ${t.from_date} — worth discussing with your doctor.`;
+        headlineText = `${t.marker} has moved ${t.pct_change}% since ${t.from_date}.`;
     }
 
-    // Build alert items from feed (max 4)
     const alertItems = feed.slice(0, 4).map(item => {
-        const severityClass = item.severity === "high" ? "high" : item.severity === "medium" ? "medium" : item.severity === "none" ? "positive" : "low";
-        const icon = item.icon || (severityClass === "high" ? "⚠️" : severityClass === "positive" ? "✅" : "→");
+        const sc   = item.severity === "high" ? "high" : item.severity === "medium" ? "medium" : item.severity === "none" ? "positive" : "low";
+        const icon = item.icon || (sc === "high" ? "⚠️" : sc === "positive" ? "✅" : "→");
         return `
-            <div class="pulse-alert-item ${severityClass}"
-                 onclick="sendChip(${JSON.stringify(item.cta || "Tell me more about this")})"
-                 title="Click to ask PHI about this">
+            <div class="pulse-alert-item ${sc}"
+                 onclick="sendChip(${JSON.stringify(item.cta || "Tell me more")})"
+                 title="Click to ask PHI">
                 <span class="alert-icon">${icon}</span>
                 <div class="alert-body">
                     <div class="alert-title">${escapeHtml(item.title || "")}</div>
@@ -341,46 +374,34 @@ function renderPulseCard(dash) {
         </button>`;
 }
 
-/**
- * GOAL 1: Generate chips based on the user's actual health data.
- * A user with rising LDL gets different chips than a user with low Vitamin D.
- */
 function generateContextualChips(dash) {
-    const feed        = dash.feed         || [];
-    const trends      = dash.trends       || [];
-    const abnormal    = dash.abnormal_count || 0;
-    const markers     = dash.abnormal_markers || [];
+    const trends   = dash.trends           || [];
+    const abnormal = dash.abnormal_count   || 0;
+    const markers  = dash.abnormal_markers || [];
 
     const chips = [];
 
-    // Primary concern chip (based on most urgent finding)
     if (markers.length > 0) {
-        const top = markers[0];
-        const name = top.marker_name || top.name || "my top marker";
+        const name = markers[0].marker_name || markers[0].name || "my top marker";
         chips.push({ icon: "fa-triangle-exclamation", text: `What does my ${name} result mean?` });
     }
 
-    // Trend chip
     const topTrend = trends.find(t => t.concerning || t.pct_change >= 15);
     if (topTrend) {
         chips.push({ icon: "fa-chart-line", text: `Why is my ${topTrend.marker} ${topTrend.direction}?` });
     }
 
-    // Doctor prep chip (always relevant if data exists)
     chips.push({ icon: "fa-stethoscope", text: "Prepare me for my next doctor visit" });
 
-    // Lifestyle chip (always relevant for metabolic focus)
-    if (abnormal > 0) {
-        chips.push({ icon: "fa-dumbbell", text: "What lifestyle changes will help most?" });
-    } else {
-        chips.push({ icon: "fa-heart-pulse", text: "How do I maintain these healthy levels?" });
-    }
+    chips.push({
+        icon: abnormal > 0 ? "fa-dumbbell" : "fa-heart-pulse",
+        text: abnormal > 0 ? "What lifestyle changes will help most?" : "How do I maintain these healthy levels?",
+    });
 
     setChips(chips);
 
-    // GOAL 3: Update input placeholder to match their situation
-    if (abnormal > 0) {
-        DOM.userInput.placeholder = `Ask about your ${markers[0]?.marker_name || "results"}, trends, or doctor prep…`;
+    if (abnormal > 0 && markers[0]) {
+        DOM.userInput.placeholder = `Ask about your ${markers[0].marker_name || "results"}, trends, or doctor prep…`;
     } else {
         DOM.userInput.placeholder = "Ask PHI about your health…";
     }
@@ -400,8 +421,6 @@ function sendChip(text) {
     DOM.userInput.focus();
     setTimeout(() => handleSend(), 80);
 }
-
-// Global for inline handlers
 window.sendChip = sendChip;
 
 async function openPulseModal() {
@@ -412,7 +431,6 @@ async function openPulseModal() {
 
 async function renderPulseModalContent() {
     if (!DOM.pulseModalBody) return;
-
     DOM.pulseModalBody.innerHTML = '<div class="loading-text"><i class="fa-solid fa-spinner fa-spin"></i> Loading…</div>';
 
     try {
@@ -430,14 +448,10 @@ async function renderPulseModalContent() {
         }
 
         const abnormal = markers.filter(m => m.status === "HIGH" || m.status === "LOW");
-        const normal   = markers.filter(m => m.status === "NORMAL");
 
         const markerRows = markers.map(m => {
             const color = m.status === "HIGH" || m.status === "LOW"
-                ? "var(--accent-warn)"
-                : m.status === "NORMAL"
-                    ? "var(--accent-ok)"
-                    : "var(--text-muted)";
+                ? "var(--accent-warn)" : m.status === "NORMAL" ? "var(--accent-ok)" : "var(--text-muted)";
             const badge = m.status === "HIGH" ? "⬆ HIGH" : m.status === "LOW" ? "⬇ LOW" : "✓ NORMAL";
             return `
                 <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border)">
@@ -484,7 +498,6 @@ async function renderPulseModalContent() {
         DOM.pulseModalBody.innerHTML = '<div class="loading-text" style="color:var(--accent-warn)">Could not load health data.</div>';
     }
 }
-
 window.openPulseModal = openPulseModal;
 
 /* ══════════════════════════════════════════════════════════════
@@ -558,8 +571,8 @@ async function openConversation(id) {
     activeConvId = id;
     uploadedFiles = [];
     updateFilePreview();
-    window._lastDocText = null;
-    window._lastDocId   = null;
+    // FIX #BUG-JS-1: clear doc context when switching conversations
+    _docCtx.clear();
 
     showChatMode();
     DOM.chatDisplay.innerHTML = "";
@@ -605,7 +618,7 @@ async function handleSend() {
 
     let text = DOM.userInput.value.trim();
     if (!text && uploadedFiles.length > 0) {
-        text = "Please read my uploaded medical report and explain every finding in plain language — what's normal, what needs attention, what each value means, and what I should discuss with my doctor.";
+        text = "Please read my uploaded medical report and explain every finding in plain language.";
     }
     if (!text && uploadedFiles.length === 0) return;
 
@@ -617,6 +630,7 @@ async function handleSend() {
     showChatMode();
     DOM.userInput.value = "";
     DOM.userInput.style.height = "auto";
+    DOM.userInput.placeholder = "Ask PHI about your health…";
 
     // Process files
     let documentContents = [];
@@ -628,16 +642,19 @@ async function handleSend() {
             if (result) documentContents.push(result);
         }
         proc.remove();
-        const primary = documentContents[0];
-        if (primary) {
-            if (primary.document_id)   window._lastDocId   = primary.document_id;
-            if (primary.document_text) window._lastDocText = primary.document_text;
+
+        // FIX #BUG-JS-1: Store doc context tied to THIS conversation
+        if (documentContents[0]) {
+            _docCtx.set(
+                documentContents[0].document_text,
+                documentContents[0].document_id,
+                activeConvId
+            );
         }
+
         uploadedFiles = [];
         updateFilePreview();
         setProcessing(false);
-
-        // Reload pulse card after new data
         setTimeout(() => loadHealthPulse(), 3000);
     }
 
@@ -646,18 +663,30 @@ async function handleSend() {
     setProcessing(true);
 
     try {
-        const headers       = await getAuthHeaders();
-        const primaryDocText = documentContents.map(d => d.document_text || "").filter(Boolean)[0] || window._lastDocText || "";
-        const primaryDocId   = documentContents.map(d => d.document_id   || "").filter(Boolean)[0] || window._lastDocId   || "";
+        const headers = await getAuthHeaders();
+
+        // FIX #BUG-JS-1: only send doc context if it belongs to THIS conversation
+        const { text: docText, id: docId } = _docCtx.getForConv(activeConvId);
+
+        // On follow-up messages in the same conversation, send doc text ONCE more
+        // (for the immediate follow-up), then rely on DB memory.
+        // After the first follow-up, clear doc text so it's not resent repeatedly.
+        const isFirstFollowUp = documentContents.length === 0 && !!docText;
+        const sendDocText     = documentContents.length > 0 ? (documentContents[0]?.document_text || "") : (isFirstFollowUp ? docText : "");
+
+        // If this was the first follow-up using cached doc text, clear it
+        if (isFirstFollowUp) {
+            _docCtx.clear();
+        }
 
         const res = await fetch(`${API_BASE}/chat`, {
             method: "POST", headers,
             body: JSON.stringify({
                 conversation_id: activeConvId,
                 message:         text,
-                has_documents:   documentContents.length > 0 || !!primaryDocId || !!primaryDocText,
-                document_id:     primaryDocId,
-                document_text:   primaryDocText,
+                has_documents:   documentContents.length > 0 || !!docId,
+                document_id:     documentContents[0]?.document_id || docId || "",
+                document_text:   sendDocText,
             }),
         });
 
@@ -669,7 +698,7 @@ async function handleSend() {
             updateMessage(botRow, data.reply);
         } else {
             updateMessage(botRow, "I couldn't process that. Please try again.");
-            showToast("No response.", "error");
+            showToast("No response from PHI.", "error");
         }
     } catch (err) {
         console.error("[CHAT] Error:", err);
@@ -679,7 +708,7 @@ async function handleSend() {
         setProcessing(false);
     }
 
-    // Auto-rename
+    // Auto-rename on first message
     const msgCount = DOM.chatDisplay.querySelectorAll(".chat-message").length;
     if (msgCount <= 2 && activeConvId) {
         const titleSrc = documentContents.length > 0
@@ -750,13 +779,15 @@ function showChatMode() {
     }
 }
 
+/** FIX #BUG-JS-5: refresh pulse card when returning to welcome */
 function showWelcomeMode() {
     if (DOM.welcomeScreen) {
         DOM.welcomeScreen.classList.remove("hidden-welcome");
         DOM.welcomeScreen.style.display = "";
     }
-    // Refresh pulse on return to welcome
-    if (_healthContext) renderPulseCard(_healthContext);
+    if (_healthContext) {
+        renderPulseCard(_healthContext);
+    }
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -777,7 +808,6 @@ async function processFile(file) {
         });
         const data = await res.json();
         if (res.ok && data.success) {
-            if (data.document_id) window._lastDocId = data.document_id;
             showToast(`✓ ${file.name} analyzed (${data.abnormal_count || 0} findings)`);
             return {
                 name:          file.name,
@@ -802,6 +832,7 @@ function updateFilePreview() {
     DOM.filePreview.innerHTML = "";
     if (uploadedFiles.length === 0) {
         DOM.filePreview.classList.remove("visible");
+        DOM.userInput.placeholder = "Ask PHI about your health…";
         return;
     }
     DOM.filePreview.classList.add("visible");
@@ -817,7 +848,7 @@ function updateFilePreview() {
             </button>`;
         DOM.filePreview.appendChild(chip);
     });
-    DOM.userInput.placeholder = `${uploadedFiles.length} file(s) attached — press Send or type a question…`;
+    DOM.userInput.placeholder = `${uploadedFiles.length} file(s) attached — press Send or ask a question…`;
 }
 
 window.removeFile = (index) => {
@@ -855,7 +886,7 @@ function showDeleteModal(id) {
 window.showDeleteModal = showDeleteModal;
 
 /* ══════════════════════════════════════════════════════════════
-   PROFILE + HEALTH DASHBOARD (modal detail)
+   PROFILE + HEALTH DASHBOARD
 ══════════════════════════════════════════════════════════════ */
 
 async function loadProfileStats(user) {
@@ -902,9 +933,9 @@ function renderHealthDashboard(markers, insights) {
         DOM.healthDash.innerHTML = '<div class="loading-text">No health data yet. Upload a lab report.</div>';
         return;
     }
-    const flagColor = (status) =>
-        status === "HIGH" || status === "LOW" ? "var(--accent-warn)" :
-        status === "NORMAL" ? "var(--accent-ok)" : "var(--text-muted)";
+    const flagColor = (s) =>
+        s === "HIGH" || s === "LOW" ? "var(--accent-warn)" :
+        s === "NORMAL" ? "var(--accent-ok)" : "var(--text-muted)";
 
     const markerCards = markers.map(m => `
         <div style="background:var(--bg-hover);border-radius:8px;padding:9px;min-width:100px;flex:1">
@@ -965,8 +996,8 @@ function showDoctorBriefModal() {
     document.body.appendChild(modal);
 
     $id("generateBriefBtn").onclick = async () => {
-        const symptoms    = $id("brief-symptoms").value.split(",").map(s=>s.trim()).filter(Boolean);
-        const medications = $id("brief-meds").value.split(",").map(s=>s.trim()).filter(Boolean);
+        const symptoms    = ($id("brief-symptoms")?.value || "").split(",").map(s=>s.trim()).filter(Boolean);
+        const medications = ($id("brief-meds")?.value     || "").split(",").map(s=>s.trim()).filter(Boolean);
         const btn         = $id("generateBriefBtn");
         btn.disabled      = true;
         btn.innerHTML     = '<i class="fa-solid fa-spinner fa-spin"></i> Generating…';
@@ -979,8 +1010,10 @@ function showDoctorBriefModal() {
             });
             const data = await res.json();
             const out  = $id("brief-output");
-            out.style.display = "block";
-            out.innerHTML = renderMarkdown(data.brief || "Could not generate. Try again.");
+            if (out) {
+                out.style.display = "block";
+                out.innerHTML = renderMarkdown(data.brief || "Could not generate. Try again.");
+            }
         } catch { showToast("Failed to generate brief.", "error"); }
 
         btn.disabled  = false;
@@ -1019,7 +1052,7 @@ function initVoiceInput() {
         if (isListening) { recognition?.stop(); return; }
         recognition = new SR();
         recognition.lang = "en-US"; recognition.interimResults = false; recognition.maxAlternatives = 1;
-        recognition.onstart  = () => { isListening = true; DOM.micBtn?.classList.add("listening"); showToast("Listening…"); };
+        recognition.onstart  = () => { isListening = true;  DOM.micBtn?.classList.add("listening"); showToast("Listening…"); };
         recognition.onresult = e => { DOM.userInput.value = e.results[0][0].transcript; autoGrow(DOM.userInput); DOM.userInput.focus(); };
         recognition.onerror  = e => { const msgs = {"no-speech":"No speech detected.","not-allowed":"Microphone blocked.","network":"Network error."}; showToast(msgs[e.error] || `Voice error: ${e.error}`, "error"); };
         recognition.onend    = () => { isListening = false; DOM.micBtn?.classList.remove("listening"); };
@@ -1032,14 +1065,14 @@ function initVoiceInput() {
 ══════════════════════════════════════════════════════════════ */
 
 function loadUserPreferences() {
-    const prefs = JSON.parse(localStorage.getItem("phi_prefs") || "{}");
+    const prefs  = JSON.parse(localStorage.getItem("phi_prefs") || "{}");
     const isDark = prefs.theme === "dark";
     if (isDark) document.body.classList.add("dark-mode");
     if (DOM.themeToggle) DOM.themeToggle.checked = isDark;
     const fontSize = prefs.fontSize || 15;
     document.documentElement.style.setProperty("--chat-font-size", fontSize + "px");
-    if (DOM.fontSizeInput) DOM.fontSizeInput.value   = fontSize;
-    if (DOM.fontSizeValue) DOM.fontSizeValue.textContent = fontSize + "px";
+    if (DOM.fontSizeInput) DOM.fontSizeInput.value        = fontSize;
+    if (DOM.fontSizeValue) DOM.fontSizeValue.textContent  = fontSize + "px";
 }
 
 function savePreference(key, value) {
@@ -1066,26 +1099,35 @@ function initSettings() {
     DOM.exportChatBtn?.addEventListener("click", async () => {
         if (!activeConvId) { showToast("No active conversation.", "error"); return; }
         const headers = await getAuthHeaders();
-        const res   = await fetch(`${API_BASE}/conversation`, { method: "POST", headers, body: JSON.stringify({ conversation_id: activeConvId }) });
-        const msgs  = await res.json();
+        const res     = await fetch(`${API_BASE}/conversation`, { method: "POST", headers, body: JSON.stringify({ conversation_id: activeConvId }) });
+        const msgs    = await res.json();
         let out = "Curabook PHI — Chat Export\n" + "=".repeat(50) + "\n\n";
         msgs.forEach(m => { out += `${m.role.toUpperCase()}:\n${m.content}\n\n`; });
-        const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob([out], { type: "text/plain" })), download: `phi-chat-${Date.now()}.txt` });
+        const a = Object.assign(document.createElement("a"), {
+            href:     URL.createObjectURL(new Blob([out], { type: "text/plain" })),
+            download: `phi-chat-${Date.now()}.txt`,
+        });
         a.click();
         showToast("Chat exported");
     });
 
     DOM.clearHistBtn?.addEventListener("click", async () => {
         if (!confirm("⚠️ Delete ALL conversations? This cannot be undone.")) return;
-        const headers = await getAuthHeaders();
-        const histRes = await fetch(`${API_BASE}/history`, { method: "POST", headers });
-        const chats = await histRes.json();
+        const headers  = await getAuthHeaders();
+        const histRes  = await fetch(`${API_BASE}/history`, { method: "POST", headers });
+        const chats    = await histRes.json();
         if (Array.isArray(chats)) {
-            for (const c of chats) await fetch(`${API_BASE}/delete`, { method: "POST", headers, body: JSON.stringify({ conversation_id: c.id }) }).catch(() => {});
+            for (const c of chats) {
+                await fetch(`${API_BASE}/delete`, { method: "POST", headers, body: JSON.stringify({ conversation_id: c.id }) }).catch(() => {});
+            }
         }
         DOM.chatDisplay.innerHTML = "";
-        activeConvId = null; uploadedFiles = [];
-        updateFilePreview(); showWelcomeMode(); loadHistory();
+        activeConvId = null;
+        uploadedFiles = [];
+        _docCtx.clear();   // FIX #BUG-JS-1
+        updateFilePreview();
+        showWelcomeMode();
+        loadHistory();
         window.closeModals();
         showToast("All conversations deleted");
     });
@@ -1095,21 +1137,49 @@ function initSettings() {
         try {
             const res  = await fetch(`${API_BASE}/export-data`, { method: "POST", headers });
             const data = await res.json();
-            const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob([JSON.stringify(data,null,2)], { type: "application/json" })), download: `phi-data-${Date.now()}.json` });
+            const a    = Object.assign(document.createElement("a"), {
+                href:     URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })),
+                download: `phi-data-${Date.now()}.json`,
+            });
             a.click();
             showToast("✅ Data exported");
         } catch { showToast("Export failed.", "error"); }
     });
 
+    /**
+     * FIX #BUG-JS-2: Delete account flow now:
+     * 1. Sign out of Supabase session FIRST (invalidates all tokens)
+     * 2. Then call backend to delete all data
+     * 3. Redirect immediately — no waiting
+     * This prevents the ~1hr window where a "deleted" user could re-access data.
+     */
     DOM.deleteAccBtn?.addEventListener("click", async () => {
-        if (!confirm("⚠️ PERMANENTLY DELETE YOUR ACCOUNT?\n\nThis deletes ALL data and cannot be undone.\n\nContinue?")) return;
+        if (!confirm("⚠️ PERMANENTLY DELETE YOUR ACCOUNT?\n\nThis deletes ALL your health data and cannot be undone.")) return;
         if (prompt('Type "DELETE" to confirm:') !== "DELETE") return;
-        const headers = await getAuthHeaders();
+
         try {
+            // Step 1: Get auth headers BEFORE signing out
+            const headers = await getAuthHeaders();
+
+            // Step 2: Sign out FIRST so session is invalid after this point
+            try { await supabaseClient.auth.signOut(); } catch {}
+
+            // Step 3: Delete all data on backend
             const res = await fetch(`${API_BASE}/delete-account`, { method: "POST", headers });
-            if (res.ok) { showToast("Account deleted."); setTimeout(() => window.location.href = "https://curabook.com/login", 2000); }
-            else showToast("Deletion failed. Contact support.", "error");
-        } catch { showToast("Network error.", "error"); }
+            const data = res.ok ? await res.json() : null;
+
+            if (data?.success) {
+                showToast("Account and all data deleted.");
+            } else {
+                // Even if backend fails, user is signed out — show message
+                showToast("Signed out. Contact support if data wasn't fully removed.", "error");
+            }
+        } catch {
+            showToast("Error during deletion. Contact support@curabook.com.", "error");
+        }
+
+        // Step 4: Always redirect
+        setTimeout(() => window.location.href = "https://curabook.com/login", 1500);
     });
 }
 
@@ -1120,11 +1190,18 @@ function initSettings() {
 DOM.confirmDeleteBtn?.addEventListener("click", async () => {
     if (!conversationToDelete) return;
     const headers = await getAuthHeaders();
-    await fetch(`${API_BASE}/delete`, { method: "POST", headers, body: JSON.stringify({ conversation_id: conversationToDelete }) }).catch(() => {});
+    await fetch(`${API_BASE}/delete`, {
+        method: "POST", headers,
+        body:   JSON.stringify({ conversation_id: conversationToDelete }),
+    }).catch(() => {});
+
     if (activeConvId === conversationToDelete) {
         DOM.chatDisplay.innerHTML = "";
-        activeConvId = null; uploadedFiles = [];
-        updateFilePreview(); showWelcomeMode();
+        activeConvId = null;
+        uploadedFiles = [];
+        _docCtx.clear();   // FIX #BUG-JS-1
+        updateFilePreview();
+        showWelcomeMode();
     }
     loadHistory();
     window.closeModals();
@@ -1142,11 +1219,15 @@ function wireEvents() {
     DOM.overlay?.addEventListener("click", closeSidebar);
 
     DOM.newChatBtn?.addEventListener("click", () => {
-        if (DOM.chatDisplay.children.length > 0 && !confirm("Start a new chat?")) return;
-        activeConvId = null; uploadedFiles = [];
-        window._lastDocText = null; window._lastDocId = null;
+        // FIX #BUG-JS-3: only confirm if there are ACTUAL chat messages
+        if (hasChatMessages() && !confirm("Start a new chat?")) return;
+
+        activeConvId  = null;
+        uploadedFiles = [];
+        _docCtx.clear();   // FIX #BUG-JS-1
         DOM.chatDisplay.innerHTML = "";
-        updateFilePreview(); showWelcomeMode();
+        updateFilePreview();
+        showWelcomeMode();
         document.querySelectorAll(".history-item").forEach(el => el.classList.remove("active"));
         DOM.userInput.focus();
     });
@@ -1158,19 +1239,15 @@ function wireEvents() {
     });
     DOM.userInput?.addEventListener("input", () => autoGrow(DOM.userInput));
 
-    DOM.attachBtn?.addEventListener("click", () => DOM.fileInput?.click());
+    DOM.attachBtn?.addEventListener("click",    () => DOM.fileInput?.click());
     DOM.btnUploadNav?.addEventListener("click", () => { closeSidebar(); DOM.fileInput?.click(); });
-
     DOM.uploadNudgeBtn?.addEventListener("click", () => { closeSidebar(); DOM.fileInput?.click(); });
 
-    DOM.btnHealthPulse?.addEventListener("click", () => {
-        closeSidebar();
-        openPulseModal();
-    });
+    DOM.btnHealthPulse?.addEventListener("click", () => { closeSidebar(); openPulseModal(); });
 
     DOM.fileInput?.addEventListener("change", e => {
         Array.from(e.target.files || []).forEach(file => {
-            if (file.size > 10 * 1024 * 1024) { showToast(`${file.name} too large. Max 10MB.`, "error"); return; }
+            if (file.size > 10 * 1024 * 1024)  { showToast(`${file.name} too large. Max 10MB.`, "error"); return; }
             if (!/\.(pdf|txt)$/i.test(file.name)) { showToast(`${file.name} not supported. PDF or TXT only.`, "error"); return; }
             uploadedFiles.push(file);
         });
@@ -1184,6 +1261,7 @@ function wireEvents() {
         DOM.profileDrop?.classList.toggle("hidden");
     });
 
+    // Close dropdown when clicking anywhere outside
     document.addEventListener("click", e => {
         if (!DOM.profileDrop?.contains(e.target) && e.target !== DOM.profileBtn) {
             DOM.profileDrop?.classList.add("hidden");
@@ -1193,7 +1271,7 @@ function wireEvents() {
     DOM.btnProfile?.addEventListener("click", () => {
         window.closeModals();
         DOM.profileModal?.classList.remove("hidden");
-        loadProfileStats(currentUser).catch(()=>{});
+        loadProfileStats(currentUser).catch(() => {});
         loadHealthDashboard();
     });
 
@@ -1202,7 +1280,7 @@ function wireEvents() {
         DOM.settingsModal?.classList.remove("hidden");
     });
 
-    DOM.logoutBtn?.addEventListener("click", handleLogout);
+    DOM.logoutBtn?.addEventListener("click",   handleLogout);
     DOM.modalLogout?.addEventListener("click", handleLogout);
 
     document.addEventListener("keydown", e => {
@@ -1219,7 +1297,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     try {
         await initSupabase();
     } catch {
-        showToast("Cannot connect. Check backend.", "error");
+        showToast("Cannot connect to backend.", "error");
         return;
     }
 
@@ -1231,7 +1309,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const user = session.user;
 
-    // Google OAuth terms check
     if (user.app_metadata?.provider === "google") {
         if (!localStorage.getItem(`phi_terms_${user.id}`)) {
             window.location.href = "https://curabook.com/login";

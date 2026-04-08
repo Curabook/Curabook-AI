@@ -1,13 +1,12 @@
 """
 api/document_routes.py — Memory-connected document analysis
 ─────────────────────────────────────────────────────────────────────────────
-Key fix: markers are stored SYNCHRONOUSLY before returning the response.
-Previously they were only stored in the background job — meaning the user
-could upload a report, ask a question immediately, and PHI would say it
-has no data because the background job hadn't finished yet.
-
-Now: markers are stored within seconds of upload. Background job handles
-doctor prep generation (the slow LLM call) without blocking.
+FIXES APPLIED:
+  #BUG-1  generate_doctor_prep() was missing groq_client argument — background
+          job always threw TypeError and was silently swallowed. Doctor prep
+          was NEVER generated for any user. Fixed: pass groq_client explicitly.
+  #BUG-2  Markers stored synchronously before response (already correct).
+          Added clearer logging to confirm storage success vs failure.
 """
 
 from flask import Blueprint, request, jsonify
@@ -21,7 +20,7 @@ MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
 def analyze():
     from app import supabase, groq_client
     from services.auth        import get_authenticated_user
-    from services.compliance  import verify_user_consent, audit_log, anonymize_for_llm, check_baa_compliance
+    from services.compliance  import verify_user_consent, audit_log, anonymize_for_llm
     from document_processing.extractor import extract_text_from_file
     from health_memory.extractor        import extract_health_markers
     from health_memory.memory           import store_health_markers
@@ -47,21 +46,15 @@ def analyze():
             "error": f"File too large. Maximum 5MB. Your file is {file_size // 1024 // 1024:.1f}MB."
         }), 413
 
-    # ── KEY FIX: always reset stream right before extraction ─────────────────
-    # The seek(0) above is for size-checking only. Anything between here and
-    # extract_text_from_file() could consume the stream — this guarantees a
-    # clean read regardless of what happens in between.
     file.seek(0)
 
     # Extract text
     try:
         raw_text = extract_text_from_file(file)
     except ValueError as e:
-        # FIX: log the real error server-side so you can debug it
         print(f"[ANALYZE] Extraction ValueError: {e}")
         return jsonify({"error": str(e)}), 400
     except Exception as e:
-        # FIX: log full traceback, not just the exception message
         import traceback
         print(f"[ANALYZE] Extraction unexpected error: {e}")
         traceback.print_exc()
@@ -96,13 +89,10 @@ def analyze():
     # ── SYNCHRONOUS marker extraction and storage ─────────────────────────────
     markers   = []
     explained = []
+    stored    = 0
 
     if not _is_radiology:
         try:
-            # Fix #1 — BAA gate was silently passing None to groq_client when
-            # GROQ_BAA_SIGNED wasn't set, falling back to weak regex extraction.
-            # LLM extraction should always run; BAA compliance is an auditing concern,
-            # not a code-path gate. Set GROQ_BAA_SIGNED=true in your env vars.
             markers = extract_health_markers(
                 text            = anonymized,
                 groq_client     = groq_client,
@@ -111,19 +101,21 @@ def analyze():
 
             if markers:
                 explained = explain_markers(markers, groq_client, user_name)
-
                 stored = store_health_markers(supabase, user.id, explained or markers)
                 if stored:
                     audit_log(supabase, user.id, "HEALTH_MARKERS_STORED_SYNC",
                               f"{stored} markers from {file.filename}", "PHI")
-
-                print(f"[ANALYZE] Stored {stored} markers synchronously for user {user.id[:8]}")
+                    print(f"[ANALYZE] ✅ Stored {stored} markers for user {user.id[:8]}")
+                else:
+                    print(f"[ANALYZE] ⚠️ No new markers stored (may be duplicates) for user {user.id[:8]}")
+            else:
+                print(f"[ANALYZE] No markers extracted from {file.filename}")
 
         except Exception as extraction_err:
             print(f"[ANALYZE] Marker extraction error: {extraction_err}")
             import traceback; traceback.print_exc()
 
-    # ── Background: doctor prep (the slow LLM call) ───────────────────────────
+    # ── Background: doctor prep (slow LLM call — non-blocking) ───────────────
     import uuid
     from services.job_queue import submit_job
     job_id = uuid.uuid4().hex[:12]
@@ -142,8 +134,8 @@ def analyze():
 
     if explained or markers:
         summary = (
-            f"{prefix} report has been read and **{len(explained or markers)} markers stored** to your health memory. "
-            f"{len(abnormal)} need attention. Ask any questions below."
+            f"{prefix} report has been read and **{len(explained or markers)} markers stored** "
+            f"to your health memory. {len(abnormal)} need attention. Ask any questions below."
         )
     elif _is_radiology:
         summary = f"{prefix} report has been read. Ask PHI any questions about it below."
@@ -153,7 +145,7 @@ def analyze():
     return jsonify({
         "success":               True,
         "filename":              file.filename,
-        "document_id":           job_id,          # Fix #2 — frontend reads data.document_id
+        "document_id":           job_id,
         "summary_text":          summary,
         "markers":               explained or markers,
         "abnormal_count":        len(abnormal),
@@ -173,14 +165,21 @@ def _generate_and_store_doctor_prep(
     anonymized: str, filename: str, user_id: str,
     user_name: str, markers: list, job_id: str,
 ) -> None:
-    """Background: generate doctor prep and store it permanently."""
+    """
+    Background: generate doctor prep and store it permanently.
+    FIX #BUG-1: groq_client is now explicitly passed to generate_doctor_prep().
+    Previously this call omitted groq_client, causing TypeError every time.
+    Doctor prep was silently never generated for any user.
+    """
     from services.compliance import audit_log
     from ai.chat import generate_doctor_prep
     from datetime import datetime, timezone
 
     print(f"[BG-PREP] Starting: {filename} user={user_id[:8]} job={job_id}")
     try:
+        # FIX: groq_client must be the first positional argument
         doctor_prep = generate_doctor_prep(
+            groq_client   = groq_client,
             document_text = anonymized,
             markers       = markers,
             user_name     = user_name,
@@ -200,11 +199,11 @@ def _generate_and_store_doctor_prep(
 
         audit_log(supabase, user_id, "DOCTOR_PREP_STORED",
                   f"file:{filename} job:{job_id}", "PHI")
-        print(f"[BG-PREP] Done: {filename} job={job_id}")
+        print(f"[BG-PREP] ✅ Done: {filename} job={job_id}")
 
     except Exception as e:
         import traceback
-        print(f"[BG-PREP] FAILED: {e}")
+        print(f"[BG-PREP] ❌ FAILED: {e}")
         traceback.print_exc()
 
 

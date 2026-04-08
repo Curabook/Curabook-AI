@@ -1,20 +1,12 @@
 """
-health_memory/memory.py — PHI Synthesis Engine  v3.0
+health_memory/memory.py — PHI Synthesis Engine  v3.0 + production fixes
 ═══════════════════════════════════════════════════════════════════════════
-THREE PRODUCTION GOALS
-───────────────────────────────────────────────────────────────────────────
-Goal 1  DYNAMIC PERSONALIZATION
-        build_health_context_block() produces a NARRATIVE, not a data table.
-        The LLM reads it like a doctor reads a chart — knowing the patient.
-
-Goal 2  SMART SYNTHESIS
-        synthesize_metabolic_story() detects clusters (insulin resistance triad,
-        cardiovascular cluster, etc.) and names the pattern. The LLM gets
-        pre-computed synthesis so it doesn't have to infer it alone.
-
-Goal 3  RADICAL SIMPLICITY
-        The context block is structured for fast LLM consumption — clear
-        sections, ranked by urgency, with plain-language summaries built in.
+FIXES:
+  #BUG-7  save_conversation_memory used "source_conversation" column which
+          may not exist in the original schema (seed_demo.py uses "category").
+          Column mismatch threw PostgrestException on every call — silently
+          swallowed — meaning conversation memories were NEVER saved.
+          Fix: try with source_conversation first, fall back to minimal insert.
 ═══════════════════════════════════════════════════════════════════════════
 """
 
@@ -22,9 +14,9 @@ from __future__ import annotations
 from datetime import datetime, timezone, date
 from typing import Optional, List, Dict
 
-_STALE_DAYS    = 180   # markers older than this are historical
-_TREND_MIN_PCT = 10    # minimum % change to flag a trend
-_MAX_MEMORIES  = 15    # maximum conversation memory facts to retrieve
+_STALE_DAYS    = 180
+_TREND_MIN_PCT = 10
+_MAX_MEMORIES  = 15
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -197,15 +189,28 @@ def save_conversation_memory(
     facts:           list[str],
     conversation_id: str = "",
 ) -> int:
+    """
+    Save facts extracted from conversations.
+
+    FIX #BUG-7: The 'source_conversation' column may not exist in all
+    deployments (original schema used 'category'). We now try the full
+    insert first, and fall back to a minimal insert without optional columns
+    if that fails. This ensures memories are ALWAYS saved regardless of
+    schema variation.
+    """
     if not facts:
         return 0
 
     now   = datetime.now(timezone.utc).isoformat()
     saved = 0
+
     for fact in facts:
         fact = fact.strip()
         if not fact or len(fact) < 10:
             continue
+
+        # Try full insert (with source_conversation if column exists)
+        success = False
         try:
             supabase.table("conversation_memories").insert({
                 "user_id":             user_id,
@@ -214,9 +219,28 @@ def save_conversation_memory(
                 "created_at":          now,
                 "is_active":           True,
             }).execute()
-            saved += 1
+            success = True
         except Exception as e:
-            print(f"[MEMORY] Conversation memory save error: {e}")
+            err = str(e)
+            # Column doesn't exist — fall back to minimal insert
+            if "source_conversation" in err or "column" in err.lower():
+                try:
+                    supabase.table("conversation_memories").insert({
+                        "user_id":    user_id,
+                        "fact":       fact[:500],
+                        "category":   "general",
+                        "created_at": now,
+                        "is_active":  True,
+                    }).execute()
+                    success = True
+                except Exception as e2:
+                    print(f"[MEMORY] Conversation memory save fallback error: {e2}")
+            else:
+                print(f"[MEMORY] Conversation memory save error: {e}")
+
+        if success:
+            saved += 1
+
     return saved
 
 
@@ -238,18 +262,12 @@ def get_conversation_memories(supabase, user_id: str) -> list[str]:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Layer 4 — GOAL 2: SMART SYNTHESIS
-# synthesize_metabolic_story() detects and names health clusters
-# so the LLM receives pre-reasoned context, not raw numbers.
+# Layer 4 — SMART SYNTHESIS: metabolic cluster detection
 # ══════════════════════════════════════════════════════════════════════════════
 
-# Marker clusters for metabolic disease detection
 _INSULIN_RESISTANCE_TRIAD = {"hba1c", "fasting blood glucose", "triglycerides"}
 _CARDIOVASCULAR_CLUSTER   = {"ldl cholesterol", "hdl cholesterol", "total cholesterol", "crp"}
 _ANEMIA_CLUSTER           = {"hemoglobin", "ferritin", "vitamin b12"}
-_THYROID_CLUSTER          = {"tsh"}
-_KIDNEY_CLUSTER           = {"creatinine", "egfr"}
-_LIVER_CLUSTER            = {"alt", "ast"}
 
 
 def _match_cluster(marker_name: str, cluster: set) -> bool:
@@ -261,21 +279,12 @@ def synthesize_metabolic_story(
     latest: dict[str, dict],
     trends: list[dict],
 ) -> str:
-    """
-    Goal 2 — SMART SYNTHESIS.
-
-    Detects health clusters from the user's data and returns a pre-reasoned
-    narrative about their metabolic situation. This is injected into the
-    LLM context so PHI reasons from synthesis, not from raw lists.
-
-    Returns empty string if insufficient data.
-    """
     if not latest:
         return ""
 
     stories = []
 
-    # ── Insulin Resistance / Metabolic Syndrome ────────────────────────────
+    # Insulin Resistance / Metabolic Syndrome
     ir_markers = {
         k: v for k, v in latest.items()
         if _match_cluster(k, _INSULIN_RESISTANCE_TRIAD)
@@ -283,144 +292,113 @@ def synthesize_metabolic_story(
     if len(ir_markers) >= 2:
         abnormal_ir = {k: v for k, v in ir_markers.items() if v.get("status") in ("HIGH", "LOW")}
         if abnormal_ir:
-            parts = []
-            for name, m in abnormal_ir.items():
-                parts.append(f"{name} {m['value']} {m.get('unit','')} ({m.get('status','')})")
+            parts = [
+                f"{name} {m['value']} {m.get('unit','')} ({m.get('status','')})"
+                for name, m in abnormal_ir.items()
+            ]
             story = (
                 "🔴 INSULIN RESISTANCE PATTERN DETECTED: "
                 + ", ".join(parts)
                 + ". This cluster — when two or more are elevated — is a hallmark of "
-                "insulin resistance and metabolic syndrome. The combination is more "
-                "significant than any single value alone."
+                "insulin resistance and metabolic syndrome."
             )
-            # Check for worsening trend
-            ir_trending_worse = [
-                t for t in trends
-                if _match_cluster(t["marker"], _INSULIN_RESISTANCE_TRIAD) and t["concerning"]
-            ]
-            if ir_trending_worse:
-                story += f" ⚠ Worsening trend: {ir_trending_worse[0]['marker']} has moved "
-                story += f"{ir_trending_worse[0]['pct_change']}% in the wrong direction."
+            ir_worse = [t for t in trends if _match_cluster(t["marker"], _INSULIN_RESISTANCE_TRIAD) and t["concerning"]]
+            if ir_worse:
+                story += f" ⚠ Worsening trend: {ir_worse[0]['marker']} has moved {ir_worse[0]['pct_change']}% in the wrong direction."
             stories.append(story)
 
-    # ── Cardiovascular Cluster ─────────────────────────────────────────────
-    cv_markers = {
-        k: v for k, v in latest.items()
-        if _match_cluster(k, _CARDIOVASCULAR_CLUSTER)
-    }
+    # Cardiovascular Cluster
+    cv_markers = {k: v for k, v in latest.items() if _match_cluster(k, _CARDIOVASCULAR_CLUSTER)}
     if cv_markers:
-        ldl_high = any(
-            _match_cluster(k, {"ldl"}) and v.get("status") == "HIGH"
-            for k, v in cv_markers.items()
-        )
-        hdl_low = any(
-            _match_cluster(k, {"hdl"}) and v.get("status") == "LOW"
-            for k, v in cv_markers.items()
-        )
-        crp_high = any(
-            _match_cluster(k, {"crp"}) and v.get("status") == "HIGH"
-            for k, v in cv_markers.items()
-        )
+        ldl_high = any(_match_cluster(k, {"ldl"}) and v.get("status") == "HIGH" for k, v in cv_markers.items())
+        hdl_low  = any(_match_cluster(k, {"hdl"}) and v.get("status") == "LOW"  for k, v in cv_markers.items())
+        crp_high = any(_match_cluster(k, {"crp"}) and v.get("status") == "HIGH" for k, v in cv_markers.items())
 
         if ldl_high and crp_high:
             stories.append(
                 "🔴 COMPOUNDED CARDIOVASCULAR RISK: High LDL + elevated CRP means "
-                "cholesterol is accumulating in INFLAMED arteries — a significantly "
-                "higher plaque risk than high LDL alone. This combination needs "
-                "specific attention, not just standard lipid management."
+                "cholesterol is accumulating in INFLAMED arteries — significantly "
+                "higher plaque risk than high LDL alone."
             )
         elif ldl_high and hdl_low:
             stories.append(
                 "🟡 LIPID IMBALANCE PATTERN: High LDL + low HDL is a dual cardiovascular "
-                "risk factor. HDL normally helps clear LDL from arteries — with both "
-                "moving in the wrong direction, the net cardiovascular load is elevated."
+                "risk factor. HDL normally helps clear LDL — with both moving wrong, net risk is elevated."
             )
         elif ldl_high:
-            # Check for rising trend
-            ldl_trend = next(
-                (t for t in trends if _match_cluster(t["marker"], {"ldl"}) and t["concerning"]),
-                None
-            )
+            ldl_trend = next((t for t in trends if _match_cluster(t["marker"], {"ldl"}) and t["concerning"]), None)
             if ldl_trend:
                 stories.append(
                     f"🟡 LDL TRAJECTORY CONCERN: LDL has risen {ldl_trend['pct_change']}% "
-                    f"from {ldl_trend['first_val']} to {ldl_trend['last_val']} "
-                    f"{ldl_trend['unit']} since {ldl_trend['from_date']}. "
-                    "A rising LDL trend over multiple reports is more clinically "
-                    "significant than a single high reading."
+                    f"({ldl_trend['first_val']} → {ldl_trend['last_val']} {ldl_trend['unit']}) "
+                    f"since {ldl_trend['from_date']}."
                 )
 
-    # ── Anemia Cluster ─────────────────────────────────────────────────────
-    anemia_markers = {
-        k: v for k, v in latest.items()
-        if _match_cluster(k, _ANEMIA_CLUSTER)
-    }
+    # Anemia Cluster
+    anemia_markers = {k: v for k, v in latest.items() if _match_cluster(k, _ANEMIA_CLUSTER)}
     if anemia_markers:
         low_anemia = {k: v for k, v in anemia_markers.items() if v.get("status") == "LOW"}
         if len(low_anemia) >= 2:
             names = list(low_anemia.keys())
             stories.append(
                 f"🟡 ANEMIA CLUSTER: {', '.join(names)} are all below normal. "
-                "Multiple low values in this group indicate active iron-deficiency "
-                "or nutritional anemia — fatigue and reduced energy are the typical "
-                "symptoms. This responds well to targeted supplementation under "
-                "medical guidance."
+                "Multiple low values indicate active iron-deficiency or nutritional anemia."
             )
 
     if not stories:
         return ""
 
-    header = "\n🔬 PHI SYNTHESIS — PATTERNS DETECTED:\n"
-    return header + "\n\n".join(stories)
+    return "\n🔬 PHI SYNTHESIS — PATTERNS DETECTED:\n" + "\n\n".join(stories)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Layer 5 — GOAL 1 + 2 + 3: Narrative Context Builder
-# The LLM receives a structured, synthesised health story — not a CSV.
+# Layer 5 — Narrative Context Builder
 # ══════════════════════════════════════════════════════════════════════════════
 
 def build_health_context_block(supabase, user_id: str) -> str:
     """
-    Goal 1 — Personalization: references this user's specific history.
-    Goal 2 — Synthesis: includes pre-computed metabolic cluster analysis.
-    Goal 3 — Simplicity: structured for fast consumption by the LLM.
+    Builds the complete health narrative for the LLM.
+    All four memory layers: markers, trends, conversation memories, synthesis.
     """
-    latest   = get_latest_markers(supabase, user_id)
-    trends   = get_health_trends(supabase, user_id)
-    memories = get_conversation_memories(supabase, user_id)
+    try:
+        latest   = get_latest_markers(supabase, user_id)
+        trends   = get_health_trends(supabase, user_id)
+        memories = get_conversation_memories(supabase, user_id)
+    except Exception as e:
+        print(f"[MEMORY] build_health_context_block fetch error: {e}")
+        return ""
 
     if not latest and not memories and not trends:
+        print(f"[MEMORY] No health data found for user {user_id[:8]} — context will be empty")
         return ""
+
+    print(f"[MEMORY] Building context: {len(latest)} markers, {len(trends)} trends, {len(memories)} memories for {user_id[:8]}")
 
     lines = []
     today = date.today().isoformat()
     lines.append(f"╔══ PHI HEALTH MEMORY  [{today}] ══╗")
 
-    # ── SYNTHESIS LAYER (Goal 2) ────────────────────────────────────────────
+    # Synthesis layer
     synthesis = synthesize_metabolic_story(latest, trends)
     if synthesis:
         lines.append(synthesis)
 
-    # ── Section 1: Markers Needing Attention ────────────────────────────────
+    # Abnormal markers
     abnormal = {
         name: m for name, m in latest.items()
-        if _compute_status(
-            m.get("value"), m.get("reference_range", ""), m.get("status", "")
-        ) in ("HIGH", "LOW")
+        if _compute_status(m.get("value"), m.get("reference_range", ""), m.get("status", "")) in ("HIGH", "LOW")
         and not m.get("is_stale")
     }
 
     if abnormal:
         lines.append(f"\n🚨 NEEDS ATTENTION ({len(abnormal)} markers):")
         for name, m in sorted(abnormal.items()):
-            status = _compute_status(
-                m.get("value"), m.get("reference_range", ""), m.get("status", "")
-            )
-            ref  = f"normal: {m['reference_range']}" if m.get("reference_range") else "no ref"
-            age  = _human_age(m.get("days_old", 0))
+            status = _compute_status(m.get("value"), m.get("reference_range", ""), m.get("status", ""))
+            ref    = f"normal: {m['reference_range']}" if m.get("reference_range") else "no ref"
+            age    = _human_age(m.get("days_old", 0))
             lines.append(f"  • {name}: {m['value']} {m.get('unit','')} — {status} ({ref}) — {age}")
 
-    # ── Section 2: Concerning Trends ────────────────────────────────────────
+    # Concerning trends
     concerning_trends = [t for t in trends if t["concerning"]]
     if concerning_trends:
         lines.append("\n📈 WORSENING TRENDS (multiple reports):")
@@ -432,65 +410,49 @@ def build_health_context_block(supabase, user_id: str) -> str:
                 f"across {t['readings']} reports, {t['from_date']} to {t['to_date']} ⚠"
             )
 
-    # ── Section 3: Improving Trends ─────────────────────────────────────────
+    # Improving trends
     improving = [t for t in trends if not t["concerning"] and t["pct_change"] >= 15]
     if improving:
         lines.append("\n✅ IMPROVING (keep it up):")
         for t in improving[:3]:
             arrow = "↑" if t["direction"] == "rising" else "↓"
-            lines.append(
-                f"  • {t['marker']}: {arrow}{t['pct_change']}% "
-                f"({t['first_val']} → {t['last_val']} {t['unit']}) ✓"
-            )
+            lines.append(f"  • {t['marker']}: {arrow}{t['pct_change']}% ({t['first_val']} → {t['last_val']} {t['unit']}) ✓")
 
-    # ── Section 4: Normal Markers (compact) ─────────────────────────────────
+    # Normal markers (compact)
     normal = {
         name: m for name, m in latest.items()
-        if _compute_status(
-            m.get("value"), m.get("reference_range", ""), m.get("status", "")
-        ) == "NORMAL"
+        if _compute_status(m.get("value"), m.get("reference_range", ""), m.get("status", "")) == "NORMAL"
         and not m.get("is_stale")
     }
     if normal:
-        summary_parts = [
-            f"{name.split()[0]} {m['value']}{m.get('unit','')}"
-            for name, m in list(normal.items())[:8]
-        ]
+        summary_parts = [f"{name.split()[0]} {m['value']}{m.get('unit','')}" for name, m in list(normal.items())[:8]]
         lines.append(f"\n✅ WITHIN RANGE ({len(normal)} markers):")
         lines.append("  " + ", ".join(summary_parts) + (" ..." if len(normal) > 8 else ""))
 
-    # ── Section 5: Historical markers ───────────────────────────────────────
+    # Historical
     stale = {name: m for name, m in latest.items() if m.get("is_stale")}
     if stale:
-        stale_names = ", ".join(list(stale.keys())[:5])
-        lines.append(f"\n⏳ HISTORICAL (>6 months, context only): {stale_names}")
+        lines.append(f"\n⏳ HISTORICAL (>6 months): {', '.join(list(stale.keys())[:5])}")
 
-    # ── Section 6: What this person has told PHI (Goal 1 personalization) ───
+    # Biographical facts from conversations
     if memories:
         lines.append(f"\n💬 WHAT THIS PERSON HAS SHARED ({len(memories)} facts):")
         for fact in memories[:8]:
             lines.append(f"  • {fact}")
 
-    # ── Data provenance ──────────────────────────────────────────────────────
-    sources = set(
-        m.get("source_document", "")
-        for m in latest.values()
-        if m.get("source_document")
-    )
+    # Data provenance
+    sources = set(m.get("source_document", "") for m in latest.values() if m.get("source_document"))
     most_recent = max((m.get("date", "") for m in latest.values()), default="")
     if sources:
-        lines.append(
-            f"\n📋 {len(sources)} report(s) stored. Most recent data: {most_recent}"
-        )
+        lines.append(f"\n📋 {len(sources)} report(s) stored. Most recent: {most_recent}")
 
     lines.append("\n╚═══════════════════════════════════╝")
     lines.append(
-        "PHI RULES FOR THIS RESPONSE:\n"
-        "• Use exact values and dates from above — never invent numbers\n"
-        "• STALE markers are historical context, not current status\n"
-        "• Reference the SYNTHESIS PATTERNS above — connect the dots\n"
-        "• What this person has shared is biographical — use it for personalisation\n"
-        "• If a marker isn't listed above, say 'I don't have that data yet'"
+        "PHI RULES:\n"
+        "• Use exact values and dates — never invent numbers\n"
+        "• STALE markers are historical context only\n"
+        "• Reference the SYNTHESIS PATTERNS — connect the dots\n"
+        "• If a marker isn't listed, say 'I don't have that data yet'"
     )
 
     return "\n".join(lines)

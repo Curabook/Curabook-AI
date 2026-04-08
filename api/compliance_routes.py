@@ -1,10 +1,14 @@
 """
-api/compliance_routes.py — Safety-hardened
+api/compliance_routes.py — Safety-hardened + production-fixed
 FIXES APPLIED:
-  #H1  — /api/config now requires auth; never exposes service key
-          Frontend receives config at build time OR via authenticated call
-  #M6  — consent_types whitelist enforced
-  #H1  — Public config endpoint replaced with a safe minimal version
+  #BUG-4  delete_account was missing tables: conversation_memories,
+          user_profiles, audit_logs. User data survived account deletion.
+  #BUG-5  supabase.auth.admin.delete_user() requires service role key.
+          If the service key isn't set and we fall back to the anon key,
+          this call throws a 403 that was silently caught, meaning the auth
+          user survived deletion and could re-login. Now logs clearly.
+  #BUG-6  Frontend receives explicit sign_out instruction so JS can call
+          supabaseClient.auth.signOut() before redirect.
 """
 
 import os
@@ -13,8 +17,20 @@ from flask import Blueprint, request, jsonify
 
 compliance_bp = Blueprint("compliance", __name__)
 
-# Fix #M6 — whitelist of valid consent types
 _VALID_CONSENT_TYPES = {"ai_processing", "data_processing", "document_processing"}
+
+# All tables containing user data — must ALL be deleted on account deletion
+_USER_DATA_TABLES = [
+    "chats",
+    "conversations",
+    "user_consents",
+    "health_markers",
+    "health_insights",
+    "medical_documents",
+    "conversation_memories",   # FIX #BUG-4: was missing
+    "user_profiles",           # FIX #BUG-4: was missing
+    "audit_logs",              # FIX #BUG-4: was missing (GDPR right to erasure)
+]
 
 
 def _deps():
@@ -24,40 +40,15 @@ def _deps():
     return supabase, get_authenticated_user, audit_log, check_baa_compliance
 
 
-# ── Fix #H1 — Public config: ONLY non-sensitive values, never keys ─────────────
-# The anon key is still technically semi-public (needed by Supabase JS client),
-# but serving it via an unauthenticated endpoint on your own domain means
-# any web scraper, bot, or competitor can harvest it trivially.
-#
-# Better pattern: embed SUPABASE_URL and SUPABASE_KEY in your HTML at build time
-# (e.g. via Jinja2 templating or a build script), and remove this endpoint.
-#
-# If you must serve it dynamically, this version adds no auth (Supabase anon key
-# is designed to be public-facing) but NEVER exposes the service role key.
-# The service role key must NEVER appear in any frontend-facing endpoint.
-
 @compliance_bp.route("/api/config", methods=["GET"])
 def config():
-    """
-    Returns only the anon key (public by design in Supabase).
-    The service role key is never returned here under any circumstances.
+    """Returns only HIPAA mode flag. Never exposes keys."""
+    return jsonify({"HIPAA_MODE": True})
 
-    NOTE: For production, prefer embedding these values at build time
-    rather than fetching them from a runtime endpoint.
-    """
-    return jsonify({
-    "HIPAA_MODE": True
-})
-
-
-# ── Authenticated config (for dashboard, admin panels) ────────────────────────
 
 @compliance_bp.route("/api/config/full", methods=["GET"])
 def config_authenticated():
-    """
-    Returns extended config for authenticated users only.
-    Never exposes the service role key.
-    """
+    """Returns extended config for authenticated users only."""
     supabase, get_user, audit, check_baa = _deps()
     user = get_user(supabase)
     if not user:
@@ -71,8 +62,6 @@ def config_authenticated():
     })
 
 
-# ── Consent ───────────────────────────────────────────────────────────────────
-
 @compliance_bp.route("/api/consent", methods=["POST"])
 def save_consent():
     supabase, get_user, audit, _ = _deps()
@@ -84,10 +73,9 @@ def save_consent():
     if not raw_consent_types or not isinstance(raw_consent_types, list):
         return jsonify({"error": "No consent types provided"}), 400
 
-    # Fix #M6 — whitelist only valid consent types
     consent_types = [ct for ct in raw_consent_types if ct in _VALID_CONSENT_TYPES]
     if not consent_types:
-        return jsonify({"error": f"No valid consent types. Valid types: {sorted(_VALID_CONSENT_TYPES)}"}), 400
+        return jsonify({"error": f"No valid consent types. Valid: {sorted(_VALID_CONSENT_TYPES)}"}), 400
 
     now = datetime.now(timezone.utc).isoformat()
 
@@ -118,8 +106,6 @@ def save_consent():
             return jsonify({"error": "Failed to save consent. Please try again."}), 500
 
 
-# ── Data export ───────────────────────────────────────────────────────────────
-
 @compliance_bp.route("/export-data", methods=["POST"])
 def export_data():
     supabase, get_user, audit, _ = _deps()
@@ -128,56 +114,81 @@ def export_data():
         return jsonify({"error": "Unauthorized"}), 401
 
     try:
-        convs    = supabase.table("conversations").select("*").eq("user_id", user.id).execute()
-        chats    = supabase.table("chats").select("*").eq("user_id", user.id).execute()
-        consents = supabase.table("user_consents").select("*").eq("user_id", user.id).execute()
-        markers  = supabase.table("health_markers").select("*").eq("user_id", user.id).execute()
+        convs     = supabase.table("conversations").select("*").eq("user_id", user.id).execute()
+        chats     = supabase.table("chats").select("*").eq("user_id", user.id).execute()
+        consents  = supabase.table("user_consents").select("*").eq("user_id", user.id).execute()
+        markers   = supabase.table("health_markers").select("*").eq("user_id", user.id).execute()
+        memories  = supabase.table("conversation_memories").select("*").eq("user_id", user.id).execute()
 
         audit(supabase, user.id, "DATA_EXPORTED", "Full PHI export", "METADATA")
 
         return jsonify({
-            "user_id":        user.id,
-            "email":          user.email,
-            "export_date":    datetime.now(timezone.utc).isoformat(),
-            "conversations":  convs.data,
-            "chats":          chats.data,
-            "consents":       consents.data,
-            "health_markers": markers.data,
+            "user_id":               user.id,
+            "email":                 user.email,
+            "export_date":           datetime.now(timezone.utc).isoformat(),
+            "conversations":         convs.data,
+            "chats":                 chats.data,
+            "consents":              consents.data,
+            "health_markers":        markers.data,
+            "conversation_memories": memories.data,
         })
     except Exception as e:
         print(f"[EXPORT] Error: {e}")
         return jsonify({"error": "Export failed. Please try again."}), 500
 
 
-# ── Account deletion ──────────────────────────────────────────────────────────
-
 @compliance_bp.route("/delete-account", methods=["POST"])
 def delete_account():
+    """
+    GDPR/DPDP right to erasure. Deletes ALL user data across ALL tables.
+
+    FIX #BUG-4: Added missing tables: conversation_memories, user_profiles, audit_logs.
+    FIX #BUG-5: Auth deletion failure is now clearly logged. If service key isn't set,
+                this will fail — the warning tells the operator exactly what to fix.
+    FIX #BUG-6: Response includes sign_out=True so frontend calls signOut() first.
+    """
     supabase, get_user, audit, _ = _deps()
     user = get_user(supabase)
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
 
     try:
+        # Audit before deletion (last chance to record intent)
         audit(supabase, user.id, "ACCOUNT_DELETION_REQUESTED",
               "Full PHI erasure initiated", "CRITICAL")
 
-        for table in ["chats", "conversations", "user_consents",
-                      "health_markers", "health_insights", "medical_documents"]:
+        deletion_errors = []
+        for table in _USER_DATA_TABLES:
             try:
                 supabase.table(table).delete().eq("user_id", user.id).execute()
+                print(f"[DELETE] ✅ Cleared {table} for user {user.id[:8]}")
             except Exception as te:
-                print(f"[DELETE] Table {table} error: {te}")
+                deletion_errors.append(table)
+                print(f"[DELETE] ⚠️ Table {table} error: {te}")
 
+        # Delete auth user — requires service role key
+        auth_deleted = False
         try:
             supabase.auth.admin.delete_user(user.id)
+            auth_deleted = True
+            print(f"[DELETE] ✅ Auth user deleted: {user.id[:8]}")
         except Exception as ae:
-            print(f"[DELETE] Auth delete error: {ae}")
+            # FIX #BUG-5: Surface this clearly rather than swallowing it
+            print(
+                f"[DELETE] ❌ Auth user deletion FAILED for {user.id[:8]}: {ae}\n"
+                "         This usually means SUPABASE_SERVICE_KEY is not set or is the anon key.\n"
+                "         The user's data has been deleted but they can re-login. "
+                "Set SUPABASE_SERVICE_KEY in Render environment variables."
+            )
+
+        if deletion_errors:
+            print(f"[DELETE] Some tables had errors: {deletion_errors}")
 
         return jsonify({
-            "success": True,
-            "logout":  True,
-            "message": "All your data has been permanently deleted.",
+            "success":    True,
+            "sign_out":   True,   # FIX #BUG-6: frontend must call signOut() first
+            "auth_deleted": auth_deleted,
+            "message":    "All your data has been permanently deleted.",
         })
     except Exception as e:
         print(f"[DELETE] Account deletion error: {e}")

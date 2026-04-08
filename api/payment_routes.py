@@ -1,6 +1,8 @@
 """
 api/payment_routes.py — Stripe integration
-Plans: Free (1 report), Pro $9.99/month
+FIXES:
+  #BUG-3  FRONTEND_URL had "http://https://" double protocol — Stripe
+          success/cancel redirects always broken. Fixed to clean default.
 """
 import os
 from flask import Blueprint, request, jsonify
@@ -11,12 +13,13 @@ STRIPE_SECRET_KEY     = os.getenv("STRIPE_SECRET_KEY", "")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
 STRIPE_PRICE_MONTHLY  = os.getenv("STRIPE_PRICE_MONTHLY", "")
 STRIPE_PRICE_ANNUAL   = os.getenv("STRIPE_PRICE_ANNUAL", "")
-FRONTEND_URL          = os.getenv("FRONTEND_URL", "http://https://api.curabook.com:5500")
+# FIX #BUG-3: was "http://https://curabook.com.onrender.com:5500" (double protocol, wrong host)
+FRONTEND_URL          = os.getenv("FRONTEND_URL", "https://curabook.com")
 
 
 def _stripe():
     if not STRIPE_SECRET_KEY:
-        raise RuntimeError("STRIPE_SECRET_KEY not set in .env")
+        raise RuntimeError("STRIPE_SECRET_KEY not set in environment")
     import stripe as _s
     _s.api_key = STRIPE_SECRET_KEY
     return _s
@@ -52,8 +55,8 @@ def create_checkout():
             payment_method_types = ["card"],
             line_items           = [{"price": price_id, "quantity": 1}],
             mode                 = "subscription",
-            success_url          = f"{FRONTEND_URL}/index.html?payment=success",
-            cancel_url           = f"{FRONTEND_URL}/index.html?payment=cancelled",
+            success_url          = f"{FRONTEND_URL}/?payment=success",
+            cancel_url           = f"{FRONTEND_URL}/?payment=cancelled",
             metadata             = {"user_id": user.id, "plan": plan},
             allow_promotion_codes = True,
         )
@@ -76,7 +79,7 @@ def customer_portal():
         if not customer_id:
             return jsonify({"error": "No billing account found."}), 404
         session = stripe.billing_portal.Session.create(
-            customer=customer_id, return_url=f"{FRONTEND_URL}/index.html")
+            customer=customer_id, return_url=f"{FRONTEND_URL}/")
         return jsonify({"portal_url": session.url})
     except Exception as e:
         return jsonify({"error": "Could not open billing portal."}), 500
@@ -180,7 +183,7 @@ def _activate_pro(supabase, user_id):
         supabase.table("user_profiles").upsert(
             {"user_id": user_id, "plan": "pro", "reports_remaining": 9999},
             on_conflict="user_id").execute()
-        print(f"[WEBHOOK] Pro activated: {user_id[:8]}")
+        print(f"[WEBHOOK] ✅ Pro activated: {user_id[:8]}")
     except Exception as e:
         print(f"[WEBHOOK] Activate error: {e}")
 
