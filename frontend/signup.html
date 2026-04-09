@@ -15,7 +15,6 @@
         --bg: #fafafa; --white: #ffffff;
         --font: 'Plus Jakarta Sans','Segoe UI',sans-serif;
         --serif: 'Instrument Serif',Georgia,serif;
-        --shadow: 0 20px 60px rgba(0,0,0,.1);
     }
     body { font-family: var(--font); min-height: 100vh; display: flex; background: var(--bg); -webkit-font-smoothing: antialiased; }
 
@@ -27,65 +26,80 @@
     .left-panel::before {
         content:''; position:absolute; top:-80px; right:-80px;
         width:380px; height:380px;
-        background: radial-gradient(circle, rgba(0,188,213,.15) 0%, transparent 70%);
+        background:radial-gradient(circle, rgba(0,188,213,.15) 0%, transparent 70%);
         pointer-events:none;
     }
     .left-brand { display:flex; align-items:center; gap:12px; z-index:1; }
-    .left-brand-icon { width:40px; height:40px; background:var(--brand); border-radius:10px; display:flex; align-items:center; justify-content:center; color:white; font-size:18px; }
-    .left-brand-name { font-family:var(--serif); font-size:1.4rem; color:white; font-weight:400; }
-    .left-brand-tag { font-size:11px; background:rgba(0,188,213,.2); color:var(--brand); padding:2px 8px; border-radius:20px; font-weight:600; }
-
+    .left-brand-icon { width:40px;height:40px;background:var(--brand);border-radius:10px;display:flex;align-items:center;justify-content:center;color:white;font-size:18px; }
+    .left-brand-name { font-family:var(--serif);font-size:1.4rem;color:white;font-weight:400; }
+    .left-brand-tag { font-size:11px;background:rgba(0,188,213,.2);color:var(--brand);padding:2px 8px;border-radius:20px;font-weight:600; }
     .left-content { z-index:1; }
-    .left-headline { font-family:var(--serif); font-size:clamp(1.8rem,3vw,2.6rem); color:white; line-height:1.2; letter-spacing:-.5px; margin-bottom:20px; }
-    .left-headline em { color:var(--brand); font-style:italic; }
-    .left-sub { font-size:15px; color:rgba(255,255,255,.5); line-height:1.65; max-width:380px; margin-bottom:32px; }
+    .left-headline { font-family:var(--serif);font-size:clamp(1.8rem,3vw,2.6rem);color:white;line-height:1.2;letter-spacing:-.5px;margin-bottom:20px; }
+    .left-headline em { color:var(--brand);font-style:italic; }
+    .left-sub { font-size:15px;color:rgba(255,255,255,.5);line-height:1.65;max-width:380px;margin-bottom:32px; }
+    .feature-list { display:flex;flex-direction:column;gap:16px;z-index:1; }
+    .feature-item { display:flex;align-items:flex-start;gap:12px; }
+    .feature-icon { width:32px;height:32px;background:rgba(0,188,213,.15);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--brand);font-size:13px;flex-shrink:0; }
+    .feature-text h4 { font-size:13.5px;font-weight:600;color:rgba(255,255,255,.9);margin-bottom:2px; }
+    .feature-text p { font-size:12px;color:rgba(255,255,255,.4);line-height:1.4; }
 
-    .feature-list { display:flex; flex-direction:column; gap:16px; z-index:1; }
-    .feature-item { display:flex; align-items:flex-start; gap:12px; }
-    .feature-icon { width:32px; height:32px; background:rgba(0,188,213,.15); border-radius:8px; display:flex; align-items:center; justify-content:center; color:var(--brand); font-size:13px; flex-shrink:0; }
-    .feature-text h4 { font-size:13.5px; font-weight:600; color:rgba(255,255,255,.9); margin-bottom:2px; }
-    .feature-text p { font-size:12px; color:rgba(255,255,255,.4); line-height:1.4; }
-
-    .right-panel { width:500px; background:var(--white); display:flex; align-items:center; justify-content:center; padding:48px 52px; }
-    .form-container { width:100%; max-width:380px; }
+    .right-panel { width:500px;background:var(--white);display:flex;align-items:center;justify-content:center;padding:48px 52px; }
+    .form-container { width:100%;max-width:380px; }
     .form-header { margin-bottom:28px; }
-    .form-title { font-family:var(--serif); font-size:1.8rem; font-weight:400; color:var(--text); letter-spacing:-.3px; margin-bottom:6px; }
-    .form-sub { font-size:14px; color:var(--muted); }
-    .form-sub a { color:var(--brand); text-decoration:none; font-weight:500; }
-
-    .name-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .form-title { font-family:var(--serif);font-size:1.8rem;font-weight:400;color:var(--text);letter-spacing:-.3px;margin-bottom:6px; }
+    .form-sub { font-size:14px;color:var(--muted); }
+    .form-sub a { color:var(--brand);text-decoration:none;font-weight:500; }
+    .name-row { display:grid;grid-template-columns:1fr 1fr;gap:12px; }
     .form-group { margin-bottom:16px; }
-    .form-label { display:block; font-size:13px; font-weight:600; color:var(--text); margin-bottom:7px; }
-    .form-input { width:100%; padding:11px 13px; border:1.5px solid var(--border); border-radius:10px; font-size:14.5px; font-family:var(--font); color:var(--text); background:var(--white); outline:none; transition:border-color .2s,box-shadow .2s; }
-    .form-input:focus { border-color:var(--brand); box-shadow:0 0 0 3px rgba(0,188,213,.1); }
+    .form-label { display:block;font-size:13px;font-weight:600;color:var(--text);margin-bottom:7px; }
+    .form-input { width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:10px;font-size:14.5px;font-family:var(--font);color:var(--text);background:var(--white);outline:none;transition:border-color .2s,box-shadow .2s; }
+    .form-input:focus { border-color:var(--brand);box-shadow:0 0 0 3px rgba(0,188,213,.1); }
     .form-input::placeholder { color:#9ca3af; }
-
-    .password-hint { font-size:12px; color:var(--muted); margin-top:5px; }
-
-    .terms-row { display:flex; align-items:flex-start; gap:9px; margin-bottom:18px; font-size:12.5px; color:var(--muted); line-height:1.5; }
-    .terms-row input[type="checkbox"] { margin-top:2px; accent-color:var(--brand); flex-shrink:0; width:14px; height:14px; }
-    .terms-row a { color:var(--brand); text-decoration:none; }
-
-    .btn-primary { width:100%; padding:13px; background:var(--brand); color:white; border:none; border-radius:10px; font-size:15px; font-weight:600; font-family:var(--font); cursor:pointer; transition:all .15s; margin-bottom:16px; }
-    .btn-primary:hover { background:var(--brand-dark); transform:translateY(-1px); }
-    .btn-primary:disabled { opacity:.6; cursor:not-allowed; transform:none; }
-
-    .divider { display:flex; align-items:center; gap:12px; margin-bottom:16px; font-size:12px; color:var(--muted); }
-    .divider::before,.divider::after { content:''; flex:1; height:1px; background:var(--border); }
-
-    .btn-google { width:100%; padding:12px; background:white; border:1.5px solid var(--border); border-radius:10px; font-size:14.5px; font-weight:500; font-family:var(--font); color:var(--text); cursor:pointer; display:flex; align-items:center; justify-content:center; gap:10px; transition:all .15s; margin-bottom:20px; }
+    .password-hint { font-size:12px;color:var(--muted);margin-top:5px; }
+    .terms-row { display:flex;align-items:flex-start;gap:9px;margin-bottom:18px;font-size:12.5px;color:var(--muted);line-height:1.5; }
+    .terms-row input[type="checkbox"] { margin-top:2px;accent-color:var(--brand);flex-shrink:0;width:14px;height:14px; }
+    .terms-row a { color:var(--brand);text-decoration:none; }
+    .btn-primary { width:100%;padding:13px;background:var(--brand);color:white;border:none;border-radius:10px;font-size:15px;font-weight:600;font-family:var(--font);cursor:pointer;transition:all .15s;margin-bottom:16px; }
+    .btn-primary:hover { background:var(--brand-dark);transform:translateY(-1px); }
+    .btn-primary:disabled { opacity:.6;cursor:not-allowed;transform:none; }
+    .divider { display:flex;align-items:center;gap:12px;margin-bottom:16px;font-size:12px;color:var(--muted); }
+    .divider::before,.divider::after { content:'';flex:1;height:1px;background:var(--border); }
+    .btn-google { width:100%;padding:12px;background:white;border:1.5px solid var(--border);border-radius:10px;font-size:14.5px;font-weight:500;font-family:var(--font);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;transition:all .15s;margin-bottom:20px; }
     .btn-google:hover { background:#f9fafb; }
-    .btn-google img { width:18px; height:18px; }
-
-    .status-msg { text-align:center; font-size:13.5px; min-height:20px; margin-bottom:10px; font-weight:500; }
+    .btn-google img { width:18px;height:18px; }
+    .status-msg { text-align:center;font-size:13.5px;min-height:20px;margin-bottom:10px;font-weight:500; }
     .status-msg.error { color:#ef4444; }
     .status-msg.success { color:var(--brand); }
-
-    .compliance-strip { text-align:center; font-size:11.5px; color:#9ca3af; padding-top:16px; border-top:1px solid var(--border); margin-top:4px; }
-    .compliance-strip i { color:var(--brand); margin-right:4px; }
-
-    .spinner { width:16px; height:16px; border:2px solid rgba(255,255,255,.4); border-top-color:white; border-radius:50%; animation:spin .6s linear infinite; display:inline-block; margin-right:6px; }
+    .compliance-strip { text-align:center;font-size:11.5px;color:#9ca3af;padding-top:16px;border-top:1px solid var(--border);margin-top:4px; }
+    .compliance-strip i { color:var(--brand);margin-right:4px; }
+    .spinner { width:16px;height:16px;border:2px solid rgba(255,255,255,.4);border-top-color:white;border-radius:50%;animation:spin .6s linear infinite;display:inline-block;margin-right:6px; }
     @keyframes spin { to { transform:rotate(360deg); } }
+
+    /* ── Success state ── */
+    .success-state {
+        display: none;
+        text-align: center;
+        padding: 24px 0;
+        animation: fadeIn 0.4s ease;
+    }
+    @keyframes fadeIn { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+    .success-icon {
+        width: 64px; height: 64px; border-radius: 50%;
+        background: rgba(0,188,213,.12); border: 2px solid var(--brand);
+        display: flex; align-items: center; justify-content: center;
+        margin: 0 auto 20px; font-size: 28px; color: var(--brand);
+    }
+    .success-title { font-family: var(--serif); font-size: 1.7rem; font-weight: 400; color: var(--text); margin-bottom: 10px; }
+    .success-body { font-size: 14px; color: var(--muted); line-height: 1.6; margin-bottom: 22px; }
+    .success-check-badge {
+        display: inline-flex; align-items: center; gap: 8px;
+        background: rgba(0,188,213,.08); border: 1px solid rgba(0,188,213,.25);
+        border-radius: 10px; padding: 10px 16px;
+        font-size: 13px; color: var(--brand); font-weight: 500;
+        margin-bottom: 20px;
+    }
+    .success-link { font-size: 13px; color: var(--muted); }
+    .success-link a { color: var(--brand); text-decoration: none; font-weight: 500; }
 
     @media (max-width: 900px) {
         .left-panel { display: none; }
@@ -101,112 +115,136 @@
         <span class="left-brand-name">Curabook</span>
         <span class="left-brand-tag">PHI</span>
     </div>
-
     <div class="left-content">
         <h1 class="left-headline">Start your<br><em>health journey</em><br>today</h1>
         <p class="left-sub">Join thousands of people who use PHI to understand their health, track trends, and walk into every doctor's appointment fully prepared.</p>
     </div>
-
     <div class="feature-list">
         <div class="feature-item">
             <div class="feature-icon"><i class="fa-solid fa-file-medical"></i></div>
-            <div class="feature-text">
-                <h4>Upload any lab report</h4>
-                <p>PDF, scan, or text — PHI reads and explains everything</p>
-            </div>
+            <div class="feature-text"><h4>Upload any lab report</h4><p>PDF, scan, or text — PHI reads and explains everything</p></div>
         </div>
         <div class="feature-item">
             <div class="feature-icon"><i class="fa-solid fa-brain"></i></div>
-            <div class="feature-text">
-                <h4>AI health memory</h4>
-                <p>PHI remembers every result and tracks trends over time</p>
-            </div>
+            <div class="feature-text"><h4>AI health memory</h4><p>PHI remembers every result and tracks trends over time</p></div>
         </div>
         <div class="feature-item">
             <div class="feature-icon"><i class="fa-solid fa-stethoscope"></i></div>
-            <div class="feature-text">
-                <h4>Doctor visit prep</h4>
-                <p>PHI generates a personalized brief before every appointment</p>
-            </div>
+            <div class="feature-text"><h4>Doctor visit prep</h4><p>PHI generates a personalized brief before every appointment</p></div>
         </div>
     </div>
 </div>
 
 <div class="right-panel">
     <div class="form-container">
-        <div class="form-header">
-            <h2 class="form-title">Create your account</h2>
-            <p class="form-sub">Already have one? <a href="login.html">Sign in</a></p>
-        </div>
 
-        <p id="status-msg" class="status-msg"></p>
-
-        <div class="name-row">
-            <div class="form-group">
-                <label class="form-label" for="firstName">First name</label>
-                <input type="text" id="firstName" class="form-input" placeholder="Siddharth" autocomplete="given-name">
+        <!-- Sign-up form -->
+        <div id="signupForm">
+            <div class="form-header">
+                <h2 class="form-title">Create your account</h2>
+                <p class="form-sub">Already have one? <a href="/login">Sign in</a></p>
             </div>
+
+            <p id="status-msg" class="status-msg"></p>
+
+            <div class="name-row">
+                <div class="form-group">
+                    <label class="form-label" for="firstName">First name</label>
+                    <input type="text" id="firstName" class="form-input" placeholder="Aarav" autocomplete="given-name">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="lastName">Last name</label>
+                    <input type="text" id="lastName" class="form-input" placeholder="Sharma" autocomplete="family-name">
+                </div>
+            </div>
+
             <div class="form-group">
-                <label class="form-label" for="lastName">Last name</label>
-                <input type="text" id="lastName" class="form-input" placeholder="Tripathi" autocomplete="family-name">
+                <label class="form-label" for="email">Email address</label>
+                <input type="email" id="email" class="form-input" placeholder="you@example.com" autocomplete="email" spellcheck="false">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="password">Password</label>
+                <input type="password" id="password" class="form-input" placeholder="At least 8 characters" autocomplete="new-password">
+                <p class="password-hint">Use at least 8 characters with a mix of letters and numbers</p>
+            </div>
+
+            <div class="terms-row">
+                <input type="checkbox" id="termsCheck">
+                <span>I agree to the <a href="/terms" target="_blank">Terms of Service</a> and <a href="/privacy" target="_blank">Privacy Policy</a>. I consent to Curabook PHI processing my health data as described. My data will be anonymized before AI processing and never sold.</span>
+            </div>
+
+            <button id="signupBtn" class="btn-primary">Create Free Account</button>
+
+            <div class="divider">or</div>
+
+            <button id="googleBtn" class="btn-google">
+                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google">
+                Continue with Google
+            </button>
+
+            <div class="compliance-strip">
+                <i class="fa-solid fa-shield-halved"></i>
+                HIPAA-Ready &nbsp;·&nbsp; Free to start &nbsp;·&nbsp; No credit card required
             </div>
         </div>
 
-        <div class="form-group">
-            <label class="form-label" for="email">Email address</label>
-            <input type="email" id="email" class="form-input" placeholder="you@example.com" autocomplete="email" spellcheck="false">
+        <!-- Personalized success state — shown after signup -->
+        <div id="successState" class="success-state">
+            <div class="success-icon"><i class="fa-solid fa-envelope-open-text"></i></div>
+            <h2 class="success-title" id="successTitle">Almost there!</h2>
+            <p class="success-body" id="successBody">
+                Check your email to activate your account, then sign in.
+            </p>
+            <div class="success-check-badge">
+                <i class="fa-solid fa-inbox"></i>
+                <span id="successEmail">Check your inbox</span>
+            </div>
+            <p class="success-link">Already confirmed? <a href="/login">Sign in →</a></p>
         </div>
 
-        <div class="form-group">
-            <label class="form-label" for="password">Password</label>
-            <input type="password" id="password" class="form-input" placeholder="At least 8 characters" autocomplete="new-password">
-            <p class="password-hint">Use at least 8 characters with a mix of letters and numbers</p>
-        </div>
-
-        <div class="terms-row">
-            <input type="checkbox" id="termsCheck">
-            <span>I agree to the <a href="terms.html" target="_blank">Terms of Service</a> and <a href="privacy.html" target="_blank">Privacy Policy</a>. I consent to Curabook PHI processing my health data as described, including storing lab reports and using AI to generate insights. My data will be anonymized before AI processing and never sold.</span>
-        </div>
-
-        <button id="signupBtn" class="btn-primary">Create Free Account</button>
-
-        <div class="divider">or</div>
-
-        <button id="googleBtn" class="btn-google">
-            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google">
-            Continue with Google
-        </button>
-
-        <div class="compliance-strip">
-            <i class="fa-solid fa-shield-halved"></i>
-            HIPAA-Ready &nbsp;·&nbsp; Free to start &nbsp;·&nbsp; No credit card required
-        </div>
     </div>
 </div>
 
 <script>
 const API_BASE = "https://api.curabook.com";
-
 let supabaseClient = null;
 
 async function initSupabase() {
     const SUPABASE_URL = "https://hxfiymzpngxltjbpbgur.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4Zml5bXpwbmd4bHRqYnBiZ3VyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc5NDk1NTQsImV4cCI6MjA4MzUyNTU1NH0.aU5JDyhwFyzOoCrflqaFJ6N-3Tvy92RO9nP2HP9v6sc";
-
-supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4Zml5bXpwbmd4bHRqYnBiZ3VyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc5NDk1NTQsImV4cCI6MjA4MzUyNTU1NH0.aU5JDyhwFyzOoCrflqaFJ6N-3Tvy92RO9nP2HP9v6sc";
+    supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 }
 
-function setStatus(msg, type='') {
+function setStatus(msg, type = '') {
     const el = document.getElementById('status-msg');
     el.textContent = msg;
     el.className = 'status-msg ' + type;
 }
 
-document.getElementById('signupBtn').addEventListener('click', async () => {
-    if (!supabaseClient) {
-    setStatus("App loading... please wait", "error");
-    return;
+/**
+ * PERSONALIZED SUCCESS STATE
+ * Shows "Almost there, Aarav! Check your inbox to activate PHI."
+ * instead of the generic "Check your email" message.
+ */
+function showSuccessState(firstName, email) {
+    document.getElementById('signupForm').style.display = 'none';
+    const ss = document.getElementById('successState');
+    ss.style.display = 'block';
+
+    if (firstName) {
+        document.getElementById('successTitle').textContent = `Almost there, ${firstName}!`;
+        document.getElementById('successBody').innerHTML =
+            `Check your inbox to activate PHI — then you're ready to upload your first report `
+            + `and discover what your health data has been trying to tell you.`;
+    }
+    if (email) {
+        document.getElementById('successEmail').textContent = email;
+    }
 }
+
+document.getElementById('signupBtn').addEventListener('click', async () => {
+    if (!supabaseClient) { setStatus("App loading... please wait", "error"); return; }
 
     const firstName = document.getElementById('firstName').value.trim();
     const lastName  = document.getElementById('lastName').value.trim();
@@ -215,9 +253,9 @@ document.getElementById('signupBtn').addEventListener('click', async () => {
     const terms     = document.getElementById('termsCheck');
     const btn       = document.getElementById('signupBtn');
 
-    if (!email || !password) { setStatus('Please enter your email and password.', 'error'); return; }
-    if (password.length < 8) { setStatus('Password must be at least 8 characters.', 'error'); return; }
-    if (!terms.checked) { setStatus('Please accept the Terms and Privacy Policy to continue.', 'error'); return; }
+    if (!email || !password)   { setStatus('Please enter your email and password.', 'error'); return; }
+    if (password.length < 8)   { setStatus('Password must be at least 8 characters.', 'error'); return; }
+    if (!terms.checked)         { setStatus('Please accept the Terms and Privacy Policy to continue.', 'error'); return; }
 
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span> Creating account…';
@@ -226,25 +264,28 @@ document.getElementById('signupBtn').addEventListener('click', async () => {
         email, password,
         options: {
             data: { first_name: firstName, last_name: lastName },
-            redirectTo: "https://curabook.com/login"
-        }
+            redirectTo: "https://curabook.com/login",
+        },
     });
 
-    if (error) { setStatus(error.message, 'error'); btn.disabled=false; btn.innerHTML='Create Free Account'; return; }
+    if (error) {
+        setStatus(error.message, 'error');
+        btn.disabled = false;
+        btn.innerHTML = 'Create Free Account';
+        return;
+    }
 
-    // Store terms acceptance
     if (data.user) {
         localStorage.setItem(`phi_terms_${data.user.id}`, Date.now().toString());
     }
 
     if (data.session) {
-        // Auto-confirmed (email confirmation disabled) — go straight to app
-        setStatus('Account created! Taking you to PHI…', 'success');
-        setTimeout(() => window.location.href = 'https://curabook.com/', 800);
+        // Email confirmation disabled — go straight to app
+        setStatus(`Welcome${firstName ? ', ' + firstName : ''}! Taking you to PHI…`, 'success');
+        setTimeout(() => window.location.href = 'https://curabook.com/', 900);
     } else {
-        // Email confirmation required
-        setStatus('Check your email to confirm your account, then sign in.', 'success');
-        btn.innerHTML = 'Check your email ✓';
+        // Email confirmation required — show personalized success state
+        showSuccessState(firstName, email);
     }
 });
 
@@ -252,7 +293,7 @@ document.getElementById('googleBtn').addEventListener('click', async () => {
     sessionStorage.setItem('oauth_pending_terms', 'true');
     await supabaseClient.auth.signInWithOAuth({
         provider: 'google',
-        options: { redirectTo: "https://curabook.com/login" }
+        options: { redirectTo: "https://curabook.com/login" },
     });
 });
 
