@@ -7,20 +7,20 @@ Two-layer approach:
   1. Built-in knowledge base  — instant, zero LLM cost for ~40 common markers
   2. LLM fallback             — for uncommon markers not in the knowledge base
 
-Each explanation includes:
-  - what_it_is     : one-sentence description
-  - why_it_matters : clinical significance
-  - your_result    : personalised interpretation of the value + status
-  - suggestion     : actionable guidance (always ends with "consult your doctor")
-  - emoji          : visual indicator for the dashboard
+FIX #EXP-1: The original explain_markers() had a broken return statement.
+            It returned `markers + needs_llm` when needs_llm was truthy,
+            which DOUBLED the needs_llm markers in the output.
+            When needs_llm was empty, the comprehension rebuild ignored
+            markers that already had explanations via KB lookup.
+            Fixed with a simple in-place approach: attach explanation to
+            each marker directly, then return the full list once.
 """
 
 from __future__ import annotations
+import json
 
 
 # ── Knowledge base ────────────────────────────────────────────────────────────
-# Each entry keyed by lowercase marker name (partial match supported).
-# Fields: what_it_is, why_it_matters, high_message, low_message, normal_message, emoji
 
 _KB: dict[str, dict] = {
     "ldl cholesterol": {
@@ -182,12 +182,20 @@ _KB: dict[str, dict] = {
 # ── Public function ────────────────────────────────────────────────────────────
 
 def explain_markers(
-    markers:      list[dict],
+    markers:     list[dict],
     groq_client,
-    user_name:    str = "",
+    user_name:   str = "",
 ) -> list[dict]:
     """
     Attach plain-language explanations to a list of extracted markers.
+
+    FIX #EXP-1: Original code had a broken return statement:
+        return markers + needs_llm if needs_llm else [rebuilt comprehension]
+    This doubled needs_llm markers when truthy and silently dropped KB
+    explanations when the comprehension rebuilt them without the explanation key.
+
+    Fixed approach: attach 'explanation' to each marker dict IN PLACE,
+    then return the original list. Simple, correct, no duplication.
 
     Parameters
     ----------
@@ -199,12 +207,12 @@ def explain_markers(
     -------
     Same list with an 'explanation' dict added to each item.
     """
-    explained = []
     needs_llm = []
 
     for m in markers:
-        kb_entry = _kb_lookup(m["marker"])
+        kb_entry = _kb_lookup(m.get("marker", ""))
         if kb_entry:
+            # FIX #EXP-1: attach in-place, don't rebuild list
             m["explanation"] = _build_explanation(m, kb_entry, user_name)
         else:
             needs_llm.append(m)
@@ -216,14 +224,11 @@ def explain_markers(
             m["explanation"] = exp
 
     # Markers with no explanation (no KB + no LLM) get a generic fallback
-    for m in needs_llm:
+    for m in markers:
         if "explanation" not in m:
             m["explanation"] = _generic_explanation(m, user_name)
 
-    return markers + needs_llm if needs_llm else [
-        {**orig, "explanation": orig.get("explanation", _generic_explanation(orig, user_name))}
-        for orig in markers
-    ]
+    return markers
 
 
 # ── Knowledge base lookup ──────────────────────────────────────────────────────
@@ -304,7 +309,7 @@ def _llm_explain_batch(
         )
         raw     = resp.choices[0].message.content.strip()
         raw     = raw.lstrip("```json").lstrip("```").rstrip("```").strip()
-        parsed  = __import__("json").loads(raw)
+        parsed  = json.loads(raw)
         if isinstance(parsed, list) and len(parsed) == len(markers):
             return parsed
     except Exception as e:
@@ -336,5 +341,4 @@ def _status_label(status: str) -> str:
 
 
 def json_safe(obj) -> str:
-    import json
     return json.dumps(obj, default=str)

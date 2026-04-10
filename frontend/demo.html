@@ -12,7 +12,7 @@
     <meta name="robots" content="index, follow">
     <link rel="canonical" href="https://curabook.com/demo">
 
-    <!-- Open Graph (Facebook, WhatsApp, LinkedIn) -->
+    <!-- Open Graph -->
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://curabook.com/demo">
     <meta property="og:title" content="PHI — AI That Reads Your Lab Reports &amp; Explains Everything">
@@ -37,703 +37,149 @@
       "applicationCategory": "HealthApplication",
       "description": "AI health assistant that reads lab reports, explains every finding in plain language, tracks health trends over time, and prepares personalised doctor visit briefs.",
       "url": "https://curabook.com/demo",
-      "offers": {
-        "@type": "Offer",
-        "price": "0",
-        "priceCurrency": "INR"
-      },
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "INR" },
       "operatingSystem": "Web Browser",
-      "featureList": [
-        "Lab report analysis",
-        "Plain-language health explanations",
-        "Doctor visit preparation",
-        "Health trend tracking",
-        "AI-powered health memory"
-      ]
+      "featureList": ["Lab report analysis","Plain-language health explanations","Doctor visit preparation","Health trend tracking","AI-powered health memory"]
     }
     </script>
 
-    <!-- Structured Data: FAQPage (boosts rich results in Google Search) -->
+    <!-- Structured Data: FAQPage -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
       "@type": "FAQPage",
       "mainEntity": [
-        {
-          "@type": "Question",
-          "name": "What is Curabook PHI?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Curabook PHI is an AI health assistant that reads your lab reports, explains every finding in plain language, tracks your health trends over time, and prepares a personalised brief for your doctor visit."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "Can PHI read my blood test results?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "Yes. Upload any PDF lab report from SRL, Dr Lal, Thyrocare, Apollo, Quest, LabCorp or any standard lab. PHI extracts all values, flags anything outside normal range, and explains what each result means for you."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "Do I need to sign up to try PHI?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "No. You can use the full demo — including uploading a sample report and chatting with PHI — without creating an account. Sign up to save your health history permanently."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "Is my health data safe with PHI?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "PHI uses AES-256 encryption and anonymises your data before any AI processing. Your name and ID are never sent to AI models. Your data is never sold to third parties."
-          }
-        },
-        {
-          "@type": "Question",
-          "name": "Which lab report formats does PHI support?",
-          "acceptedAnswer": {
-            "@type": "Answer",
-            "text": "PHI supports PDF and TXT files up to 5MB. It works with digital and scanned reports from all major Indian, UK, and US labs including SRL, Thyrocare, Dr Lal Pathlabs, Apollo Diagnostics, Quest Diagnostics, and LabCorp."
-          }
-        }
+        {"@type":"Question","name":"What is Curabook PHI?","acceptedAnswer":{"@type":"Answer","text":"Curabook PHI is an AI health assistant that reads your lab reports, explains every finding in plain language, tracks your health trends over time, and prepares a personalised brief for your doctor visit."}},
+        {"@type":"Question","name":"Can PHI read my blood test results?","acceptedAnswer":{"@type":"Answer","text":"Yes. Upload any PDF lab report from SRL, Dr Lal, Thyrocare, Apollo, Quest, LabCorp or any standard lab. PHI extracts all values, flags anything outside normal range, and explains what each result means for you."}},
+        {"@type":"Question","name":"Do I need to sign up to try PHI?","acceptedAnswer":{"@type":"Answer","text":"No. You can use the full demo — including uploading a sample report and chatting with PHI — without creating an account. Sign up to save your health history permanently."}},
+        {"@type":"Question","name":"Is my health data safe with PHI?","acceptedAnswer":{"@type":"Answer","text":"PHI uses AES-256 encryption and anonymises your data before any AI processing. Your name and ID are never sent to AI models. Your data is never sold to third parties."}}
       ]
     }
     </script>
 
-    <!-- Structured Data: WebSite with SearchAction -->
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "WebSite",
-      "name": "Curabook PHI",
-      "url": "https://curabook.com",
-      "description": "AI-powered personal health intelligence — lab report analysis, health trend tracking, and doctor visit preparation.",
-      "potentialAction": {
-        "@type": "SearchAction",
-        "target": "https://curabook.com/demo?q={search_term_string}",
-        "query-input": "required name=search_term_string"
-      }
-    }
-    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com">
     <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
-
     <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" defer></script>
+
     <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-
     :root {
-        --brand:       #00BCD5;
-        --brand-dark:  #0097a7;
-        --brand-soft:  rgba(0,188,213,.08);
-        --text:        #111;
-        --muted:       #6b7280;
-        --border:      #e5e7eb;
-        --bg:          #f8fafc;
-        --white:       #fff;
-        --font:        'Plus Jakarta Sans', sans-serif;
-        --serif:       'Instrument Serif', Georgia, serif;
-        --radius:      14px;
-        --shadow:      0 4px 24px rgba(0,0,0,.08);
+        --brand: #00BCD5; --brand-dark: #0097a7;
+        --brand-soft: rgba(0,188,213,.08);
+        --text: #111; --muted: #6b7280; --border: #e5e7eb;
+        --bg: #f8fafc; --white: #fff;
+        --font: 'Plus Jakarta Sans', sans-serif;
+        --serif: 'Instrument Serif', Georgia, serif;
+        --radius: 14px; --shadow: 0 4px 24px rgba(0,0,0,.08);
     }
-
-    body {
-        font-family: var(--font);
-        background: var(--bg);
-        min-height: 100vh;
-        display: flex;
-        flex-direction: column;
-        -webkit-font-smoothing: antialiased;
-        color: var(--text);
-    }
-
-    /* ── Header ── */
-    .header {
-        padding: 16px 24px;
-        background: var(--white);
-        border-bottom: 1px solid var(--border);
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        position: sticky;
-        top: 0;
-        z-index: 100;
-    }
-    .logo {
-        font-family: var(--serif);
-        font-size: 1.3rem;
-        color: var(--text);
-        font-weight: 400;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-    }
+    body { font-family: var(--font); background: var(--bg); min-height: 100vh; display: flex; flex-direction: column; -webkit-font-smoothing: antialiased; color: var(--text); }
+    .header { padding: 16px 24px; background: var(--white); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+    .logo { font-family: var(--serif); font-size: 1.3rem; color: var(--text); font-weight: 400; display: flex; align-items: center; gap: 10px; }
     .logo i { color: var(--brand); }
-    .logo-tag {
-        font-size: 10px;
-        font-family: var(--font);
-        background: var(--brand-soft);
-        color: var(--brand);
-        padding: 2px 8px;
-        border-radius: 20px;
-        font-weight: 700;
-        letter-spacing: .5px;
-    }
-    .header-cta {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-    }
-    .btn-signup {
-        padding: 8px 18px;
-        background: var(--brand);
-        color: white;
-        border: none;
-        border-radius: 8px;
-        font-size: 13.5px;
-        font-weight: 600;
-        font-family: var(--font);
-        cursor: pointer;
-        text-decoration: none;
-        transition: all .15s;
-    }
+    .logo-tag { font-size: 10px; font-family: var(--font); background: var(--brand-soft); color: var(--brand); padding: 2px 8px; border-radius: 20px; font-weight: 700; letter-spacing: .5px; }
+    .header-cta { display: flex; align-items: center; gap: 12px; }
+    .btn-signup { padding: 8px 18px; background: var(--brand); color: white; border: none; border-radius: 8px; font-size: 13.5px; font-weight: 600; font-family: var(--font); cursor: pointer; text-decoration: none; transition: all .15s; }
     .btn-signup:hover { background: var(--brand-dark); }
-    .demo-badge {
-        font-size: 12px;
-        background: #fef3c7;
-        color: #92400e;
-        border: 1px solid #fde68a;
-        padding: 4px 10px;
-        border-radius: 20px;
-        font-weight: 600;
-    }
-
-    /* ── Hero ── */
-    .hero {
-        text-align: center;
-        padding: 48px 24px 32px;
-        max-width: 620px;
-        margin: 0 auto;
-    }
-    .hero h1 {
-        font-family: var(--serif);
-        font-size: clamp(1.9rem, 4vw, 2.6rem);
-        font-weight: 400;
-        line-height: 1.2;
-        letter-spacing: -.5px;
-        margin-bottom: 14px;
-    }
-    .hero h1 em { color: var(--brand); font-style: italic; }
-    .hero p {
-        font-size: 16px;
-        color: var(--muted);
-        line-height: 1.65;
-        margin-bottom: 28px;
-        max-width: 480px;
-        margin-left: auto;
-        margin-right: auto;
-    }
-    .hero-trust {
-        display: flex;
-        justify-content: center;
-        gap: 20px;
-        flex-wrap: wrap;
-        font-size: 12px;
-        color: var(--muted);
-        margin-bottom: 16px;
-    }
-    .hero-trust span {
-        display: flex;
-        align-items: center;
-        gap: 5px;
-    }
+    .demo-badge { font-size: 12px; background: #fef3c7; color: #92400e; border: 1px solid #fde68a; padding: 4px 10px; border-radius: 20px; font-weight: 600; }
+    .hero { text-align: center; padding: 48px 24px 32px; max-width: 620px; margin: 0 auto; }
+    .hero h1 { font-family: var(--serif); font-size: clamp(1.9rem,4vw,2.6rem); font-weight: 400; line-height: 1.2; letter-spacing: -.5px; margin-bottom: 14px; }
+    .hero h1 em { background: linear-gradient(135deg, #00BCD5 0%, #0097a7 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .hero p { font-size: 16px; color: var(--muted); line-height: 1.65; margin-bottom: 28px; max-width: 480px; margin-left: auto; margin-right: auto; }
+    .hero-trust { display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-bottom: 16px; }
+    .hero-trust span { display: flex; align-items: center; gap: 5px; }
     .hero-trust i { color: var(--brand); }
-
-    /* ── Main layout ── */
-    .main {
-        flex: 1;
-        max-width: 880px;
-        width: 100%;
-        margin: 0 auto;
-        padding: 0 16px 60px;
-        display: grid;
-        grid-template-columns: 1fr;
-        gap: 20px;
-    }
-
-    /* ── Upload zone ── */
-    .upload-zone {
-        background: var(--white);
-        border: 2px dashed var(--border);
-        border-radius: var(--radius);
-        padding: 40px 24px;
-        text-align: center;
-        cursor: pointer;
-        transition: all .2s;
-        position: relative;
-    }
-    .upload-zone:hover, .upload-zone.drag-over {
-        border-color: var(--brand);
-        background: var(--brand-soft);
-    }
-    .upload-zone i {
-        font-size: 2.2rem;
-        color: var(--brand);
-        margin-bottom: 12px;
-        display: block;
-    }
-    .upload-zone h3 {
-        font-size: 1.1rem;
-        font-weight: 600;
-        margin-bottom: 6px;
-    }
-    .upload-zone p {
-        font-size: 13.5px;
-        color: var(--muted);
-        margin-bottom: 18px;
-    }
-    .upload-zone input[type="file"] {
-        position: absolute;
-        inset: 0;
-        opacity: 0;
-        cursor: pointer;
-    }
-    .btn-upload {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        padding: 11px 24px;
-        background: var(--brand);
-        color: white;
-        border: none;
-        border-radius: 10px;
-        font-size: 14.5px;
-        font-weight: 600;
-        font-family: var(--font);
-        cursor: pointer;
-        transition: all .15s;
-        pointer-events: none;
-    }
+    .main { flex: 1; max-width: 880px; width: 100%; margin: 0 auto; padding: 0 16px 60px; display: grid; grid-template-columns: 1fr; gap: 20px; }
+    .upload-zone { background: var(--white); border: 2px dashed var(--border); border-radius: var(--radius); padding: 40px 24px; text-align: center; cursor: pointer; transition: all .2s; position: relative; }
+    .upload-zone:hover, .upload-zone.drag-over { border-color: var(--brand); background: var(--brand-soft); }
+    .upload-zone i { font-size: 2.2rem; color: var(--brand); margin-bottom: 12px; display: block; }
+    .upload-zone h3 { font-size: 1.1rem; font-weight: 600; margin-bottom: 6px; }
+    .upload-zone p { font-size: 13.5px; color: var(--muted); margin-bottom: 18px; }
+    .upload-zone input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+    .btn-upload { display: inline-flex; align-items: center; gap: 8px; padding: 11px 24px; background: var(--brand); color: white; border: none; border-radius: 10px; font-size: 14.5px; font-weight: 600; font-family: var(--font); cursor: pointer; transition: all .15s; pointer-events: none; }
     .upload-zone:hover .btn-upload { background: var(--brand-dark); }
-    .file-types {
-        margin-top: 12px;
-        font-size: 11.5px;
-        color: #9ca3af;
-    }
-
-    /* ── Chat area ── */
-    .chat-area {
-        background: var(--white);
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        display: flex;
-        flex-direction: column;
-        min-height: 420px;
-        box-shadow: var(--shadow);
-    }
-
-    .chat-header {
-        padding: 14px 18px;
-        border-bottom: 1px solid var(--border);
-        display: flex;
-        align-items: center;
-        gap: 10px;
-    }
-    .chat-header .phi-icon {
-        width: 32px;
-        height: 32px;
-        background: var(--brand);
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: white;
-        font-size: 14px;
-        font-family: var(--serif);
-        flex-shrink: 0;
-    }
-    .chat-header-text h4 {
-        font-size: 14px;
-        font-weight: 600;
-    }
-    .chat-header-text p {
-        font-size: 12px;
-        color: var(--muted);
-    }
-    .online-dot {
-        width: 7px;
-        height: 7px;
-        background: #22c55e;
-        border-radius: 50%;
-        display: inline-block;
-        margin-right: 4px;
-    }
-
-    .chat-messages {
-        flex: 1;
-        overflow-y: auto;
-        padding: 20px 18px;
-        display: flex;
-        flex-direction: column;
-        gap: 16px;
-        min-height: 280px;
-        max-height: 480px;
-    }
-
-    /* Message bubbles */
-    .msg {
-        display: flex;
-        gap: 10px;
-        align-items: flex-start;
-    }
+    .file-types { margin-top: 12px; font-size: 11.5px; color: #9ca3af; }
+    .chat-area { background: var(--white); border: 1px solid var(--border); border-radius: var(--radius); display: flex; flex-direction: column; min-height: 420px; box-shadow: var(--shadow); }
+    .chat-header { padding: 14px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
+    .chat-header .phi-icon { width: 32px; height: 32px; background: var(--brand); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 14px; font-family: var(--serif); flex-shrink: 0; }
+    .chat-header-text h4 { font-size: 14px; font-weight: 600; }
+    .chat-header-text p { font-size: 12px; color: var(--muted); }
+    .online-dot { width: 7px; height: 7px; background: #22c55e; border-radius: 50%; display: inline-block; margin-right: 4px; }
+    .chat-messages { flex: 1; overflow-y: auto; padding: 20px 18px; display: flex; flex-direction: column; gap: 16px; min-height: 280px; max-height: 480px; }
+    .msg { display: flex; gap: 10px; align-items: flex-start; }
     .msg.user { flex-direction: row-reverse; }
-    .msg-av {
-        width: 30px;
-        height: 30px;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 13px;
-        font-weight: 700;
-        flex-shrink: 0;
-        margin-top: 2px;
-    }
-    .msg-av.ai  { background: var(--brand); color: white; font-family: var(--serif); }
+    .msg-av { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0; margin-top: 2px; }
+    .msg-av.ai { background: var(--brand); color: white; font-family: var(--serif); }
     .msg-av.usr { background: #e5e7eb; color: #374151; }
-    .msg-bubble {
-        max-width: 78%;
-        padding: 12px 16px;
-        border-radius: 14px;
-        font-size: 14.5px;
-        line-height: 1.65;
-    }
-    .msg.ai  .msg-bubble {
-        background: #f8fafc;
-        border: 1px solid var(--border);
-        border-top-left-radius: 4px;
-        color: var(--text);
-    }
-    .msg.user .msg-bubble {
-        background: var(--brand);
-        color: white;
-        border-top-right-radius: 4px;
-    }
-
-    /* Markdown inside bubbles */
+    .msg-bubble { max-width: 78%; padding: 12px 16px; border-radius: 14px; font-size: 14.5px; line-height: 1.65; }
+    .msg.ai .msg-bubble { background: #f8fafc; border: 1px solid var(--border); border-top-left-radius: 4px; color: var(--text); }
+    .msg.user .msg-bubble { background: var(--brand); color: white; border-top-right-radius: 4px; }
     .msg-bubble h2 { font-size: .92rem; font-weight: 700; color: var(--brand); margin: 16px 0 6px; padding-bottom: 4px; border-bottom: 1.5px solid rgba(0,188,213,.2); }
     .msg-bubble h2:first-child { margin-top: 4px; }
     .msg-bubble h3 { font-size: .9rem; font-weight: 600; margin: 12px 0 5px; }
-    .msg-bubble p  { margin-bottom: 8px; }
+    .msg-bubble p { margin-bottom: 8px; }
     .msg-bubble p:last-child { margin-bottom: 0; }
     .msg-bubble ul, .msg-bubble ol { margin: 6px 0 10px; padding-left: 20px; }
     .msg-bubble li { padding: 2px 0; line-height: 1.65; }
     .msg-bubble strong { font-weight: 600; }
-    .msg.user .msg-bubble h2,
-    .msg.user .msg-bubble h3,
-    .msg.user .msg-bubble strong { color: rgba(255,255,255,.9); }
+    .msg.user .msg-bubble h2, .msg.user .msg-bubble h3, .msg.user .msg-bubble strong { color: rgba(255,255,255,.9); }
     .msg.user .msg-bubble h2 { border-color: rgba(255,255,255,.2); }
-
-    /* Typing indicator */
-    .typing {
-        display: flex;
-        gap: 4px;
-        align-items: center;
-        padding: 4px 0;
-    }
-    .typing-dot {
-        width: 7px;
-        height: 7px;
-        background: var(--brand);
-        border-radius: 50%;
-        animation: bounce .9s infinite ease-in-out;
-    }
+    .typing { display: flex; gap: 4px; align-items: center; padding: 4px 0; }
+    .typing-dot { width: 7px; height: 7px; background: var(--brand); border-radius: 50%; animation: bounce .9s infinite ease-in-out; }
     .typing-dot:nth-child(2) { animation-delay: .15s; }
     .typing-dot:nth-child(3) { animation-delay: .3s; }
-    @keyframes bounce {
-        0%, 60%, 100% { transform: translateY(0); }
-        30% { transform: translateY(-6px); }
-    }
-
-    /* Suggestion chips */
-    .suggestions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        padding: 8px 0 4px;
-    }
-    .chip {
-        padding: 7px 14px;
-        border: 1.5px solid var(--border);
-        border-radius: 20px;
-        font-size: 12.5px;
-        color: var(--muted);
-        background: var(--white);
-        cursor: pointer;
-        font-family: var(--font);
-        transition: all .15s;
-    }
+    @keyframes bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-6px)} }
+    .suggestions { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 0 4px; }
+    .chip { padding: 7px 14px; border: 1.5px solid var(--border); border-radius: 20px; font-size: 12.5px; color: var(--muted); background: var(--white); cursor: pointer; font-family: var(--font); transition: all .15s; }
     .chip:hover { border-color: var(--brand); color: var(--brand); background: var(--brand-soft); }
-
-    /* Chat input */
-    .chat-input-area {
-        padding: 14px 18px;
-        border-top: 1px solid var(--border);
-        display: flex;
-        gap: 10px;
-        align-items: flex-end;
-    }
-    .chat-input {
-        flex: 1;
-        resize: none;
-        border: 1.5px solid var(--border);
-        border-radius: 10px;
-        padding: 10px 14px;
-        font-size: 14.5px;
-        font-family: var(--font);
-        outline: none;
-        min-height: 44px;
-        max-height: 120px;
-        line-height: 1.5;
-        transition: border-color .2s;
-        color: var(--text);
-        background: var(--white);
-    }
+    .chat-input-area { padding: 14px 18px; border-top: 1px solid var(--border); display: flex; gap: 10px; align-items: flex-end; }
+    .chat-input { flex: 1; resize: none; border: 1.5px solid var(--border); border-radius: 10px; padding: 10px 14px; font-size: 14.5px; font-family: var(--font); outline: none; min-height: 44px; max-height: 120px; line-height: 1.5; transition: border-color .2s; color: var(--text); background: var(--white); }
     .chat-input:focus { border-color: var(--brand); }
     .chat-input::placeholder { color: #9ca3af; }
-    .send-btn {
-        width: 44px;
-        height: 44px;
-        background: var(--brand);
-        border: none;
-        border-radius: 10px;
-        color: white;
-        font-size: 16px;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition: all .15s;
-        flex-shrink: 0;
-    }
+    .send-btn { width: 44px; height: 44px; background: var(--brand); border: none; border-radius: 10px; color: white; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all .15s; flex-shrink: 0; }
     .send-btn:hover { background: var(--brand-dark); }
     .send-btn:disabled { opacity: .5; cursor: not-allowed; }
-
-    /* Chat disclaimer */
-    .chat-disclaimer {
-        text-align: center;
-        font-size: 11px;
-        color: #9ca3af;
-        padding: 8px 18px 14px;
-    }
-
-    /* ── CTA panel ── */
-    .cta-panel {
-        background: linear-gradient(135deg, #0a0a0a 0%, #0d1b1e 100%);
-        border-radius: var(--radius);
-        padding: 32px 28px;
-        color: white;
-        text-align: center;
-    }
-    .cta-panel h3 {
-        font-family: var(--serif);
-        font-size: 1.6rem;
-        font-weight: 400;
-        margin-bottom: 10px;
-    }
+    .chat-disclaimer { text-align: center; font-size: 11px; color: #9ca3af; padding: 8px 18px 14px; }
+    .cta-panel { background: linear-gradient(135deg, #0a0a0a 0%, #0d1b1e 100%); border-radius: var(--radius); padding: 32px 28px; color: white; text-align: center; }
+    .cta-panel h3 { font-family: var(--serif); font-size: 1.6rem; font-weight: 400; margin-bottom: 10px; }
     .cta-panel h3 em { color: var(--brand); font-style: italic; }
     .cta-panel p { font-size: 14px; color: rgba(255,255,255,.55); margin-bottom: 24px; line-height: 1.6; }
-    .cta-features {
-        display: flex;
-        justify-content: center;
-        gap: 20px;
-        flex-wrap: wrap;
-        margin-bottom: 24px;
-    }
-    .cta-feat {
-        font-size: 12.5px;
-        color: rgba(255,255,255,.5);
-        display: flex;
-        align-items: center;
-        gap: 6px;
-    }
-    .cta-feat i { color: var(--brand); }
-    .btn-cta-signup {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        padding: 14px 32px;
-        background: var(--brand);
-        color: white;
-        border: none;
-        border-radius: 10px;
-        font-size: 15px;
-        font-weight: 700;
-        font-family: var(--font);
-        cursor: pointer;
-        text-decoration: none;
-        transition: all .15s;
-        box-shadow: 0 4px 20px rgba(0,188,213,.4);
-    }
-    .btn-cta-signup:hover { background: var(--brand-dark); transform: translateY(-1px); }
-    .cta-compare {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 12px;
-        margin-bottom: 24px;
-        text-align: left;
-    }
-    .compare-col {
-        background: rgba(255,255,255,.05);
-        border: 1px solid rgba(255,255,255,.1);
-        border-radius: 10px;
-        padding: 14px;
-    }
-    .compare-col.highlight {
-        background: rgba(0,188,213,.12);
-        border-color: rgba(0,188,213,.35);
-    }
-    .compare-head {
-        font-size: 12px;
-        font-weight: 700;
-        color: rgba(255,255,255,.5);
-        text-transform: uppercase;
-        letter-spacing: .5px;
-        margin-bottom: 10px;
-    }
+    .cta-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 24px; text-align: left; }
+    .compare-col { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); border-radius: 10px; padding: 14px; }
+    .compare-col.highlight { background: rgba(0,188,213,.12); border-color: rgba(0,188,213,.35); }
+    .compare-head { font-size: 12px; font-weight: 700; color: rgba(255,255,255,.5); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 10px; }
     .compare-head.branded { color: #00BCD5; }
-    .compare-item {
-        font-size: 12.5px;
-        padding: 4px 0;
-        display: flex;
-        align-items: center;
-        gap: 7px;
-    }
+    .compare-item { font-size: 12.5px; padding: 4px 0; display: flex; align-items: center; gap: 7px; }
     .compare-item.yes { color: rgba(255,255,255,.85); }
-    .compare-item.no  { color: rgba(255,255,255,.3); }
-    .compare-item i   { font-size: 10px; flex-shrink: 0; }
+    .compare-item.no { color: rgba(255,255,255,.3); }
+    .compare-item i { font-size: 10px; flex-shrink: 0; }
     .compare-item.yes i { color: #22c55e; }
-    .compare-item.no  i { color: rgba(255,255,255,.25); }
-    @media (max-width: 480px) {
-        .cta-compare { grid-template-columns: 1fr; }
-    }
-
-    .cta-sub {
-        margin-top: 12px;
-        font-size: 12px;
-        color: rgba(255,255,255,.3);
-    }
-
-    /* ── Status indicator ── */
-    .file-status {
-        display: none;
-        align-items: center;
-        gap: 10px;
-        padding: 12px 16px;
-        background: var(--brand-soft);
-        border: 1px solid rgba(0,188,213,.2);
-        border-radius: 10px;
-        font-size: 13.5px;
-        color: var(--brand);
-        font-weight: 500;
-    }
+    .compare-item.no i { color: rgba(255,255,255,.25); }
+    .btn-cta-signup { display: inline-flex; align-items: center; gap: 8px; padding: 14px 32px; background: var(--brand); color: white; border: none; border-radius: 10px; font-size: 15px; font-weight: 700; font-family: var(--font); cursor: pointer; text-decoration: none; transition: all .15s; box-shadow: 0 4px 20px rgba(0,188,213,.4); }
+    .btn-cta-signup:hover { background: var(--brand-dark); transform: translateY(-1px); }
+    .cta-sub { margin-top: 12px; font-size: 12px; color: rgba(255,255,255,.3); }
+    .file-status { display: none; align-items: center; gap: 10px; padding: 12px 16px; background: var(--brand-soft); border: 1px solid rgba(0,188,213,.2); border-radius: 10px; font-size: 13.5px; color: var(--brand); font-weight: 500; }
     .file-status.visible { display: flex; }
     .file-status i { font-size: 16px; }
-
-    /* ── Three pillars ── */
-    .pillars {
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-        margin: 0 auto 24px;
-        max-width: 520px;
-        text-align: left;
-    }
-    .pillar {
-        display: flex;
-        align-items: flex-start;
-        gap: 14px;
-        padding: 14px 16px;
-        background: var(--white);
-        border: 1px solid var(--border);
-        border-radius: 12px;
-        transition: border-color .15s, box-shadow .15s;
-    }
-    .pillar:hover {
-        border-color: var(--brand);
-        box-shadow: 0 2px 12px rgba(0,188,213,.1);
-    }
-    .pillar-icon {
-        width: 38px;
-        height: 38px;
-        background: rgba(0,188,213,.1);
-        border-radius: 10px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: var(--brand);
-        font-size: 15px;
-        flex-shrink: 0;
-    }
-    .pillar-text {
-        display: flex;
-        flex-direction: column;
-        gap: 3px;
-    }
-    .pillar-text strong {
-        font-size: 13.5px;
-        font-weight: 700;
-        color: var(--text);
-    }
-    .pillar-text span {
-        font-size: 12.5px;
-        color: var(--muted);
-        line-height: 1.5;
-    }
-
-    /* ── Toast notifications ── */
-    .toast {
-        position: fixed;
-        bottom: 24px;
-        right: 24px;
-        padding: 12px 18px;
-        border-radius: 10px;
-        font-size: 13.5px;
-        font-weight: 500;
-        box-shadow: 0 4px 20px rgba(0,0,0,.15);
-        z-index: 9999;
-        animation: slideIn .25s ease;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        max-width: 320px;
-    }
+    .pillars { display: flex; flex-direction: column; gap: 12px; margin: 0 auto 24px; max-width: 520px; text-align: left; }
+    .pillar { display: flex; align-items: flex-start; gap: 14px; padding: 14px 16px; background: var(--white); border: 1px solid var(--border); border-radius: 12px; transition: border-color .15s, box-shadow .15s; }
+    .pillar:hover { border-color: var(--brand); box-shadow: 0 2px 12px rgba(0,188,213,.1); }
+    .pillar-icon { width: 38px; height: 38px; background: rgba(0,188,213,.1); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: var(--brand); font-size: 15px; flex-shrink: 0; }
+    .pillar-text { display: flex; flex-direction: column; gap: 3px; }
+    .pillar-text strong { font-size: 13.5px; font-weight: 700; color: var(--text); }
+    .pillar-text span { font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+    .toast { position: fixed; bottom: 24px; right: 24px; padding: 12px 18px; border-radius: 10px; font-size: 13.5px; font-weight: 500; box-shadow: 0 4px 20px rgba(0,0,0,.15); z-index: 9999; animation: slideIn .25s ease; display: flex; align-items: center; gap: 8px; max-width: 320px; }
     .toast.success { background: #10b981; color: white; }
-    .toast.error   { background: #ef4444; color: white; }
-    @keyframes slideIn {
-        from { opacity: 0; transform: translateY(12px); }
-        to   { opacity: 1; transform: translateY(0); }
-    }
-
-    /* ── Responsive ── */
-    @media (max-width: 600px) {
-        .hero { padding: 32px 16px 24px; }
-        .hero h1 { font-size: 1.7rem; }
-        .cta-features { gap: 12px; }
-        .chat-messages { max-height: 340px; }
-    }
+    .toast.error { background: #ef4444; color: white; }
+    @keyframes slideIn { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+    @media (max-width: 600px) { .hero{padding:32px 16px 24px} .hero h1{font-size:1.7rem} .chat-messages{max-height:340px} .cta-compare{grid-template-columns:1fr} }
     </style>
 </head>
 <body>
 
-<!-- Header -->
 <header class="header">
     <div class="logo">
         <i class="fa-solid fa-heart-pulse"></i>
@@ -746,27 +192,8 @@
     </div>
 </header>
 
-<!-- Hero -->
 <div class="hero">
     <h1>Your <em>personal<br>health intelligence</em> system</h1>
-    <style>
-        .hero h1 em {
-            font-style: italic;
-            background: linear-gradient(135deg, #00BCD5 0%, #0097a7 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            position: relative;
-        }
-        .hero h1 em::after {
-            content: '';
-            position: absolute;
-            left: 0; right: 0; bottom: -2px;
-            height: 3px;
-            background: linear-gradient(90deg, #00BCD5, #0097a7);
-            border-radius: 2px;
-        }
-    </style>
     <p>PHI reads your lab reports, explains every finding in plain language, prepares a personalised brief for your doctor visit, and <strong>remembers your health history</strong> over time. Try it free — no signup.</p>
 
     <div style="display:flex;justify-content:center;gap:12px;flex-wrap:wrap;margin-bottom:8px;margin-top:4px;">
@@ -776,8 +203,7 @@
             <i class="fa-solid fa-upload"></i> Upload Your Report Free
         </a>
         <a href="/signup"
-           style="display:inline-flex;align-items:center;gap:7px;padding:11px 22px;background:#fff;color:var(--brand);border:2px solid var(--brand);border-radius:10px;font-weight:700;font-size:14px;text-decoration:none;transition:all .15s;"
-           onmouseover="this.style.background='var(--brand);color:#fff'" onmouseout="this.style.background='#fff'">
+           style="display:inline-flex;align-items:center;gap:7px;padding:11px 22px;background:#fff;color:var(--brand);border:2px solid var(--brand);border-radius:10px;font-weight:700;font-size:14px;text-decoration:none;">
             <i class="fa-solid fa-user-plus"></i> Create Free Account
         </a>
     </div>
@@ -786,28 +212,18 @@
         ✦ Trusted by patients across India, UK &amp; US &nbsp;·&nbsp; Works with SRL, Thyrocare, Dr Lal, Apollo &amp; all major labs
     </p>
 
-    <!-- Three pillars -->
     <div class="pillars">
         <div class="pillar">
             <div class="pillar-icon"><i class="fa-solid fa-file-medical"></i></div>
-            <div class="pillar-text">
-                <strong>Report Decoder</strong>
-                <span>Explains every lab value in plain English — what's normal, what's not, what it means for you</span>
-            </div>
+            <div class="pillar-text"><strong>Report Decoder</strong><span>Explains every lab value in plain English — what's normal, what's not, what it means for you</span></div>
         </div>
         <div class="pillar">
             <div class="pillar-icon"><i class="fa-solid fa-stethoscope"></i></div>
-            <div class="pillar-text">
-                <strong>Doctor Visit Prep</strong>
-                <span>Generates a personalised brief — 5 questions to ask, what your doctor will check, warning signs</span>
-            </div>
+            <div class="pillar-text"><strong>Doctor Visit Prep</strong><span>Generates a personalised brief — 5 questions to ask, what your doctor will check, warning signs</span></div>
         </div>
         <div class="pillar">
             <div class="pillar-icon"><i class="fa-solid fa-brain"></i></div>
-            <div class="pillar-text">
-                <strong>Health Memory</strong>
-                <span>Tracks your markers over time, detects trends, and alerts you when something changes</span>
-            </div>
+            <div class="pillar-text"><strong>Health Memory</strong><span>Tracks your markers over time, detects trends, and alerts you when something changes</span></div>
         </div>
     </div>
 
@@ -818,10 +234,8 @@
     </div>
 </div>
 
-<!-- Main -->
 <div class="main">
 
-    <!-- Upload zone -->
     <div class="upload-zone" id="uploadZone">
         <input type="file" id="fileInput" accept=".pdf,.txt">
         <i class="fa-solid fa-file-medical-alt"></i>
@@ -832,13 +246,11 @@
         <div class="file-types">PDF · TXT · Max 5MB</div>
     </div>
 
-    <!-- File status -->
     <div class="file-status" id="fileStatus">
         <i class="fa-solid fa-file-medical fa-spin"></i>
         <span id="fileStatusText">Processing your report…</span>
     </div>
 
-    <!-- Chat area -->
     <div class="chat-area" id="chatArea">
         <div class="chat-header">
             <div class="phi-icon">φ</div>
@@ -849,24 +261,15 @@
         </div>
 
         <div class="chat-messages" id="chatMessages">
-            <!-- Welcome message -->
             <div class="msg ai">
                 <div class="msg-av ai">φ</div>
                 <div class="msg-bubble">
                     <strong>Hi, I'm PHI — your Personal Health Intelligence assistant.</strong>
                     <p style="margin-top:10px">I do three things most health apps don't:</p>
-                    <p style="margin-top:8px">
-                        <strong>📋 Decode your reports</strong> — I read any lab report and explain every value in plain language. No medical jargon. No anxiety-inducing numbers without context.
-                    </p>
-                    <p>
-                        <strong>🩺 Prepare you for your doctor</strong> — After reading your report, I generate a personalised Doctor Visit Prep card: the 5 questions to ask, what your doctor will likely check next, and warning signs to watch for.
-                    </p>
-                    <p>
-                        <strong>🧠 Remember your health over time</strong> — In a full account, I store every report you upload, track how your markers change, and alert you when trends appear. Most people see a doctor once a year. I stay with you every day.
-                    </p>
-                    <p style="margin-top:10px; color: var(--brand); font-weight:600">
-                        → Upload your lab report above to see all three in action.
-                    </p>
+                    <p style="margin-top:8px"><strong>📋 Decode your reports</strong> — I read any lab report and explain every value in plain language. No medical jargon. No anxiety-inducing numbers without context.</p>
+                    <p><strong>🩺 Prepare you for your doctor</strong> — After reading your report, I generate a personalised Doctor Visit Prep card: the 5 questions to ask, what your doctor will likely check next, and warning signs to watch for.</p>
+                    <p><strong>🧠 Remember your health over time</strong> — In a full account, I store every report you upload, track how your markers change, and alert you when trends appear.</p>
+                    <p style="margin-top:10px; color: var(--brand); font-weight:600">→ Upload your lab report above to see all three in action.</p>
                     <p style="margin-top:4px">Or ask me anything about your health right now:</p>
                     <div class="suggestions" id="suggestionChips">
                         <button class="chip" onclick="useSuggestion(this)">What does my HbA1c tell me?</button>
@@ -879,23 +282,15 @@
         </div>
 
         <div class="chat-input-area">
-            <textarea class="chat-input" id="chatInput"
-                placeholder="Ask PHI about your health…"
-                rows="1"></textarea>
-            <button class="send-btn" id="sendBtn" title="Send">
-                <i class="fa-solid fa-arrow-up"></i>
-            </button>
+            <textarea class="chat-input" id="chatInput" placeholder="Ask PHI about your health…" rows="1"></textarea>
+            <button class="send-btn" id="sendBtn" title="Send"><i class="fa-solid fa-arrow-up"></i></button>
         </div>
-        <div class="chat-disclaimer">
-            PHI is not a doctor. Always consult a healthcare professional for medical decisions.
-        </div>
+        <div class="chat-disclaimer">PHI is not a doctor. Always consult a healthcare professional for medical decisions.</div>
     </div>
 
-    <!-- CTA panel — shown after first interaction -->
     <div class="cta-panel" id="ctaPanel" style="display:none">
         <h3>You've just seen how PHI <em>understands</em> your health.</h3>
         <p>Now imagine this: PHI remembers every report you upload, tracks your health over time, and alerts you before problems become serious. Your complete health picture — always with you, always up to date.</p>
-
         <div class="cta-compare">
             <div class="compare-col">
                 <div class="compare-head">Demo (now)</div>
@@ -914,28 +309,44 @@
                 <div class="compare-item yes"><i class="fa-solid fa-check"></i> Doctor prep for every visit</div>
             </div>
         </div>
-
-        <a href="/signup" class="btn-cta-signup">
-            <i class="fa-solid fa-user-plus"></i> Create Your Free Account
-        </a>
+        <a href="/signup" class="btn-cta-signup"><i class="fa-solid fa-user-plus"></i> Create Your Free Account</a>
         <div class="cta-sub">Free to start · No credit card · Takes 30 seconds</div>
     </div>
 
 </div>
 
 <script>
-// ── Config ──────────────────────────────────────────────────────────────────
-const API = location.hostname.includes('api.curabook.com')
-    ? 'https://api.curabook.com'
-    : 'https://api.curabook.com';
+// ── Config ────────────────────────────────────────────────────────────────────
+const API = 'https://api.curabook.com';
 
-let demoSessionId = localStorage.getItem('phi_demo_session') || '';
-let demoConvId    = 'demo-conv-' + Date.now();
-let lastDocText   = '';
-let hasDocument   = false;
+let demoSessionId    = localStorage.getItem('phi_demo_session') || '';
+let demoConvId       = 'demo-conv-' + Date.now();
 let interactionCount = 0;
 
-// ── Init demo session ────────────────────────────────────────────────────────
+// FIX: document context management
+// lastDocText is ONLY sent on the FIRST message after a document upload.
+// After that, PHI reads from its in-session memory, not raw text re-injection.
+// Sending the raw doc text on every follow-up message caused:
+//   1. Every chat call doing a full LLM extraction (slow + expensive)
+//   2. The document being "re-uploaded" conceptually on every turn
+//   3. Follow-up questions being answered as if the doc was just uploaded
+const _doc = {
+    text:      null,   // raw document text (only sent once)
+    sent:      false,  // has it been sent to the AI yet?
+    hasDoc:    false,  // is there a document in this session?
+    setDoc(t)  { this.text = t; this.sent = false; this.hasDoc = !!t; },
+    consume()  {
+        // Returns doc text only on first call, then clears it
+        if (!this.sent && this.text) {
+            this.sent = true;
+            return this.text;
+        }
+        return null;
+    },
+    clear()    { this.text = null; this.sent = false; this.hasDoc = false; },
+};
+
+// ── Init demo session ─────────────────────────────────────────────────────────
 async function initSession() {
     try {
         const headers = demoSessionId ? { 'X-Demo-Session': demoSessionId } : {};
@@ -954,7 +365,7 @@ function getDemoHeaders() {
     return { 'X-Demo-Session': demoSessionId };
 }
 
-// ── Toast ────────────────────────────────────────────────────────────────────
+// ── Toast ─────────────────────────────────────────────────────────────────────
 function toast(msg, type = 'success') {
     const el = document.createElement('div');
     el.className = `toast ${type}`;
@@ -963,7 +374,7 @@ function toast(msg, type = 'success') {
     setTimeout(() => el.remove(), 4000);
 }
 
-// ── File upload ──────────────────────────────────────────────────────────────
+// ── File upload ───────────────────────────────────────────────────────────────
 const fileInput   = document.getElementById('fileInput');
 const uploadZone  = document.getElementById('uploadZone');
 const fileStatus  = document.getElementById('fileStatus');
@@ -977,7 +388,6 @@ fileInput.addEventListener('change', e => {
     fileInput.value = '';
 });
 
-// Drag and drop
 uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
 uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
 uploadZone.addEventListener('drop', e => {
@@ -1002,11 +412,13 @@ async function uploadFile(file) {
             headers: getDemoHeaders(),
             body: form,
         });
-
         const data = await res.json();
 
         if (!res.ok || !data.success) {
             toast(data.error || 'Could not read this file. Try a clear PDF.', 'error');
+            fileStatus.classList.remove('visible');
+            uploadZone.style.opacity = '1';
+            uploadZone.style.pointerEvents = 'auto';
             return;
         }
 
@@ -1014,41 +426,43 @@ async function uploadFile(file) {
         uploadZone.style.opacity = '1';
         uploadZone.style.pointerEvents = 'auto';
 
-        // Store doc text for follow-up questions
-        lastDocText = data.document_text || '';
-        hasDocument = true;
+        // FIX: Store doc text but mark it as NOT YET SENT
+        // It will be sent ONCE with the first auto-explain message,
+        // then cleared so follow-up messages don't re-send it.
+        _doc.setDoc(data.document_text || '');
 
         // Hide suggestion chips
         const chips = document.getElementById('suggestionChips');
         if (chips) chips.style.display = 'none';
 
-        // Auto-send full explanation request — user gets PHI's analysis immediately
-        // without needing to type anything
+        // Auto-send explanation request (sends doc text THIS ONE TIME)
         const explainMsg = "Please read my uploaded medical report and explain every finding. Tell me what each value means, what is normal, what needs attention, and what I should discuss with my doctor.";
         addMsg(explainMsg, 'user');
         const botDiv = addMsg('', 'ai', true);
         sendBtn.disabled = true;
 
         try {
+            // consume() returns the doc text and marks it as sent — future calls return null
+            const docTextToSend = _doc.consume();
+
             const res2 = await fetch(`${API}/demo/chat`, {
                 method: 'POST',
                 headers: { ...getDemoHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    message:          explainMsg,
-                    conversation_id:  demoConvId,
-                    has_documents:    true,
-                    document_text:    lastDocText,
+                    message:         explainMsg,
+                    conversation_id: demoConvId,
+                    has_documents:   true,
+                    document_text:   docTextToSend,   // FIX: sent exactly ONCE
                 }),
             });
             const d2 = await res2.json();
             updateMsg(botDiv, d2.reply || 'Could not generate explanation. Please try asking a question below.');
 
-            // Show doctor prep AFTER PHI explanation so it flows naturally
             if (data.doctor_prep) {
                 addMsg(data.doctor_prep, 'ai');
             }
 
-            // Update chips with specific questions based on report
+            // Update chips with context-aware follow-up questions
             if (chips) {
                 chips.innerHTML = [
                     'What should I do about the abnormal results?',
@@ -1073,7 +487,7 @@ async function uploadFile(file) {
     }
 }
 
-// ── Chat ─────────────────────────────────────────────────────────────────────
+// ── Chat ──────────────────────────────────────────────────────────────────────
 const chatMessages = document.getElementById('chatMessages');
 const chatInput    = document.getElementById('chatInput');
 const sendBtn      = document.getElementById('sendBtn');
@@ -1082,7 +496,6 @@ chatInput.addEventListener('input', () => {
     chatInput.style.height = 'auto';
     chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px';
 });
-
 chatInput.addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
 });
@@ -1100,35 +513,37 @@ async function sendMessage() {
     chatInput.value = '';
     chatInput.style.height = 'auto';
 
-    // Hide suggestion chips after first use
     const chips = document.getElementById('suggestionChips');
     if (chips) chips.style.display = 'none';
 
     addMsg(text, 'user');
-    const botDiv = addMsg('', 'ai', true); // typing indicator
+    const botDiv = addMsg('', 'ai', true);
     sendBtn.disabled = true;
 
     try {
+        // FIX: consume() returns doc text only on first call after upload.
+        // For all subsequent messages it returns null, so document_text is
+        // empty and has_documents is false — the backend correctly reads
+        // from its stored session memory instead of re-processing raw text.
+        const docTextToSend = _doc.consume();
+
         const res = await fetch(`${API}/demo/chat`, {
             method: 'POST',
             headers: { ...getDemoHeaders(), 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                message:          text,
-                conversation_id:  demoConvId,
-                has_documents:    hasDocument,
-                document_text:    lastDocText,
+                message:         text,
+                conversation_id: demoConvId,
+                has_documents:   _doc.hasDoc,
+                document_text:   docTextToSend || '',   // null → '' after first send
             }),
         });
-
         const data = await res.json();
         updateMsg(botDiv, data.reply || 'Something went wrong. Please try again.');
-
     } catch(e) {
         updateMsg(botDiv, 'Connection error. Is the backend running?');
     }
 
     sendBtn.disabled = false;
-
     interactionCount++;
     if (interactionCount >= 2) showCta();
 }
@@ -1136,14 +551,11 @@ async function sendMessage() {
 function addMsg(text, role, typing = false) {
     const wrap = document.createElement('div');
     wrap.className = `msg ${role === 'user' ? 'user' : 'ai'}`;
-
     const av = document.createElement('div');
     av.className = `msg-av ${role === 'user' ? 'usr' : 'ai'}`;
     av.textContent = role === 'user' ? 'Y' : 'φ';
-
     const bubble = document.createElement('div');
     bubble.className = 'msg-bubble';
-
     if (typing) {
         bubble.innerHTML = '<div class="typing"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>';
     } else {
@@ -1151,10 +563,8 @@ function addMsg(text, role, typing = false) {
             ? esc(text)
             : (typeof marked !== 'undefined' ? marked.parse(text) : text);
     }
-
     if (role === 'user') { wrap.appendChild(bubble); wrap.appendChild(av); }
     else                  { wrap.appendChild(av);     wrap.appendChild(bubble); }
-
     chatMessages.appendChild(wrap);
     chatMessages.scrollTop = chatMessages.scrollHeight;
     return wrap;
@@ -1162,41 +572,31 @@ function addMsg(text, role, typing = false) {
 
 function updateMsg(wrap, text) {
     const bubble = wrap.querySelector('.msg-bubble');
-    if (bubble) {
-        bubble.innerHTML = typeof marked !== 'undefined' ? marked.parse(text) : text;
-    }
+    if (bubble) bubble.innerHTML = typeof marked !== 'undefined' ? marked.parse(text) : text;
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
 function esc(s) {
-    return String(s)
-        .replace(/&/g,'&amp;').replace(/</g,'&lt;')
-        .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// ── CTA ───────────────────────────────────────────────────────────────────────
 function showCta() {
     const panel = document.getElementById('ctaPanel');
     if (panel) panel.style.display = 'block';
 }
 
-// ── Init ─────────────────────────────────────────────────────────────────────
 initSession();
 </script>
-<!-- SEO Footer -->
+
 <footer style="background:#fff;border-top:1px solid #e5e7eb;padding:24px;text-align:center;font-size:12.5px;color:#9ca3af;flex-shrink:0;">
     <nav aria-label="Site links" style="display:flex;justify-content:center;flex-wrap:wrap;gap:16px;margin-bottom:10px;">
-        <a href="/demo" style="color:#6b7280;text-decoration:none;" title="Try PHI free — no signup">Try Demo Free</a>
-        <a href="/signup" style="color:#6b7280;text-decoration:none;" title="Create a free Curabook account">Create Account</a>
-        <a href="/login" style="color:#6b7280;text-decoration:none;" title="Sign in to Curabook PHI">Sign In</a>
-        <a href="https://curabook.com/how-it-works" style="color:#6b7280;text-decoration:none;" title="How PHI reads your lab reports">How It Works</a>
-        <a href="https://curabook.com/ai-medical-analysis" style="color:#6b7280;text-decoration:none;" title="AI-powered medical report analysis">AI Medical Analysis</a>
-        <a href="https://curabook.com/symptom-checker" style="color:#6b7280;text-decoration:none;" title="AI symptom checker and health guide">Symptom Checker</a>
-        <a href="https://curabook.com/health-ai" style="color:#6b7280;text-decoration:none;" title="Health AI — personal health intelligence">Health AI</a>
-        <a href="https://curabook.com/privacy" style="color:#6b7280;text-decoration:none;" title="Privacy Policy">Privacy Policy</a>
-        <a href="https://curabook.com/terms" style="color:#6b7280;text-decoration:none;" title="Terms of Service">Terms</a>
+        <a href="/demo" style="color:#6b7280;text-decoration:none;">Try Demo Free</a>
+        <a href="/signup" style="color:#6b7280;text-decoration:none;">Create Account</a>
+        <a href="/login" style="color:#6b7280;text-decoration:none;">Sign In</a>
+        <a href="https://curabook.com/privacy" style="color:#6b7280;text-decoration:none;">Privacy Policy</a>
+        <a href="https://curabook.com/terms" style="color:#6b7280;text-decoration:none;">Terms</a>
     </nav>
-    <p>© 2025 Curabook PHI · AI-powered health intelligence · Security-first · AES-256 Encrypted · Privacy-focused · Your data is never sold</p>
+    <p>© 2025 Curabook PHI · AI-powered health intelligence · AES-256 Encrypted · Privacy-focused · Your data is never sold</p>
     <p style="margin-top:4px;">PHI is not a doctor. Always consult a qualified healthcare professional for medical advice.</p>
 </footer>
 

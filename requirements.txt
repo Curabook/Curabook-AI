@@ -6,3 +6,20 @@ supabase
 python-dotenv
 groq
 openai
+
+# PDF extraction — REQUIRED for /analyze to work at all
+# Without pypdf, every document upload returns 500
+pypdf
+
+# Optional: OCR for scanned PDFs (install Tesseract system package separately)
+# pdf2image
+# pytesseract
+
+# Optional: semantic search / embeddings
+# sentence-transformers
+
+# Optional: Stripe payments
+# stripe
+
+# Optional: Redis-backed rate limiting (required for multi-worker production)
+# redis

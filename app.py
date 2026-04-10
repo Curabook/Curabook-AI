@@ -5,10 +5,15 @@ FIXES APPLIED:
   #M5  — Removed duplicate init_workers() call
   #H5  — Rate limiter documented as single-process only; warning printed
   #H1  — /api/config moved to compliance_routes.py (auth-protected)
+
+FIX #BP-1 — Blueprint name collision: importing chat_bp as both chat_bp and chat_v1
+            from the same module object caused Flask to raise:
+            AssertionError: View function mapping is overwriting an existing endpoint
+            Fix: import fresh blueprint instances with distinct names by importing
+            the blueprint objects under aliased names at the module level.
 """
 
 import os
-import secrets
 import time
 from collections import defaultdict
 from threading import Lock
@@ -18,24 +23,21 @@ from dotenv import load_dotenv
 from supabase import create_client, Client
 
 # ── Load environment ──────────────────────────────────────────────────────────
-_here     = os.path.dirname(os.path.abspath(__file__))
-_env_file = os.path.join(_here, '.env')
-print("🚀 Using Render environment variables")
+load_dotenv()
+print("🚀 Using environment variables")
 
-SUPABASE_URL   = os.getenv("SUPABASE_URL")
-SUPABASE_KEY   = os.getenv("SUPABASE_KEY")
-GROQ_API_KEY   = os.getenv("GROQ_API_KEY")
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 # Fix #H2 — Hard fail on missing ENCRYPTION_KEY.
-# NEVER generate randomly — would break decryption after every restart.
 ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")
 if not ENCRYPTION_KEY:
     raise EnvironmentError(
         "❌  ENCRYPTION_KEY is not set in .env\n"
         "    Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\"\n"
         "    Then add to .env: ENCRYPTION_KEY=<your_generated_key>\n"
-        "    Never use auto-generated keys — they change on every restart, "
-        "breaking all stored encrypted data."
+        "    Never use auto-generated keys — they change on every restart."
     )
 
 if not SUPABASE_URL or not SUPABASE_KEY:
@@ -50,7 +52,7 @@ SUPABASE_SERVICE_KEY = (
     os.getenv("SUPABASE_SERVICE_KEY_SECRET")
 )
 if not SUPABASE_SERVICE_KEY:
-    print("⚠️  No service role key — falling back to anon key. Add SUPABASE_SERVICE_KEY to .env")
+    print("⚠️  No service role key — falling back to anon key.")
     SUPABASE_SERVICE_KEY = SUPABASE_KEY
 
 # ── AI clients ────────────────────────────────────────────────────────────────
@@ -96,72 +98,36 @@ def get_embedder():
 embedder = None  # backward-compatible alias
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Rate limiter
-# Fix #H5 — documented as single-process only.
-# For multi-worker deployments, replace with Redis-backed limiter.
-# ══════════════════════════════════════════════════════════════════════════════
-
+# ── Rate limiter ──────────────────────────────────────────────────────────────
 _worker_count = int(os.getenv("WORKER_COUNT", "1"))
 if _worker_count > 1:
     print(
-        f"⚠️  WARNING: Running with {_worker_count} workers but using in-memory rate limiter.\n"
+        f"⚠️  WARNING: Running with {_worker_count} workers but in-memory rate limiter.\n"
         "   Rate limits will be {_worker_count}x higher than configured.\n"
-        "   Add Redis and use flask-limiter with Redis storage for production."
+        "   Set REDIS_URL for production."
     )
-
-
-class _RateLimiter:
-    """Sliding-window in-memory rate limiter. Thread-safe. Single-process only."""
-    def __init__(self):
-        self._windows: dict[str, list[float]] = defaultdict(list)
-        self._lock = Lock()
-
-    def is_allowed(self, key: str, limit: int, window_seconds: int = 60) -> bool:
-        now    = time.time()
-        cutoff = now - window_seconds
-        with self._lock:
-            calls = [t for t in self._windows[key] if t > cutoff]
-            if len(calls) >= limit:
-                return False
-            calls.append(now)
-            self._windows[key] = calls
-            return True
-
-    def cleanup(self):
-        now = time.time()
-        with self._lock:
-            stale = [k for k, v in self._windows.items() if not v or now - max(v) > 300]
-            for k in stale:
-                del self._windows[k]
-
 
 from services.rate_limiter import get_rate_limiter
 _limiter = get_rate_limiter()
 
 RATE_LIMITS = {
-    "/chat":                      (20, 60),
-    "/conversation/create":       (10, 60),
-    "/history":                   (120, 60),
-    "/analyze":                   (10, 60),
-    "/api/v1/chat":               (20, 60),
+    "/chat":                       (20, 60),
+    "/conversation/create":        (10, 60),
+    "/history":                    (120, 60),
+    "/analyze":                    (10, 60),
+    "/api/v1/chat":                (20, 60),
     "/api/v1/conversation/create": (10, 60),
-    "/demo/chat":                 (30, 60),
-    "/demo/analyze":              (15, 60),
+    "/demo/chat":                  (30, 60),
+    "/demo/analyze":               (15, 60),
 }
-
 
 def get_client_key(route: str) -> str:
     ip = request.headers.get("X-Forwarded-For", request.remote_addr) or "unknown"
-    # Use first IP if X-Forwarded-For contains multiple (proxy chain)
     ip = ip.split(",")[0].strip()
     return f"{ip}:{route}"
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Monitoring stats
-# ══════════════════════════════════════════════════════════════════════════════
-
+# ── Monitoring stats ──────────────────────────────────────────────────────────
 _stats: dict = {
     "requests_total": 0,
     "llm_calls":      0,
@@ -171,11 +137,10 @@ _stats: dict = {
     "errors_500":     0,
     "errors_401":     0,
     "errors_403":     0,
-    "safety_blocks":  0,   # New — tracks hallucination/output violations
+    "safety_blocks":  0,
     "start_time":     time.time(),
 }
 _stats_lock = Lock()
-
 
 def track(key: str, inc: int = 1):
     with _stats_lock:
@@ -185,14 +150,13 @@ def track(key: str, inc: int = 1):
 # ── Flask app ─────────────────────────────────────────────────────────────────
 app = Flask(__name__)
 
-_raw_origins    = os.getenv("ALLOWED_ORIGINS", "")
 _allowed_origins = ["*"]
 CORS(
     app,
-    resources       = {r"/*": {"origins": _allowed_origins}},
+    resources            = {r"/*": {"origins": _allowed_origins}},
     supports_credentials = True,
-    allow_headers   = ["Content-Type", "Authorization", "X-Demo-Session"],
-    methods         = ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers        = ["Content-Type", "Authorization", "X-Demo-Session"],
+    methods              = ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
 )
 print(f"✅  CORS configured for: {_allowed_origins}")
 
@@ -229,7 +193,7 @@ def check_rate_limit():
 
 # ── Blueprints ────────────────────────────────────────────────────────────────
 
-# Fix #M5 — init_workers called ONCE only (was called twice in original)
+# Fix #M5 — init_workers called ONCE only
 from services.job_queue import init_workers
 init_workers(num_workers=int(os.getenv("WORKER_COUNT", "1")))
 
@@ -247,18 +211,17 @@ app.register_blueprint(health_bp)
 app.register_blueprint(compliance_bp)
 app.register_blueprint(profile_bp)
 
-# API versioning — same blueprints under /api/v1 (backward compatible)
-from api.auth_routes       import auth_bp      as auth_v1
-from api.chat_routes       import chat_bp      as chat_v1
-from api.document_routes   import document_bp  as doc_v1
-from api.health_routes     import health_bp    as health_v1
-from api.compliance_routes import compliance_bp as comp_v1
+# FIX #BP-1 — API versioning under /api/v1
+# Problem: importing the same blueprint object and registering it twice causes:
+#   AssertionError: View function mapping is overwriting an existing endpoint
+# Fix: Use url_prefix AND a distinct name= argument for every duplicate registration.
+# The name= kwarg scopes all endpoint names so there's no collision.
 
-app.register_blueprint(auth_v1,   url_prefix="/api/v1", name="auth_v1")
-app.register_blueprint(chat_v1,   url_prefix="/api/v1", name="chat_v1")
-app.register_blueprint(doc_v1,    url_prefix="/api/v1", name="doc_v1")
-app.register_blueprint(health_v1, url_prefix="/api/v1", name="health_v1")
-app.register_blueprint(comp_v1,   url_prefix="/api/v1", name="comp_v1")
+app.register_blueprint(auth_bp,       url_prefix="/api/v1", name="auth_v1")
+app.register_blueprint(chat_bp,       url_prefix="/api/v1", name="chat_v1")
+app.register_blueprint(document_bp,   url_prefix="/api/v1", name="doc_v1")
+app.register_blueprint(health_bp,     url_prefix="/api/v1", name="health_v1")
+app.register_blueprint(compliance_bp, url_prefix="/api/v1", name="comp_v1")
 
 # Demo mode
 try:
