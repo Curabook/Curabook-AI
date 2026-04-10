@@ -1,4 +1,5 @@
 {
+  "root": "frontend",
   "cleanUrls": true,
   "rewrites": [
     { "source": "/signup",  "destination": "/signup.html"  },
