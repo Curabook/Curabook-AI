@@ -2,6 +2,8 @@
   "root": "frontend",
   "cleanUrls": true,
   "rewrites": [
+    { "source": "/sitemap.xml", "destination": "/sitemap.xml" },
+    { "source": "/robots.txt",  "destination": "/robots.txt"  },
     { "source": "/signup",  "destination": "/signup.html"  },
     { "source": "/login",   "destination": "/login.html"   },
     { "source": "/demo",    "destination": "/demo.html"    },
@@ -10,6 +12,20 @@
     { "source": "/",        "destination": "/index.html"   }
   ],
   "headers": [
+    {
+      "source": "/sitemap.xml",
+      "headers": [
+        { "key": "Content-Type",  "value": "application/xml" },
+        { "key": "Cache-Control", "value": "public, max-age=86400" }
+      ]
+    },
+    {
+      "source": "/robots.txt",
+      "headers": [
+        { "key": "Content-Type",  "value": "text/plain" },
+        { "key": "Cache-Control", "value": "public, max-age=86400" }
+      ]
+    },
     {
       "source": "/(.*)",
       "headers": [
