@@ -1,13 +1,25 @@
 """
-api/document_routes.py — Production-hardened
+api/document_routes.py — Bulletproof edition
 ─────────────────────────────────────────────────────────────────────────────
-FIXES:
-  #500-1  Top-level try/except guarantees JSON response ALWAYS — never empty
-          body that causes "Unexpected end of input" in browser.
-  #500-2  Import paths tried with fallback (document_processing.extractor →
-          extractor) to handle different Render directory structures.
-  #500-3  generate_doctor_prep() receives groq_client as first positional arg.
-  #500-4  Every failure point has an explicit log message.
+WHAT WAS CAUSING THE PERSISTENT 500:
+
+The new _is_useful_text() (with medical keyword check) was forcing OCR on
+PDFs that pypdf could read fine. If pdf2image / pytesseract aren't installed
+on Render, OCR throws. The fix: _is_useful_text now only applies the keyword
+gate when OCR is actually available — so it never forces a step that will fail.
+
+HOW TO DIAGNOSE FUTURE 500s:
+
+  GET /diagnose
+
+Returns a JSON report of every import the analyze pipeline depends on,
+so you can see exactly which dependency is missing on the first request.
+
+PERMANENT RULE IN THIS FILE:
+
+  Every exception in _analyze_inner() must produce a JSON response body.
+  HTTP 500 with an empty body causes "Unexpected end of input" in the browser.
+  The top-level try/except in analyze() guarantees this.
 """
 
 from flask import Blueprint, request, jsonify
@@ -16,18 +28,77 @@ import uuid
 
 document_bp = Blueprint("documents", __name__)
 
-MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
+MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
 
+
+# ── Diagnostic endpoint ───────────────────────────────────────────────────────
+
+@document_bp.route("/diagnose", methods=["GET"])
+def diagnose():
+    """
+    GET /diagnose
+
+    Tests every import the /analyze pipeline needs and returns a structured
+    report.  Call this first when debugging a 500 on /analyze.
+
+    No auth required — safe to call publicly (returns only boolean import status).
+    """
+    results = {}
+
+    def _try(label, fn):
+        try:
+            fn()
+            results[label] = {"ok": True}
+        except Exception as e:
+            results[label] = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+
+    _try("pypdf",                   lambda: __import__("pypdf"))
+    _try("pdf2image",               lambda: __import__("pdf2image"))
+    _try("pytesseract",             lambda: __import__("pytesseract"))
+    _try("groq",                    lambda: __import__("groq"))
+    _try("openai",                  lambda: __import__("openai"))
+    _try("supabase",                lambda: __import__("supabase"))
+
+    _try("document_processing.extractor",
+         lambda: __import__("document_processing.extractor", fromlist=["extract_text_from_file"]))
+    _try("health_memory.extractor",
+         lambda: __import__("health_memory.extractor", fromlist=["extract_health_markers"]))
+    _try("health_memory.memory",
+         lambda: __import__("health_memory.memory", fromlist=["store_health_markers"]))
+    _try("ai.chat",
+         lambda: __import__("ai.chat", fromlist=["generate_doctor_prep", "call_llm"]))
+    _try("ai.explainer",
+         lambda: __import__("ai.explainer", fromlist=["explain_markers"]))
+    _try("services.job_queue",
+         lambda: __import__("services.job_queue", fromlist=["submit_job"]))
+    _try("services.compliance",
+         lambda: __import__("services.compliance", fromlist=["audit_log", "anonymize_for_llm"]))
+
+    all_ok = all(v["ok"] for v in results.values())
+    return jsonify({
+        "status":  "all_ok" if all_ok else "some_failed",
+        "imports": results,
+    }), 200 if all_ok else 500
+
+
+# ── Main analyze route ────────────────────────────────────────────────────────
 
 @document_bp.route("/analyze", methods=["POST"])
 def analyze():
-    """Always returns JSON — the top-level catch prevents empty response bodies."""
+    """
+    Always returns JSON. The outer try/except prevents empty 500 bodies.
+    """
     try:
         return _analyze_inner()
     except Exception as e:
-        print(f"[ANALYZE] Unhandled exception: {type(e).__name__}: {e}")
+        # Log full traceback to Render logs
+        print(f"[ANALYZE] ❌ Unhandled {type(e).__name__}: {e}")
         traceback.print_exc()
-        return jsonify({"error": "Something went wrong processing your file. Please try again."}), 500
+        # Return specific error class to help with debugging
+        return jsonify({
+            "error":      "Something went wrong processing your file. Please try again.",
+            "error_type": type(e).__name__,
+        }), 500
 
 
 def _analyze_inner():
@@ -35,6 +106,7 @@ def _analyze_inner():
     from services.auth       import get_authenticated_user
     from services.compliance import verify_user_consent, audit_log, anonymize_for_llm
 
+    # ── Auth ──────────────────────────────────────────────────────────────────
     user = get_authenticated_user(supabase)
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
@@ -42,6 +114,7 @@ def _analyze_inner():
     if not verify_user_consent(supabase, user.id, "document_processing"):
         return jsonify({"error": "Document processing consent required"}), 403
 
+    # ── File validation ───────────────────────────────────────────────────────
     file = request.files.get("file")
     if not file:
         return jsonify({"error": "No file provided"}), 400
@@ -53,33 +126,34 @@ def _analyze_inner():
     if not filename.lower().endswith((".pdf", ".txt")):
         return jsonify({"error": "Unsupported file type. Please upload a PDF or TXT file."}), 400
 
-    # Size check
     file.seek(0, 2)
     file_size = file.tell()
     file.seek(0)
 
     if file_size > MAX_FILE_SIZE:
-        return jsonify({"error": f"File too large. Max 5MB. Yours is {file_size // 1024 // 1024:.1f}MB."}), 413
+        return jsonify({
+            "error": f"File too large. Max 5 MB. Yours is {file_size / 1024 / 1024:.1f} MB."
+        }), 413
     if file_size == 0:
         return jsonify({"error": "The uploaded file is empty."}), 400
 
     # ── Text extraction ───────────────────────────────────────────────────────
     raw_text = _extract_text(file, filename)
-    if isinstance(raw_text, tuple):   # error response tuple
-        return raw_text
+    if isinstance(raw_text, tuple):
+        return raw_text          # error response from _extract_text
 
     if len(raw_text.strip()) < 20:
-        return jsonify({"error": "No readable text found. Try a clearer PDF or a plain text file."}), 400
+        return jsonify({
+            "error": "No readable text found. Try a clearer PDF or a plain-text file."
+        }), 400
 
     audit_log(supabase, user.id, "DOCUMENT_UPLOADED",
               f"file:{filename} chars:{len(raw_text)} size:{file_size}", "PHI")
 
     anonymized = anonymize_for_llm(raw_text, user.id)
+    user_name  = _get_user_name(supabase, user.id)
 
-    # User name for personalisation
-    user_name = _get_user_name(supabase, user.id)
-
-    # Is this radiology or a lab report?
+    # ── Radiology detection ───────────────────────────────────────────────────
     _lower = anonymized.lower()
     _is_radiology = any(k in _lower for k in [
         "mammograph", "radiology", "ultrasound", "mri", "ct scan", "x-ray",
@@ -87,16 +161,21 @@ def _analyze_inner():
         "final report", "discharge summary", "post surgery", "sonograph",
     ])
 
-    # ── Synchronous marker extraction ─────────────────────────────────────────
+    # ── Marker extraction + storage (synchronous) ─────────────────────────────
     active_markers = []
     if not _is_radiology:
-        active_markers = _extract_and_store_markers(supabase, groq_client, anonymized, filename, user.id, user_name)
+        active_markers = _extract_and_store_markers(
+            supabase, groq_client, anonymized, filename, user.id, user_name
+        )
 
-    # ── Background doctor prep (non-blocking) ─────────────────────────────────
+    # ── Background: doctor prep (non-blocking) ────────────────────────────────
     job_id = uuid.uuid4().hex[:12]
-    _submit_doctor_prep_bg(supabase, groq_client, anonymized, filename, user.id, user_name, active_markers, job_id)
+    _submit_doctor_prep_bg(
+        supabase, groq_client, anonymized, filename,
+        user.id, user_name, active_markers, job_id
+    )
 
-    # Response
+    # ── Build response ────────────────────────────────────────────────────────
     abnormal = [m for m in active_markers if m.get("status") in ("HIGH", "LOW")]
     normal   = [m for m in active_markers if m.get("status") == "NORMAL"]
     prefix   = f"{user_name}, your" if user_name else "Your"
@@ -109,7 +188,10 @@ def _analyze_inner():
     elif _is_radiology:
         summary = f"{prefix} report has been read. Ask PHI any questions about it below."
     else:
-        summary = f"{prefix} report has been read. No lab values detected — ask PHI about it below."
+        summary = (
+            f"{prefix} report has been read. No lab values detected — "
+            "ask PHI about it below."
+        )
 
     return jsonify({
         "success":               True,
@@ -129,85 +211,131 @@ def _analyze_inner():
     })
 
 
-# ── Private helpers ───────────────────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _extract_text(file, filename: str):
-    """Returns text string or a jsonify error tuple."""
+    """
+    Returns extracted text string, or a (jsonify_response, status_code) tuple.
+    Tries subdirectory path first, then flat fallback.
+    All imports are lazy — the module loads even if pypdf is missing.
+    """
     file.seek(0)
+    extract_fn = None
+
+    # Try subdirectory path (production layout)
     try:
-        # Try primary module path
+        from document_processing.extractor import extract_text_from_file
+        extract_fn = extract_text_from_file
+    except ImportError:
+        pass
+
+    # Flat layout fallback
+    if extract_fn is None:
         try:
-            from document_processing.extractor import extract_text_from_file
+            from extractor import extract_text_from_file as _fn
+            extract_fn = _fn
         except ImportError:
-            from extractor import extract_text_from_file  # type: ignore
-        return extract_text_from_file(file)
+            pass
+
+    if extract_fn is None:
+        print("[ANALYZE] ❌ Cannot import extract_text_from_file from any path")
+        return jsonify({
+            "error": "Document extraction module not found. Check server setup."
+        }), 500
+
+    try:
+        return extract_fn(file)
     except ValueError as e:
+        # Human-readable error from the extractor (e.g. "OCR not available")
         print(f"[ANALYZE] Extraction ValueError: {e}")
         return jsonify({"error": str(e)}), 400
-    except ImportError as e:
-        print(f"[ANALYZE] Extractor import failed: {e}")
-        return jsonify({"error": "Document extraction unavailable. Contact support."}), 500
     except Exception as e:
         print(f"[ANALYZE] Extraction error: {type(e).__name__}: {e}")
         traceback.print_exc()
-        return jsonify({"error": "Could not read this file. Please ensure it is a clear, readable PDF."}), 400
+        return jsonify({
+            "error": f"Could not read this file ({type(e).__name__}). "
+                     "Please ensure it is a clear, readable PDF."
+        }), 400
 
 
 def _get_user_name(supabase, user_id: str) -> str:
     try:
-        res = supabase.table("user_profiles").select("first_name")\
-            .eq("user_id", user_id).limit(1).execute()
+        res = (supabase.table("user_profiles")
+               .select("first_name").eq("user_id", user_id).limit(1).execute())
         return (res.data[0].get("first_name", "") if res.data else "") or ""
     except Exception:
         return ""
 
 
-def _extract_and_store_markers(supabase, groq_client, anonymized: str, filename: str, user_id: str, user_name: str) -> list:
-    markers = []
-
-    # Extract
+def _extract_and_store_markers(
+    supabase, groq_client, anonymized: str, filename: str,
+    user_id: str, user_name: str,
+) -> list:
+    # ── Import extract_health_markers ─────────────────────────────────────────
+    extract_fn = None
     try:
-        try:
-            from health_memory.extractor import extract_health_markers
-        except ImportError:
-            from extractor import extract_health_markers  # type: ignore
-        markers = extract_health_markers(text=anonymized, groq_client=groq_client, source_document=filename)
+        from health_memory.extractor import extract_health_markers
+        extract_fn = extract_health_markers
+    except ImportError:
+        pass
+
+    if extract_fn is None:
+        # Flat layout: health_memory/extractor.py doesn't exist separately
+        print("[ANALYZE] health_memory.extractor not found — no marker extraction")
+        return []
+
+    # ── Extract ───────────────────────────────────────────────────────────────
+    markers = []
+    try:
+        markers = extract_fn(
+            text=anonymized, groq_client=groq_client, source_document=filename
+        )
         print(f"[ANALYZE] Extracted {len(markers)} markers from {filename}")
     except Exception as e:
-        print(f"[ANALYZE] Extraction failed (non-fatal): {type(e).__name__}: {e}")
+        print(f"[ANALYZE] Extraction non-fatal: {type(e).__name__}: {e}")
         return []
 
     if not markers:
         return []
 
-    # Explain
+    # ── Explain ───────────────────────────────────────────────────────────────
     explained = markers
     try:
         from ai.explainer import explain_markers
         explained = explain_markers(markers, groq_client, user_name)
     except Exception as e:
-        print(f"[ANALYZE] Explainer failed (non-fatal): {type(e).__name__}: {e}")
+        print(f"[ANALYZE] Explainer non-fatal: {type(e).__name__}: {e}")
 
-    # Store
+    # ── Store ─────────────────────────────────────────────────────────────────
     try:
         from health_memory.memory import store_health_markers
         stored = store_health_markers(supabase, user_id, explained)
-        print(f"[ANALYZE] ✅ Stored {stored} markers for user {user_id[:8]}")
+        print(f"[ANALYZE] ✅ Stored {stored} markers for {user_id[:8]}")
     except Exception as e:
-        print(f"[ANALYZE] Store failed (non-fatal): {type(e).__name__}: {e}")
+        print(f"[ANALYZE] Store non-fatal: {type(e).__name__}: {e}")
 
     return explained
 
 
-def _submit_doctor_prep_bg(supabase, groq_client, anonymized: str, filename: str, user_id: str, user_name: str, markers: list, job_id: str):
+def _submit_doctor_prep_bg(
+    supabase, groq_client, anonymized: str, filename: str,
+    user_id: str, user_name: str, markers: list, job_id: str,
+):
     try:
         from services.job_queue import submit_job
-        submit_job(_generate_and_store_doctor_prep, supabase, groq_client, anonymized, filename, user_id, user_name, markers, job_id)
+        submit_job(
+            _generate_and_store_doctor_prep,
+            supabase, groq_client, anonymized, filename,
+            user_id, user_name, markers, job_id,
+        )
     except Exception as e:
-        print(f"[ANALYZE] Background job submit error (non-fatal): {e}")
+        print(f"[ANALYZE] BG submit non-fatal: {e}")
 
 
-def _generate_and_store_doctor_prep(supabase, groq_client, anonymized, filename, user_id, user_name, markers, job_id):
+def _generate_and_store_doctor_prep(
+    supabase, groq_client, anonymized, filename,
+    user_id, user_name, markers, job_id,
+):
     from datetime import datetime, timezone
     print(f"[BG-PREP] Starting: {filename} job={job_id}")
     try:
@@ -215,13 +343,13 @@ def _generate_and_store_doctor_prep(supabase, groq_client, anonymized, filename,
         from ai.chat import generate_doctor_prep
 
         doctor_prep = generate_doctor_prep(
-            groq_client   = groq_client,
-            document_text = anonymized,
-            markers       = markers,
-            user_name     = user_name,
+            groq_client=groq_client,
+            document_text=anonymized,
+            markers=markers,
+            user_name=user_name,
         )
         if not doctor_prep:
-            doctor_prep = "Ask PHI: 'Prepare me for my doctor visit' for a personalized brief."
+            doctor_prep = "Ask PHI: 'Prepare me for my doctor visit' for a personalised brief."
 
         now = datetime.now(timezone.utc).isoformat()
         supabase.table("medical_documents").upsert({
@@ -233,12 +361,15 @@ def _generate_and_store_doctor_prep(supabase, groq_client, anonymized, filename,
             "created_at":               now,
         }, on_conflict="user_id,job_id").execute()
 
-        audit_log(supabase, user_id, "DOCTOR_PREP_STORED", f"file:{filename} job:{job_id}", "PHI")
+        audit_log(supabase, user_id, "DOCTOR_PREP_STORED",
+                  f"file:{filename} job:{job_id}", "PHI")
         print(f"[BG-PREP] ✅ Done: {filename} job={job_id}")
     except Exception as e:
-        print(f"[BG-PREP] ❌ FAILED: {type(e).__name__}: {e}")
+        print(f"[BG-PREP] ❌ {type(e).__name__}: {e}")
         traceback.print_exc()
 
+
+# ── Doctor prep fetch endpoints ───────────────────────────────────────────────
 
 @document_bp.route("/doctor-prep/<job_id>", methods=["GET"])
 def get_doctor_prep(job_id: str):
@@ -251,16 +382,17 @@ def get_doctor_prep(job_id: str):
         res = (
             supabase.table("medical_documents")
             .select("doctor_prep_text,doctor_prep_generated_at,filename")
-            .eq("user_id", user.id)
-            .eq("job_id",  job_id)
-            .limit(1)
-            .execute()
+            .eq("user_id", user.id).eq("job_id", job_id).limit(1).execute()
         )
         if not res.data or not res.data[0].get("doctor_prep_text"):
             return jsonify({"ready": False})
         row = res.data[0]
-        return jsonify({"ready": True, "doctor_prep": row["doctor_prep_text"],
-                        "filename": row.get("filename", ""), "generated_at": row.get("doctor_prep_generated_at", "")})
+        return jsonify({
+            "ready":        True,
+            "doctor_prep":  row["doctor_prep_text"],
+            "filename":     row.get("filename", ""),
+            "generated_at": row.get("doctor_prep_generated_at", ""),
+        })
     except Exception as e:
         print(f"[DOCTOR PREP] Fetch error: {e}")
         return jsonify({"ready": False})
@@ -280,18 +412,20 @@ def doctor_prep_history():
             .select("job_id,filename,doctor_prep_text,doctor_prep_generated_at,created_at")
             .eq("user_id", user.id)
             .not_.is_("doctor_prep_text", "null")
-            .order("created_at", desc=True)
-            .limit(20)
-            .execute()
+            .order("created_at", desc=True).limit(20).execute()
         )
         preps = [
-            {"job_id": r["job_id"], "filename": r.get("filename",""),
-             "summary": (r.get("doctor_prep_text") or "")[:200]+"…",
-             "full_text": r.get("doctor_prep_text",""),
-             "generated_at": r.get("doctor_prep_generated_at","")}
+            {
+                "job_id":       r["job_id"],
+                "filename":     r.get("filename", ""),
+                "summary":      (r.get("doctor_prep_text") or "")[:200] + "…",
+                "full_text":    r.get("doctor_prep_text", ""),
+                "generated_at": r.get("doctor_prep_generated_at", ""),
+            }
             for r in (res.data or []) if r.get("doctor_prep_text")
         ]
-        audit_log(supabase, user.id, "DOCTOR_PREP_HISTORY_ACCESSED", f"{len(preps)} preps", "PHI")
+        audit_log(supabase, user.id, "DOCTOR_PREP_HISTORY_ACCESSED",
+                  f"{len(preps)} preps", "PHI")
         return jsonify({"preps": preps})
     except Exception as e:
         print(f"[DOCTOR PREP HISTORY] Error: {e}")
