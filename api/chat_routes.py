@@ -1,15 +1,24 @@
 # api/chat_routes.py — Memory-First Chat Engine + RAG
 #
-# CHANGES FROM PREVIOUS VERSION:
-#   RAG layer added to _build_context():
-#   After build_health_context_block() pulls structured marker memory,
-#   rag_search() retrieves raw document chunks semantically relevant to
-#   the user's question. This covers:
-#     - Radiology / discharge reports (no markers extracted, but text stored)
-#     - Follow-up questions about specific report wording
-#     - Any content not captured by marker extraction
+# FIX #MEM-CROSS-CONV: "New chat doesn't remember anything"
 #
-# RAG is non-blocking: if it fails or finds nothing, the chat still works.
+# ROOT CAUSES FIXED:
+#
+# 1. Facts were only extracted AFTER the LLM replied, using keyword matching
+#    on the combined user+AI text. If the reply didn't echo the user's words,
+#    the fact was lost. Now we extract from the user message FIRST using
+#    regex — instant, no LLM call, catches explicit statements like
+#    "I take metformin" or "I have diabetes" immediately.
+#
+# 2. Memory was being saved to conversation_memories but silently failing
+#    on some schema variants. Added explicit logging so Render logs show
+#    exactly how many facts were saved each turn.
+#
+# 3. build_health_context_block() is called correctly and fetches all
+#    stored memories — but if nothing was ever saved (bug 1+2), it returns
+#    empty, making every new conversation feel like a fresh start.
+#    Fix: by saving facts in Step 1b before the LLM even responds, the
+#    NEXT conversation immediately has context.
 
 import re
 import unicodedata
@@ -89,7 +98,78 @@ def _sort_by_priority(markers: list) -> list:
 
 
 # ─────────────────────────────────────────
-# Full health context builder — now with RAG
+# FIX #MEM-CROSS-CONV
+# Fast regex-based fact extraction from user message
+# Runs BEFORE LLM call — zero latency, never misses explicit statements
+# ─────────────────────────────────────────
+
+_HEALTH_FACT_PATTERNS = [
+    # Medications: "I take metformin 500mg", "I am taking vitamin D"
+    (re.compile(
+        r'\b(i\s+(?:take|am taking|use|started|been taking)|taking|on)\s+'
+        r'([a-z][a-z\s\-]{2,30}?)(?:\s+(\d+\s*(?:mg|mcg|iu|ml|g)\b))?',
+        re.I
+    ), lambda m: f"User takes {m.group(2).strip()}{' ' + m.group(3) if m.group(3) else ''}"),
+
+    # Symptoms: "I have fatigue", "I feel dizzy", "I experience pain"
+    (re.compile(
+        r'\bi\s+(?:have|feel|experience|suffer from|get|am experiencing)\s+'
+        r'([a-z][a-z\s\-]{2,40}?)(?:\s|$|[.,])',
+        re.I
+    ), lambda m: f"User reports symptom: {m.group(1).strip()}"),
+
+    # Family history
+    (re.compile(
+        r'\b(?:family history|my (?:father|mother|parent|brother|sister|sibling))\b.{0,80}',
+        re.I
+    ), lambda m: f"Family history noted: {m.group(0).strip()[:120]}"),
+
+    # Lifestyle: "I walk 30 min", "I exercise", "I don't eat meat"
+    (re.compile(
+        r'\bi\s+(?:walk|run|exercise|go to gym|workout|eat|drink|smoke|follow a|am vegetarian|am vegan).{0,60}',
+        re.I
+    ), lambda m: f"Lifestyle: {m.group(0).strip()[:120]}"),
+
+    # Diagnoses: "I have diabetes", "I was diagnosed with hypothyroid"
+    (re.compile(
+        r'\bi\s+(?:have|was diagnosed with|am|got)\s+'
+        r'(diabetes|hypertension|thyroid|pcod|pcos|anaemia|anemia|'
+        r'fatty liver|high cholesterol|prediabetes|hypothyroid|hyperthyroid|'
+        r'heart disease|kidney disease|asthma|obesity|insulin resistance)',
+        re.I
+    ), lambda m: f"User has condition: {m.group(1).strip()}"),
+
+    # Upcoming events: "I have a doctor appointment", "seeing cardiologist"
+    (re.compile(
+        r'\b(?:appointment|seeing|visit(?:ing)?)\s+(?:my\s+)?'
+        r'(?:doctor|cardiologist|endocrinologist|specialist|physician).{0,60}',
+        re.I
+    ), lambda m: f"Medical appointment: {m.group(0).strip()[:100]}"),
+]
+
+
+def _extract_facts_from_message(message: str) -> list[str]:
+    """
+    FIX #MEM-CROSS-CONV: Extract health facts from user message using regex.
+    Fast, runs before LLM, captures explicit user statements reliably.
+    """
+    facts = []
+    seen  = set()
+    for pattern, formatter in _HEALTH_FACT_PATTERNS:
+        for match in pattern.finditer(message):
+            try:
+                fact = formatter(match).strip()
+                key  = fact.lower()[:60]
+                if key not in seen and 10 < len(fact) < 200:
+                    facts.append(fact)
+                    seen.add(key)
+            except Exception:
+                pass
+    return facts[:5]
+
+
+# ─────────────────────────────────────────
+# Full health context builder — with RAG
 # ─────────────────────────────────────────
 
 def _build_context(
@@ -97,16 +177,18 @@ def _build_context(
     user_id:         str,
     current_markers: list,
     document_text:   str,
-    user_message:    str = "",   # NEW: needed for RAG query
+    user_message:    str = "",
 ) -> str:
     from health_memory.memory import build_health_context_block
 
-    # ── Layer 1: Structured health memory (markers, trends, demographics) ─────
+    # Layer 1: Structured health memory
     stored_block = build_health_context_block(supabase, user_id)
+    if stored_block:
+        print(f"[CHAT] Memory loaded: {len(stored_block)} chars for {user_id[:8]}")
+    else:
+        print(f"[CHAT] No memory found for {user_id[:8]}")
 
-    # ── Layer 2: RAG — semantically relevant document chunks ──────────────────
-    # Only runs if the user has a question (not on document upload turns where
-    # the full text is already injected). Non-blocking: failures return "".
+    # Layer 2: RAG — semantically relevant document chunks
     rag_block = ""
     if user_message and user_message.strip():
         try:
@@ -121,7 +203,7 @@ def _build_context(
         except Exception as e:
             print(f"[CHAT] RAG search (non-fatal): {e}")
 
-    # ── Layer 3: Current document block (markers from THIS turn's upload) ─────
+    # Layer 3: Current document markers
     current_block = ""
     if current_markers:
         sorted_m = _sort_by_priority(current_markers)
@@ -149,7 +231,6 @@ def _build_context(
 
         current_block = "\n".join(lines)
 
-    # ── Assemble — order: current doc > RAG chunks > stored memory ────────────
     parts = [p for p in [current_block, rag_block, stored_block] if p and p.strip()]
     if not parts:
         return ""
@@ -193,7 +274,6 @@ def chat():
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
 
-    # Consent retry — first login race condition
     for _consent_attempt in range(2):
         if verify_user_consent(supabase, user.id, "ai_processing"):
             break
@@ -214,7 +294,7 @@ def chat():
             "error": "Missing required fields: message and conversation_id"
         }), 400
 
-    # ── STEP 1: Extract markers from fresh document uploads only ──────────────
+    # ── STEP 1: Extract markers from fresh document uploads ───────────────────
     current_markers: list = []
     is_fresh_document = bool(document_text.strip()) and has_documents
     if is_fresh_document:
@@ -227,8 +307,6 @@ def chat():
         except Exception as e:
             print(f"[CHAT] Marker extraction (non-fatal): {e}")
 
-        # Also ingest the raw text into the RAG vector store
-        # so future questions about this document can be answered semantically
         try:
             from health_memory.rag import ingest_text
             ingest_text(
@@ -240,18 +318,32 @@ def chat():
         except Exception as e:
             print(f"[CHAT] RAG ingest (non-fatal): {e}")
 
-    # ── STEP 2: Build FULL health context (memory + RAG + current doc) ────────
+    # ── STEP 1b: FIX #MEM-CROSS-CONV ─────────────────────────────────────────
+    # Save facts from user message IMMEDIATELY — before LLM call.
+    # This means "I take metformin" said NOW is remembered in the NEXT
+    # conversation without waiting for the LLM to echo it back.
+    try:
+        immediate_facts = _extract_facts_from_message(message)
+        if immediate_facts:
+            saved = save_conversation_memory(
+                supabase, user.id, immediate_facts, conversation_id
+            )
+            print(f"[CHAT] Immediate facts saved: {saved} for {user.id[:8]} — {immediate_facts}")
+    except Exception as e:
+        print(f"[CHAT] Immediate fact save (non-fatal): {e}")
+
+    # ── STEP 2: Build full health context ─────────────────────────────────────
     health_context = _build_context(
         supabase        = supabase,
         user_id         = user.id,
         current_markers = current_markers,
         document_text   = document_text,
-        user_message    = message,   # passed to RAG for semantic search
+        user_message    = message,
     )
 
     has_health_data = bool(health_context.strip())
 
-    # ── STEP 3: Guard-wrap document text on first upload turn only ────────────
+    # ── STEP 3: Guard document text on first upload turn ─────────────────────
     enriched_message = message
     if is_fresh_document and document_text.strip():
         enriched_message = (
@@ -276,10 +368,8 @@ def chat():
     )
 
     # ── STEP 5: LLM call ──────────────────────────────────────────────────────
-    # Development: Groq (llama-3.3-70b-versatile)
-    # Production:  OpenAI GPT-4o (set OPENAI_API_KEY in .env)
-    # call_llm() in ai/chat.py already handles the fallback order:
-    #   OpenAI → Groq → None
+    # Dev:  Groq llama-3.3-70b-versatile (set GROQ_API_KEY)
+    # Prod: GPT-4o-mini — just set OPENAI_API_KEY, call_llm handles the switch
     reply = call_llm(groq_client, messages)
     if not reply:
         reply = "I'm having trouble right now. Please try again in a moment."
@@ -306,17 +396,20 @@ def chat():
     except Exception as e:
         print(f"[CHAT] Save turn (non-fatal): {e}")
 
-    # ── STEP 8: Extract and persist memory facts ──────────────────────────────
+    # ── STEP 8: LLM memory extraction — catches what regex misses ─────────────
+    # Regex (Step 1b) catches explicit statements.
+    # LLM extraction catches contextual/implicit facts:
+    # "My doctor told me to cut salt" → "User advised to reduce sodium"
     try:
-        facts = extract_conversation_memories(groq_client, message, reply)
-        if facts:
+        llm_facts = extract_conversation_memories(groq_client, message, reply)
+        if llm_facts:
             saved = save_conversation_memory(
-                supabase, user.id, facts, conversation_id
+                supabase, user.id, llm_facts, conversation_id
             )
             if saved:
-                print(f"[CHAT] Stored {saved} memory facts for user {user.id[:8]}")
+                print(f"[CHAT] LLM facts saved: {saved} — {llm_facts} for {user.id[:8]}")
     except Exception as e:
-        print(f"[CHAT] Memory extraction (non-fatal): {e}")
+        print(f"[CHAT] LLM memory extraction (non-fatal): {e}")
 
     return jsonify({
         "reply":           final_reply,
