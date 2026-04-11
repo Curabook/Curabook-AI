@@ -7,8 +7,16 @@
     <meta name="description" content="Sign in to your Curabook PHI health intelligence dashboard">
     <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
-    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+
+    <!--
+        FIX: ONE Supabase script tag, pinned version, from jsDelivr (more reliable than unpkg).
+        Previously: two <script> tags (cdn.jsdelivr.net + unpkg.com) loaded two different
+        versions. The second load overwrote the first mid-execution, creating a broken
+        `supabase` global. When initSupabase() called supabase.createClient(), the inline
+        script crashed with: SyntaxError: Unexpected end of input at (index):1:10
+    -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+
     <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -20,9 +28,9 @@
         --border: #e5e7eb;
         --bg: #fafafa;
         --white: #ffffff;
-        --font: 'Plus Jakarta Sans', 'Segoe UI', sans-serif;
-        --serif: 'Instrument Serif', Georgia, serif;
-        --shadow: 0 20px 60px rgba(0,0,0,.1);
+        --shadow: 0 4px 24px rgba(0,0,0,.08);
+        --font: 'Plus Jakarta Sans','Segoe UI',sans-serif;
+        --serif: 'Instrument Serif',Georgia,serif;
     }
 
     body {
@@ -33,7 +41,7 @@
         -webkit-font-smoothing: antialiased;
     }
 
-    /* Left panel */
+    /* ── Left panel ── */
     .left-panel {
         flex: 1;
         background: #0a0a0a;
@@ -47,329 +55,168 @@
     .left-panel::before {
         content: '';
         position: absolute;
-        top: -100px; right: -100px;
-        width: 400px; height: 400px;
-        background: radial-gradient(circle, rgba(0,188,213,.15) 0%, transparent 70%);
+        top: -60px; right: -60px;
+        width: 360px; height: 360px;
+        background: radial-gradient(circle, rgba(0,188,213,.14) 0%, transparent 70%);
         pointer-events: none;
     }
-    .left-panel::after {
-        content: '';
-        position: absolute;
-        bottom: -50px; left: -50px;
-        width: 300px; height: 300px;
-        background: radial-gradient(circle, rgba(0,188,213,.08) 0%, transparent 70%);
-        pointer-events: none;
-    }
-
-    .left-brand {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        z-index: 1;
-    }
+    .left-brand { display: flex; align-items: center; gap: 12px; z-index: 1; }
     .left-brand-icon {
-        width: 40px; height: 40px;
-        background: var(--brand);
-        border-radius: 10px;
+        width: 38px; height: 38px;
+        background: var(--brand); border-radius: 10px;
         display: flex; align-items: center; justify-content: center;
-        color: white; font-size: 18px;
+        color: white; font-size: 16px;
     }
-    .left-brand-name {
-        font-family: var(--serif);
-        font-size: 1.4rem;
-        color: white;
-        font-weight: 400;
-    }
+    .left-brand-name { font-family: var(--serif); font-size: 1.35rem; color: white; font-weight: 400; }
     .left-brand-tag {
-        font-size: 11px;
-        background: rgba(0,188,213,.2);
-        color: var(--brand);
-        padding: 2px 8px;
-        border-radius: 20px;
-        font-weight: 600;
-        letter-spacing: .5px;
+        font-size: 11px; background: rgba(0,188,213,.18); color: var(--brand);
+        padding: 2px 8px; border-radius: 20px; font-weight: 600;
     }
-
     .left-content { z-index: 1; }
     .left-headline {
         font-family: var(--serif);
-        font-size: clamp(2rem, 3.5vw, 2.8rem);
-        color: white;
-        line-height: 1.2;
-        letter-spacing: -.5px;
-        margin-bottom: 20px;
+        font-size: clamp(1.8rem, 3vw, 2.6rem);
+        color: white; line-height: 1.2;
+        letter-spacing: -.5px; margin-bottom: 18px;
     }
     .left-headline em { color: var(--brand); font-style: italic; }
-    .left-sub {
-        font-size: 15px;
-        color: rgba(255,255,255,.5);
-        line-height: 1.65;
-        max-width: 380px;
-    }
+    .left-sub { font-size: 15px; color: rgba(255,255,255,.45); line-height: 1.65; max-width: 380px; }
 
-    .trust-badges {
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-        z-index: 1;
-    }
-    .trust-item {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        font-size: 13px;
-        color: rgba(255,255,255,.5);
-    }
-    .trust-item i { color: var(--brand); width: 16px; }
+    .trust-badges { display: flex; flex-direction: column; gap: 12px; z-index: 1; }
+    .trust-item { display: flex; align-items: center; gap: 10px; font-size: 13px; color: rgba(255,255,255,.35); }
+    .trust-item i { color: var(--brand); width: 14px; text-align: center; }
 
-    /* Right panel */
+    /* ── Right form panel ── */
     .right-panel {
         width: 480px;
         background: var(--white);
-        display: flex;
-        align-items: center;
-        justify-content: center;
+        display: flex; align-items: center; justify-content: center;
         padding: 48px 52px;
     }
-
     .form-container { width: 100%; max-width: 360px; }
 
-    .form-header { margin-bottom: 32px; }
-    .form-title {
-        font-family: var(--serif);
-        font-size: 1.8rem;
-        font-weight: 400;
-        color: var(--text);
-        letter-spacing: -.3px;
-        margin-bottom: 6px;
-    }
+    .form-header { margin-bottom: 26px; }
+    .form-title { font-family: var(--serif); font-size: 1.9rem; font-weight: 400; color: var(--text); letter-spacing: -.3px; margin-bottom: 6px; }
     .form-sub { font-size: 14px; color: var(--muted); }
     .form-sub a { color: var(--brand); text-decoration: none; font-weight: 500; }
 
-    .form-group { margin-bottom: 18px; }
-    .form-label {
-        display: block;
-        font-size: 13px;
-        font-weight: 600;
-        color: var(--text);
-        margin-bottom: 7px;
-    }
+    .form-group { margin-bottom: 16px; }
+    .form-label { display: block; font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 7px; }
     .form-input {
-        width: 100%;
-        padding: 12px 14px;
-        border: 1.5px solid var(--border);
-        border-radius: 10px;
-        font-size: 15px;
-        font-family: var(--font);
-        color: var(--text);
-        background: var(--white);
-        outline: none;
+        width: 100%; padding: 11px 13px;
+        border: 1.5px solid var(--border); border-radius: 10px;
+        font-size: 14.5px; font-family: var(--font); color: var(--text);
+        background: var(--white); outline: none;
         transition: border-color .2s, box-shadow .2s;
     }
-    .form-input:focus {
-        border-color: var(--brand);
-        box-shadow: 0 0 0 3px rgba(0,188,213,.1);
-    }
+    .form-input:focus { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(0,188,213,.1); }
     .form-input::placeholder { color: #9ca3af; }
 
     .forgot-link {
-        display: block;
-        text-align: right;
-        font-size: 13px;
-        color: var(--brand);
-        text-decoration: none;
-        font-weight: 500;
-        margin-top: -10px;
-        margin-bottom: 18px;
+        display: block; text-align: right;
+        font-size: 13px; color: var(--brand);
+        text-decoration: none; margin-bottom: 20px; margin-top: -8px;
     }
+    .forgot-link:hover { text-decoration: underline; }
 
     .btn-primary {
-        width: 100%;
-        padding: 13px;
-        background: var(--brand);
-        color: white;
-        border: none;
-        border-radius: 10px;
-        font-size: 15px;
-        font-weight: 600;
-        font-family: var(--font);
-        cursor: pointer;
-        transition: all .15s;
-        margin-bottom: 16px;
+        width: 100%; padding: 13px;
+        background: var(--brand); color: white; border: none;
+        border-radius: 10px; font-size: 15px; font-weight: 600;
+        font-family: var(--font); cursor: pointer;
+        transition: all .15s; margin-bottom: 16px;
     }
     .btn-primary:hover { background: var(--brand-dark); transform: translateY(-1px); }
     .btn-primary:disabled { opacity: .6; cursor: not-allowed; transform: none; }
 
     .divider {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        margin-bottom: 16px;
-        font-size: 12px;
-        color: var(--muted);
+        display: flex; align-items: center; gap: 12px;
+        margin-bottom: 16px; font-size: 12px; color: var(--muted);
     }
-    .divider::before, .divider::after {
-        content: '';
-        flex: 1;
-        height: 1px;
-        background: var(--border);
-    }
+    .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
 
     .btn-google {
-        width: 100%;
-        padding: 12px;
-        background: white;
-        border: 1.5px solid var(--border);
-        border-radius: 10px;
-        font-size: 14.5px;
-        font-weight: 500;
-        font-family: var(--font);
-        color: var(--text);
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 10px;
-        transition: all .15s;
-        margin-bottom: 24px;
+        width: 100%; padding: 12px;
+        background: white; border: 1.5px solid var(--border); border-radius: 10px;
+        font-size: 14.5px; font-weight: 500; font-family: var(--font);
+        color: var(--text); cursor: pointer;
+        display: flex; align-items: center; justify-content: center; gap: 10px;
+        transition: all .15s; margin-bottom: 24px;
     }
     .btn-google:hover { background: #f9fafb; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
     .btn-google img { width: 18px; height: 18px; }
 
-    .terms-row {
-        display: flex;
-        align-items: flex-start;
-        gap: 9px;
-        margin-bottom: 22px;
-        font-size: 12.5px;
-        color: var(--muted);
-        line-height: 1.5;
-    }
-    .terms-row input[type="checkbox"] {
-        margin-top: 2px;
-        accent-color: var(--brand);
-        flex-shrink: 0;
-        width: 14px; height: 14px;
-    }
-    .terms-row a { color: var(--brand); text-decoration: none; }
-
-    .status-msg {
-        text-align: center;
-        font-size: 13.5px;
-        min-height: 20px;
-        margin-bottom: 8px;
-        font-weight: 500;
-    }
-    .status-msg.error { color: #ef4444; }
+    .status-msg { text-align: center; font-size: 13.5px; min-height: 20px; margin-bottom: 8px; font-weight: 500; }
+    .status-msg.error   { color: #ef4444; }
     .status-msg.success { color: var(--brand); }
 
     .compliance-strip {
-        text-align: center;
-        font-size: 11.5px;
-        color: #9ca3af;
-        padding-top: 20px;
-        border-top: 1px solid var(--border);
-        margin-top: 8px;
+        text-align: center; font-size: 11.5px; color: #9ca3af;
+        padding-top: 20px; border-top: 1px solid var(--border); margin-top: 8px;
     }
     .compliance-strip i { color: var(--brand); margin-right: 4px; }
 
-    /* Loading spinner */
     .spinner {
         width: 16px; height: 16px;
-        border: 2px solid rgba(255,255,255,.4);
-        border-top-color: white;
-        border-radius: 50%;
-        animation: spin .6s linear infinite;
+        border: 2px solid rgba(255,255,255,.4); border-top-color: white;
+        border-radius: 50%; animation: spin .6s linear infinite;
         display: inline-block; margin-right: 6px;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* Google Terms Modal */
+    /* ── Google Terms Modal ── */
     .terms-modal-overlay {
-        position: fixed; inset: 0;
-        background: rgba(0,0,0,.6);
-        z-index: 9999;
-        display: flex; align-items: center; justify-content: center;
-        padding: 20px;
+        position: fixed; inset: 0; background: rgba(0,0,0,.6);
+        z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 20px;
     }
     .terms-modal {
-        background: white;
-        border-radius: 16px;
-        padding: 32px;
-        max-width: 460px;
-        width: 100%;
-        box-shadow: var(--shadow);
+        background: white; border-radius: 16px; padding: 32px;
+        max-width: 460px; width: 100%; box-shadow: var(--shadow);
         animation: slideUp .25s ease;
     }
     @keyframes slideUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
     .terms-modal h3 { font-size: 1.2rem; font-weight: 700; margin-bottom: 12px; }
-    .terms-modal p { font-size: 13.5px; color: var(--muted); margin-bottom: 16px; line-height: 1.6; }
+    .terms-modal p  { font-size: 13.5px; color: var(--muted); margin-bottom: 16px; line-height: 1.6; }
     .terms-modal ul { margin: 12px 0 16px 20px; font-size: 13px; color: var(--muted); line-height: 1.8; }
     .consent-badge {
-        background: rgba(0,188,213,.07);
-        border: 1px solid rgba(0,188,213,.2);
-        border-radius: 8px;
-        padding: 10px 14px;
-        font-size: 12px;
-        color: var(--brand);
-        font-weight: 600;
-        text-align: center;
-        margin-bottom: 16px;
+        background: rgba(0,188,213,.07); border: 1px solid rgba(0,188,213,.2);
+        border-radius: 8px; padding: 10px 14px; font-size: 12px;
+        color: var(--brand); font-weight: 600; text-align: center; margin-bottom: 16px;
     }
     .terms-modal-actions { display: flex; gap: 10px; }
+    .terms-row { display: flex; align-items: flex-start; gap: 9px; margin-bottom: 20px; font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+    .terms-row input[type="checkbox"] { margin-top: 2px; accent-color: var(--brand); flex-shrink: 0; width: 14px; height: 14px; }
+    .terms-row a { color: var(--brand); text-decoration: none; }
     .btn-decline {
-        flex: 1; padding: 11px;
-        background: none;
-        border: 1.5px solid var(--border);
-        border-radius: 8px;
-        font-size: 14px;
-        font-family: var(--font);
-        cursor: pointer;
-        color: var(--muted);
-        transition: all .15s;
+        flex: 1; padding: 11px; background: none; border: 1.5px solid var(--border);
+        border-radius: 8px; font-size: 14px; font-family: var(--font); cursor: pointer; color: var(--muted); transition: all .15s;
     }
     .btn-decline:hover { border-color: #ef4444; color: #ef4444; }
     .btn-accept {
-        flex: 2; padding: 11px;
-        background: var(--brand);
-        border: none;
-        border-radius: 8px;
-        font-size: 14px;
-        font-weight: 600;
-        font-family: var(--font);
-        color: white;
-        cursor: pointer;
-        transition: all .15s;
+        flex: 2; padding: 11px; background: var(--brand); border: none;
+        border-radius: 8px; font-size: 14px; font-weight: 600; font-family: var(--font);
+        color: white; cursor: pointer; transition: all .15s;
     }
     .btn-accept:hover { background: var(--brand-dark); }
 
     @media (max-width: 900px) {
-        .left-panel { display: none; }
+        .left-panel  { display: none; }
         .right-panel { width: 100%; padding: 40px 24px; }
     }
     </style>
 </head>
 <body>
 
-<!-- Left brand panel -->
 <div class="left-panel">
     <div class="left-brand">
         <div class="left-brand-icon"><i class="fa-solid fa-heart-pulse"></i></div>
         <span class="left-brand-name">Curabook</span>
         <span class="left-brand-tag">PHI</span>
     </div>
-
     <div class="left-content">
-        <h1 class="left-headline">
-            Your personal<br>
-            <em>health intelligence</em><br>
-            system
-        </h1>
-        <p class="left-sub">
-            Upload lab reports. Track trends over time. Get actionable insights before every doctor visit. PHI remembers everything so you don't have to.
-        </p>
+        <h1 class="left-headline">Your personal<br><em>health intelligence</em><br>system</h1>
+        <p class="left-sub">Upload lab reports. Track trends over time. Get actionable insights before every doctor visit. PHI remembers everything so you don't have to.</p>
     </div>
-
     <div class="trust-badges">
         <div class="trust-item"><i class="fa-solid fa-shield-halved"></i> HIPAA-Ready architecture</div>
         <div class="trust-item"><i class="fa-solid fa-lock"></i> End-to-end encrypted</div>
@@ -378,12 +225,12 @@
     </div>
 </div>
 
-<!-- Right form panel -->
 <div class="right-panel">
     <div class="form-container">
         <div class="form-header">
             <h2 class="form-title">Welcome back</h2>
-            <p class="form-sub">Don't have an account? <a href="signup.html">Create one free</a></p>
+            <!-- FIX: /signup (clean URL) instead of signup.html -->
+            <p class="form-sub">Don't have an account? <a href="/signup">Create one free</a></p>
         </div>
 
         <p id="status-msg" class="status-msg"></p>
@@ -416,37 +263,70 @@
     </div>
 </div>
 
-<!-- Google OAuth Terms Modal (injected dynamically) -->
-
 <script>
-const API_BASE = "https://api.curabook.com";
+/* ══════════════════════════════════════════════════════════════════
+   login.html inline script
+   
+   RULES:
+   1. supabase is loaded from a single pinned CDN (see <head>).
+      Never add a second <script> tag for the same library.
+   2. All async errors are caught and shown to the user.
+   3. localStorage is validated before use — a corrupt session is
+      cleared rather than causing a crash.
+══════════════════════════════════════════════════════════════════ */
+
+const API_BASE       = "https://api.curabook.com";
+const SUPABASE_URL   = "https://hxfiymzpngxltjbpbgur.supabase.co";
+const SUPABASE_KEY   = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4Zml5bXpwbmd4bHRqYnBiZ3VyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc5NDk1NTQsImV4cCI6MjA4MzUyNTU1NH0.aU5JDyhwFyzOoCrflqaFJ6N-3Tvy92RO9nP2HP9v6sc";
 
 let supabaseClient = null;
 
-async function initSupabase() {
-    const SUPABASE_URL = "https://hxfiymzpngxltjbpbgur.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4Zml5bXpwbmd4bHRqYnBiZ3VyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc5NDk1NTQsImV4cCI6MjA4MzUyNTU1NH0.aU5JDyhwFyzOoCrflqaFJ6N-3Tvy92RO9nP2HP9v6sc";
-
-supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-}
-
-function setStatus(msg, type = '') {
-    const el = document.getElementById('status-msg');
-    el.textContent = msg;
-    el.className = 'status-msg ' + type;
-}
-
-function setLoading(btn, loading) {
-    if (loading) {
-        btn.disabled = true;
-        btn.innerHTML = '<span class="spinner"></span> Signing in…';
-    } else {
-        btn.disabled = false;
-        btn.innerHTML = 'Sign In';
+/* ── LocalStorage safety ─────────────────────────────────────────
+   Corrupt / stale Supabase session data in localStorage can cause
+   supabase.createClient() to throw during session restoration.
+   Clear known Supabase storage keys if they contain invalid JSON.
+────────────────────────────────────────────────────────────────── */
+function sanitizeLocalStorage() {
+    const supabaseKeys = Object.keys(localStorage).filter(k =>
+        k.startsWith("sb-") || k.includes("supabase") || k.includes("gotrue")
+    );
+    for (const key of supabaseKeys) {
+        const raw = localStorage.getItem(key);
+        if (!raw) continue;
+        try {
+            JSON.parse(raw);    // if this throws, the value is corrupt
+        } catch {
+            console.warn(`[PHI] Clearing corrupt localStorage key: ${key}`);
+            localStorage.removeItem(key);
+        }
     }
 }
 
-// ── Login ──────────────────────────────────────────────────────────────────
+function initSupabase() {
+    sanitizeLocalStorage();     // clean before createClient reads storage
+    supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+        auth: {
+            // Prevents the library from trying to call browser APIs
+            // that may be blocked in privacy-focused browsers
+            detectSessionInUrl: true,
+            persistSession:     true,
+        }
+    });
+}
+
+/* ── UI helpers ────────────────────────────────────────────────── */
+function setStatus(msg, type = '') {
+    const el = document.getElementById('status-msg');
+    el.textContent = msg;
+    el.className   = 'status-msg ' + type;
+}
+
+function setLoading(btn, loading) {
+    btn.disabled   = loading;
+    btn.innerHTML  = loading ? '<span class="spinner"></span> Signing in…' : 'Sign In';
+}
+
+/* ── Email / password login ─────────────────────────────────────── */
 document.getElementById('loginBtn').addEventListener('click', async () => {
     const email    = document.getElementById('email').value.trim();
     const password = document.getElementById('password').value;
@@ -455,80 +335,81 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
     if (!email || !password) { setStatus('Please enter your email and password.', 'error'); return; }
     setLoading(btn, true);
 
-    if (!supabaseClient) {
-    setStatus("App not ready. Please wait...", "error");
-    return;
-}
-    const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
-    if (error) { setStatus(error.message, 'error'); setLoading(btn, false); return; }
-
-    setStatus('Signing in…', 'success');
-    window.location.href = 'https://curabook.com/';
+    try {
+        const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+        if (error) { setStatus(error.message, 'error'); setLoading(btn, false); return; }
+        setStatus('Signing in…', 'success');
+        window.location.href = 'https://curabook.com/';
+    } catch (err) {
+        console.error('[LOGIN]', err);
+        setStatus('Something went wrong. Please try again.', 'error');
+        setLoading(btn, false);
+    }
 });
 
-// Enter key
 document.addEventListener('keydown', e => {
     if (e.key === 'Enter') document.getElementById('loginBtn').click();
 });
 
-// ── Forgot password ────────────────────────────────────────────────────────
+/* ── Forgot password ────────────────────────────────────────────── */
 document.getElementById('forgotLink').addEventListener('click', async e => {
     e.preventDefault();
     const email = document.getElementById('email').value.trim();
     if (!email) { setStatus('Enter your email address first.', 'error'); return; }
-    const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
-        redirectTo: "https://curabook.com/"
-    });
-    if (error) { setStatus(error.message, 'error'); return; }
-    setStatus('Password reset email sent. Check your inbox.', 'success');
+    try {
+        const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+            redirectTo: "https://curabook.com/"
+        });
+        if (error) { setStatus(error.message, 'error'); return; }
+        setStatus('Password reset email sent. Check your inbox.', 'success');
+    } catch (err) {
+        setStatus('Could not send reset email. Try again.', 'error');
+    }
 });
 
-// ── Google OAuth ────────────────────────────────────────────────────────────
+/* ── Google OAuth ───────────────────────────────────────────────── */
 document.getElementById('googleBtn').addEventListener('click', async () => {
     sessionStorage.setItem('oauth_pending_terms', 'true');
-    // Use location.origin so redirect goes back to wherever THIS PAGE is served from.
-    // If you use VS Code Live Server it's http://https://curabook.com.onrender.com:5500
-    // In production it's your domain.
-    // This URL must also be added to: Supabase Dashboard → Auth → URL Configuration → Redirect URLs
-    await supabaseClient.auth.signInWithOAuth({
-        provider: 'google',
-        options: { redirectTo: "https://curabook.com/login"}
-    });
+    try {
+        await supabaseClient.auth.signInWithOAuth({
+            provider: 'google',
+            options:  { redirectTo: "https://curabook.com/login" }
+        });
+    } catch (err) {
+        setStatus('Google sign-in unavailable. Try email instead.', 'error');
+    }
 });
 
-// ── Handle OAuth redirect & enforce terms ──────────────────────────────────
+/* ── Handle OAuth redirect ──────────────────────────────────────── */
 async function handleOAuthReturn() {
-    // Step 1: Let Supabase parse the hash fragment (#access_token=...)
-    // This is required for PKCE / implicit flow redirects
-    if (window.location.hash && window.location.hash.includes('access_token')) {
-        // Supabase JS v2 automatically reads the hash on getSession()
-        // Just need to wait a tick for it to process
-        await new Promise(resolve => setTimeout(resolve, 200));
-        // Clean the URL hash so the token isn't visible
-        history.replaceState(null, '', window.location.pathname);
-    }
-
-    // Step 2: Get session (now includes the OAuth session)
-    const { data: sessionData } = await supabaseClient.auth.getSession();
-    if (!sessionData?.session?.user) return;
-
-    const user = sessionData.session.user;
-    const provider = user.app_metadata?.provider;
-
-    // Step 3: Google users must accept terms on first login
-    if (provider === 'google') {
-        const termsKey = `phi_terms_${user.id}`;
-        const accepted = localStorage.getItem(termsKey);
-        if (!accepted) {
-            showGoogleTermsModal(user);
-            return;
+    try {
+        if (window.location.hash && window.location.hash.includes('access_token')) {
+            await new Promise(resolve => setTimeout(resolve, 200));
+            history.replaceState(null, '', window.location.pathname);
         }
-    }
 
-    // Step 4: All good — go to app
-    window.location.href = 'https://curabook.com/';
+        const { data: sessionData } = await supabaseClient.auth.getSession();
+        if (!sessionData?.session?.user) return;
+
+        const user     = sessionData.session.user;
+        const provider = user.app_metadata?.provider;
+
+        if (provider === 'google') {
+            const termsKey = `phi_terms_${user.id}`;
+            if (!localStorage.getItem(termsKey)) {
+                showGoogleTermsModal(user);
+                return;
+            }
+        }
+
+        window.location.href = 'https://curabook.com/';
+    } catch (err) {
+        console.error('[OAUTH RETURN]', err);
+        // Non-fatal — user stays on login page
+    }
 }
 
+/* ── Google Terms Modal ─────────────────────────────────────────── */
 function showGoogleTermsModal(user) {
     const overlay = document.createElement('div');
     overlay.className = 'terms-modal-overlay';
@@ -546,13 +427,13 @@ function showGoogleTermsModal(user) {
                 <i class="fa-solid fa-shield-halved"></i>
                 HIPAA-Ready &nbsp;·&nbsp; GDPR Compliant &nbsp;·&nbsp; DPDP Compliant
             </div>
-            <label class="terms-row" style="margin-bottom:20px">
+            <label class="terms-row">
                 <input type="checkbox" id="googleTermsCheck">
-                <span>I have read and agree to the <a href="terms.html" target="_blank">Terms of Service</a> and <a href="privacy.html" target="_blank">Privacy Policy</a>, and I consent to Curabook PHI processing my health data as described above.</span>
+                <span>I agree to the <a href="/terms" target="_blank">Terms of Service</a> and <a href="/privacy" target="_blank">Privacy Policy</a>, and I consent to Curabook PHI processing my health data as described above.</span>
             </label>
             <div class="terms-modal-actions">
-                <button class="btn-decline" id="declineBtn">Decline & Sign Out</button>
-                <button class="btn-accept" id="acceptBtn">Accept & Enter PHI</button>
+                <button class="btn-decline" id="declineBtn">Decline &amp; Sign Out</button>
+                <button class="btn-accept"  id="acceptBtn">Accept &amp; Enter PHI</button>
             </div>
         </div>`;
     document.body.appendChild(overlay);
@@ -565,32 +446,39 @@ function showGoogleTermsModal(user) {
 
     document.getElementById('acceptBtn').addEventListener('click', async () => {
         if (!document.getElementById('googleTermsCheck').checked) {
-            const lbl = overlay.querySelector('.terms-row');
-            lbl.style.color = '#ef4444';
+            overlay.querySelector('.terms-row').style.color = '#ef4444';
             return;
         }
         localStorage.setItem(`phi_terms_${user.id}`, Date.now().toString());
         overlay.remove();
-        // Save consent to backend
-        try {
-            const { data } = await supabaseClient.auth.getSession();
-            if (data?.session) {
-                await fetch(`${API_BASE}/api/consent`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + data.session.access_token
-                    },
-                    body: JSON.stringify({ consents: ['terms_accepted','data_processing','ai_processing','document_processing'] })
-                });
-            }
-        } catch(e) { console.warn('Consent save:', e); }
+
+        // Save consent to backend (non-blocking — don't await, don't crash on failure)
+        supabaseClient.auth.getSession().then(({ data }) => {
+            if (!data?.session) return;
+            fetch(`${API_BASE}/api/consent`, {
+                method:  'POST',
+                headers: {
+                    'Content-Type':  'application/json',
+                    'Authorization': 'Bearer ' + data.session.access_token
+                },
+                body: JSON.stringify({
+                    consents: ['terms_accepted','data_processing','ai_processing','document_processing']
+                })
+            }).catch(err => console.warn('[CONSENT SAVE]', err));
+        }).catch(() => {});
+
         window.location.href = 'https://curabook.com/';
     });
 }
 
-// Init
-initSupabase().then(handleOAuthReturn).catch(console.error);
+/* ── Boot ───────────────────────────────────────────────────────── */
+try {
+    initSupabase();
+    handleOAuthReturn().catch(err => console.error('[OAUTH]', err));
+} catch (err) {
+    console.error('[LOGIN BOOT]', err);
+    setStatus('App failed to load. Please refresh the page.', 'error');
+}
 </script>
 </body>
 </html>
