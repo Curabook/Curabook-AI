@@ -1,19 +1,15 @@
-# api/chat_routes.py — Memory-First Chat Engine
+# api/chat_routes.py — Memory-First Chat Engine + RAG
 #
-# ROOT CAUSE FIX:
-#   The previous version built a weak health_context manually.
-#   It called get_latest_markers/get_health_trends but MISSED:
-#     - get_user_markers       (full historical timeline per marker)
-#     - get_conversation_memories  (habits, supplements, symptoms)
-#     - build_health_context_block (the complete narrative builder in memory.py)
-#     - save_conversation_memory   (nothing was ever stored back)
+# CHANGES FROM PREVIOUS VERSION:
+#   RAG layer added to _build_context():
+#   After build_health_context_block() pulls structured marker memory,
+#   rag_search() retrieves raw document chunks semantically relevant to
+#   the user's question. This covers:
+#     - Radiology / discharge reports (no markers extracted, but text stored)
+#     - Follow-up questions about specific report wording
+#     - Any content not captured by marker extraction
 #
-# THIS VERSION:
-#   1. Calls build_health_context_block — the authoritative function in
-#      memory.py that already uses ALL 4 memory layers correctly.
-#   2. Prepends current-document markers on top of that block.
-#   3. After every response, extracts facts and stores them so future
-#      conversations keep getting richer.
+# RAG is non-blocking: if it fails or finds nothing, the chat still works.
 
 import re
 import unicodedata
@@ -93,26 +89,39 @@ def _sort_by_priority(markers: list) -> list:
 
 
 # ─────────────────────────────────────────
-# Full health context builder
-#
-# THE FIX: call build_health_context_block from memory.py.
-# That function already uses get_latest_markers, get_user_markers
-# (full history), get_health_trends, AND get_conversation_memories.
-# We just prepend the current-document section on top.
+# Full health context builder — now with RAG
 # ─────────────────────────────────────────
 
 def _build_context(
     supabase,
-    user_id: str,
+    user_id:         str,
     current_markers: list,
-    document_text: str,
+    document_text:   str,
+    user_message:    str = "",   # NEW: needed for RAG query
 ) -> str:
     from health_memory.memory import build_health_context_block
 
-    # --- Stored memory block (all 4 layers via memory.py) ---
+    # ── Layer 1: Structured health memory (markers, trends, demographics) ─────
     stored_block = build_health_context_block(supabase, user_id)
 
-    # --- Current document block (markers from doc uploaded THIS turn) ---
+    # ── Layer 2: RAG — semantically relevant document chunks ──────────────────
+    # Only runs if the user has a question (not on document upload turns where
+    # the full text is already injected). Non-blocking: failures return "".
+    rag_block = ""
+    if user_message and user_message.strip():
+        try:
+            from health_memory.rag import rag_search
+            rag_block = rag_search(
+                supabase  = supabase,
+                query     = user_message,
+                user_id   = user_id,
+                top_k     = 4,
+                threshold = 0.65,
+            )
+        except Exception as e:
+            print(f"[CHAT] RAG search (non-fatal): {e}")
+
+    # ── Layer 3: Current document block (markers from THIS turn's upload) ─────
     current_block = ""
     if current_markers:
         sorted_m = _sort_by_priority(current_markers)
@@ -140,8 +149,8 @@ def _build_context(
 
         current_block = "\n".join(lines)
 
-    # --- Assemble ---
-    parts = [p for p in [current_block, stored_block] if p.strip()]
+    # ── Assemble — order: current doc > RAG chunks > stored memory ────────────
+    parts = [p for p in [current_block, rag_block, stored_block] if p and p.strip()]
     if not parts:
         return ""
 
@@ -184,15 +193,13 @@ def chat():
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
 
-    # Fix #4 — Consent race condition: retry once before returning 403.
-    # On first login, saveUserConsents() is fire-and-forget and may not have
-    # completed before the user's first chat message arrives.
+    # Consent retry — first login race condition
     for _consent_attempt in range(2):
         if verify_user_consent(supabase, user.id, "ai_processing"):
             break
         if _consent_attempt == 0:
             import time as _time
-            _time.sleep(0.8)  # Give the consent write time to propagate
+            _time.sleep(0.8)
     else:
         return jsonify({"error": "Consent required"}), 403
 
@@ -207,11 +214,7 @@ def chat():
             "error": "Missing required fields: message and conversation_id"
         }), 400
 
-    # ── STEP 1: Extract markers ONLY from documents uploaded THIS turn ────────
-    # Fix #3 — previously, _lastDocText was re-sent with every follow-up message,
-    # causing a full LLM extraction call on every chat turn. Now we only extract
-    # when fresh document_text is provided AND it's a new document (not a cached
-    # re-send). After the first turn, PHI reads from DB memory, not raw text.
+    # ── STEP 1: Extract markers from fresh document uploads only ──────────────
     current_markers: list = []
     is_fresh_document = bool(document_text.strip()) and has_documents
     if is_fresh_document:
@@ -224,25 +227,31 @@ def chat():
         except Exception as e:
             print(f"[CHAT] Marker extraction (non-fatal): {e}")
 
-    # ── STEP 2: Build FULL health context ─────────────────────────────────────
-    # THE REAL FIX: build_health_context_block fetches ALL layers:
-    #   - latest markers per marker name
-    #   - full historical timeline (multiple readings per marker)
-    #   - trend analysis (rising/falling with % change)
-    #   - conversation memory facts (supplements, habits, symptoms)
-    # We prepend the current-doc markers so they appear first.
+        # Also ingest the raw text into the RAG vector store
+        # so future questions about this document can be answered semantically
+        try:
+            from health_memory.rag import ingest_text
+            ingest_text(
+                supabase = supabase,
+                user_id  = user.id,
+                text     = document_text,
+                source   = data.get("filename", "uploaded_document"),
+            )
+        except Exception as e:
+            print(f"[CHAT] RAG ingest (non-fatal): {e}")
+
+    # ── STEP 2: Build FULL health context (memory + RAG + current doc) ────────
     health_context = _build_context(
         supabase        = supabase,
         user_id         = user.id,
         current_markers = current_markers,
         document_text   = document_text,
+        user_message    = message,   # passed to RAG for semantic search
     )
 
     has_health_data = bool(health_context.strip())
 
-    # ── STEP 3: Guard-wrap document text to prevent injection ─────────────────
-    # Fix #3 cont — only inject raw doc text on the FIRST turn after upload.
-    # Follow-up questions are answered from DB memory, not raw text re-injection.
+    # ── STEP 3: Guard-wrap document text on first upload turn only ────────────
     enriched_message = message
     if is_fresh_document and document_text.strip():
         enriched_message = (
@@ -256,7 +265,7 @@ def chat():
             "Note any changes from previous readings."
         )
 
-    # ── STEP 4: Build LLM message list (history + system prompts) ────────────
+    # ── STEP 4: Build LLM messages ────────────────────────────────────────────
     messages = build_chat_messages(
         supabase        = supabase,
         user_id         = user.id,
@@ -267,6 +276,10 @@ def chat():
     )
 
     # ── STEP 5: LLM call ──────────────────────────────────────────────────────
+    # Development: Groq (llama-3.3-70b-versatile)
+    # Production:  OpenAI GPT-4o (set OPENAI_API_KEY in .env)
+    # call_llm() in ai/chat.py already handles the fallback order:
+    #   OpenAI → Groq → None
     reply = call_llm(groq_client, messages)
     if not reply:
         reply = "I'm having trouble right now. Please try again in a moment."
@@ -287,20 +300,13 @@ def chat():
 
     final_reply = reply + MANDATORY_DISCLAIMER
 
-    # ── STEP 7: Persist chat turn to DB ──────────────────────────────────────
+    # ── STEP 7: Persist chat turn ─────────────────────────────────────────────
     try:
         save_chat_turn(supabase, user.id, conversation_id, message, final_reply)
     except Exception as e:
         print(f"[CHAT] Save turn (non-fatal): {e}")
 
     # ── STEP 8: Extract and persist memory facts ──────────────────────────────
-    # This is what makes PHI progressively smarter across conversations.
-    # extract_conversation_memories detects facts like:
-    #   "user takes Vitamin D supplements"
-    #   "user reports fatigue"
-    #   "user has family history of heart disease"
-    # save_conversation_memory writes them to conversation_memories table
-    # so build_health_context_block picks them up in every future chat.
     try:
         facts = extract_conversation_memories(groq_client, message, reply)
         if facts:
