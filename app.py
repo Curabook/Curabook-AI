@@ -21,8 +21,6 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 from dotenv import load_dotenv
 from supabase import create_client, Client
-from api.intelligence_routes import intelligence_bp
-app.register_blueprint(intelligence_bp)
 
 # ── Load environment ──────────────────────────────────────────────────────────
 load_dotenv()
@@ -199,12 +197,13 @@ def check_rate_limit():
 from services.job_queue import init_workers
 init_workers(num_workers=int(os.getenv("WORKER_COUNT", "1")))
 
-from api.auth_routes       import auth_bp
-from api.chat_routes       import chat_bp
-from api.document_routes   import document_bp
-from api.health_routes     import health_bp
-from api.compliance_routes import compliance_bp
-from api.profile_routes    import profile_bp
+from api.auth_routes         import auth_bp
+from api.chat_routes         import chat_bp
+from api.document_routes     import document_bp
+from api.health_routes       import health_bp
+from api.compliance_routes   import compliance_bp
+from api.profile_routes      import profile_bp
+from api.intelligence_routes import intelligence_bp
 
 app.register_blueprint(auth_bp)
 app.register_blueprint(chat_bp)
@@ -212,6 +211,7 @@ app.register_blueprint(document_bp)
 app.register_blueprint(health_bp)
 app.register_blueprint(compliance_bp)
 app.register_blueprint(profile_bp)
+app.register_blueprint(intelligence_bp)
 
 # FIX #BP-1 — API versioning under /api/v1
 # Problem: importing the same blueprint object and registering it twice causes:
