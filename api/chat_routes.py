@@ -257,19 +257,12 @@ def chat():
     from services.auth       import get_authenticated_user
     from services.compliance import verify_user_consent
     from ai.system_prompt import (
-    build_phi_messages as build_chat_messages,
-    validate_response as validate_llm_output,
-    detect_hallucination_risk,
-    MANDATORY_DISCLAIMER as AI_DISCLAIMER,
-)
-    messages = build_chat_messages(
-    supabase, user.id, conversation_id,
-    enriched_message,
-    has_documents  = has_documents,
-    health_context = health_context,
-    groq_client    = groq_client,   # ← needed for persona injection
-)
-
+        build_phi_messages as build_chat_messages,
+        validate_response  as validate_llm_output,
+        detect_hallucination_risk,
+        MANDATORY_DISCLAIMER as AI_DISCLAIMER,
+    )
+    from ai.chat import call_llm, save_chat_turn, extract_conversation_memories
     from health_memory.extractor import extract_health_markers
     from health_memory.memory    import save_conversation_memory
     from ai.explainer            import explain_markers
@@ -325,8 +318,6 @@ def chat():
 
     # ── STEP 1b: FIX #MEM-CROSS-CONV ─────────────────────────────────────────
     # Save facts from user message IMMEDIATELY — before LLM call.
-    # This means "I take metformin" said NOW is remembered in the NEXT
-    # conversation without waiting for the LLM to echo it back.
     try:
         immediate_facts = _extract_facts_from_message(message)
         if immediate_facts:
@@ -370,6 +361,7 @@ def chat():
         user_message    = enriched_message,
         has_documents   = has_documents or bool(document_text),
         health_context  = health_context,
+        groq_client     = groq_client,
     )
 
     # ── STEP 5: LLM call ──────────────────────────────────────────────────────
