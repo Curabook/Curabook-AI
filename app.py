@@ -21,6 +21,8 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 from dotenv import load_dotenv
 from supabase import create_client, Client
+from api.intelligence_routes import intelligence_bp
+app.register_blueprint(intelligence_bp)
 
 # ── Load environment ──────────────────────────────────────────────────────────
 load_dotenv()
