@@ -144,8 +144,8 @@ function _greeting(name) {
 /* ── Auth ────────────────────────────────────────────────────── */
 
 async function initSupabase() {
-    const URL = "https://hxfiymzpngxltjbpbgur.supabase.co";
-    const KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh4Zml5bXpwbmd4bHRqYnBiZ3VyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc5NDk1NTQsImV4cCI6MjA4MzUyNTU1NH0.aU5JDyhwFyzOoCrflqaFJ6N-3Tvy92RO9nP2HP9v6sc";
+    const URL = "https://pbeaawlxdcrdbvlmpqhc.supabase.co";
+    const KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBiZWFhd2x4ZGNyZGJ2bG1wcWhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwMDk0MzksImV4cCI6MjA5MTU4NTQzOX0.6bUpYrDbe0mQjjBHX8Qscj-5R8i4-SqAtW_Z1UFzJ10";
     supabaseClient = supabase.createClient(URL, KEY);
     window.supabaseClient = supabaseClient;
 }

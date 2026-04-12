@@ -1,153 +1,208 @@
--- ═══════════════════════════════════════════════════════════════════
--- Curabook PHI — Complete Database Schema
--- Run this ONCE in Supabase SQL Editor
--- Safe to re-run (all statements use IF NOT EXISTS / IF NOT EXISTS)
--- ═══════════════════════════════════════════════════════════════════
+-- ── Extensions ────────────────────────────────────────────────────────────────
+create extension if not exists vector;
 
--- ── Core tables ───────────────────────────────────────────────────
-
-CREATE TABLE IF NOT EXISTS user_profiles (
-    user_id          UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-    first_name       TEXT,
-    last_name        TEXT,
-    age              INTEGER,
-    date_of_birth    DATE,
-    gender           TEXT,
-    timezone         TEXT DEFAULT 'UTC',
-    role             TEXT NOT NULL DEFAULT 'patient' CHECK (role IN ('patient','doctor','admin')),
-    plan             TEXT DEFAULT 'free',
-    reports_remaining INTEGER DEFAULT 1,
-    stripe_customer_id TEXT,
-    created_at       TIMESTAMPTZ DEFAULT NOW(),
-    updated_at       TIMESTAMPTZ DEFAULT NOW()
+-- ── user_profiles ─────────────────────────────────────────────────────────────
+create table if not exists user_profiles (
+    user_id                      uuid primary key references auth.users(id) on delete cascade,
+    first_name                   text,
+    last_name                    text,
+    age                          integer,
+    date_of_birth                date,
+    gender                       text,
+    timezone                     text default 'UTC',
+    role                         text not null default 'patient' check (role in ('patient','doctor','admin')),
+    plan                         text default 'free',
+    reports_remaining            integer default 1,
+    stripe_customer_id           text,
+    health_persona_text          text,
+    health_persona_updated_at    timestamptz,
+    health_persona_marker_count  integer default 0,
+    created_at                   timestamptz default now(),
+    updated_at                   timestamptz default now()
 );
 
-CREATE TABLE IF NOT EXISTS conversations (
-    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id    UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    title      TEXT DEFAULT 'New Chat',
-    created_at TIMESTAMPTZ DEFAULT NOW()
+-- ── conversations ──────────────────────────────────────────────────────────────
+create table if not exists conversations (
+    id         uuid primary key default gen_random_uuid(),
+    user_id    uuid not null references auth.users(id) on delete cascade,
+    title      text default 'New Chat',
+    created_at timestamptz default now()
 );
 
-CREATE TABLE IF NOT EXISTS chats (
-    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id          UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    conversation_id  UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-    role             TEXT NOT NULL CHECK (role IN ('user','assistant')),
-    content          TEXT NOT NULL,
-    is_phi           BOOLEAN DEFAULT FALSE,
-    created_at       TIMESTAMPTZ DEFAULT NOW()
+-- ── chats ──────────────────────────────────────────────────────────────────────
+create table if not exists chats (
+    id               uuid primary key default gen_random_uuid(),
+    user_id          uuid not null references auth.users(id) on delete cascade,
+    conversation_id  uuid not null references conversations(id) on delete cascade,
+    role             text not null check (role in ('user','assistant')),
+    content          text not null,
+    is_phi           boolean default false,
+    created_at       timestamptz default now()
 );
 
-CREATE TABLE IF NOT EXISTS health_markers (
-    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id          UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    marker_name      TEXT NOT NULL,
-    value            NUMERIC,
-    unit             TEXT DEFAULT '',
-    reference_range  TEXT DEFAULT '',
-    status           TEXT DEFAULT 'UNKNOWN',
-    date             DATE,
-    source_document  TEXT DEFAULT '',
-    created_at       TIMESTAMPTZ DEFAULT NOW()
+-- ── health_markers ─────────────────────────────────────────────────────────────
+create table if not exists health_markers (
+    id               uuid primary key default gen_random_uuid(),
+    user_id          uuid not null references auth.users(id) on delete cascade,
+    marker_name      text not null,
+    value            numeric,
+    unit             text default '',
+    reference_range  text default '',
+    status           text default 'UNKNOWN',
+    date             date,
+    source_document  text default '',
+    created_at       timestamptz default now()
 );
 
-CREATE TABLE IF NOT EXISTS health_insights (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id         UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    insights_json   TEXT,
-    created_at      TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE (user_id)
+-- ── health_insights ────────────────────────────────────────────────────────────
+create table if not exists health_insights (
+    id             uuid primary key default gen_random_uuid(),
+    user_id        uuid not null references auth.users(id) on delete cascade,
+    insights_json  text,
+    marker_count   integer default 0,
+    created_at     timestamptz default now(),
+    unique (user_id)
 );
 
-CREATE TABLE IF NOT EXISTS user_consents (
-    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id          UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    consent_type     TEXT NOT NULL,
-    consent_version  TEXT DEFAULT 'v2.0',
-    ip_address       TEXT,
-    user_agent       TEXT,
-    is_active        BOOLEAN DEFAULT TRUE,
-    granted_at       TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE (user_id, consent_type)
+-- ── user_consents ──────────────────────────────────────────────────────────────
+create table if not exists user_consents (
+    id               uuid primary key default gen_random_uuid(),
+    user_id          uuid not null references auth.users(id) on delete cascade,
+    consent_type     text not null,
+    consent_version  text default 'v2.0',
+    ip_address       text,
+    user_agent       text,
+    is_active        boolean default true,
+    granted_at       timestamptz default now(),
+    unique (user_id, consent_type)
 );
 
-CREATE TABLE IF NOT EXISTS audit_logs (
-    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id    UUID NOT NULL,
-    action     TEXT NOT NULL,
-    detail     TEXT DEFAULT '',
-    category   TEXT DEFAULT 'GENERAL',
-    created_at TIMESTAMPTZ DEFAULT NOW()
+-- ── audit_logs ─────────────────────────────────────────────────────────────────
+create table if not exists audit_logs (
+    id         uuid primary key default gen_random_uuid(),
+    user_id    uuid not null,
+    action     text not null,
+    detail     text default '',
+    category   text default 'GENERAL',
+    created_at timestamptz default now()
 );
 
--- ── Medical documents table (required for document_id secure flow) ─
-
-CREATE TABLE IF NOT EXISTS medical_documents (
-    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id    UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    filename   TEXT,
-    content    TEXT,
-    doc_type   TEXT DEFAULT 'lab_report',
-    created_at TIMESTAMPTZ DEFAULT NOW()
+-- ── medical_documents ──────────────────────────────────────────────────────────
+create table if not exists medical_documents (
+    id                        uuid primary key default gen_random_uuid(),
+    user_id                   uuid not null references auth.users(id) on delete cascade,
+    filename                  text,
+    content                   text,
+    doc_type                  text default 'lab_report',
+    job_id                    text,
+    doctor_prep_text          text,
+    doctor_prep_generated_at  timestamptz,
+    created_at                timestamptz default now()
 );
 
--- ── Safe column additions (run even if tables exist) ──────────────
+-- ── conversation_memories ──────────────────────────────────────────────────────
+create table if not exists conversation_memories (
+    id                   uuid primary key default gen_random_uuid(),
+    user_id              uuid not null references auth.users(id) on delete cascade,
+    fact                 text not null,
+    category             text default 'general',
+    source_conversation  uuid,
+    is_active            boolean default true,
+    created_at           timestamptz default now()
+);
 
-ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'patient';
-ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS plan TEXT DEFAULT 'free';
-ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS reports_remaining INTEGER DEFAULT 1;
-ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS stripe_customer_id TEXT;
+-- ── behavioral_logs ────────────────────────────────────────────────────────────
+create table if not exists behavioral_logs (
+    id          uuid primary key default gen_random_uuid(),
+    user_id     uuid not null references auth.users(id) on delete cascade,
+    date        date not null,
+    metric_name text not null,
+    value       numeric not null,
+    unit        text default '',
+    notes       text default '',
+    created_at  timestamptz default now()
+);
 
--- ── Indexes for performance ────────────────────────────────────────
+-- ── documents (RAG vector store) ───────────────────────────────────────────────
+create table if not exists documents (
+    id         uuid primary key default gen_random_uuid(),
+    user_id    uuid references auth.users(id) on delete cascade,
+    content    text not null,
+    metadata   jsonb default '{}',
+    embedding  vector(384),
+    created_at timestamptz default now()
+);
 
-CREATE INDEX IF NOT EXISTS idx_chats_conv       ON chats(conversation_id);
-CREATE INDEX IF NOT EXISTS idx_chats_user       ON chats(user_id);
-CREATE INDEX IF NOT EXISTS idx_convs_user       ON conversations(user_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_markers_user     ON health_markers(user_id, date DESC);
-CREATE INDEX IF NOT EXISTS idx_markers_name     ON health_markers(user_id, marker_name);
-CREATE INDEX IF NOT EXISTS idx_docs_user        ON medical_documents(user_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_audit_user       ON audit_logs(user_id, created_at DESC);
+-- ── Indexes ────────────────────────────────────────────────────────────────────
+create index if not exists idx_chats_conv          on chats(conversation_id);
+create index if not exists idx_chats_user          on chats(user_id);
+create index if not exists idx_convs_user          on conversations(user_id, created_at desc);
+create index if not exists idx_markers_user        on health_markers(user_id, date desc);
+create index if not exists idx_markers_name        on health_markers(user_id, marker_name);
+create index if not exists idx_docs_user           on medical_documents(user_id, created_at desc);
+create index if not exists idx_audit_user          on audit_logs(user_id, created_at desc);
+create index if not exists idx_memories_user       on conversation_memories(user_id, created_at desc);
+create index if not exists idx_behavioral_user     on behavioral_logs(user_id, date desc);
+create index if not exists idx_documents_user      on documents(user_id, created_at desc);
+create index if not exists idx_documents_embedding on documents using hnsw (embedding vector_cosine_ops);
 
--- Deduplicate marker upserts
-CREATE UNIQUE INDEX IF NOT EXISTS idx_markers_unique
-    ON health_markers(user_id, marker_name, date);
+create unique index if not exists idx_markers_unique
+    on health_markers(user_id, marker_name, date);
 
--- ── Row Level Security ─────────────────────────────────────────────
+create unique index if not exists idx_medical_docs_job
+    on medical_documents(user_id, job_id)
+    where job_id is not null;
 
-ALTER TABLE user_profiles    ENABLE ROW LEVEL SECURITY;
-ALTER TABLE conversations     ENABLE ROW LEVEL SECURITY;
-ALTER TABLE chats             ENABLE ROW LEVEL SECURITY;
-ALTER TABLE health_markers    ENABLE ROW LEVEL SECURITY;
-ALTER TABLE health_insights   ENABLE ROW LEVEL SECURITY;
-ALTER TABLE user_consents     ENABLE ROW LEVEL SECURITY;
-ALTER TABLE medical_documents ENABLE ROW LEVEL SECURITY;
+-- ── Row Level Security ─────────────────────────────────────────────────────────
+alter table user_profiles        enable row level security;
+alter table conversations        enable row level security;
+alter table chats                enable row level security;
+alter table health_markers       enable row level security;
+alter table health_insights      enable row level security;
+alter table user_consents        enable row level security;
+alter table medical_documents    enable row level security;
+alter table conversation_memories enable row level security;
+alter table behavioral_logs      enable row level security;
+alter table documents            enable row level security;
 
--- Users can only see their own data
-DO $$ BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='user_profiles' AND policyname='own_profile') THEN
-        CREATE POLICY own_profile    ON user_profiles    FOR ALL USING (auth.uid() = user_id);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='conversations' AND policyname='own_convs') THEN
-        CREATE POLICY own_convs      ON conversations     FOR ALL USING (auth.uid() = user_id);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='chats' AND policyname='own_chats') THEN
-        CREATE POLICY own_chats      ON chats             FOR ALL USING (auth.uid() = user_id);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='health_markers' AND policyname='own_markers') THEN
-        CREATE POLICY own_markers    ON health_markers    FOR ALL USING (auth.uid() = user_id);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='health_insights' AND policyname='own_insights') THEN
-        CREATE POLICY own_insights   ON health_insights   FOR ALL USING (auth.uid() = user_id);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='user_consents' AND policyname='own_consents') THEN
-        CREATE POLICY own_consents   ON user_consents     FOR ALL USING (auth.uid() = user_id);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='medical_documents' AND policyname='own_docs') THEN
-        CREATE POLICY own_docs       ON medical_documents FOR ALL USING (auth.uid() = user_id);
-    END IF;
-END $$;
+create policy own_profile    on user_profiles         for all using (auth.uid() = user_id);
+create policy own_convs      on conversations          for all using (auth.uid() = user_id);
+create policy own_chats      on chats                  for all using (auth.uid() = user_id);
+create policy own_markers    on health_markers         for all using (auth.uid() = user_id);
+create policy own_insights   on health_insights        for all using (auth.uid() = user_id);
+create policy own_consents   on user_consents          for all using (auth.uid() = user_id);
+create policy own_docs       on medical_documents      for all using (auth.uid() = user_id);
+create policy own_memories   on conversation_memories  for all using (auth.uid() = user_id);
+create policy own_behavioral on behavioral_logs        for all using (auth.uid() = user_id);
+create policy own_documents  on documents              for all using (auth.uid() = user_id);
 
--- ── Done ──────────────────────────────────────────────────────────
--- Tables: user_profiles, conversations, chats, health_markers,
---         health_insights, user_consents, audit_logs, medical_documents
+-- ── match_documents RPC (used by rag.py) ──────────────────────────────────────
+create or replace function match_documents(
+    query_embedding  vector(384),
+    match_threshold  float,
+    match_count      int,
+    filter_user_id   uuid
+)
+returns table (
+    id         uuid,
+    content    text,
+    metadata   jsonb,
+    similarity float
+)
+language plpgsql
+as $$
+begin
+    return query
+    select
+        d.id,
+        d.content,
+        d.metadata,
+        1 - (d.embedding <=> query_embedding) as similarity
+    from documents d
+    where
+        d.user_id = filter_user_id
+        and 1 - (d.embedding <=> query_embedding) > match_threshold
+    order by d.embedding <=> query_embedding
+    limit match_count;
+end;
+$$;
