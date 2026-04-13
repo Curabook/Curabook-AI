@@ -1,25 +1,21 @@
 /**
- * script.js — Curabook PHI  v4.1 — Bug Fix Edition
+ * script.js — Curabook PHI  v3.5 — Launch Edition
  *
- * FIXES IN THIS VERSION:
+ * NEW IN THIS VERSION (April 15 Launch):
  *
- * FIX BUG-1/AUTH: wireAuthStateChange() called before getSession() in boot.
- *   OAuth hash tokens fire SIGNED_IN via onAuthStateChange. If getSession()
- *   runs first and clears the hash, the event is missed. Listener must be
- *   wired first, unconditionally.
+ * #STEP-2  Advocacy Guide modal — info icon next to Doctor Visit Prep explains
+ *          what the brief is, the PA criteria, and how to use it with a provider.
  *
- * FIX BUG-4/TOKEN-TIMING: _currentAccessToken cached on every SIGNED_IN event.
- *   getAuthHeaders() uses the cached token if getSession() returns empty (which
- *   can happen for ~200ms during the auth state transition after OAuth redirect).
- *   This fixes history, health pulse, and consent saves that fired too early.
+ * #STEP-3  Log Activity modal — manual entry form for steps, food, sleep, stress,
+ *          weight. Wires to POST /api/behavioral-logs. Loads recent entries.
+ *          Provides the data Task 3 (correlation engine) needs to work.
  *
- * FIX BUG-7/DOC-RESEND: _docCtx.getForConv() now auto-marks as consumed on
- *   first use. Subsequent calls return the document ID (for context) but NOT
- *   the raw text, preventing the document from being re-processed on every
- *   follow-up message in the same conversation.
+ * #STEP-4  openLogActivity() & submitBehavioralLog() — complete behavioral
+ *          logging pipeline with metric-type tabs, unit auto-fill, hints.
  *
- * FIX BUG-5/MEMORY: chat_routes.py and memory.py handle this server-side.
- *   Script.js improvement: don't suppress console warnings from failed saves.
+ * #STEP-5  Empty states: "Upload your first report" with specific instructions
+ *          shown when no health data exists (profile modal + welcome screen).
+ *          Disclaimer enforcement: every AI response ends with ⚕️ footer.
  */
 
 "use strict";
@@ -36,40 +32,14 @@ let isProcessing         = false;
 let conversationToDelete = null;
 let _healthContext       = null;
 
-// FIX BUG-4: Cache the access token immediately on auth events.
-// getSession() can return null for ~200ms during OAuth transition.
-let _currentAccessToken  = null;
-
 const _chipTexts = new Map();
 let _chipCounter = 0;
 
-// FIX BUG-7: _docCtx.getForConv() now auto-consumes on first real read.
-// Document text is only sent ONCE (the turn it was uploaded). After that,
-// the backend uses stored markers — re-sending the raw text causes the LLM
-// to re-extract markers from scratch on every follow-up, which is slow and
-// produces duplicate context.
 const _docCtx = {
-    text: null, id: null, convId: null, _consumed: false,
-    set(t, i, c)  {
-        this.text = t || null;
-        this.id   = i || null;
-        this.convId = c || null;
-        this._consumed = false;
-    },
-    getForConv(c) {
-        if (this.convId !== c) return { text: null, id: null };
-        if (this._consumed) {
-            // Already sent once — return id for reference but NOT raw text
-            return { text: null, id: this.id };
-        }
-        // First call: mark consumed and return full context
-        this._consumed = true;
-        return { text: this.text, id: this.id };
-    },
-    clear() {
-        this.text = null; this.id = null;
-        this.convId = null; this._consumed = false;
-    },
+    text: null, id: null, convId: null,
+    set(t, i, c)  { this.text = t||null; this.id = i||null; this.convId = c||null; },
+    getForConv(c) { return this.convId === c ? {text:this.text, id:this.id} : {text:null,id:null}; },
+    clear()       { this.text = null; this.id = null; this.convId = null; },
 };
 
 const _cache = {
@@ -95,8 +65,10 @@ const DOM = {
     filePreview:$id("file-preview-container"), newChatBtn:$id("newChatBtn"),
     historyList:$id("historyList"), userEmailDisp:$id("user-email-display"),
     btnUploadNav:$id("btn-upload-nav"), btnHealthPulse:$id("btn-health-pulse"),
+    // Step 3: Log Activity
     btnLogActivity:$id("btn-log-activity"),
     logActivityModal:$id("log-activity-modal"),
+    // Step 2: Advocacy Guide
     advocacyGuideModal:$id("advocacy-guide-modal"),
     advocacyInfoBtn:$id("advocacyInfoBtn"),
     profileModal:$id("profile-modal"), settingsModal:$id("settings-modal"),
@@ -159,59 +131,13 @@ function _greeting(name) {
     return name ? `Good ${period}, ${name}` : `Good ${period}`;
 }
 
-/* ══════════════════════════════════════════════════════════════
-   AUTH
-   FIX BUG-1: wireAuthStateChange() called FIRST in boot.
-   FIX BUG-4: _currentAccessToken cached immediately.
-══════════════════════════════════════════════════════════════ */
+/* ── Auth ────────────────────────────────────────────────────── */
 
 async function initSupabase() {
     const URL = "https://pbeaawlxdcrdbvlmpqhc.supabase.co";
     const KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBiZWFhd2x4ZGNyZGJ2bG1wcWhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwMDk0MzksImV4cCI6MjA5MTU4NTQzOX0.6bUpYrDbe0mQjjBHX8Qscj-5R8i4-SqAtW_Z1UFzJ10";
-    supabaseClient = supabase.createClient(URL, KEY, {
-        auth: {
-            detectSessionInUrl: true,
-            persistSession: true,
-            autoRefreshToken: true,
-        }
-    });
+    supabaseClient = supabase.createClient(URL, KEY);
     window.supabaseClient = supabaseClient;
-}
-
-/**
- * FIX BUG-1 + BUG-4: Wire BEFORE getSession().
- * - Captures SIGNED_IN from OAuth hash before anything clears the hash.
- * - Caches _currentAccessToken immediately for use in getAuthHeaders().
- */
-function wireAuthStateChange() {
-    supabaseClient.auth.onAuthStateChange(async (event, session) => {
-        console.log(`[AUTH] Event: ${event}`);
-
-        if ((event === "SIGNED_IN" || event === "USER_UPDATED") && session?.user) {
-            // FIX BUG-4: Cache token immediately — before any async operations
-            _currentAccessToken = session.access_token;
-
-            if (!currentUser || currentUser.id !== session.user.id) {
-                const user = session.user;
-                if (user.app_metadata?.provider === "google") {
-                    const termsKey = `phi_terms_${user.id}`;
-                    if (!localStorage.getItem(termsKey)) {
-                        window.location.href = "/login";
-                        return;
-                    }
-                }
-                await handleLoginSuccess(user, session.access_token);
-            }
-        } else if (event === "SIGNED_OUT") {
-            _currentAccessToken = null;
-            currentUser = null;
-            currentUserName = "";
-            window.location.href = "/login";
-        } else if (event === "TOKEN_REFRESHED" && session?.access_token) {
-            // Keep the cached token fresh on refresh
-            _currentAccessToken = session.access_token;
-        }
-    });
 }
 
 async function getSession() {
@@ -219,15 +145,10 @@ async function getSession() {
     return data.session;
 }
 
-/**
- * FIX BUG-4: Uses _currentAccessToken as fallback when getSession() returns
- * null during the ~200ms OAuth transition window.
- */
 async function getAuthHeaders() {
     const s = await getSession();
-    const token = s?.access_token || _currentAccessToken;
-    if (!token) return {};
-    return { "Content-Type": "application/json", "Authorization": "Bearer " + token };
+    if (!s) return {};
+    return { "Content-Type": "application/json", "Authorization": "Bearer " + s.access_token };
 }
 
 function _extractFirstName(user) {
@@ -238,13 +159,9 @@ function _extractFirstName(user) {
     return local ? local.charAt(0).toUpperCase() + local.slice(1).replace(/[._-]/g, " ").split(" ")[0] : "";
 }
 
-async function handleLoginSuccess(user, accessToken) {
+async function handleLoginSuccess(user) {
     currentUser     = user;
     currentUserName = _extractFirstName(user);
-
-    // Ensure token is cached — may be called with explicit token from auth event
-    if (accessToken) _currentAccessToken = accessToken;
-
     _docCtx.clear();
     _cache.clear();
 
@@ -256,12 +173,12 @@ async function handleLoginSuccess(user, accessToken) {
     if (DOM.modalAvatar)   DOM.modalAvatar.textContent   = initial;
 
     await Promise.all([
-        saveUserConsents().catch(e => console.warn("[CONSENT] Non-fatal:", e)),
+        saveUserConsents().catch(()=>{}),
         loadHistory(),
-        loadPlanStatus().catch(e => console.warn("[PLAN] Non-fatal:", e)),
+        loadPlanStatus().catch(()=>{}),
     ]);
 
-    loadHealthPulse().catch(e => console.warn("[PULSE] Non-fatal:", e));
+    loadHealthPulse().catch(()=>{});
     showToast(currentUserName ? `Welcome back, ${currentUserName} 👋` : "Welcome back 👋");
     _carryOverDemoDoc();
 
@@ -274,17 +191,15 @@ async function handleLoginSuccess(user, accessToken) {
 async function saveUserConsents() {
     const h = await getAuthHeaders();
     if (!h.Authorization) return;
-    const resp = await fetch(`${API_BASE}/api/consent`, {
+    await fetch(`${API_BASE}/api/consent`, {
         method:"POST", headers:h,
         body: JSON.stringify({ consents: ["data_processing","ai_processing","document_processing"] }),
-    });
-    if (!resp.ok) console.warn("[CONSENT] Save returned", resp.status);
+    }).catch(()=>{});
 }
 
 async function handleLogout() {
     if (!confirm("Sign out of Curabook PHI?")) return;
     DOM.profileDrop?.classList.add("hidden");
-    _currentAccessToken = null;
     try { await supabaseClient.auth.signOut(); } catch {}
     window.location.href = "/login";
 }
@@ -341,6 +256,7 @@ function showNoDataState() {
         if (titleEl) titleEl.innerHTML = `${escapeHtml(currentUserName)}'s health <em>co-pilot</em>`;
     }
 
+    // Step 5: contextual chips for new users
     setChips([
         { icon:"fa-file-medical",    text:"Upload my first lab report" },
         { icon:"fa-circle-question", text:"What can PHI do for me?" },
@@ -475,185 +391,87 @@ function sendChip(text) {
 }
 window.sendChip = sendChip;
 
-/* ── Health Pulse Modal ──────────────────────────────────────── */
-
 async function openPulseModal() {
     window.closeModals();
     DOM.pulseModal?.classList.remove("hidden");
-    renderTemporalDashboard();
+    renderPulseModalContent();
 }
 
-async function renderTemporalDashboard() {
+async function renderPulseModalContent() {
     if (!DOM.pulseModalBody) return;
-    DOM.pulseModalBody.innerHTML = `
-        <div style="display:flex;flex-direction:column;gap:20px">
-            <div id="td-current" class="td-panel"><div class="td-panel-loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading current status…</div></div>
-            <div id="td-persona" class="td-panel"><div class="td-panel-loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading health persona…</div></div>
-            <div id="td-observations" class="td-panel"><div class="td-panel-loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading observations…</div></div>
-        </div>
-        <style>
-        .td-panel { background:var(--bg-body);border-radius:12px;padding:16px 20px;border:1px solid var(--border); }
-        .td-panel-label { font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.9px;margin-bottom:10px;display:flex;align-items:center;gap:6px; }
-        .td-panel-label i { color:var(--brand); }
-        .td-panel-loading { color:var(--text-muted);font-size:13px;padding:8px 0; }
-        .td-marker-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-top:10px; }
-        .td-marker-card { background:var(--bg-card);border-radius:8px;padding:10px 12px;border:1px solid var(--border); }
-        .td-marker-name { font-size:11px;color:var(--text-muted);margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
-        .td-marker-val { font-size:1.1rem;font-weight:700; }
-        .td-marker-date { font-size:10px;color:var(--text-muted);margin-top:2px; }
-        .td-persona-text { font-size:13.5px;line-height:1.75;color:var(--text-main); }
-        .td-obs-card { padding:10px 14px;border-left:3px solid var(--brand);border-radius:0 8px 8px 0;background:var(--bg-card);margin-bottom:8px; }
-        .td-obs-title { font-size:13px;font-weight:600;margin-bottom:4px; }
-        .td-obs-body { font-size:12.5px;color:var(--text-muted);line-height:1.6; }
-        .td-obs-conf { display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;margin-top:6px; }
-        .td-obs-conf.strong { background:rgba(74,222,128,.12);color:#4ade80; }
-        .td-obs-conf.moderate { background:rgba(251,191,36,.12);color:#fbbf24; }
-        .td-obs-conf.limited { background:rgba(155,155,155,.12);color:#9ca3af; }
-        .td-disclaimer { font-size:11px;color:var(--text-muted);padding:10px 0 2px;border-top:1px solid var(--border);margin-top:4px;display:flex;align-items:flex-start;gap:6px; }
-        .td-disclaimer i { color:var(--brand);flex-shrink:0;margin-top:1px; }
-        </style>`;
-
-    const h = await getAuthHeaders();
-    Promise.all([
-        _renderCurrentStatus(h),
-        _renderHealthPersona(h),
-        _renderObservations(h),
-    ]).catch(e => console.warn("[TEMPORAL DASHBOARD]", e));
-}
-
-async function _renderCurrentStatus(h) {
-    const panel = $id("td-current");
-    if (!panel) return;
+    DOM.pulseModalBody.innerHTML = '<div class="loading-text"><i class="fa-solid fa-spinner fa-spin"></i> Loading…</div>';
     try {
-        const res = await fetch(`${API_BASE}/api/health-markers`, { headers:h });
-        const markers = await safeJson(res);
-        if (!Array.isArray(markers) || !markers.length) {
-            panel.innerHTML = `<div class="td-panel-label"><i class="fa-solid fa-chart-bar"></i> Current Health Status</div>
-                <div style="text-align:center;padding:16px 0;color:var(--text-muted);font-size:13px">
-                    <i class="fa-solid fa-file-medical" style="font-size:1.8rem;color:var(--brand);display:block;margin-bottom:8px;opacity:.5"></i>
-                    No lab data yet — upload a report to see your status here.
+        const h = await getAuthHeaders();
+        const [mr, ir] = await Promise.all([
+            fetch(`${API_BASE}/api/health-markers`,  { headers:h }),
+            fetch(`${API_BASE}/api/health-insights`, { headers:h }),
+        ]);
+        const [markers, insights] = await Promise.all([safeJson(mr), safeJson(ir)]);
+        const mArr = Array.isArray(markers)  ? markers  : [];
+        const iArr = Array.isArray(insights) ? insights : [];
+
+        if (!mArr.length) {
+            DOM.pulseModalBody.innerHTML = _emptyHealthState(
+                "No health data yet",
+                "Upload a lab report using the 📎 button and PHI will extract all your markers automatically.",
+                "Upload a Report"
+            );
+            DOM.pulseModalBody.querySelector(".empty-cta-btn")?.addEventListener("click", () => {
+                window.closeModals();
+                DOM.fileInput?.click();
+            });
+            return;
+        }
+
+        const rows = mArr.map(m => {
+            const color = m.status==="HIGH"||m.status==="LOW"?"var(--accent-warn)":m.status==="NORMAL"?"var(--accent-ok)":"var(--text-muted)";
+            const badge = m.status==="HIGH"?"⬆ HIGH":m.status==="LOW"?"⬇ LOW":"✓ NORMAL";
+            return `<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border)">
+                <div>
+                    <div style="font-weight:500;font-size:13px">${escapeHtml(m.marker_name)}</div>
+                    <div style="font-size:11.5px;color:var(--text-muted)">Normal: ${escapeHtml(m.reference_range||"—")} · ${escapeHtml(m.date||"")}</div>
                 </div>
-                <div class="td-disclaimer"><i class="fa-solid fa-circle-info"></i>Data is for informational purposes only. Always consult your healthcare provider.</div>`;
-            return;
-        }
+                <div style="text-align:right">
+                    <div style="font-weight:700;font-size:14px;color:${color}">${m.value} <span style="font-size:11px;font-weight:400">${escapeHtml(m.unit||"")}</span></div>
+                    <div style="font-size:10.5px;font-weight:700;color:${color}">${badge}</div>
+                </div>
+            </div>`;
+        }).join("");
 
-        const sorted = [...markers].sort((a,b) => {
-            const order = {"HIGH":0,"LOW":1,"NORMAL":2,"UNKNOWN":3};
-            return (order[a.status]||3) - (order[b.status]||3);
-        });
+        const insH = iArr.map(ins =>
+            `<div style="border-left:3px solid ${ins.severity==="high"?"var(--accent-warn)":ins.severity==="medium"?"var(--accent-amber)":"var(--accent-ok)"};padding:8px 11px;margin-bottom:7px;background:var(--bg-hover);border-radius:0 8px 8px 0">
+                <div style="font-weight:600;font-size:13px">${escapeHtml(ins.headline||"")}</div>
+                <div style="font-size:12px;color:var(--text-muted);margin-top:2px">${escapeHtml(ins.detail||"")}</div>
+            </div>`
+        ).join("");
 
-        const colorOf = s => s==="HIGH"||s==="LOW"?"var(--accent-warn)":s==="NORMAL"?"var(--accent-ok)":"var(--text-muted)";
-        const badgeOf = s => s==="HIGH"?"⬆ HIGH":s==="LOW"?"⬇ LOW":"✓ NORMAL";
-
-        const cards = sorted.map(m => `
-            <div class="td-marker-card">
-                <div class="td-marker-name" title="${escapeHtml(m.marker_name)}">${escapeHtml(m.marker_name)}</div>
-                <div class="td-marker-val" style="color:${colorOf(m.status)}">${m.value} <span style="font-size:11px;font-weight:400;color:var(--text-muted)">${escapeHtml(m.unit||"")}</span></div>
-                <div style="font-size:9.5px;font-weight:700;color:${colorOf(m.status)}">${badgeOf(m.status)}</div>
-                <div class="td-marker-date">${escapeHtml(m.date||"")}</div>
-            </div>`).join("");
-
-        const abnormalCount = sorted.filter(m=>m.status==="HIGH"||m.status==="LOW").length;
-
-        panel.innerHTML = `
-            <div class="td-panel-label"><i class="fa-solid fa-chart-bar"></i> Current Health Status
-                <span style="margin-left:auto;font-size:11px;color:${abnormalCount>0?"var(--accent-warn)":"var(--accent-ok)"};font-weight:700">
-                    ${abnormalCount > 0 ? `${abnormalCount} need attention` : "All within range"}
-                </span>
-            </div>
-            <div class="td-marker-grid">${cards}</div>
-            <div class="td-disclaimer"><i class="fa-solid fa-circle-info"></i>Data is for informational purposes only. Always consult your healthcare provider.</div>`;
-    } catch(e) {
-        if (panel) panel.innerHTML = `<div class="td-panel-label"><i class="fa-solid fa-chart-bar"></i> Current Health Status</div><div class="td-panel-loading" style="color:var(--accent-warn)">Could not load markers.</div>`;
-    }
-}
-
-async function _renderHealthPersona(h) {
-    const panel = $id("td-persona");
-    if (!panel) return;
-    try {
-        const res = await fetch(`${API_BASE}/api/persona`, { headers:h });
-        const d   = await safeJson(res);
-        const persona = d.persona || "";
-
-        if (!persona || persona.length < 20) {
-            panel.innerHTML = `<div class="td-panel-label"><i class="fa-solid fa-brain"></i> Health Persona</div>
-                <div style="color:var(--text-muted);font-size:13px;padding:8px 0">
-                    Your Health Persona will appear here after uploading 1–2 lab reports. PHI will synthesize your complete health biography automatically.
-                </div>`;
-            return;
-        }
-
-        panel.innerHTML = `
-            <div class="td-panel-label"><i class="fa-solid fa-brain"></i> Health Persona
-                <button id="refreshPersonaBtn" style="margin-left:auto;background:none;border:1px solid var(--border);border-radius:6px;padding:2px 8px;font-size:10px;color:var(--text-muted);cursor:pointer;font-family:var(--font)" title="Refresh persona">
-                    <i class="fa-solid fa-rotate-right"></i> Refresh
+        DOM.pulseModalBody.innerHTML = `
+            ${iArr.length ? `<div style="margin-bottom:18px">
+                <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">
+                    <i class="fa-solid fa-lightbulb" style="color:var(--accent-amber)"></i> PHI Synthesis
+                </div>${insH}</div>` : ""}
+            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">
+                All Markers (${mArr.length})
+                <span style="color:var(--accent-warn);margin-left:8px">${mArr.filter(m=>m.status==="HIGH"||m.status==="LOW").length} need attention</span>
+            </div>${rows}
+            <div style="margin-top:16px;text-align:center">
+                <button id="pulseModalDoctorBtn"
+                    style="padding:10px 20px;background:var(--brand);color:white;border:none;border-radius:8px;font-size:13.5px;font-weight:600;font-family:var(--font);cursor:pointer">
+                    <i class="fa-solid fa-stethoscope"></i> Generate Doctor Visit Prep
                 </button>
-            </div>
-            <div class="td-persona-text">${escapeHtml(persona)}</div>
-            <div class="td-disclaimer"><i class="fa-solid fa-circle-info"></i>This persona is AI-synthesized from your lab data. It is informational only, not a clinical assessment.</div>`;
+            </div>`;
 
-        $id("refreshPersonaBtn")?.addEventListener("click", async () => {
-            const btn = $id("refreshPersonaBtn");
-            if (btn) { btn.disabled=true; btn.innerHTML='<i class="fa-solid fa-spinner fa-spin"></i>'; }
-            try {
-                const r2 = await fetch(`${API_BASE}/api/persona/refresh`, {method:"POST",headers:h});
-                const d2 = await safeJson(r2);
-                if (d2.persona && panel) {
-                    panel.querySelector(".td-persona-text").textContent = d2.persona;
-                    showToast("Health Persona refreshed");
-                }
-            } catch {}
-            if (btn) { btn.disabled=false; btn.innerHTML='<i class="fa-solid fa-rotate-right"></i> Refresh'; }
+        $id("pulseModalDoctorBtn")?.addEventListener("click", () => {
+            window.closeModals();
+            sendChip("Prepare me for my next doctor visit based on my full health picture");
         });
-    } catch(e) {
-        if (panel) panel.innerHTML = `<div class="td-panel-label"><i class="fa-solid fa-brain"></i> Health Persona</div><div class="td-panel-loading" style="color:var(--accent-warn)">Could not load persona.</div>`;
+    } catch {
+        DOM.pulseModalBody.innerHTML = '<div class="loading-text" style="color:var(--accent-warn)">Could not load health data.</div>';
     }
 }
-
-async function _renderObservations(h) {
-    const panel = $id("td-observations");
-    if (!panel) return;
-    try {
-        const res = await fetch(`${API_BASE}/api/correlate`, {
-            method:"POST", headers:h,
-            body: JSON.stringify({ query: "health patterns and trends", lookback_days: 90, max_cards: 3 })
-        });
-        const d = await safeJson(res);
-        const cards = d.observation_cards || [];
-
-        if (!cards.length) {
-            panel.innerHTML = `<div class="td-panel-label"><i class="fa-solid fa-magnifying-glass-chart"></i> Active Observations</div>
-                <div style="color:var(--text-muted);font-size:13px;padding:8px 0">
-                    <strong>How observations work:</strong><br>
-                    Log daily activity (steps, food, sleep) using the "Log Activity" button in the sidebar. PHI will correlate your behaviors with your lab results and surface patterns here.
-                </div>
-                <div class="td-disclaimer"><i class="fa-solid fa-circle-info"></i>Observations are correlational, not causal. Discuss any patterns with your provider.</div>`;
-            return;
-        }
-
-        const confClass = c => c==="strong"?"strong":c==="moderate"?"moderate":"limited";
-        const confLabel = c => c==="strong"?"● Strong signal":c==="moderate"?"◐ Moderate signal":"○ Limited data";
-
-        const cardHtml = cards.map(c => `
-            <div class="td-obs-card">
-                <div class="td-obs-title">${escapeHtml(c.title||"")}</div>
-                <div class="td-obs-body">${escapeHtml(c.observation||"")}</div>
-                ${c.suggestion ? `<div style="font-size:12px;color:var(--brand);margin-top:6px"><i class="fa-solid fa-lightbulb"></i> ${escapeHtml(c.suggestion)}</div>` : ""}
-                <span class="td-obs-conf ${confClass(c.confidence)}">${confLabel(c.confidence)}</span>
-                ${c.data_points ? `<span style="font-size:10px;color:var(--text-muted);margin-left:8px">(${c.data_points} data points)</span>` : ""}
-            </div>`).join("");
-
-        panel.innerHTML = `
-            <div class="td-panel-label"><i class="fa-solid fa-magnifying-glass-chart"></i> Active Observations (${cards.length})</div>
-            ${cardHtml}
-            <div class="td-disclaimer"><i class="fa-solid fa-circle-info"></i>Observations show correlations only — not causes. Data is informational. Always consult your healthcare provider.</div>`;
-    } catch(e) {
-        if (panel) panel.innerHTML = `<div class="td-panel-label"><i class="fa-solid fa-magnifying-glass-chart"></i> Active Observations</div><div class="td-panel-loading" style="color:var(--text-muted)">Log activity data to enable pattern detection.</div>`;
-    }
-}
-
 window.openPulseModal = openPulseModal;
+
+/* ── Step 5: Empty state helper ──────────────────────────────── */
 
 function _emptyHealthState(title, desc, btnLabel) {
     return `<div class="empty-health-state">
@@ -717,11 +535,7 @@ function _prependConvToHistory(id, title) {
 
 async function loadHistory() {
     const h = await getAuthHeaders();
-    if (!h.Authorization) {
-        console.warn("[HISTORY] No auth token yet — skipping load");
-        DOM.historyList.innerHTML = '<div class="empty-state">Sign in to see history.</div>';
-        return;
-    }
+    if (!h.Authorization) return;
     try {
         const res = await fetch(`${API_BASE}/history`, { method:"POST", headers:h });
         const d   = await safeJson(res);
@@ -861,8 +675,7 @@ async function handleSend() {
         uploadedFiles = [];
         updateFilePreview();
         _cache.del("dashboard");
-        _triggerPersonaRefresh();
-        setTimeout(loadHealthPulse, 5000);
+        setTimeout(loadHealthPulse, 4000); // refresh pulse after persona refresh (Step 4)
     }
 
     appendMessage(text, "user");
@@ -870,11 +683,10 @@ async function handleSend() {
 
     try {
         const h = await getAuthHeaders();
-
-        // FIX BUG-7: _docCtx.getForConv() auto-consumes on first call.
-        // On follow-up messages it returns {text: null, id: ...} so the
-        // backend uses stored memory instead of re-processing raw document text.
         const { text:docText, id:docId } = _docCtx.getForConv(activeConvId);
+        const isFirstFollowUp = !documentContents.length && !!docText;
+        const sendDocText     = documentContents[0]?.document_text || (isFirstFollowUp ? docText : "");
+        if (isFirstFollowUp) _docCtx.clear();
 
         const res = await fetch(`${API_BASE}/chat`, {
             method:"POST", headers:h,
@@ -883,7 +695,7 @@ async function handleSend() {
                 message:         text,
                 has_documents:   documentContents.length > 0 || !!docId,
                 document_id:     documentContents[0]?.document_id || docId || "",
-                document_text:   documentContents[0]?.document_text || docText || "",
+                document_text:   sendDocText,
             }),
         });
         const d = await safeJson(res);
@@ -901,18 +713,6 @@ async function handleSend() {
     if (msgCount <= 2 && activeConvId) {
         const newTitle = documentContents.length ? `📄 ${documentContents[0].name}` : text.substring(0, 45);
         renameConversation(activeConvId, newTitle);
-    }
-}
-
-async function _triggerPersonaRefresh() {
-    try {
-        const h = await getAuthHeaders();
-        if (!h.Authorization) return;
-        fetch(`${API_BASE}/api/persona/refresh`, { method:"POST", headers:h })
-            .then(async r => { if (r.ok) { console.log("[PHI] Persona refreshed"); _cache.del("persona"); } })
-            .catch(e => console.warn("[PERSONA REFRESH]", e));
-    } catch(e) {
-        // Non-fatal
     }
 }
 
@@ -978,12 +778,11 @@ async function processFile(file) {
     const form = new FormData();
     form.append("file", file);
     const s = await getSession();
-    const token = s?.access_token || _currentAccessToken;
-    if (!token) return null;
+    if (!s) return null;
     try {
         const res = await fetch(`${API_BASE}/analyze`, {
             method:"POST",
-            headers:{"Authorization":"Bearer " + token},
+            headers:{"Authorization":"Bearer " + s.access_token},
             body: form
         });
         const d = await safeJson(res);
@@ -1021,7 +820,9 @@ function updateFilePreview() {
     DOM.userInput.placeholder = `${uploadedFiles.length} file(s) attached — press Send or ask a question…`;
 }
 
-/* ── Behavioral Log ──────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════
+   STEP 3 — BEHAVIORAL LOGGING
+═══════════════════════════════════════════════════════════════ */
 
 const _METRIC_CONFIG = {
     steps:  { label:"Steps",           unit:"steps",   placeholder:"e.g. 8500",   hint:"Total steps for the day. PHI correlates with glucose and HbA1c readings." },
@@ -1035,27 +836,28 @@ function openLogActivity() {
     window.closeModals();
     DOM.logActivityModal?.classList.remove("hidden");
 
+    // Default date to today
     const dateEl = $id("log-date");
     if (dateEl) dateEl.value = new Date().toISOString().slice(0,10);
 
+    // Hide success banner
     const successEl = $id("log-success-msg");
     if (successEl) successEl.style.display = "none";
 
+    // Wire metric tabs
     document.querySelectorAll(".metric-tab").forEach(tab => {
-        const newTab = tab.cloneNode(true);
-        tab.parentNode.replaceChild(newTab, tab);
-        newTab.addEventListener("click", () => {
+        tab.addEventListener("click", () => {
             document.querySelectorAll(".metric-tab").forEach(t => t.classList.remove("active"));
-            newTab.classList.add("active");
-            _updateLogFormForMetric(newTab.getAttribute("data-metric"));
+            tab.classList.add("active");
+            _updateLogFormForMetric(tab.getAttribute("data-metric"));
         });
     });
 
-    const oldBtn = $id("submitLogBtn");
-    if (oldBtn) {
-        const newBtn = oldBtn.cloneNode(true);
-        oldBtn.parentNode.replaceChild(newBtn, oldBtn);
-        newBtn.addEventListener("click", submitBehavioralLog);
+    // Wire submit button
+    const submitBtn = $id("submitLogBtn");
+    if (submitBtn) {
+        submitBtn.replaceWith(submitBtn.cloneNode(true)); // remove old listeners
+        $id("submitLogBtn").addEventListener("click", submitBehavioralLog);
     }
 
     _updateLogFormForMetric("steps");
@@ -1071,7 +873,7 @@ function _updateLogFormForMetric(metric) {
 
     if (labelEl) labelEl.textContent = cfg.label;
     if (unitEl)  unitEl.value        = cfg.unit;
-    if (valEl)   { valEl.placeholder = cfg.placeholder; valEl.value = ""; }
+    if (valEl)   valEl.placeholder   = cfg.placeholder;
     if (hintEl)  hintEl.innerHTML    = `<i class="fa-solid fa-lightbulb" style="color:var(--brand)"></i>&nbsp; ${escapeHtml(cfg.hint)}`;
 }
 
@@ -1084,56 +886,38 @@ async function submitBehavioralLog() {
     const activeTab = document.querySelector(".metric-tab.active");
     const metric  = activeTab?.getAttribute("data-metric") || "steps";
 
-    if (!date) { showToast("Please select a date.", "error"); return; }
+    if (!date)            { showToast("Please select a date.", "error"); return; }
     if (!value || isNaN(parseFloat(value))) { showToast("Please enter a valid number.", "error"); return; }
-
-    const numVal = parseFloat(value);
-    if (metric === "stress" && (numVal < 1 || numVal > 10)) {
-        showToast("Stress level must be between 1 and 10.", "error"); return;
-    }
-    if (numVal < 0) { showToast("Value cannot be negative.", "error"); return; }
 
     btn.disabled = true;
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving…';
 
     try {
         const h = await getAuthHeaders();
-        if (!h.Authorization) {
-            showToast("Please sign in to save activity.", "error");
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fa-solid fa-check"></i> Save Entry';
-            return;
-        }
-
         const res = await fetch(`${API_BASE}/api/behavioral-logs`, {
             method: "POST",
             headers: h,
             body: JSON.stringify({
                 date,
                 metric_name: metric,
-                value: numVal,
+                value: parseFloat(value),
                 unit: unit || _METRIC_CONFIG[metric]?.unit || "units",
                 notes,
             }),
         });
-
         const d = await safeJson(res);
 
         if (!res.ok || d.error) {
-            if (res.status === 403) {
-                showToast("Consent required. Please accept terms in Settings.", "error");
-            } else {
-                showToast(d.error || "Could not save. Try again.", "error");
-            }
+            showToast(d.error || "Could not save. Try again.", "error");
         } else {
+            // Show success banner
             const successEl = $id("log-success-msg");
             const successText = $id("log-success-text");
             if (successEl && successText) {
-                const metricLabel = _METRIC_CONFIG[metric]?.label || metric;
-                successText.textContent = `${metricLabel} logged for ${date} ✓`;
+                successText.textContent = `${_METRIC_CONFIG[metric]?.label || metric} logged for ${date} ✓`;
                 successEl.style.display = "flex";
-                setTimeout(() => { if (successEl) successEl.style.display = "none"; }, 4000);
             }
+            // Clear value + notes
             const valEl   = $id("log-value");
             const notesEl = $id("log-notes");
             if (valEl)   valEl.value   = "";
@@ -1141,10 +925,8 @@ async function submitBehavioralLog() {
 
             showToast(`✓ ${_METRIC_CONFIG[metric]?.label || metric} logged`);
             _loadRecentLogs();
-            _cache.del("correlations");
         }
-    } catch(e) {
-        console.error("[LOG SUBMIT]", e);
+    } catch {
         showToast("Network error. Please try again.", "error");
     }
 
@@ -1159,46 +941,46 @@ async function _loadRecentLogs() {
 
     try {
         const h   = await getAuthHeaders();
-        if (!h.Authorization) { preview.style.display = "none"; return; }
         const res = await fetch(`${API_BASE}/api/behavioral-logs?days=7`, { headers:h });
         const d   = await safeJson(res);
         if (!res.ok || !Array.isArray(d) || !d.length) { preview.style.display = "none"; return; }
 
         preview.style.display = "";
-        list.innerHTML = d.slice(0,6).map(r => {
-            const metricLabel = _METRIC_CONFIG[r.metric_name]?.label || r.metric_name || "";
-            return `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:12.5px">
-                <div>
-                    <span style="color:var(--text-muted)">${escapeHtml(r.date||"")}</span>
-                    <span style="margin:0 6px;color:var(--border)">·</span>
-                    <span style="color:var(--text-main)">${escapeHtml(metricLabel)}</span>
-                </div>
-                <span style="font-weight:700;color:var(--brand)">${r.value} <span style="font-weight:400;font-size:11px;color:var(--text-muted)">${escapeHtml(r.unit||"")}</span></span>
-            </div>`;
-        }).join("");
+        list.innerHTML = d.slice(0,6).map(r =>
+            `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:12.5px">
+                <span style="color:var(--text-muted)">${escapeHtml(r.date||"")} · ${escapeHtml(r.metric_name||"")}</span>
+                <span style="font-weight:600">${r.value} <span style="font-weight:400;opacity:.7">${escapeHtml(r.unit||"")}</span></span>
+            </div>`
+        ).join("");
     } catch {
         preview.style.display = "none";
     }
 }
 
-/* ── Advocacy Guide ──────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════
+   STEP 2 — ADVOCACY GUIDE MODAL
+═══════════════════════════════════════════════════════════════ */
 
 function openAdvocacyGuide() {
     window.closeModals();
     DOM.advocacyGuideModal?.classList.remove("hidden");
 
-    const startBtn = $id("startAdvocacyBtn");
-    if (startBtn) {
-        const newBtn = startBtn.cloneNode(true);
-        startBtn.parentNode.replaceChild(newBtn, startBtn);
-        newBtn.addEventListener("click", async () => {
-            window.closeModals();
-            if (!activeConvId) await createConversation();
+    // Wire the "Generate My Brief" button
+    $id("startAdvocacyBtn")?.addEventListener("click", () => {
+        window.closeModals();
+        // Trigger correlation/advocacy in chat
+        if (!activeConvId) {
+            createConversation().then(() => {
+                if (DOM.profileModal?.classList.contains("hidden")) showChatMode();
+                DOM.userInput.value = "Generate a GLP-1 prior authorization support brief based on my full health record.";
+                handleSend();
+            });
+        } else {
             showChatMode();
-            DOM.userInput.value = "Generate a GLP-1 prior authorization support brief based on my full health record. Include the Now-Then-Why framework and all clinical evidence from my labs.";
+            DOM.userInput.value = "Generate a GLP-1 prior authorization support brief based on my full health record.";
             handleSend();
-        });
-    }
+        }
+    }, { once: true });
 }
 
 /* ── Sidebar & modals ────────────────────────────────────────── */
@@ -1207,8 +989,10 @@ function openSidebar()  { DOM.sidebar.classList.add("open");    DOM.overlay.clas
 function closeSidebar() { DOM.sidebar.classList.remove("open"); DOM.overlay.classList.remove("active"); }
 
 window.closeModals = () => {
-    [DOM.profileModal, DOM.settingsModal, DOM.deleteModal,
-     DOM.pulseModal, DOM.logActivityModal, DOM.advocacyGuideModal].forEach(m => m?.classList.add("hidden"));
+    [
+        DOM.profileModal, DOM.settingsModal, DOM.deleteModal,
+        DOM.pulseModal, DOM.logActivityModal, DOM.advocacyGuideModal,
+    ].forEach(m => m?.classList.add("hidden"));
 };
 
 [DOM.profileModal, DOM.settingsModal, DOM.deleteModal,
@@ -1274,6 +1058,7 @@ async function loadHealthDashboard() {
     const markers  = mr?.ok  ? await safeJson(mr)  : [];
     const insights = ir?.ok  ? await safeJson(ir)  : [];
 
+    // Step 5: empty state if no data
     if (!Array.isArray(markers) || !markers.length) {
         DOM.healthDash.innerHTML = _emptyHealthState(
             "No lab reports yet",
@@ -1306,11 +1091,7 @@ function renderHealthDashboard(markers, insights) {
     ).join("");
     DOM.healthDash.innerHTML =
         (cards ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:11px">${cards}</div>` : "") +
-        (insH  ? `<div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:5px"><i class="fa-solid fa-lightbulb" style="color:var(--accent-amber)"></i> PHI Insights</div>${insH}` : "") +
-        `<div style="font-size:11px;color:var(--text-muted);padding-top:10px;border-top:1px solid var(--border);margin-top:8px;display:flex;gap:5px;align-items:flex-start">
-            <i class="fa-solid fa-circle-info" style="color:var(--brand);margin-top:1px;flex-shrink:0"></i>
-            Data is for informational purposes only. Always consult your healthcare provider.
-        </div>`;
+        (insH  ? `<div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:5px"><i class="fa-solid fa-lightbulb" style="color:var(--accent-amber)"></i> PHI Insights</div>${insH}` : "");
     DOM.doctorBriefBtn?.addEventListener("click", showDoctorBriefModal, {once:true});
 }
 
@@ -1330,10 +1111,6 @@ function showDoctorBriefModal() {
             <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:4px">Medications</label>
             <input type="text" id="brief-meds" placeholder="Metformin 500mg, Vitamin D" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:13px;box-sizing:border-box;margin-bottom:10px;background:var(--bg-input);color:var(--text-main);font-family:var(--font)">
             <div id="brief-output" style="display:none;margin-top:12px;background:var(--bg-hover);border-radius:8px;padding:13px;font-size:13px;line-height:1.65;max-height:260px;overflow-y:auto"></div>
-            <div style="font-size:11px;color:var(--text-muted);padding-top:10px;border-top:1px solid var(--border);margin-top:12px;display:flex;gap:5px;align-items:flex-start">
-                <i class="fa-solid fa-circle-info" style="color:var(--brand);margin-top:1px;flex-shrink:0"></i>
-                This brief is informational only. Your healthcare provider makes all clinical decisions.
-            </div>
         </div>
         <div class="modal-actions">
             <button class="btn-cancel" id="briefCancelBtn">Cancel</button>
@@ -1458,7 +1235,6 @@ function initSettings() {
         if (!confirm("⚠️ PERMANENTLY DELETE YOUR ACCOUNT?\n\nAll health data will be erased. Cannot be undone.")) return;
         if (prompt('Type "DELETE" to confirm:') !== "DELETE") return;
         const h = await getAuthHeaders();
-        _currentAccessToken = null;
         try { await supabaseClient.auth.signOut(); } catch {}
         try {
             const res = await fetch(`${API_BASE}/delete-account`, {method:"POST",headers:h});
@@ -1500,18 +1276,6 @@ DOM.confirmDeleteBtn?.addEventListener("click", async () => {
             padding: 12px 10px 4px; user-select: none;
         }
         .history-group-label:first-child { padding-top: 6px; }
-        @media (min-width: 1440px) {
-            :root { --sidebar-width: 290px; }
-            .chat-display { padding: 16px 0 8px; }
-            .chat-message { max-width: 860px; padding: 10px 32px; }
-            .input-bar-wrapper { max-width: 860px; padding: 6px 32px 18px; }
-            .welcome-screen { padding: 28px 32px 0; }
-            .pulse-card { max-width: 760px; }
-            .suggestion-chips { max-width: 760px; }
-            .modal-box { max-width: 560px; }
-            .modal-box-wide { max-width: 720px; }
-            #pulse-modal .modal-box { max-width: 800px; }
-        }
     `;
     document.head.appendChild(style);
 })();
@@ -1537,8 +1301,13 @@ function wireEvents() {
     DOM.btnUploadNav?.addEventListener("click",  () => { closeSidebar(); DOM.fileInput?.click(); });
     DOM.uploadNudgeBtn?.addEventListener("click",() => { closeSidebar(); DOM.fileInput?.click(); });
     DOM.btnHealthPulse?.addEventListener("click",() => { closeSidebar(); openPulseModal(); });
+
+    // Step 3: Log Activity
     DOM.btnLogActivity?.addEventListener("click", () => { closeSidebar(); openLogActivity(); });
+
+    // Step 2: Advocacy Guide info icon
     DOM.advocacyInfoBtn?.addEventListener("click", openAdvocacyGuide);
+
     DOM.fileInput?.addEventListener("change", e => {
         Array.from(e.target.files||[]).forEach(f => {
             if (f.size > 10*1024*1024) { showToast(`${f.name} too large. Max 10MB.`,"error"); return; }
@@ -1561,52 +1330,15 @@ function wireEvents() {
     });
 }
 
-/* ══════════════════════════════════════════════════════════════
-   BOOT
-   FIX BUG-1: wireAuthStateChange() BEFORE getSession()
-   FIX BUG-4: _currentAccessToken populated on every auth event
-══════════════════════════════════════════════════════════════ */
+/* ── Boot ─────────────────────────────────────────────────────── */
 document.addEventListener("DOMContentLoaded", async () => {
-    try {
-        await initSupabase();
-    } catch {
-        showToast("Cannot connect to backend.","error");
-        return;
-    }
-
-    // MUST be wired before getSession() — OAuth hash fires SIGNED_IN
-    // via this listener. If getSession() runs first, it may clear the hash
-    // before Supabase parses it, and the event is never fired.
-    wireAuthStateChange();
-
-    wireEvents();
-    initSettings();
-    initVoiceInput();
-    loadUserPreferences();
-
-    // Check for existing session (direct page loads, not OAuth returns)
+    try { await initSupabase(); } catch { showToast("Cannot connect to backend.","error"); return; }
     const session = await getSession();
-
-    if (session?.access_token) {
-        // Cache token from existing session
-        _currentAccessToken = session.access_token;
-    }
-
-    if (!session?.user) {
-        // No existing session AND no OAuth hash → redirect to login
-        if (!window.location.hash.includes("access_token")) {
-            window.location.href = "/login";
-        }
-        // If hash has token, onAuthStateChange will fire handleLoginSuccess
-        return;
-    }
-
-    // Existing session: check Google terms
+    if (!session?.user) { window.location.href = "/login"; return; }
     const user = session.user;
-    if (user.app_metadata?.provider === "google" && !localStorage.getItem(`phi_terms_${user.id}`)) {
-        window.location.href = "/login";
-        return;
+    if (user.app_metadata?.provider==="google" && !localStorage.getItem(`phi_terms_${user.id}`)) {
+        window.location.href = "/login"; return;
     }
-
-    await handleLoginSuccess(user, session.access_token);
+    wireEvents(); initSettings(); initVoiceInput(); loadUserPreferences();
+    await handleLoginSuccess(user);
 });
