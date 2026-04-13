@@ -1,36 +1,21 @@
 /**
- * script.js — Curabook PHI  v3.4 — Bug Fixes
+ * script.js — Curabook PHI  v3.5 — Launch Edition
  *
- * FIXES IN THIS VERSION:
+ * NEW IN THIS VERSION (April 15 Launch):
  *
- * #FIX-1  sendChip SyntaxError "Unexpected end of input"
- *         Root cause: JSON.stringify(text) inside onclick="" HTML attributes
- *         produces double-quoted strings that break the attribute value.
- *         Any apostrophe or special char in chip text also breaks parsing.
- *         Fix: store chip texts in a JS Map keyed by index; onclick passes
- *         only the integer index, eliminating all quoting issues entirely.
+ * #STEP-2  Advocacy Guide modal — info icon next to Doctor Visit Prep explains
+ *          what the brief is, the PA criteria, and how to use it with a provider.
  *
- * #FIX-2  Duplicate message sends
- *         Root cause: isProcessing guard existed but sendChip used setTimeout
- *         which let rapid clicks queue multiple sends before the flag set.
- *         Also, Enter keydown + send button click could both fire.
- *         Fix: set isProcessing=true synchronously at the TOP of handleSend,
- *         before any async work. Add debounce on sendChip.
+ * #STEP-3  Log Activity modal — manual entry form for steps, food, sleep, stress,
+ *          weight. Wires to POST /api/behavioral-logs. Loads recent entries.
+ *          Provides the data Task 3 (correlation engine) needs to work.
  *
- * #FIX-3  Slow history / redundant fetches
- *         Root cause: loadHistory() called in createConversation(), after
- *         login, and after every rename — 3-4 parallel calls on startup.
- *         Fix: loadHistory() called only once at login and after explicit
- *         user actions (new chat, delete). createConversation() updates the
- *         list locally instead of re-fetching.
+ * #STEP-4  openLogActivity() & submitBehavioralLog() — complete behavioral
+ *          logging pipeline with metric-type tabs, unit auto-fill, hints.
  *
- * #FIX-4  Chat history UX — date grouping + active state
- *         Added Today / Yesterday / date group headers to the sidebar
- *         conversation list. Active conversation stays highlighted after
- *         switching. Titles truncate cleanly.
- *
- * #FIX-5  loadHistory called inside createConversation removed.
- *         After a new conv is created, it's prepended to the list locally.
+ * #STEP-5  Empty states: "Upload your first report" with specific instructions
+ *          shown when no health data exists (profile modal + welcome screen).
+ *          Disclaimer enforcement: every AI response ends with ⚕️ footer.
  */
 
 "use strict";
@@ -47,7 +32,6 @@ let isProcessing         = false;
 let conversationToDelete = null;
 let _healthContext       = null;
 
-// #FIX-1: chip text registry — avoids inline string quoting entirely
 const _chipTexts = new Map();
 let _chipCounter = 0;
 
@@ -81,6 +65,12 @@ const DOM = {
     filePreview:$id("file-preview-container"), newChatBtn:$id("newChatBtn"),
     historyList:$id("historyList"), userEmailDisp:$id("user-email-display"),
     btnUploadNav:$id("btn-upload-nav"), btnHealthPulse:$id("btn-health-pulse"),
+    // Step 3: Log Activity
+    btnLogActivity:$id("btn-log-activity"),
+    logActivityModal:$id("log-activity-modal"),
+    // Step 2: Advocacy Guide
+    advocacyGuideModal:$id("advocacy-guide-modal"),
+    advocacyInfoBtn:$id("advocacyInfoBtn"),
     profileModal:$id("profile-modal"), settingsModal:$id("settings-modal"),
     deleteModal:$id("delete-modal"), pulseModal:$id("pulse-modal"), pulseModalBody:$id("pulse-modal-body"),
     modalAvatar:$id("modal-avatar"), modalEmail:$id("modal-email"), accountCreated:$id("account-created"),
@@ -182,7 +172,6 @@ async function handleLoginSuccess(user) {
     if (DOM.modalEmail)    DOM.modalEmail.textContent    = user.email;
     if (DOM.modalAvatar)   DOM.modalAvatar.textContent   = initial;
 
-    // #FIX-3: parallel but single loadHistory call only here
     await Promise.all([
         saveUserConsents().catch(()=>{}),
         loadHistory(),
@@ -267,6 +256,7 @@ function showNoDataState() {
         if (titleEl) titleEl.innerHTML = `${escapeHtml(currentUserName)}'s health <em>co-pilot</em>`;
     }
 
+    // Step 5: contextual chips for new users
     setChips([
         { icon:"fa-file-medical",    text:"Upload my first lab report" },
         { icon:"fa-circle-question", text:"What can PHI do for me?" },
@@ -298,7 +288,6 @@ function renderPulseCard(d) {
         headline=`${greet}${worseTrends[0].marker} has moved ${worseTrends[0].pct_change}% since ${worseTrends[0].from_date}.`;
     }
 
-    // #FIX-1: use data-chip-id instead of inline onclick with string args
     const alerts = feed.slice(0,4).map(item => {
         const s = item.severity==="high"?"high":item.severity==="medium"?"medium":item.severity==="none"?"positive":"low";
         const chipId = _registerChip(item.cta || "Tell me more");
@@ -322,7 +311,6 @@ function renderPulseCard(d) {
             <i class="fa-solid fa-chart-line"></i> View full health picture
         </button>`;
 
-    // Wire up alert clicks safely
     DOM.pulseContent.querySelectorAll(".pulse-alert-item[data-chip-id]").forEach(el => {
         el.addEventListener("click", () => {
             const id = parseInt(el.getAttribute("data-chip-id"), 10);
@@ -364,7 +352,7 @@ function generateContextualChips(d) {
     }
 }
 
-/* ── #FIX-1: Chip registry — no inline string quoting ────────── */
+/* ── Chip registry ────────────────────────────────────────────── */
 
 function _registerChip(text) {
     const id = _chipCounter++;
@@ -384,7 +372,6 @@ function setChips(chips) {
         </button>`;
     }).join("");
 
-    // Wire clicks via event delegation — no inline onclick at all
     DOM.welcomeChips.querySelectorAll(".chip[data-chip-id]").forEach(btn => {
         btn.addEventListener("click", () => {
             const id = parseInt(btn.getAttribute("data-chip-id"), 10);
@@ -394,7 +381,6 @@ function setChips(chips) {
     });
 }
 
-/* ── #FIX-2: sendChip — debounced, no setTimeout ─────────────── */
 let _sendChipDebounce = null;
 function sendChip(text) {
     if (isProcessing) return;
@@ -423,10 +409,20 @@ async function renderPulseModalContent() {
         const [markers, insights] = await Promise.all([safeJson(mr), safeJson(ir)]);
         const mArr = Array.isArray(markers)  ? markers  : [];
         const iArr = Array.isArray(insights) ? insights : [];
+
         if (!mArr.length) {
-            DOM.pulseModalBody.innerHTML = '<div class="loading-text">No health data yet — upload a report.</div>';
+            DOM.pulseModalBody.innerHTML = _emptyHealthState(
+                "No health data yet",
+                "Upload a lab report using the 📎 button and PHI will extract all your markers automatically.",
+                "Upload a Report"
+            );
+            DOM.pulseModalBody.querySelector(".empty-cta-btn")?.addEventListener("click", () => {
+                window.closeModals();
+                DOM.fileInput?.click();
+            });
             return;
         }
+
         const rows = mArr.map(m => {
             const color = m.status==="HIGH"||m.status==="LOW"?"var(--accent-warn)":m.status==="NORMAL"?"var(--accent-ok)":"var(--text-muted)";
             const badge = m.status==="HIGH"?"⬆ HIGH":m.status==="LOW"?"⬇ LOW":"✓ NORMAL";
@@ -465,7 +461,6 @@ async function renderPulseModalContent() {
                 </button>
             </div>`;
 
-        // #FIX-1: wire button safely, no inline string
         $id("pulseModalDoctorBtn")?.addEventListener("click", () => {
             window.closeModals();
             sendChip("Prepare me for my next doctor visit based on my full health picture");
@@ -475,6 +470,19 @@ async function renderPulseModalContent() {
     }
 }
 window.openPulseModal = openPulseModal;
+
+/* ── Step 5: Empty state helper ──────────────────────────────── */
+
+function _emptyHealthState(title, desc, btnLabel) {
+    return `<div class="empty-health-state">
+        <i class="fa-solid fa-file-medical"></i>
+        <h4>${escapeHtml(title)}</h4>
+        <p>${escapeHtml(desc)}</p>
+        ${btnLabel ? `<button class="upload-nudge-btn empty-cta-btn" style="font-size:13px;padding:9px 18px">
+            <i class="fa-solid fa-upload"></i> ${escapeHtml(btnLabel)}
+        </button>` : ""}
+    </div>`;
+}
 
 /* ── Conversations ───────────────────────────────────────────── */
 
@@ -488,7 +496,6 @@ async function createConversation() {
     if (res.status===403) { showToast("Consent required. Accept terms in Settings.","error"); return null; }
     if (res.ok && d.conversation_id) {
         activeConvId = d.conversation_id;
-        // #FIX-3: prepend to list locally, don't re-fetch entire history
         _prependConvToHistory(d.conversation_id, "New Chat");
     }
     return d.conversation_id || null;
@@ -499,7 +506,6 @@ function _prependConvToHistory(id, title) {
     const existing = DOM.historyList.querySelector(".empty-state");
     if (existing) existing.remove();
 
-    // Remove "Today" group header duplication — add if not present
     let todayGroup = DOM.historyList.querySelector(".history-group-today");
     if (!todayGroup) {
         todayGroup = document.createElement("div");
@@ -521,10 +527,7 @@ function _prependConvToHistory(id, title) {
         e.stopPropagation(); showDeleteModal(id);
     });
 
-    // Insert after Today label
     todayGroup.insertAdjacentElement("afterend", item);
-
-    // De-activate others
     DOM.historyList.querySelectorAll(".history-item").forEach(el => {
         el.classList.toggle("active", el.getAttribute("data-id") === id);
     });
@@ -546,7 +549,6 @@ async function loadHistory() {
     }
 }
 
-/* ── #FIX-4: History with date groups ────────────────────────── */
 function renderHistory(conversations) {
     if (!conversations.length) {
         DOM.historyList.innerHTML = '<div class="empty-state">No conversations yet.<br>Start by asking PHI something!</div>';
@@ -564,7 +566,6 @@ function renderHistory(conversations) {
         return d.toLocaleDateString("en-GB", { day:"numeric", month:"short", year:"numeric" });
     }
 
-    // Group conversations
     const groups = new Map();
     conversations.forEach(c => {
         const label = _groupLabel(c.created_at);
@@ -588,20 +589,14 @@ function renderHistory(conversations) {
     });
 
     DOM.historyList.innerHTML = html;
-
-    // Wire events via delegation — no inline onclick
     DOM.historyList.addEventListener("click", _historyClickHandler);
 }
 
 function _historyClickHandler(e) {
-    const titleEl = e.target.closest(".history-title[data-conv-id]");
+    const titleEl  = e.target.closest(".history-title[data-conv-id]");
     const deleteEl = e.target.closest(".delete-chat[data-del-id]");
-    if (titleEl) {
-        openConversation(titleEl.getAttribute("data-conv-id"));
-    } else if (deleteEl) {
-        e.stopPropagation();
-        showDeleteModal(deleteEl.getAttribute("data-del-id"));
-    }
+    if (titleEl)  { openConversation(titleEl.getAttribute("data-conv-id")); }
+    else if (deleteEl) { e.stopPropagation(); showDeleteModal(deleteEl.getAttribute("data-del-id")); }
 }
 
 async function openConversation(id) {
@@ -614,7 +609,6 @@ async function openConversation(id) {
     showChatMode();
     DOM.chatDisplay.innerHTML = "";
 
-    // Update active state in sidebar
     DOM.historyList.querySelectorAll(".history-item").forEach(el => {
         el.classList.toggle("active", el.getAttribute("data-id") === id);
     });
@@ -642,7 +636,6 @@ async function openConversation(id) {
 
 async function renameConversation(id, title) {
     const h = await getAuthHeaders();
-    // Update title in sidebar immediately without re-fetching
     const titleEl = DOM.historyList.querySelector(`.history-title[data-conv-id="${id}"]`);
     if (titleEl) titleEl.textContent = title.substring(0, 50);
     fetch(`${API_BASE}/rename`, {
@@ -653,14 +646,12 @@ async function renameConversation(id, title) {
 /* ── Chat ────────────────────────────────────────────────────── */
 
 async function handleSend() {
-    // #FIX-2: guard at very top, synchronously, before any async work
     if (isProcessing) return;
 
     let text = DOM.userInput.value.trim();
     if (!text && uploadedFiles.length > 0) text = "Please read my uploaded medical report and explain every finding in plain language.";
     if (!text) return;
 
-    // Lock immediately
     setProcessing(true);
 
     if (!activeConvId) {
@@ -684,7 +675,7 @@ async function handleSend() {
         uploadedFiles = [];
         updateFilePreview();
         _cache.del("dashboard");
-        setTimeout(loadHealthPulse, 3000);
+        setTimeout(loadHealthPulse, 4000); // refresh pulse after persona refresh (Step 4)
     }
 
     appendMessage(text, "user");
@@ -718,7 +709,6 @@ async function handleSend() {
         setProcessing(false);
     }
 
-    // Rename conversation after first message (no history re-fetch)
     const msgCount = DOM.chatDisplay.querySelectorAll(".chat-message").length;
     if (msgCount <= 2 && activeConvId) {
         const newTitle = documentContents.length ? `📄 ${documentContents[0].name}` : text.substring(0, 45);
@@ -830,15 +820,183 @@ function updateFilePreview() {
     DOM.userInput.placeholder = `${uploadedFiles.length} file(s) attached — press Send or ask a question…`;
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   STEP 3 — BEHAVIORAL LOGGING
+═══════════════════════════════════════════════════════════════ */
+
+const _METRIC_CONFIG = {
+    steps:  { label:"Steps",           unit:"steps",   placeholder:"e.g. 8500",   hint:"Total steps for the day. PHI correlates with glucose and HbA1c readings." },
+    food:   { label:"Calories (kcal)", unit:"kcal",    placeholder:"e.g. 1800",   hint:"Approximate daily caloric intake. Used to correlate diet with cholesterol and blood sugar." },
+    sleep:  { label:"Sleep (hours)",   unit:"hours",   placeholder:"e.g. 7.5",    hint:"Hours of sleep last night. Poor sleep is correlated with elevated cortisol and glucose." },
+    stress: { label:"Stress (1–10)",   unit:"1-10",    placeholder:"e.g. 6",      hint:"Subjective stress level from 1 (calm) to 10 (extremely stressed). Linked to blood pressure." },
+    weight: { label:"Weight",          unit:"lbs",     placeholder:"e.g. 172",    hint:"Morning body weight. PHI tracks trend over time and correlates with BMI and metabolic markers." },
+};
+
+function openLogActivity() {
+    window.closeModals();
+    DOM.logActivityModal?.classList.remove("hidden");
+
+    // Default date to today
+    const dateEl = $id("log-date");
+    if (dateEl) dateEl.value = new Date().toISOString().slice(0,10);
+
+    // Hide success banner
+    const successEl = $id("log-success-msg");
+    if (successEl) successEl.style.display = "none";
+
+    // Wire metric tabs
+    document.querySelectorAll(".metric-tab").forEach(tab => {
+        tab.addEventListener("click", () => {
+            document.querySelectorAll(".metric-tab").forEach(t => t.classList.remove("active"));
+            tab.classList.add("active");
+            _updateLogFormForMetric(tab.getAttribute("data-metric"));
+        });
+    });
+
+    // Wire submit button
+    const submitBtn = $id("submitLogBtn");
+    if (submitBtn) {
+        submitBtn.replaceWith(submitBtn.cloneNode(true)); // remove old listeners
+        $id("submitLogBtn").addEventListener("click", submitBehavioralLog);
+    }
+
+    _updateLogFormForMetric("steps");
+    _loadRecentLogs();
+}
+
+function _updateLogFormForMetric(metric) {
+    const cfg = _METRIC_CONFIG[metric] || _METRIC_CONFIG.steps;
+    const labelEl = $id("log-value-label");
+    const unitEl  = $id("log-unit");
+    const valEl   = $id("log-value");
+    const hintEl  = $id("metric-hint");
+
+    if (labelEl) labelEl.textContent = cfg.label;
+    if (unitEl)  unitEl.value        = cfg.unit;
+    if (valEl)   valEl.placeholder   = cfg.placeholder;
+    if (hintEl)  hintEl.innerHTML    = `<i class="fa-solid fa-lightbulb" style="color:var(--brand)"></i>&nbsp; ${escapeHtml(cfg.hint)}`;
+}
+
+async function submitBehavioralLog() {
+    const btn     = $id("submitLogBtn");
+    const date    = $id("log-date")?.value?.trim();
+    const value   = $id("log-value")?.value?.trim();
+    const unit    = $id("log-unit")?.value?.trim();
+    const notes   = $id("log-notes")?.value?.trim() || "";
+    const activeTab = document.querySelector(".metric-tab.active");
+    const metric  = activeTab?.getAttribute("data-metric") || "steps";
+
+    if (!date)            { showToast("Please select a date.", "error"); return; }
+    if (!value || isNaN(parseFloat(value))) { showToast("Please enter a valid number.", "error"); return; }
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving…';
+
+    try {
+        const h = await getAuthHeaders();
+        const res = await fetch(`${API_BASE}/api/behavioral-logs`, {
+            method: "POST",
+            headers: h,
+            body: JSON.stringify({
+                date,
+                metric_name: metric,
+                value: parseFloat(value),
+                unit: unit || _METRIC_CONFIG[metric]?.unit || "units",
+                notes,
+            }),
+        });
+        const d = await safeJson(res);
+
+        if (!res.ok || d.error) {
+            showToast(d.error || "Could not save. Try again.", "error");
+        } else {
+            // Show success banner
+            const successEl = $id("log-success-msg");
+            const successText = $id("log-success-text");
+            if (successEl && successText) {
+                successText.textContent = `${_METRIC_CONFIG[metric]?.label || metric} logged for ${date} ✓`;
+                successEl.style.display = "flex";
+            }
+            // Clear value + notes
+            const valEl   = $id("log-value");
+            const notesEl = $id("log-notes");
+            if (valEl)   valEl.value   = "";
+            if (notesEl) notesEl.value = "";
+
+            showToast(`✓ ${_METRIC_CONFIG[metric]?.label || metric} logged`);
+            _loadRecentLogs();
+        }
+    } catch {
+        showToast("Network error. Please try again.", "error");
+    }
+
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-check"></i> Save Entry';
+}
+
+async function _loadRecentLogs() {
+    const preview = $id("recent-logs-preview");
+    const list    = $id("recent-logs-list");
+    if (!preview || !list) return;
+
+    try {
+        const h   = await getAuthHeaders();
+        const res = await fetch(`${API_BASE}/api/behavioral-logs?days=7`, { headers:h });
+        const d   = await safeJson(res);
+        if (!res.ok || !Array.isArray(d) || !d.length) { preview.style.display = "none"; return; }
+
+        preview.style.display = "";
+        list.innerHTML = d.slice(0,6).map(r =>
+            `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:12.5px">
+                <span style="color:var(--text-muted)">${escapeHtml(r.date||"")} · ${escapeHtml(r.metric_name||"")}</span>
+                <span style="font-weight:600">${r.value} <span style="font-weight:400;opacity:.7">${escapeHtml(r.unit||"")}</span></span>
+            </div>`
+        ).join("");
+    } catch {
+        preview.style.display = "none";
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   STEP 2 — ADVOCACY GUIDE MODAL
+═══════════════════════════════════════════════════════════════ */
+
+function openAdvocacyGuide() {
+    window.closeModals();
+    DOM.advocacyGuideModal?.classList.remove("hidden");
+
+    // Wire the "Generate My Brief" button
+    $id("startAdvocacyBtn")?.addEventListener("click", () => {
+        window.closeModals();
+        // Trigger correlation/advocacy in chat
+        if (!activeConvId) {
+            createConversation().then(() => {
+                if (DOM.profileModal?.classList.contains("hidden")) showChatMode();
+                DOM.userInput.value = "Generate a GLP-1 prior authorization support brief based on my full health record.";
+                handleSend();
+            });
+        } else {
+            showChatMode();
+            DOM.userInput.value = "Generate a GLP-1 prior authorization support brief based on my full health record.";
+            handleSend();
+        }
+    }, { once: true });
+}
+
 /* ── Sidebar & modals ────────────────────────────────────────── */
 
 function openSidebar()  { DOM.sidebar.classList.add("open");    DOM.overlay.classList.add("active"); }
 function closeSidebar() { DOM.sidebar.classList.remove("open"); DOM.overlay.classList.remove("active"); }
 
 window.closeModals = () => {
-    [DOM.profileModal, DOM.settingsModal, DOM.deleteModal, DOM.pulseModal].forEach(m => m?.classList.add("hidden"));
+    [
+        DOM.profileModal, DOM.settingsModal, DOM.deleteModal,
+        DOM.pulseModal, DOM.logActivityModal, DOM.advocacyGuideModal,
+    ].forEach(m => m?.classList.add("hidden"));
 };
-[DOM.profileModal, DOM.settingsModal, DOM.deleteModal, DOM.pulseModal].forEach(m => {
+
+[DOM.profileModal, DOM.settingsModal, DOM.deleteModal,
+ DOM.pulseModal, DOM.logActivityModal, DOM.advocacyGuideModal].forEach(m => {
     m?.addEventListener("click", e => { if (e.target === m) window.closeModals(); });
 });
 
@@ -899,14 +1057,24 @@ async function loadHealthDashboard() {
     ]);
     const markers  = mr?.ok  ? await safeJson(mr)  : [];
     const insights = ir?.ok  ? await safeJson(ir)  : [];
-    renderHealthDashboard(Array.isArray(markers)?markers:[], Array.isArray(insights)?insights:[]);
+
+    // Step 5: empty state if no data
+    if (!Array.isArray(markers) || !markers.length) {
+        DOM.healthDash.innerHTML = _emptyHealthState(
+            "No lab reports yet",
+            "Upload a PDF lab report using the 📎 button. PHI will extract all your markers, explain what they mean, and track changes over time.",
+            "Upload My First Report"
+        );
+        DOM.healthDash.querySelector(".empty-cta-btn")?.addEventListener("click", () => {
+            window.closeModals();
+            DOM.fileInput?.click();
+        });
+        return;
+    }
+    renderHealthDashboard(markers, Array.isArray(insights)?insights:[]);
 }
 
 function renderHealthDashboard(markers, insights) {
-    if (!markers.length && !insights.length) {
-        DOM.healthDash.innerHTML = '<div class="loading-text">No health data yet. Upload a lab report.</div>';
-        return;
-    }
     const color = s => s==="HIGH"||s==="LOW" ? "var(--accent-warn)" : s==="NORMAL" ? "var(--accent-ok)" : "var(--text-muted)";
     const cards = markers.map(m =>
         `<div style="background:var(--bg-hover);border-radius:8px;padding:9px;min-width:100px;flex:1">
@@ -1092,30 +1260,27 @@ DOM.confirmDeleteBtn?.addEventListener("click", async () => {
     showToast("Conversation deleted");
     const h = await getAuthHeaders();
     fetch(`${API_BASE}/delete`, {method:"POST",headers:h,body:JSON.stringify({conversation_id:idToDelete})}).catch(()=>{});
-    // Clean up empty group headers
     DOM.historyList.querySelectorAll(".history-group-label").forEach(label => {
         const next = label.nextElementSibling;
         if (!next || next.classList.contains("history-group-label")) label.remove();
     });
 });
 
-/* ── Add group-label style to CSS dynamically ────────────────── */
+/* ── Group label style injection ─────────────────────────────── */
 (function injectGroupLabelStyle() {
     const style = document.createElement("style");
     style.textContent = `
         .history-group-label {
-            font-size: 10px;
-            font-weight: 700;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 0.9px;
-            padding: 12px 10px 4px;
-            user-select: none;
+            font-size: 10px; font-weight: 700; color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 0.9px;
+            padding: 12px 10px 4px; user-select: none;
         }
         .history-group-label:first-child { padding-top: 6px; }
     `;
     document.head.appendChild(style);
 })();
+
+/* ── Wire all events ──────────────────────────────────────────── */
 
 function wireEvents() {
     DOM.mobileMenu?.addEventListener("click", openSidebar);
@@ -1129,13 +1294,20 @@ function wireEvents() {
         DOM.historyList.querySelectorAll(".history-item").forEach(el => el.classList.remove("active"));
         DOM.userInput.focus();
     });
-    DOM.sendBtn?.addEventListener("click",   e => { e.preventDefault(); handleSend(); });
+    DOM.sendBtn?.addEventListener("click",    e => { e.preventDefault(); handleSend(); });
     DOM.userInput?.addEventListener("keydown", e => { if (e.key==="Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } });
     DOM.userInput?.addEventListener("input",   () => autoGrow(DOM.userInput));
     DOM.attachBtn?.addEventListener("click",   () => DOM.fileInput?.click());
     DOM.btnUploadNav?.addEventListener("click",  () => { closeSidebar(); DOM.fileInput?.click(); });
     DOM.uploadNudgeBtn?.addEventListener("click",() => { closeSidebar(); DOM.fileInput?.click(); });
     DOM.btnHealthPulse?.addEventListener("click",() => { closeSidebar(); openPulseModal(); });
+
+    // Step 3: Log Activity
+    DOM.btnLogActivity?.addEventListener("click", () => { closeSidebar(); openLogActivity(); });
+
+    // Step 2: Advocacy Guide info icon
+    DOM.advocacyInfoBtn?.addEventListener("click", openAdvocacyGuide);
+
     DOM.fileInput?.addEventListener("change", e => {
         Array.from(e.target.files||[]).forEach(f => {
             if (f.size > 10*1024*1024) { showToast(`${f.name} too large. Max 10MB.`,"error"); return; }
@@ -1158,6 +1330,7 @@ function wireEvents() {
     });
 }
 
+/* ── Boot ─────────────────────────────────────────────────────── */
 document.addEventListener("DOMContentLoaded", async () => {
     try { await initSupabase(); } catch { showToast("Cannot connect to backend.","error"); return; }
     const session = await getSession();

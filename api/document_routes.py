@@ -1,30 +1,14 @@
 """
 api/document_routes.py — Bulletproof edition
 ─────────────────────────────────────────────────────────────────────────────
-WHAT WAS CAUSING THE PERSISTENT 500:
+FIX #RADIOLOGY: Lab reports falsely detected as radiology (words like
+"final report", "findings:", "impression") — now requires STRONG radiology
+keywords AND absence of lab data indicators.
 
-The new _is_useful_text() (with medical keyword check) was forcing OCR on
-PDFs that pypdf could read fine. If pdf2image / pytesseract aren't installed
-on Render, OCR throws. The fix: _is_useful_text now only applies the keyword
-gate when OCR is actually available — so it never forces a step that will fail.
-
-FIX #RADIOLOGY: Lab reports containing words like "final report", "findings:",
-"impression", "discharge summary" were being falsely detected as radiology
-reports, skipping all marker extraction. Fixed: radiology detection now
-requires STRONG radiology keywords AND absence of lab data indicators.
-
-HOW TO DIAGNOSE FUTURE 500s:
-
-  GET /diagnose
-
-Returns a JSON report of every import the analyze pipeline depends on,
-so you can see exactly which dependency is missing on the first request.
-
-PERMANENT RULE IN THIS FILE:
-
-  Every exception in _analyze_inner() must produce a JSON response body.
-  HTTP 500 with an empty body causes "Unexpected end of input" in the browser.
-  The top-level try/except in analyze() guarantees this.
+FIX #PERSONA-REFRESH (Step 4 — Launch): After successful marker storage,
+immediately queues generate_recursive_summary(force_refresh=True) in the
+background job queue. This ensures the Health Persona shown on the welcome
+screen reflects the newly uploaded report without any cache delay.
 """
 
 from flask import Blueprint, request, jsonify
@@ -36,7 +20,6 @@ document_bp = Blueprint("documents", __name__)
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
 
 # ── Radiology detection keywords ──────────────────────────────────────────────
-# STRONG radiology keywords — unambiguous, not found in lab reports
 _RADIOLOGY_STRONG = [
     "mammograph", "radiology report", "ultrasound report", "mri report",
     "ct scan report", "x-ray report", "radio-diagnosis", "sonograph",
@@ -44,7 +27,6 @@ _RADIOLOGY_STRONG = [
     "pet scan", "fluoroscopy", "angiograph",
 ]
 
-# Lab data indicators — if present, it's a lab report not radiology
 _LAB_INDICATORS = [
     "mg/dl", "mg/l", "mmol/l", "ng/ml", "pg/ml", "iu/l", "u/l",
     "reference range", "normal range", "hemoglobin", "haemoglobin",
@@ -56,11 +38,6 @@ _LAB_INDICATORS = [
 
 
 def _detect_radiology(text: str) -> bool:
-    """
-    FIX #RADIOLOGY: Only treat as radiology if it has STRONG radiology
-    keywords AND no lab data indicators. Previously words like 'final report',
-    'findings:', 'impression' caused lab reports to be skipped entirely.
-    """
     lower = text.lower()
     has_strong_radiology = any(k in lower for k in _RADIOLOGY_STRONG)
     has_lab_data         = any(k in lower for k in _LAB_INDICATORS)
@@ -68,7 +45,6 @@ def _detect_radiology(text: str) -> bool:
     if has_strong_radiology and not has_lab_data:
         return True
 
-    # Secondary check: pure radiology terms with no lab context
     secondary_radiology = ["ultrasound", "mri", "ct scan", "x-ray", "mammogram"]
     has_secondary = any(k in lower for k in secondary_radiology)
     if has_secondary and not has_lab_data:
@@ -81,14 +57,6 @@ def _detect_radiology(text: str) -> bool:
 
 @document_bp.route("/diagnose", methods=["GET"])
 def diagnose():
-    """
-    GET /diagnose
-
-    Tests every import the /analyze pipeline needs and returns a structured
-    report.  Call this first when debugging a 500 on /analyze.
-
-    No auth required — safe to call publicly (returns only boolean import status).
-    """
     results = {}
 
     def _try(label, fn):
@@ -131,16 +99,11 @@ def diagnose():
 
 @document_bp.route("/analyze", methods=["POST"])
 def analyze():
-    """
-    Always returns JSON. The outer try/except prevents empty 500 bodies.
-    """
     try:
         return _analyze_inner()
     except Exception as e:
-        # Log full traceback to Render logs
         print(f"[ANALYZE] ❌ Unhandled {type(e).__name__}: {e}")
         traceback.print_exc()
-        # Return specific error class to help with debugging
         return jsonify({
             "error":      "Something went wrong processing your file. Please try again.",
             "error_type": type(e).__name__,
@@ -152,7 +115,6 @@ def _analyze_inner():
     from services.auth       import get_authenticated_user
     from services.compliance import verify_user_consent, audit_log, anonymize_for_llm
 
-    # ── Auth ──────────────────────────────────────────────────────────────────
     user = get_authenticated_user(supabase)
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
@@ -160,7 +122,6 @@ def _analyze_inner():
     if not verify_user_consent(supabase, user.id, "document_processing"):
         return jsonify({"error": "Document processing consent required"}), 403
 
-    # ── File validation ───────────────────────────────────────────────────────
     file = request.files.get("file")
     if not file:
         return jsonify({"error": "No file provided"}), 400
@@ -183,10 +144,9 @@ def _analyze_inner():
     if file_size == 0:
         return jsonify({"error": "The uploaded file is empty."}), 400
 
-    # ── Text extraction ───────────────────────────────────────────────────────
     raw_text = _extract_text(file, filename)
     if isinstance(raw_text, tuple):
-        return raw_text          # error response from _extract_text
+        return raw_text
 
     if len(raw_text.strip()) < 20:
         return jsonify({
@@ -199,7 +159,7 @@ def _analyze_inner():
     anonymized = anonymize_for_llm(raw_text, user.id)
     user_name  = _get_user_name(supabase, user.id)
 
-    # ── Radiology detection (FIX #RADIOLOGY) ─────────────────────────────────
+    # ── Radiology detection ───────────────────────────────────────────────────
     _is_radiology = _detect_radiology(anonymized)
     if _is_radiology:
         print(f"[ANALYZE] Detected as radiology/imaging report: {filename}")
@@ -212,6 +172,12 @@ def _analyze_inner():
         active_markers = _extract_and_store_markers(
             supabase, groq_client, anonymized, filename, user.id, user_name
         )
+
+    # ── FIX #PERSONA-REFRESH: Refresh persona immediately after new markers ───
+    # (Step 4 — Launch Readiness)
+    # Queued in background so /analyze response is never blocked.
+    if active_markers:
+        _queue_persona_refresh(supabase, user.id)
 
     # ── Background: doctor prep (non-blocking) ────────────────────────────────
     job_id = uuid.uuid4().hex[:12]
@@ -259,22 +225,15 @@ def _analyze_inner():
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _extract_text(file, filename: str):
-    """
-    Returns extracted text string, or a (jsonify_response, status_code) tuple.
-    Tries subdirectory path first, then flat fallback.
-    All imports are lazy — the module loads even if pypdf is missing.
-    """
     file.seek(0)
     extract_fn = None
 
-    # Try subdirectory path (production layout)
     try:
         from document_processing.extractor import extract_text_from_file
         extract_fn = extract_text_from_file
     except ImportError:
         pass
 
-    # Flat layout fallback
     if extract_fn is None:
         try:
             from extractor import extract_text_from_file as _fn
@@ -291,7 +250,6 @@ def _extract_text(file, filename: str):
     try:
         return extract_fn(file)
     except ValueError as e:
-        # Human-readable error from the extractor (e.g. "OCR not available")
         print(f"[ANALYZE] Extraction ValueError: {e}")
         return jsonify({"error": str(e)}), 400
     except Exception as e:
@@ -316,7 +274,6 @@ def _extract_and_store_markers(
     supabase, groq_client, anonymized: str, filename: str,
     user_id: str, user_name: str,
 ) -> list:
-    # ── Import extract_health_markers ─────────────────────────────────────────
     extract_fn = None
     try:
         from health_memory.extractor import extract_health_markers
@@ -325,11 +282,9 @@ def _extract_and_store_markers(
         pass
 
     if extract_fn is None:
-        # Flat layout: health_memory/extractor.py doesn't exist separately
         print("[ANALYZE] health_memory.extractor not found — no marker extraction")
         return []
 
-    # ── Extract ───────────────────────────────────────────────────────────────
     markers = []
     try:
         markers = extract_fn(
@@ -343,7 +298,6 @@ def _extract_and_store_markers(
     if not markers:
         return []
 
-    # ── Explain ───────────────────────────────────────────────────────────────
     explained = markers
     try:
         from ai.explainer import explain_markers
@@ -351,7 +305,6 @@ def _extract_and_store_markers(
     except Exception as e:
         print(f"[ANALYZE] Explainer non-fatal: {type(e).__name__}: {e}")
 
-    # ── Store ─────────────────────────────────────────────────────────────────
     try:
         from health_memory.memory import store_health_markers
         stored = store_health_markers(supabase, user_id, explained)
@@ -360,6 +313,24 @@ def _extract_and_store_markers(
         print(f"[ANALYZE] Store non-fatal: {type(e).__name__}: {e}")
 
     return explained
+
+
+def _queue_persona_refresh(supabase, user_id: str) -> None:
+    """
+    FIX #PERSONA-REFRESH (Step 4):
+    Queue an immediate persona regeneration after new markers are stored.
+    Runs in the background worker — never blocks the /analyze response.
+    The refreshed persona is cached in user_profiles.health_persona_text
+    and injected into the NEXT chat turn automatically.
+    """
+    try:
+        from services.job_queue import submit_job
+        from health_memory.persona import generate_recursive_summary
+
+        submit_job(generate_recursive_summary, supabase, user_id, force_refresh=True)
+        print(f"[ANALYZE] 🔄 Persona refresh queued for {user_id[:8]}")
+    except Exception as e:
+        print(f"[ANALYZE] Persona refresh queue (non-fatal): {e}")
 
 
 def _submit_doctor_prep_bg(
