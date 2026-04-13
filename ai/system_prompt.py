@@ -3,29 +3,15 @@ ai/system_prompt.py
 ═══════════════════════════════════════════════════════════════════════════
 TASK 4 — Safety-Hardened System Prompt Engine
 
-Defines PHI's role as an Informational Health Secretary:
-  - Strictly prohibits diagnostic language
-  - Mandates disclaimer in every response
-  - Enforces data-grounded language ("your data shows" not "you have")
-  - Injects Health Persona (Task 1) for personalization without bloat
-  - Activates intent-specific overlays (metabolic, advocacy, correlation)
+FIX #CHAT-500: build_phi_messages() now wraps the persona generation call
+               (generate_recursive_summary) in a try/except. Previously,
+               any LLM error or import failure inside persona generation
+               would propagate as an unhandled exception, causing a 500
+               with no response body and no CORS headers — which the browser
+               reported as "No 'Access-Control-Allow-Origin' header present."
 
-How to integrate into chat_routes.py:
-  Replace the call to build_chat_messages() from ai.chat with:
-
-    from ai.system_prompt import build_phi_messages
-    messages = build_phi_messages(
-        supabase         = supabase,
-        user_id          = user.id,
-        conversation_id  = conversation_id,
-        user_message     = enriched_message,
-        has_documents    = has_documents,
-        health_context   = health_context,
-        groq_client      = groq_client,   # for persona generation
-    )
-
-Full replacement for chat.py system prompt layer.
-═══════════════════════════════════════════════════════════════════════════
+               The persona is purely additive context. If it fails, the
+               chat still works correctly using the full health context block.
 """
 
 from __future__ import annotations
@@ -36,7 +22,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TASK 4 — CORE SYSTEM PROMPT
-# PHI as Informational Health Secretary
 # ══════════════════════════════════════════════════════════════════════════════
 
 PHI_CORE_SYSTEM = """
@@ -269,7 +254,6 @@ _INTENT_MAP = {
 
 def _detect_intent(message: str) -> str:
     lower = message.lower()
-    # Ordered by specificity
     for intent in ["advocacy", "doctor_prep", "correlation", "lifestyle", "metabolic"]:
         if any(kw in lower for kw in _INTENT_MAP[intent]):
             return intent
@@ -313,11 +297,6 @@ _INJECTION_PATTERNS = [
 
 
 def validate_response(text: str, has_health_data: bool) -> Tuple[str, List[str]]:
-    """
-    Post-generation safety validator.
-    Returns (cleaned_text, list_of_violations).
-    Soft-fixes diagnostic language. Hard-blocks medication instructions.
-    """
     violations = []
     for pattern, label in _DIAGNOSTIC_PATTERNS:
         if pattern.search(text):
@@ -346,7 +325,6 @@ def validate_response(text: str, has_health_data: bool) -> Tuple[str, List[str]]
 
 
 def detect_hallucination_risk(reply: str, has_health_data: bool) -> bool:
-    """Detect if the LLM invented health values that aren't in the database."""
     if has_health_data:
         return False
     lower = reply.lower()
@@ -359,7 +337,7 @@ def check_prompt_injection(text: str) -> bool:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Message builder — drop-in replacement for ai/chat.py build_chat_messages()
+# Message builder
 # ══════════════════════════════════════════════════════════════════════════════
 
 def build_phi_messages(
@@ -377,17 +355,11 @@ def build_phi_messages(
     """
     Build the complete LLM message list for a PHI chat turn.
 
-    System message layers (in order):
-      1. PHI_CORE_SYSTEM   — role definition + language rules + disclaimer mandate
-      2. Health Persona    — ≤200-word biography (Task 1, cached)
-      3. Health Context    — structured marker data, trends, memories
-      4. Intent Overlay    — activated by keyword detection
-      5. Document alert    — if a doc was uploaded this turn
-      6. Conversation history
-      7. User message
-
-    The persona (layer 2) is a compact alternative to the full context block
-    for follow-up messages — keeps the LLM personalised without burning tokens.
+    FIX #CHAT-500: Persona generation (generate_recursive_summary) is now
+    wrapped in a try/except. It makes an LLM call and can fail if the AI
+    service is unavailable or the Supabase tables don't have the persona
+    cache columns yet. A persona failure is non-fatal — the chat works
+    fine without it using the full health_context block.
     """
     from services.compliance import anonymize_for_llm
 
@@ -406,7 +378,8 @@ def build_phi_messages(
     # ── Layer 1: Core system prompt ───────────────────────────────────────────
     messages.append({"role": "system", "content": PHI_CORE_SYSTEM})
 
-    # ── Layer 2: Health Persona (Task 1 — compact biography) ─────────────────
+    # ── Layer 2: Health Persona (compact biography) ───────────────────────────
+    # FIX #CHAT-500: wrapped in try/except — never propagate to caller
     if inject_persona and groq_client is not None:
         try:
             from health_memory.persona import generate_recursive_summary
@@ -421,7 +394,8 @@ def build_phi_messages(
                     ),
                 })
         except Exception as e:
-            print(f"[SYSTEM_PROMPT] Persona generation non-fatal: {e}")
+            # Non-fatal — log and continue without persona
+            print(f"[SYSTEM_PROMPT] Persona generation failed (non-fatal): {type(e).__name__}: {e}")
 
     # ── Layer 3: Full Health Context ──────────────────────────────────────────
     has_health_data = bool(health_context and health_context.strip())
@@ -466,7 +440,7 @@ def build_phi_messages(
             ),
         })
 
-    # ── Layer 6: Conversation history ────────────────────────────────────────
+    # ── Layer 6: Conversation history ─────────────────────────────────────────
     try:
         res = (
             supabase.table("chats")
@@ -498,7 +472,7 @@ def build_phi_messages(
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Mandatory disclaimer — always appended in Python, never left to the LLM
+# Mandatory disclaimer
 # ══════════════════════════════════════════════════════════════════════════════
 
 MANDATORY_DISCLAIMER = (

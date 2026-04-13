@@ -5,19 +5,18 @@ FIXES APPLIED:
   #M5  — Removed duplicate init_workers() call
   #H5  — Rate limiter documented as single-process only; warning printed
   #H1  — /api/config moved to compliance_routes.py (auth-protected)
-
-FIX #BP-1 — Blueprint name collision: importing chat_bp as both chat_bp and chat_v1
-            from the same module object caused Flask to raise:
-            AssertionError: View function mapping is overwriting an existing endpoint
-            Fix: import fresh blueprint instances with distinct names by importing
-            the blueprint objects under aliased names at the module level.
+  #BP-1 — Blueprint name collision fixed
+  #CORS-1 — CORS headers now applied on ALL responses including 500s.
+            Flask's after_request hook may not fire when errorhandler
+            returns — so CORS is set inside handle_exception too.
+  #CORS-2 — OPTIONS preflight requests now handled before auth/rate checks.
 """
 
 import os
 import time
 from collections import defaultdict
 from threading import Lock
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, make_response
 from flask_cors import CORS
 from dotenv import load_dotenv
 from supabase import create_client, Client
@@ -30,7 +29,6 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-# Fix #H2 — Hard fail on missing ENCRYPTION_KEY.
 ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")
 if not ENCRYPTION_KEY:
     raise EnvironmentError(
@@ -95,7 +93,7 @@ def get_embedder():
                 print(f"ℹ️  Embedding model unavailable: {_e}")
     return _embedder_instance
 
-embedder = None  # backward-compatible alias
+embedder = None
 
 
 # ── Rate limiter ──────────────────────────────────────────────────────────────
@@ -103,7 +101,7 @@ _worker_count = int(os.getenv("WORKER_COUNT", "1"))
 if _worker_count > 1:
     print(
         f"⚠️  WARNING: Running with {_worker_count} workers but in-memory rate limiter.\n"
-        "   Rate limits will be {_worker_count}x higher than configured.\n"
+        f"   Rate limits will be {_worker_count}x higher than configured.\n"
         "   Set REDIS_URL for production."
     )
 
@@ -150,6 +148,9 @@ def track(key: str, inc: int = 1):
 # ── Flask app ─────────────────────────────────────────────────────────────────
 app = Flask(__name__)
 
+# FIX #CORS-1: Use flask_cors for the base layer, but we also manually
+# set headers in error handlers to cover the case where after_request
+# doesn't fire (e.g. unhandled exception path in some Flask versions).
 _allowed_origins = ["*"]
 CORS(
     app,
@@ -161,9 +162,37 @@ CORS(
 print(f"✅  CORS configured for: {_allowed_origins}")
 
 
+# ── CORS helper — applied on ALL responses ────────────────────────────────────
+def _apply_cors(response):
+    """Apply CORS headers to any response object. Safe to call multiple times."""
+    origin = request.headers.get("Origin", "")
+    if origin:
+        response.headers["Access-Control-Allow-Origin"]      = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+    else:
+        response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Demo-Session"
+    return response
+
+
+# ── OPTIONS preflight — must respond before any auth or rate-limit check ──────
+@app.before_request
+def handle_options_preflight():
+    """FIX #CORS-2: Return 200 immediately for all OPTIONS requests."""
+    if request.method == "OPTIONS":
+        resp = make_response("", 200)
+        _apply_cors(resp)
+        resp.headers["Access-Control-Max-Age"] = "86400"
+        return resp
+
+
 # ── Security headers ──────────────────────────────────────────────────────────
 @app.after_request
 def add_security_headers(response):
+    # CORS re-application — flask_cors handles most cases but this catches edge cases
+    _apply_cors(response)
+
     response.headers["X-Content-Type-Options"]  = "nosniff"
     response.headers["X-Frame-Options"]          = "DENY"
     response.headers["X-XSS-Protection"]         = "1; mode=block"
@@ -185,15 +214,16 @@ def check_rate_limit():
         key = get_client_key(route)
         if not _limiter.is_allowed(key, limit, window):
             track("rate_limited")
-            return jsonify({
+            resp = jsonify({
                 "error":       "Too many requests. Please slow down.",
                 "retry_after": window,
-            }), 429
+            })
+            resp.status_code = 429
+            _apply_cors(resp)
+            return resp
 
 
 # ── Blueprints ────────────────────────────────────────────────────────────────
-
-# Fix #M5 — init_workers called ONCE only
 from services.job_queue import init_workers
 init_workers(num_workers=int(os.getenv("WORKER_COUNT", "1")))
 
@@ -213,19 +243,12 @@ app.register_blueprint(compliance_bp)
 app.register_blueprint(profile_bp)
 app.register_blueprint(intelligence_bp)
 
-# FIX #BP-1 — API versioning under /api/v1
-# Problem: importing the same blueprint object and registering it twice causes:
-#   AssertionError: View function mapping is overwriting an existing endpoint
-# Fix: Use url_prefix AND a distinct name= argument for every duplicate registration.
-# The name= kwarg scopes all endpoint names so there's no collision.
-
 app.register_blueprint(auth_bp,       url_prefix="/api/v1", name="auth_v1")
 app.register_blueprint(chat_bp,       url_prefix="/api/v1", name="chat_v1")
 app.register_blueprint(document_bp,   url_prefix="/api/v1", name="doc_v1")
 app.register_blueprint(health_bp,     url_prefix="/api/v1", name="health_v1")
 app.register_blueprint(compliance_bp, url_prefix="/api/v1", name="comp_v1")
 
-# Demo mode
 try:
     from api.demo_routes import demo_bp
     app.register_blueprint(demo_bp)
@@ -236,7 +259,6 @@ try:
 except Exception as _de:
     print(f"⚠️  Demo routes error: {_de}")
 
-# Payment
 try:
     from api.payment_routes import payment_bp
     app.register_blueprint(payment_bp)
@@ -248,18 +270,29 @@ except ImportError:
 # ── Error handlers ────────────────────────────────────────────────────────────
 @app.errorhandler(429)
 def too_many_requests(e):
-    return jsonify({"error": "Too many requests. Please slow down."}), 429
+    resp = jsonify({"error": "Too many requests. Please slow down."})
+    resp.status_code = 429
+    _apply_cors(resp)
+    return resp
 
 @app.errorhandler(413)
 def too_large(e):
-    return jsonify({"error": "File too large. Maximum 5MB."}), 413
+    resp = jsonify({"error": "File too large. Maximum 5MB."})
+    resp.status_code = 413
+    _apply_cors(resp)
+    return resp
 
 @app.errorhandler(Exception)
 def handle_exception(e):
     import traceback
     traceback.print_exc()
     track("errors_500")
-    return jsonify({"error": "Something went wrong. Please try again."}), 500
+    resp = jsonify({"error": "Something went wrong. Please try again."})
+    resp.status_code = 500
+    # FIX #CORS-1: Manually apply CORS — after_request may not fire on
+    # unhandled exceptions in all Flask/Werkzeug versions.
+    _apply_cors(resp)
+    return resp
 
 
 # ── Health + monitoring endpoints ─────────────────────────────────────────────
