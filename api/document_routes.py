@@ -8,6 +8,11 @@ PDFs that pypdf could read fine. If pdf2image / pytesseract aren't installed
 on Render, OCR throws. The fix: _is_useful_text now only applies the keyword
 gate when OCR is actually available — so it never forces a step that will fail.
 
+FIX #RADIOLOGY: Lab reports containing words like "final report", "findings:",
+"impression", "discharge summary" were being falsely detected as radiology
+reports, skipping all marker extraction. Fixed: radiology detection now
+requires STRONG radiology keywords AND absence of lab data indicators.
+
 HOW TO DIAGNOSE FUTURE 500s:
 
   GET /diagnose
@@ -29,6 +34,47 @@ import uuid
 document_bp = Blueprint("documents", __name__)
 
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
+
+# ── Radiology detection keywords ──────────────────────────────────────────────
+# STRONG radiology keywords — unambiguous, not found in lab reports
+_RADIOLOGY_STRONG = [
+    "mammograph", "radiology report", "ultrasound report", "mri report",
+    "ct scan report", "x-ray report", "radio-diagnosis", "sonograph",
+    "scan name", "post surgery", "echocardiogram", "nuclear medicine",
+    "pet scan", "fluoroscopy", "angiograph",
+]
+
+# Lab data indicators — if present, it's a lab report not radiology
+_LAB_INDICATORS = [
+    "mg/dl", "mg/l", "mmol/l", "ng/ml", "pg/ml", "iu/l", "u/l",
+    "reference range", "normal range", "hemoglobin", "haemoglobin",
+    "cholesterol", "creatinine", "hba1c", "platelet", "glucose",
+    "triglyceride", "ferritin", "vitamin", "tsh", "alt", "ast",
+    "wbc", "rbc", "sodium", "potassium", "bilirubin", "albumin",
+    "lab report", "blood test", "laboratory", "specimen", "pathology",
+]
+
+
+def _detect_radiology(text: str) -> bool:
+    """
+    FIX #RADIOLOGY: Only treat as radiology if it has STRONG radiology
+    keywords AND no lab data indicators. Previously words like 'final report',
+    'findings:', 'impression' caused lab reports to be skipped entirely.
+    """
+    lower = text.lower()
+    has_strong_radiology = any(k in lower for k in _RADIOLOGY_STRONG)
+    has_lab_data         = any(k in lower for k in _LAB_INDICATORS)
+
+    if has_strong_radiology and not has_lab_data:
+        return True
+
+    # Secondary check: pure radiology terms with no lab context
+    secondary_radiology = ["ultrasound", "mri", "ct scan", "x-ray", "mammogram"]
+    has_secondary = any(k in lower for k in secondary_radiology)
+    if has_secondary and not has_lab_data:
+        return True
+
+    return False
 
 
 # ── Diagnostic endpoint ───────────────────────────────────────────────────────
@@ -153,13 +199,12 @@ def _analyze_inner():
     anonymized = anonymize_for_llm(raw_text, user.id)
     user_name  = _get_user_name(supabase, user.id)
 
-    # ── Radiology detection ───────────────────────────────────────────────────
-    _lower = anonymized.lower()
-    _is_radiology = any(k in _lower for k in [
-        "mammograph", "radiology", "ultrasound", "mri", "ct scan", "x-ray",
-        "impression", "findings:", "bilateral", "scan name", "radio-diagnosis",
-        "final report", "discharge summary", "post surgery", "sonograph",
-    ])
+    # ── Radiology detection (FIX #RADIOLOGY) ─────────────────────────────────
+    _is_radiology = _detect_radiology(anonymized)
+    if _is_radiology:
+        print(f"[ANALYZE] Detected as radiology/imaging report: {filename}")
+    else:
+        print(f"[ANALYZE] Detected as lab report — proceeding with marker extraction: {filename}")
 
     # ── Marker extraction + storage (synchronous) ─────────────────────────────
     active_markers = []
