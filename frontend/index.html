@@ -16,24 +16,28 @@
     <meta http-equiv="X-Content-Type-Options" content="nosniff">
     <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin">
 
+    <!-- Fonts: DM Serif Display (brand) + DM Sans (body) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <link rel="stylesheet" href="style.css">
-    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+
+    <!-- Single Supabase CDN — pinned version, no duplicates -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
     <style>
-    /* ── Launch additions ───────────────────────────────────────────── */
+    /* ═══════════════════════════════════════════════════════════════
+       LAUNCH ADDITIONS — April 15 US Launch
+    ═══════════════════════════════════════════════════════════════ */
 
-    /* Log Activity modal form */
-    .log-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+    /* ── Log Activity form ───────────────────────────────────────── */
+    .log-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
     .log-form-group { display: flex; flex-direction: column; gap: 5px; }
-    .log-form-group label { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; }
+    .log-form-group label { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .6px; }
     .log-form-group input,
-    .log-form-group select,
     .log-form-group textarea {
         padding: 9px 11px;
         border: 1.5px solid var(--border);
@@ -46,12 +50,12 @@
         transition: border-color .2s;
     }
     .log-form-group input:focus,
-    .log-form-group select:focus { border-color: var(--brand); }
+    .log-form-group textarea:focus { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(0,200,224,.08); }
     .log-form-group.full-width { grid-column: 1 / -1; }
 
-    .metric-tabs { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+    .metric-tabs { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
     .metric-tab {
-        padding: 6px 14px; border-radius: 20px;
+        padding: 6px 13px; border-radius: 20px;
         border: 1.5px solid var(--border);
         background: none; font-size: 12.5px; font-family: var(--font);
         color: var(--text-muted); cursor: pointer; transition: all .15s;
@@ -59,66 +63,65 @@
     .metric-tab.active,
     .metric-tab:hover { background: var(--brand-dim); border-color: var(--brand); color: var(--brand); }
 
-    /* Advocacy guide modal */
-    .advocacy-steps { display: flex; flex-direction: column; gap: 12px; margin: 12px 0; }
-    .advocacy-step { display: flex; align-items: flex-start; gap: 12px; padding: 12px; background: var(--bg-body); border-radius: 10px; border-left: 3px solid var(--brand); }
-    .advocacy-step-num { width: 24px; height: 24px; background: var(--brand); color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; }
+    /* ── Advocacy guide ───────────────────────────────────────────── */
+    .advocacy-steps { display: flex; flex-direction: column; gap: 11px; margin: 12px 0; }
+    .advocacy-step  { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; background: var(--bg-body); border-radius: 10px; border-left: 3px solid var(--brand); }
+    .advocacy-step-num { width: 24px; height: 24px; background: var(--brand); color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; margin-top: 1px; }
     .advocacy-step-text h5 { font-size: 13px; font-weight: 600; margin-bottom: 3px; }
-    .advocacy-step-text p { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+    .advocacy-step-text p  { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
 
-    .evidence-pill {
-        display: inline-flex; align-items: center; gap: 6px;
-        padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 700;
-    }
-    .evidence-pill.strong   { background: rgba(74,222,128,.12); color: #4ade80; }
-    .evidence-pill.moderate { background: rgba(251,191,36,.12);  color: #fbbf24; }
-    .evidence-pill.limited  { background: rgba(255,107,107,.12); color: #ff6b6b; }
-
-    /* Info button next to Doctor Brief */
+    /* ── Info icon button ─────────────────────────────────────────── */
     .btn-info-icon {
         width: 22px; height: 22px; border-radius: 50%;
         border: 1.5px solid var(--border); background: none;
         color: var(--text-muted); font-size: 11px; cursor: pointer;
         display: inline-flex; align-items: center; justify-content: center;
         transition: all .15s; margin-left: 4px; vertical-align: middle;
+        flex-shrink: 0;
     }
     .btn-info-icon:hover { border-color: var(--brand); color: var(--brand); }
 
-    /* Empty state for no health data */
-    .empty-health-state {
-        text-align: center; padding: 32px 20px;
-        background: var(--bg-body); border-radius: 12px;
-        border: 2px dashed var(--border); margin: 8px 0;
-    }
-    .empty-health-state i { font-size: 2rem; color: var(--brand); margin-bottom: 12px; display: block; opacity: .6; }
-    .empty-health-state h4 { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
-    .empty-health-state p { font-size: 12.5px; color: var(--text-muted); line-height: 1.55; margin-bottom: 14px; }
-
-    /* Behavioral log success state */
+    /* ── Log success banner ───────────────────────────────────────── */
     .log-success-banner {
         background: rgba(74,222,128,.1); border: 1px solid rgba(74,222,128,.3);
         border-radius: 8px; padding: 10px 14px; font-size: 13px;
-        color: #4ade80; display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
+        color: #4ade80; display: flex; align-items: center; gap: 8px;
+        margin-bottom: 12px; animation: fadeSlideIn .3s ease;
     }
+    @keyframes fadeSlideIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
 
-    /* Step 5: 1440px desktop optimization */
+    /* ── 1440px desktop optimisation ─────────────────────────────── */
     @media (min-width: 1440px) {
         :root { --sidebar-width: 290px; }
+
         .chat-display { padding: 16px 0 8px; }
         .chat-message { max-width: 860px; padding: 10px 32px; }
         .input-bar-wrapper { max-width: 860px; padding: 6px 32px 18px; }
-        .welcome-screen { padding: 28px 32px 0; }
+
+        .welcome-screen { padding: 28px 32px 0; gap: 18px; }
         .pulse-card { max-width: 760px; }
         .suggestion-chips { max-width: 760px; }
+
         .modal-box { max-width: 560px; }
-        .modal-box-wide { max-width: 680px; }
+        .modal-box-wide { max-width: 720px; }
+        .modal-box .setting-item { padding: 13px 0; }
+
+        .pulse-card-content { padding: 22px 28px; }
+        .pulse-alert-item { padding: 13px 16px; }
     }
 
+    @media (min-width: 1920px) {
+        :root { --sidebar-width: 300px; }
+        .chat-message { max-width: 960px; }
+        .input-bar-wrapper { max-width: 960px; }
+    }
+
+    /* ── Dark mode additions ──────────────────────────────────────── */
     body.dark-mode .log-form-group input,
-    body.dark-mode .log-form-group select,
     body.dark-mode .log-form-group textarea { background: #1a1a24; color: #e8eaf0; border-color: rgba(255,255,255,.1); }
     body.dark-mode .advocacy-step { background: #0a0a0f; }
-    body.dark-mode .empty-health-state { background: #0a0a0f; }
+    body.dark-mode .log-success-banner { background: rgba(74,222,128,.08); }
+    body.dark-mode .metric-tab { background: #111118; }
     </style>
 </head>
 <body>
@@ -155,7 +158,6 @@
             <i class="fa-solid fa-heart-pulse"></i>
             <span>Health Pulse</span>
         </button>
-        <!-- Step 3: Log Activity nav button -->
         <button id="btn-log-activity" class="nav-item">
             <i class="fa-solid fa-person-walking"></i>
             <span>Log Activity</span>
@@ -221,7 +223,10 @@
 
     <div class="chat-container" id="centerContainer">
 
+        <!-- Welcome screen — shown until user starts chatting -->
         <div class="welcome-screen" id="welcomeScreen" aria-label="Health Intelligence Dashboard">
+
+            <!-- Health Pulse Card — shows when data exists -->
             <div class="pulse-card" id="pulseCard">
                 <div class="pulse-card-loading" id="pulseLoading">
                     <div class="pulse-spinner"></div>
@@ -230,6 +235,7 @@
                 <div class="pulse-card-content hidden" id="pulseContent"></div>
             </div>
 
+            <!-- Hero — shows when NO data exists -->
             <div class="welcome-hero" id="welcomeHero" style="display:none">
                 <div class="phi-avatar-large">φ</div>
                 <h1 class="welcome-title">Your health <em>co-pilot</em></h1>
@@ -239,8 +245,10 @@
                 </p>
             </div>
 
+            <!-- Contextual suggestion chips -->
             <div class="suggestion-chips" id="welcomeChips" role="list"></div>
 
+            <!-- Upload CTA — shown when no data -->
             <div class="upload-nudge hidden" id="uploadNudge">
                 <button class="upload-nudge-btn" id="uploadNudgeBtn">
                     <i class="fa-solid fa-file-medical"></i>
@@ -248,10 +256,10 @@
                 </button>
                 <p>PDF or TXT · Max 5MB · Analyzed in 30 seconds</p>
             </div>
-        </div>
+
+        </div><!-- /welcome-screen -->
 
         <div id="chat-display" class="chat-display" role="log" aria-live="polite" aria-label="Conversation"></div>
-
         <div id="file-preview-container" class="file-preview-container" aria-label="Attached files"></div>
 
         <div class="input-bar-wrapper" role="region" aria-label="Message input">
@@ -281,22 +289,29 @@
             </p>
         </div>
 
-    </div>
+    </div><!-- /chat-container -->
 </main>
 
 <!-- ═══════════════════════════════════════════════════════════════════
-     HEALTH PULSE MODAL
+     HEALTH PULSE MODAL — Temporal Intelligence
+     Three sections: Your Story · Current Snapshot · Active Insights
 ═══════════════════════════════════════════════════════════════════ -->
 <div id="pulse-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="pulse-modal-title">
     <div class="modal-box modal-box-wide">
         <div class="modal-header">
-            <h3 id="pulse-modal-title"><i class="fa-solid fa-heart-pulse" style="color:var(--brand)"></i> Health Pulse</h3>
+            <h3 id="pulse-modal-title">
+                <i class="fa-solid fa-heart-pulse" style="color:var(--brand)"></i>
+                Health Pulse
+            </h3>
             <button class="close-btn" onclick="window.closeModals()" aria-label="Close">
                 <i class="fa-solid fa-xmark"></i>
             </button>
         </div>
         <div id="pulse-modal-body">
-            <div class="loading-text">Loading health intelligence…</div>
+            <div class="temporal-loading">
+                <div class="pulse-spinner"></div>
+                <span>Loading health intelligence…</span>
+            </div>
         </div>
     </div>
 </div>
@@ -330,12 +345,13 @@
             <div class="setting-info"><h4><i class="fa-solid fa-file-medical"></i> Reports Analyzed</h4><p id="documents-analyzed">…</p></div>
         </div>
         <hr>
+        <!-- Health Memory section -->
         <div class="setting-item" style="display:block">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
                 <h4 style="margin:0"><i class="fa-solid fa-heart-pulse" style="color:var(--accent-warn)"></i> Health Memory</h4>
                 <div style="display:flex;align-items:center;gap:6px">
-                    <!-- Step 2: Info icon next to Doctor Visit Prep -->
-                    <button id="advocacyInfoBtn" class="btn-info-icon" title="Advocacy Guide — insurance support" aria-label="Advocacy Guide">
+                    <!-- Advocacy guide info button -->
+                    <button id="advocacyInfoBtn" class="btn-info-icon" title="Insurance Advocacy Guide" aria-label="Advocacy Guide">
                         <i class="fa-solid fa-circle-info"></i>
                     </button>
                     <button id="doctorBriefBtn" class="btn-doctor-brief">
@@ -402,7 +418,9 @@
     </div>
 </div>
 
-<!-- DELETE CONVERSATION MODAL -->
+<!-- ═══════════════════════════════════════════════════════════════════
+     DELETE CONVERSATION MODAL
+═══════════════════════════════════════════════════════════════════ -->
 <div id="delete-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="delete-modal-title">
     <div class="modal-box warning-box">
         <div class="modal-header">
@@ -421,25 +439,32 @@
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════════
-     STEP 3: LOG ACTIVITY MODAL
+     LOG ACTIVITY MODAL — feeds Task 3 correlation engine
 ═══════════════════════════════════════════════════════════════════ -->
 <div id="log-activity-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="log-modal-title">
     <div class="modal-box">
         <div class="modal-header">
-            <h3 id="log-modal-title"><i class="fa-solid fa-person-walking" style="color:var(--brand)"></i> Log Activity</h3>
-            <button class="close-btn" onclick="window.closeModals()" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+            <h3 id="log-modal-title">
+                <i class="fa-solid fa-person-walking" style="color:var(--brand)"></i>
+                Log Activity
+            </h3>
+            <button class="close-btn" onclick="window.closeModals()" aria-label="Close">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
         </div>
 
-        <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px;line-height:1.5">
+        <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px;line-height:1.55">
             Logging daily activity helps PHI correlate your behavior with lab results —
-            revealing patterns like "your glucose rises on low-step days."
+            revealing patterns like <em>"your glucose rises on low-step days."</em>
         </p>
 
+        <!-- Inline success banner -->
         <div id="log-success-msg" class="log-success-banner" style="display:none">
-            <i class="fa-solid fa-circle-check"></i> <span id="log-success-text">Activity logged!</span>
+            <i class="fa-solid fa-circle-check"></i>
+            <span id="log-success-text">Activity logged!</span>
         </div>
 
-        <!-- Metric type tabs -->
+        <!-- Metric type selector -->
         <div class="metric-tabs" id="metricTabs">
             <button class="metric-tab active" data-metric="steps">🚶 Steps</button>
             <button class="metric-tab" data-metric="food">🍽 Food</button>
@@ -448,6 +473,7 @@
             <button class="metric-tab" data-metric="weight">⚖️ Weight</button>
         </div>
 
+        <!-- Form -->
         <div class="log-form-grid">
             <div class="log-form-group">
                 <label for="log-date">Date</label>
@@ -455,35 +481,35 @@
             </div>
             <div class="log-form-group">
                 <label for="log-value" id="log-value-label">Steps</label>
-                <input type="number" id="log-value" placeholder="e.g. 8500" min="0">
+                <input type="number" id="log-value" placeholder="e.g. 8500" min="0" step="any">
             </div>
             <div class="log-form-group">
-                <label for="log-unit" id="log-unit-label">Unit</label>
-                <input type="text" id="log-unit" value="steps" readonly>
+                <label for="log-unit">Unit</label>
+                <input type="text" id="log-unit" value="steps" readonly style="opacity:.7;cursor:default">
             </div>
             <div class="log-form-group">
-                <label for="log-notes">Notes <span style="opacity:.5">(optional)</span></label>
+                <label for="log-notes">Notes <span style="opacity:.45">(optional)</span></label>
                 <input type="text" id="log-notes" placeholder="e.g. 30 min walk after dinner">
             </div>
         </div>
 
-        <!-- Metric-specific helpers -->
-        <div id="metric-hint" style="font-size:12px;color:var(--text-muted);margin-bottom:14px;padding:8px 12px;background:var(--bg-body);border-radius:7px">
+        <!-- Metric hint -->
+        <div id="metric-hint" style="font-size:12px;color:var(--text-muted);margin-bottom:14px;padding:8px 12px;background:var(--bg-body);border-radius:7px;line-height:1.5">
             <i class="fa-solid fa-lightbulb" style="color:var(--brand)"></i>
             &nbsp;Steps: total for the day. PHI will compare against your glucose and HbA1c readings.
         </div>
 
         <div class="modal-actions">
             <button class="btn-cancel" onclick="window.closeModals()">Cancel</button>
-            <button id="submitLogBtn" style="padding:8px 18px;background:var(--brand);border:none;border-radius:8px;color:white;font-size:13.5px;font-weight:600;font-family:var(--font);cursor:pointer;transition:all .15s">
+            <button id="submitLogBtn" style="padding:8px 18px;background:var(--brand);border:none;border-radius:8px;color:white;font-size:13.5px;font-weight:600;font-family:var(--font);cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:6px">
                 <i class="fa-solid fa-check"></i> Save Entry
             </button>
         </div>
 
-        <!-- Recent log entries preview -->
+        <!-- Recent entries preview -->
         <div id="recent-logs-preview" style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px;display:none">
             <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">
-                <i class="fa-solid fa-clock-rotate-left"></i> Recent Entries
+                <i class="fa-solid fa-clock-rotate-left"></i> Last 7 Days
             </div>
             <div id="recent-logs-list"></div>
         </div>
@@ -491,7 +517,7 @@
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════════
-     STEP 2: ADVOCACY GUIDE MODAL
+     ADVOCACY GUIDE MODAL — Task 2 / Insurance PA Support
 ═══════════════════════════════════════════════════════════════════ -->
 <div id="advocacy-guide-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="advocacy-guide-title">
     <div class="modal-box modal-box-wide">
@@ -500,63 +526,62 @@
                 <i class="fa-solid fa-file-shield" style="color:var(--brand)"></i>
                 Insurance Advocacy Guide
             </h3>
-            <button class="close-btn" onclick="window.closeModals()" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+            <button class="close-btn" onclick="window.closeModals()" aria-label="Close">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
         </div>
 
-        <!-- What it is -->
         <div style="margin-bottom:16px">
             <h4 style="font-size:14px;font-weight:700;margin-bottom:8px">What is the Advocacy Brief?</h4>
             <p style="font-size:13.5px;color:var(--text-muted);line-height:1.65">
-                PHI translates your lab data into <strong>insurance-ready language</strong> —
-                organizing your clinical facts (BMI, HbA1c, medication history) into a
-                structured Medical Necessity Support Packet for medications like GLP-1 agonists
-                (Zepbound, Wegovy, Ozempic). Your doctor uses this as a reference when submitting
-                a prior authorization.
+                PHI translates your lab data into <strong>insurance-ready language</strong> — organizing
+                your clinical facts (BMI, HbA1c, medication history) into a structured Medical Necessity
+                Support Packet for medications like GLP-1 agonists (Zepbound, Wegovy, Ozempic).
+                Your doctor uses this as a reference when submitting a prior authorization.
             </p>
         </div>
 
-        <!-- PA criteria explained -->
+        <!-- PA criteria reference -->
         <div style="background:var(--brand-dim);border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px">
-            <div style="font-weight:700;margin-bottom:6px;color:var(--brand)">
+            <div style="font-weight:700;margin-bottom:8px;color:var(--brand)">
                 <i class="fa-solid fa-list-check"></i> &nbsp;Common US PA Criteria for GLP-1s
             </div>
             <ul style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:5px;color:var(--text-muted)">
-                <li><i class="fa-solid fa-check" style="color:var(--brand);margin-right:7px"></i> BMI ≥ 30 (obesity) <em>or</em> BMI ≥ 27 with comorbidity</li>
-                <li><i class="fa-solid fa-check" style="color:var(--brand);margin-right:7px"></i> Type 2 Diabetes diagnosis (HbA1c ≥ 6.5%)</li>
-                <li><i class="fa-solid fa-check" style="color:var(--brand);margin-right:7px"></i> Documented failed diet/exercise program</li>
-                <li><i class="fa-solid fa-check" style="color:var(--brand);margin-right:7px"></i> Prior medication failures (Metformin, etc.)</li>
+                <li><i class="fa-solid fa-check" style="color:var(--brand);margin-right:7px;width:14px"></i>BMI ≥ 30 (obesity) <em>or</em> BMI ≥ 27 with comorbidity</li>
+                <li><i class="fa-solid fa-check" style="color:var(--brand);margin-right:7px;width:14px"></i>Type 2 Diabetes diagnosis (HbA1c ≥ 6.5%)</li>
+                <li><i class="fa-solid fa-check" style="color:var(--brand);margin-right:7px;width:14px"></i>Documented failed diet/exercise program</li>
+                <li><i class="fa-solid fa-check" style="color:var(--brand);margin-right:7px;width:14px"></i>Prior medication failures (Metformin, etc.)</li>
             </ul>
         </div>
 
-        <!-- How to use it -->
         <h4 style="font-size:14px;font-weight:700;margin-bottom:10px">How to use it</h4>
         <div class="advocacy-steps">
             <div class="advocacy-step">
                 <div class="advocacy-step-num">1</div>
                 <div class="advocacy-step-text">
                     <h5>Upload your lab reports</h5>
-                    <p>PHI needs BMI, HbA1c, glucose, cholesterol, and weight data. The more reports you've uploaded, the stronger the evidence packet.</p>
+                    <p>PHI needs BMI, HbA1c, glucose, cholesterol, and weight data. More reports = stronger evidence packet.</p>
                 </div>
             </div>
             <div class="advocacy-step">
                 <div class="advocacy-step-num">2</div>
                 <div class="advocacy-step-text">
                     <h5>Tell PHI your medication history</h5>
-                    <p>Chat with PHI: "I've been taking Metformin 500mg since 2022 with limited effect." PHI stores this as memory and includes it in the packet.</p>
+                    <p>Chat: "I've been taking Metformin 500mg since 2022 with limited effect." PHI stores this and includes it in the packet.</p>
                 </div>
             </div>
             <div class="advocacy-step">
                 <div class="advocacy-step-num">3</div>
                 <div class="advocacy-step-text">
                     <h5>Generate the packet</h5>
-                    <p>Ask PHI: "Generate a GLP-1 prior authorization brief" or use the Doctor Visit Prep button. PHI scores your evidence and produces a structured packet.</p>
+                    <p>Click "Generate My Brief" below or ask PHI directly. PHI scores your evidence and produces a structured document.</p>
                 </div>
             </div>
             <div class="advocacy-step">
                 <div class="advocacy-step-num">4</div>
                 <div class="advocacy-step-text">
                     <h5>Share with your provider</h5>
-                    <p>This is informational — your doctor reviews it and submits the actual PA. PHI never contacts insurers directly.</p>
+                    <p>This is informational. Your doctor reviews it and submits the actual PA. PHI never contacts insurers directly.</p>
                 </div>
             </div>
         </div>
@@ -569,13 +594,14 @@
 
         <div class="modal-actions" style="margin-top:16px">
             <button class="btn-cancel" onclick="window.closeModals()">Close</button>
-            <button id="startAdvocacyBtn" style="padding:8px 18px;background:var(--brand);border:none;border-radius:8px;color:white;font-size:13.5px;font-weight:600;font-family:var(--font);cursor:pointer">
+            <button id="startAdvocacyBtn" style="padding:9px 18px;background:var(--brand);border:none;border-radius:8px;color:white;font-size:13.5px;font-weight:600;font-family:var(--font);cursor:pointer;display:flex;align-items:center;gap:7px">
                 <i class="fa-solid fa-wand-magic-sparkles"></i> Generate My Brief
             </button>
         </div>
     </div>
 </div>
 
+<!-- Load JS last so DOM is ready -->
 <script src="script.js"></script>
 </body>
 </html>

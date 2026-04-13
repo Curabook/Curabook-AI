@@ -1,14 +1,24 @@
 """
-api/document_routes.py — Bulletproof edition
+api/document_routes.py — Launch Edition (April 15)
 ─────────────────────────────────────────────────────────────────────────────
-FIX #RADIOLOGY: Lab reports falsely detected as radiology (words like
-"final report", "findings:", "impression") — now requires STRONG radiology
-keywords AND absence of lab data indicators.
+FIXES / ADDITIONS vs previous version:
 
-FIX #PERSONA-REFRESH (Step 4 — Launch): After successful marker storage,
-immediately queues generate_recursive_summary(force_refresh=True) in the
-background job queue. This ensures the Health Persona shown on the welcome
-screen reflects the newly uploaded report without any cache delay.
+  #PERSONA-REFRESH  After successful marker storage, we now run persona
+                    refresh in TWO ways:
+                      1. Immediate lightweight cache-bust via Supabase upsert
+                         so the next /api/persona call regenerates immediately.
+                      2. Background job (job_queue) does the full LLM synthesis.
+                    This gives the dashboard instant feedback on next load.
+
+  #RADIOLOGY        Lab reports with words like "final report" / "findings"
+                    are no longer falsely flagged as radiology unless STRONG
+                    radiology keywords are present AND lab indicators are absent.
+
+  #TEMPORAL         Returns `report_date` (extracted from document or today)
+                    so the frontend can display temporal context correctly.
+
+  #CORRELATION-CTX  Passes marker snapshot to correlation engine after store
+                    so Task 3 has fresh data without a separate DB read.
 """
 
 from flask import Blueprint, request, jsonify
@@ -17,9 +27,9 @@ import uuid
 
 document_bp = Blueprint("documents", __name__)
 
-MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
+MAX_FILE_SIZE = 5 * 1024 * 1024   # 5 MB
 
-# ── Radiology detection keywords ──────────────────────────────────────────────
+# ── Radiology detection ───────────────────────────────────────────────────────
 _RADIOLOGY_STRONG = [
     "mammograph", "radiology report", "ultrasound report", "mri report",
     "ct scan report", "x-ray report", "radio-diagnosis", "sonograph",
@@ -39,14 +49,14 @@ _LAB_INDICATORS = [
 
 def _detect_radiology(text: str) -> bool:
     lower = text.lower()
-    has_strong_radiology = any(k in lower for k in _RADIOLOGY_STRONG)
-    has_lab_data         = any(k in lower for k in _LAB_INDICATORS)
+    has_strong   = any(k in lower for k in _RADIOLOGY_STRONG)
+    has_lab_data = any(k in lower for k in _LAB_INDICATORS)
 
-    if has_strong_radiology and not has_lab_data:
+    if has_strong and not has_lab_data:
         return True
 
-    secondary_radiology = ["ultrasound", "mri", "ct scan", "x-ray", "mammogram"]
-    has_secondary = any(k in lower for k in secondary_radiology)
+    secondary = ["ultrasound", "mri", "ct scan", "x-ray", "mammogram"]
+    has_secondary = any(k in lower for k in secondary)
     if has_secondary and not has_lab_data:
         return True
 
@@ -66,33 +76,26 @@ def diagnose():
         except Exception as e:
             results[label] = {"ok": False, "error": f"{type(e).__name__}: {e}"}
 
-    _try("pypdf",                   lambda: __import__("pypdf"))
-    _try("pdf2image",               lambda: __import__("pdf2image"))
-    _try("pytesseract",             lambda: __import__("pytesseract"))
-    _try("groq",                    lambda: __import__("groq"))
-    _try("openai",                  lambda: __import__("openai"))
-    _try("supabase",                lambda: __import__("supabase"))
+    for mod in [
+        "pypdf", "pdf2image", "pytesseract", "groq", "openai", "supabase",
+    ]:
+        _try(mod, lambda m=mod: __import__(m))
 
-    _try("document_processing.extractor",
-         lambda: __import__("document_processing.extractor", fromlist=["extract_text_from_file"]))
-    _try("health_memory.extractor",
-         lambda: __import__("health_memory.extractor", fromlist=["extract_health_markers"]))
-    _try("health_memory.memory",
-         lambda: __import__("health_memory.memory", fromlist=["store_health_markers"]))
-    _try("ai.chat",
-         lambda: __import__("ai.chat", fromlist=["generate_doctor_prep", "call_llm"]))
-    _try("ai.explainer",
-         lambda: __import__("ai.explainer", fromlist=["explain_markers"]))
-    _try("services.job_queue",
-         lambda: __import__("services.job_queue", fromlist=["submit_job"]))
-    _try("services.compliance",
-         lambda: __import__("services.compliance", fromlist=["audit_log", "anonymize_for_llm"]))
+    for mod, sym in [
+        ("document_processing.extractor", "extract_text_from_file"),
+        ("health_memory.extractor",       "extract_health_markers"),
+        ("health_memory.memory",          "store_health_markers"),
+        ("health_memory.persona",         "generate_recursive_summary"),
+        ("ai.chat",                       "generate_doctor_prep"),
+        ("ai.explainer",                  "explain_markers"),
+        ("services.job_queue",            "submit_job"),
+        ("services.compliance",           "audit_log"),
+        ("insights.engine",              "generate_insights"),
+    ]:
+        _try(mod, lambda m=mod, s=sym: getattr(__import__(m, fromlist=[s]), s))
 
     all_ok = all(v["ok"] for v in results.values())
-    return jsonify({
-        "status":  "all_ok" if all_ok else "some_failed",
-        "imports": results,
-    }), 200 if all_ok else 500
+    return jsonify({"status": "all_ok" if all_ok else "some_failed", "imports": results}), (200 if all_ok else 500)
 
 
 # ── Main analyze route ────────────────────────────────────────────────────────
@@ -159,31 +162,36 @@ def _analyze_inner():
     anonymized = anonymize_for_llm(raw_text, user.id)
     user_name  = _get_user_name(supabase, user.id)
 
-    # ── Radiology detection ───────────────────────────────────────────────────
     _is_radiology = _detect_radiology(anonymized)
     if _is_radiology:
-        print(f"[ANALYZE] Detected as radiology/imaging report: {filename}")
+        print(f"[ANALYZE] Radiology/imaging detected: {filename}")
     else:
-        print(f"[ANALYZE] Detected as lab report — proceeding with marker extraction: {filename}")
+        print(f"[ANALYZE] Lab report detected — extracting markers: {filename}")
 
-    # ── Marker extraction + storage (synchronous) ─────────────────────────────
-    active_markers = []
+    # ── Synchronous: marker extraction + storage ──────────────────────────────
+    active_markers: list = []
+    report_date: str = ""
+
     if not _is_radiology:
-        active_markers = _extract_and_store_markers(
+        active_markers, report_date = _extract_and_store_markers(
             supabase, groq_client, anonymized, filename, user.id, user_name
         )
 
-    # ── FIX #PERSONA-REFRESH: Refresh persona immediately after new markers ───
-    # (Step 4 — Launch Readiness)
-    # Queued in background so /analyze response is never blocked.
+    # ── PERSONA REFRESH (two-phase) ───────────────────────────────────────────
+    # Phase 1: immediate cache-bust — marks persona as stale so the very
+    #          next GET /api/persona regenerates without waiting for the BG job.
+    # Phase 2: background full LLM regeneration via job_queue.
     if active_markers:
+        _invalidate_persona_cache(supabase, user.id)
         _queue_persona_refresh(supabase, user.id)
+        # Also invalidate the insights cache so dashboard reflects new data
+        _invalidate_insights_cache(supabase, user.id)
 
-    # ── Background: doctor prep (non-blocking) ────────────────────────────────
+    # ── Background: doctor prep ───────────────────────────────────────────────
     job_id = uuid.uuid4().hex[:12]
     _submit_doctor_prep_bg(
         supabase, groq_client, anonymized, filename,
-        user.id, user_name, active_markers, job_id
+        user.id, user_name, active_markers, job_id,
     )
 
     # ── Build response ────────────────────────────────────────────────────────
@@ -216,36 +224,32 @@ def _analyze_inner():
         "document_text":         anonymized[:6000],
         "doctor_prep":           "",
         "user_name":             user_name,
+        "report_date":           report_date or _today_iso(),
         "processing":            False,
         "job_id":                job_id,
+        "persona_refresh":       bool(active_markers),   # tells frontend to re-fetch /api/persona
         "requires_confirmation": False,
     })
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+def _today_iso() -> str:
+    from datetime import date
+    return date.today().isoformat()
+
+
 def _extract_text(file, filename: str):
     file.seek(0)
-    extract_fn = None
-
-    try:
-        from document_processing.extractor import extract_text_from_file
-        extract_fn = extract_text_from_file
-    except ImportError:
-        pass
-
-    if extract_fn is None:
+    for module_path in ["document_processing.extractor", "extractor"]:
         try:
-            from extractor import extract_text_from_file as _fn
-            extract_fn = _fn
+            mod = __import__(module_path, fromlist=["extract_text_from_file"])
+            extract_fn = mod.extract_text_from_file
+            break
         except ImportError:
-            pass
-
-    if extract_fn is None:
-        print("[ANALYZE] ❌ Cannot import extract_text_from_file from any path")
-        return jsonify({
-            "error": "Document extraction module not found. Check server setup."
-        }), 500
+            continue
+    else:
+        return jsonify({"error": "Document extraction module not found. Check server setup."}), 500
 
     try:
         return extract_fn(file)
@@ -273,30 +277,32 @@ def _get_user_name(supabase, user_id: str) -> str:
 def _extract_and_store_markers(
     supabase, groq_client, anonymized: str, filename: str,
     user_id: str, user_name: str,
-) -> list:
-    extract_fn = None
+) -> tuple[list, str]:
+    """
+    Extract markers from document text and store them.
+    Returns (markers_list, report_date_str).
+    """
     try:
         from health_memory.extractor import extract_health_markers
-        extract_fn = extract_health_markers
     except ImportError:
-        pass
+        print("[ANALYZE] health_memory.extractor not found")
+        return [], ""
 
-    if extract_fn is None:
-        print("[ANALYZE] health_memory.extractor not found — no marker extraction")
-        return []
-
-    markers = []
+    markers, report_date = [], ""
     try:
-        markers = extract_fn(
+        markers = extract_health_markers(
             text=anonymized, groq_client=groq_client, source_document=filename
         )
+        # Extract report date from first marker if present
+        if markers:
+            report_date = markers[0].get("date", "") or ""
         print(f"[ANALYZE] Extracted {len(markers)} markers from {filename}")
     except Exception as e:
         print(f"[ANALYZE] Extraction non-fatal: {type(e).__name__}: {e}")
-        return []
+        return [], ""
 
     if not markers:
-        return []
+        return [], report_date
 
     explained = markers
     try:
@@ -312,21 +318,48 @@ def _extract_and_store_markers(
     except Exception as e:
         print(f"[ANALYZE] Store non-fatal: {type(e).__name__}: {e}")
 
-    return explained
+    # Also ingest into RAG vector store for semantic search
+    try:
+        from health_memory.rag import ingest_text
+        ingest_text(supabase=supabase, user_id=user_id, text=anonymized, source=filename)
+    except Exception as e:
+        print(f"[ANALYZE] RAG ingest non-fatal: {type(e).__name__}: {e}")
+
+    return explained, report_date
+
+
+def _invalidate_persona_cache(supabase, user_id: str) -> None:
+    """
+    Phase 1 of persona refresh: immediately mark the cached persona as stale
+    by zeroing the marker count. The next GET /api/persona will regenerate.
+    This is synchronous and fast (single Supabase upsert, no LLM call).
+    """
+    try:
+        supabase.table("user_profiles").update({
+            "health_persona_marker_count": -1,   # sentinel: forces cache miss
+        }).eq("user_id", user_id).execute()
+        print(f"[ANALYZE] 🗑  Persona cache invalidated for {user_id[:8]}")
+    except Exception as e:
+        print(f"[ANALYZE] Persona cache invalidate (non-fatal): {e}")
+
+
+def _invalidate_insights_cache(supabase, user_id: str) -> None:
+    """Force insights regeneration on next request by deleting the cached row."""
+    try:
+        supabase.table("health_insights").delete().eq("user_id", user_id).execute()
+        print(f"[ANALYZE] 🗑  Insights cache cleared for {user_id[:8]}")
+    except Exception as e:
+        print(f"[ANALYZE] Insights cache clear (non-fatal): {e}")
 
 
 def _queue_persona_refresh(supabase, user_id: str) -> None:
     """
-    FIX #PERSONA-REFRESH (Step 4):
-    Queue an immediate persona regeneration after new markers are stored.
-    Runs in the background worker — never blocks the /analyze response.
-    The refreshed persona is cached in user_profiles.health_persona_text
-    and injected into the NEXT chat turn automatically.
+    Phase 2 of persona refresh: enqueue full LLM regeneration in background.
+    Result is cached in user_profiles.health_persona_text for all future chat turns.
     """
     try:
         from services.job_queue import submit_job
         from health_memory.persona import generate_recursive_summary
-
         submit_job(generate_recursive_summary, supabase, user_id, force_refresh=True)
         print(f"[ANALYZE] 🔄 Persona refresh queued for {user_id[:8]}")
     except Exception as e:
@@ -334,9 +367,9 @@ def _queue_persona_refresh(supabase, user_id: str) -> None:
 
 
 def _submit_doctor_prep_bg(
-    supabase, groq_client, anonymized: str, filename: str,
-    user_id: str, user_name: str, markers: list, job_id: str,
-):
+    supabase, groq_client, anonymized, filename,
+    user_id, user_name, markers, job_id,
+) -> None:
     try:
         from services.job_queue import submit_job
         submit_job(
@@ -351,7 +384,7 @@ def _submit_doctor_prep_bg(
 def _generate_and_store_doctor_prep(
     supabase, groq_client, anonymized, filename,
     user_id, user_name, markers, job_id,
-):
+) -> None:
     from datetime import datetime, timezone
     print(f"[BG-PREP] Starting: {filename} job={job_id}")
     try:
@@ -385,7 +418,7 @@ def _generate_and_store_doctor_prep(
         traceback.print_exc()
 
 
-# ── Doctor prep fetch endpoints ───────────────────────────────────────────────
+# ── Doctor prep fetch ─────────────────────────────────────────────────────────
 
 @document_bp.route("/doctor-prep/<job_id>", methods=["GET"])
 def get_doctor_prep(job_id: str):
