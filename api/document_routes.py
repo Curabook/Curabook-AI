@@ -6,15 +6,9 @@ FIX #RADIOLOGY: Lab reports falsely detected as radiology (words like
 keywords AND absence of lab data indicators.
 
 FIX #PERSONA-REFRESH (Step 4 — Launch): After successful marker storage,
-immediately triggers generate_recursive_summary(force_refresh=True) in the
-background job queue. This ensures the Health Persona reflects the newly
-uploaded report without any cache delay.
-
-NOTE: The persona refresh is called in TWO places:
-  1. After marker extraction (_queue_persona_refresh) — existing behavior
-  2. Via /api/persona/refresh endpoint — called by frontend after upload
-     (Step 4 of the launch implementation in script.js)
-Both are non-blocking background operations.
+immediately queues generate_recursive_summary(force_refresh=True) in the
+background job queue. This ensures the Health Persona shown on the welcome
+screen reflects the newly uploaded report without any cache delay.
 """
 
 from flask import Blueprint, request, jsonify
@@ -85,8 +79,6 @@ def diagnose():
          lambda: __import__("health_memory.extractor", fromlist=["extract_health_markers"]))
     _try("health_memory.memory",
          lambda: __import__("health_memory.memory", fromlist=["store_health_markers"]))
-    _try("health_memory.persona",
-         lambda: __import__("health_memory.persona", fromlist=["generate_recursive_summary"]))
     _try("ai.chat",
          lambda: __import__("ai.chat", fromlist=["generate_doctor_prep", "call_llm"]))
     _try("ai.explainer",
@@ -181,11 +173,9 @@ def _analyze_inner():
             supabase, groq_client, anonymized, filename, user.id, user_name
         )
 
-    # ── STEP 4: Trigger persona refresh immediately after new markers stored ──
-    # This is the proactive intelligence trigger:
-    # - Runs in background (non-blocking)
-    # - Ensures Health Persona reflects new data before next chat turn
-    # - Frontend also calls /api/persona/refresh independently (belt & suspenders)
+    # ── FIX #PERSONA-REFRESH: Refresh persona immediately after new markers ───
+    # (Step 4 — Launch Readiness)
+    # Queued in background so /analyze response is never blocked.
     if active_markers:
         _queue_persona_refresh(supabase, user.id)
 
@@ -229,8 +219,6 @@ def _analyze_inner():
         "processing":            False,
         "job_id":                job_id,
         "requires_confirmation": False,
-        # Signal to frontend that persona refresh was triggered
-        "persona_refresh_queued": bool(active_markers),
     })
 
 
@@ -329,32 +317,17 @@ def _extract_and_store_markers(
 
 def _queue_persona_refresh(supabase, user_id: str) -> None:
     """
-    STEP 4 — Proactive Intelligence Trigger:
-    Queue immediate persona regeneration after new markers are stored.
-
-    This ensures the Health Persona (the 200-word biography from persona.py)
-    reflects the newly uploaded report. The persona is injected into every
-    subsequent chat prompt, so this refresh must happen before the next
-    chat turn — not lazily on the next login.
-
+    FIX #PERSONA-REFRESH (Step 4):
+    Queue an immediate persona regeneration after new markers are stored.
     Runs in the background worker — never blocks the /analyze response.
     The refreshed persona is cached in user_profiles.health_persona_text
-    and injected into the NEXT chat turn automatically via build_phi_messages().
+    and injected into the NEXT chat turn automatically.
     """
     try:
         from services.job_queue import submit_job
         from health_memory.persona import generate_recursive_summary
 
-        def _refresh_wrapper(sb, uid):
-            """Wrapper to add logging around the refresh."""
-            try:
-                persona = generate_recursive_summary(sb, uid, force_refresh=True)
-                char_count = len(persona) if persona else 0
-                print(f"[PERSONA-REFRESH] ✅ Generated {char_count} chars for {uid[:8]}")
-            except Exception as e:
-                print(f"[PERSONA-REFRESH] ❌ {type(e).__name__}: {e}")
-
-        submit_job(_refresh_wrapper, supabase, user_id)
+        submit_job(generate_recursive_summary, supabase, user_id, force_refresh=True)
         print(f"[ANALYZE] 🔄 Persona refresh queued for {user_id[:8]}")
     except Exception as e:
         print(f"[ANALYZE] Persona refresh queue (non-fatal): {e}")
