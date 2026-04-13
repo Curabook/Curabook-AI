@@ -1,16 +1,16 @@
 """
 health_memory/memory.py
 ─────────────────────────────────────────────────────────────────────────────
-FIX #DEMO-1  build_health_context_block() now fetches user age and gender
-             from user_profiles and injects them as:
-               👤 USER PROFILE: 34-year-old female
-             This is critical for the AI to interpret markers correctly.
-             TSH, Ferritin, Hemoglobin, and many hormonal markers have
-             different normal ranges by sex and age.  Without this context
-             the LLM applies generic ranges.
+FIX #DEMO-1  build_health_context_block() fetches user age and gender
+             from user_profiles and injects them for sex/age-specific ranges.
 
 FIX #MEM-1   save_conversation_memory() gracefully handles missing
              source_conversation column (schema variant fallback).
+
+FIX #MEM-2   save_conversation_memory() now uses a cleaner retry loop that
+             always tries the column-less variant on schema errors, logs
+             exactly how many facts were saved vs dropped, and never silently
+             loses data. Both insert paths are tried before giving up.
 """
 
 from __future__ import annotations
@@ -148,37 +148,71 @@ def get_health_trends(supabase, user_id: str) -> list[dict]:
 def save_conversation_memory(
     supabase, user_id: str, facts: list[str], conversation_id: str = "",
 ) -> int:
-    """FIX #MEM-1: gracefully handles missing source_conversation column."""
+    """
+    FIX #MEM-1 + #MEM-2: Robust save with two-attempt strategy.
+
+    Attempt 1: Insert with source_conversation column (full schema).
+    Attempt 2: Insert without source_conversation (fallback for older schemas).
+
+    Always logs exactly how many facts were saved vs dropped so issues
+    are visible in Render logs rather than silently lost.
+    """
     if not facts:
         return 0
-    now, saved = datetime.now(timezone.utc).isoformat(), 0
+
+    now = datetime.now(timezone.utc).isoformat()
+    saved = 0
+    dropped = 0
+
     for fact in facts:
         fact = fact.strip()
         if not fact or len(fact) < 10:
             continue
-        success = False
+
+        fact_saved = False
+
+        # Attempt 1: with source_conversation column
         try:
             supabase.table("conversation_memories").insert({
-                "user_id": user_id, "fact": fact[:500],
-                "source_conversation": conversation_id or None,
-                "created_at": now, "is_active": True,
+                "user_id":              user_id,
+                "fact":                 fact[:500],
+                "source_conversation":  conversation_id or None,
+                "created_at":           now,
+                "is_active":            True,
             }).execute()
-            success = True
-        except Exception as e:
-            err = str(e)
-            if "source_conversation" in err or "column" in err.lower():
+            fact_saved = True
+        except Exception as e1:
+            err_str = str(e1).lower()
+            is_schema_error = (
+                "source_conversation" in str(e1) or
+                "column" in err_str or
+                "does not exist" in err_str or
+                "unknown column" in err_str
+            )
+            if is_schema_error:
+                # Attempt 2: without the missing column
                 try:
                     supabase.table("conversation_memories").insert({
-                        "user_id": user_id, "fact": fact[:500],
-                        "category": "general", "created_at": now, "is_active": True,
+                        "user_id":    user_id,
+                        "fact":       fact[:500],
+                        "category":   "general",
+                        "created_at": now,
+                        "is_active":  True,
                     }).execute()
-                    success = True
+                    fact_saved = True
                 except Exception as e2:
-                    print(f"[MEMORY] Conversation memory fallback error: {e2}")
+                    print(f"[MEMORY] Both insert attempts failed for fact '{fact[:40]}': {e2}")
             else:
-                print(f"[MEMORY] Conversation memory save error: {e}")
-        if success:
+                print(f"[MEMORY] Conversation memory save error (non-schema): {e1}")
+
+        if fact_saved:
             saved += 1
+        else:
+            dropped += 1
+
+    if saved > 0 or dropped > 0:
+        print(f"[MEMORY] Facts: {saved} saved, {dropped} dropped for {user_id[:8]}")
+
     return saved
 
 
@@ -195,15 +229,13 @@ def get_conversation_memories(supabase, user_id: str) -> list[str]:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# NEW Layer 3b — User Demographics
+# Layer 3b — User Demographics
 # ══════════════════════════════════════════════════════════════════════════════
 
 def get_user_demographics(supabase, user_id: str) -> dict:
     """
     FIX #DEMO-1: Fetch age and gender from user_profiles.
     Returns {"age": 34, "gender": "female"} or empty dict on failure.
-    These are used to personalise the AI context block — TSH, Ferritin,
-    and many hormonal markers have sex- and age-specific normal ranges.
     """
     try:
         res = (supabase.table("user_profiles")
@@ -240,7 +272,6 @@ def synthesize_metabolic_story(latest: dict[str, dict], trends: list[dict]) -> s
         return ""
     stories = []
 
-    # Insulin resistance / metabolic syndrome
     ir = {k: v for k, v in latest.items() if _match_cluster(k, _INSULIN_RESISTANCE_TRIAD)}
     if len(ir) >= 2:
         abnormal_ir = {k: v for k, v in ir.items() if v.get("status") in ("HIGH", "LOW")}
@@ -254,7 +285,6 @@ def synthesize_metabolic_story(latest: dict[str, dict], trends: list[dict]) -> s
                 story += f" ⚠ Worsening trend: {worse[0]['marker']} moved {worse[0]['pct_change']}% in the wrong direction."
             stories.append(story)
 
-    # Cardiovascular cluster
     cv = {k: v for k, v in latest.items() if _match_cluster(k, _CARDIOVASCULAR_CLUSTER)}
     if cv:
         ldl_high = any(_match_cluster(k, {"ldl"}) and v.get("status") == "HIGH" for k, v in cv.items())
@@ -269,7 +299,6 @@ def synthesize_metabolic_story(latest: dict[str, dict], trends: list[dict]) -> s
             if ldl_t:
                 stories.append(f"🟡 LDL TRAJECTORY: risen {ldl_t['pct_change']}% ({ldl_t['first_val']}→{ldl_t['last_val']} {ldl_t['unit']}) since {ldl_t['from_date']}.")
 
-    # Anemia cluster
     anemia = {k: v for k, v in latest.items() if _match_cluster(k, _ANEMIA_CLUSTER)}
     if anemia:
         low_anemia = {k: v for k, v in anemia.items() if v.get("status") == "LOW"}
@@ -280,23 +309,18 @@ def synthesize_metabolic_story(latest: dict[str, dict], trends: list[dict]) -> s
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Layer 5 — Narrative Context Builder (FIX #DEMO-1)
+# Layer 5 — Narrative Context Builder
 # ══════════════════════════════════════════════════════════════════════════════
 
 def build_health_context_block(supabase, user_id: str) -> str:
     """
     Builds the complete health narrative for the LLM.
-
-    FIX #DEMO-1: Now fetches user_profiles (age, gender) and injects
-    👤 USER PROFILE: 34-year-old female  at the top of the context block.
-    This enables the AI to interpret age- and sex-specific reference ranges
-    correctly (TSH, Ferritin, Hemoglobin, hormonal markers).
+    FIX #DEMO-1: Fetches user_profiles (age, gender) for sex/age-specific ranges.
     """
     try:
         latest   = get_latest_markers(supabase, user_id)
         trends   = get_health_trends(supabase, user_id)
         memories = get_conversation_memories(supabase, user_id)
-        # FIX #DEMO-1: fetch demographics
         demo     = get_user_demographics(supabase, user_id)
     except Exception as e:
         print(f"[MEMORY] build_health_context_block fetch error: {e}")
@@ -313,10 +337,8 @@ def build_health_context_block(supabase, user_id: str) -> str:
     today = date.today().isoformat()
     lines.append(f"╔══ PHI HEALTH MEMORY  [{today}] ══╗")
 
-    # FIX #DEMO-1: Demographics block — critical for marker interpretation
     age    = demo.get("age")
     gender = demo.get("gender", "")
-    name   = demo.get("first_name", "")
     if age or gender:
         age_str    = f"{age}-year-old " if age else ""
         gender_str = str(gender).lower() if gender else ""
@@ -333,12 +355,10 @@ def build_health_context_block(supabase, user_id: str) -> str:
                 "higher clinical significance."
             )
 
-    # Synthesis
     synthesis = synthesize_metabolic_story(latest, trends)
     if synthesis:
         lines.append(synthesis)
 
-    # Abnormal markers
     abnormal = {
         name_: m for name_, m in latest.items()
         if _compute_status(m.get("value"), m.get("reference_range", ""), m.get("status", "")) in ("HIGH", "LOW")
@@ -352,7 +372,6 @@ def build_health_context_block(supabase, user_id: str) -> str:
             age_   = _human_age(m.get("days_old", 0))
             lines.append(f"  • {n}: {m['value']} {m.get('unit','')} — {status} ({ref}) — {age_}")
 
-    # Worsening trends
     concerning = [t for t in trends if t["concerning"]]
     if concerning:
         lines.append("\n📈 WORSENING TRENDS:")
@@ -364,7 +383,6 @@ def build_health_context_block(supabase, user_id: str) -> str:
                 f"{t['from_date']} to {t['to_date']} ⚠"
             )
 
-    # Improving trends
     improving = [t for t in trends if not t["concerning"] and t["pct_change"] >= 15]
     if improving:
         lines.append("\n✅ IMPROVING:")
@@ -372,7 +390,6 @@ def build_health_context_block(supabase, user_id: str) -> str:
             arrow = "↑" if t["direction"] == "rising" else "↓"
             lines.append(f"  • {t['marker']}: {arrow}{t['pct_change']}% ({t['first_val']}→{t['last_val']} {t['unit']}) ✓")
 
-    # Normal markers (compact)
     normal = {
         n: m for n, m in latest.items()
         if _compute_status(m.get("value"), m.get("reference_range", ""), m.get("status", "")) == "NORMAL"
@@ -383,18 +400,15 @@ def build_health_context_block(supabase, user_id: str) -> str:
         lines.append(f"\n✅ WITHIN RANGE ({len(normal)} markers):")
         lines.append("  " + ", ".join(parts) + (" ..." if len(normal) > 8 else ""))
 
-    # Historical
     stale = {n: m for n, m in latest.items() if m.get("is_stale")}
     if stale:
         lines.append(f"\n⏳ HISTORICAL (>6 months): {', '.join(list(stale.keys())[:5])}")
 
-    # Conversation facts
     if memories:
         lines.append(f"\n💬 WHAT THIS PERSON HAS SHARED ({len(memories)} facts):")
         for fact in memories[:8]:
             lines.append(f"  • {fact}")
 
-    # Provenance
     sources = {m.get("source_document", "") for m in latest.values() if m.get("source_document")}
     most_recent = max((m.get("date", "") for m in latest.values()), default="")
     if sources:

@@ -10,6 +10,8 @@ FIXES APPLIED:
             Flask's after_request hook may not fire when errorhandler
             returns — so CORS is set inside handle_exception too.
   #CORS-2 — OPTIONS preflight requests now handled before auth/rate checks.
+  #BUG-CORS-404 — Added 404 handler with CORS headers so preflight
+                  requests to unknown routes don't return bare 404s.
 """
 
 import os
@@ -148,9 +150,6 @@ def track(key: str, inc: int = 1):
 # ── Flask app ─────────────────────────────────────────────────────────────────
 app = Flask(__name__)
 
-# FIX #CORS-1: Use flask_cors for the base layer, but we also manually
-# set headers in error handlers to cover the case where after_request
-# doesn't fire (e.g. unhandled exception path in some Flask versions).
 _allowed_origins = ["*"]
 CORS(
     app,
@@ -164,7 +163,11 @@ print(f"✅  CORS configured for: {_allowed_origins}")
 
 # ── CORS helper — applied on ALL responses ────────────────────────────────────
 def _apply_cors(response):
-    """Apply CORS headers to any response object. Safe to call multiple times."""
+    """
+    Apply CORS headers to any response object. Safe to call multiple times.
+    This is the belt-and-suspenders approach: flask_cors handles normal responses,
+    but error handlers may bypass after_request, so we call this explicitly there.
+    """
     origin = request.headers.get("Origin", "")
     if origin:
         response.headers["Access-Control-Allow-Origin"]      = origin
@@ -179,7 +182,7 @@ def _apply_cors(response):
 # ── OPTIONS preflight — must respond before any auth or rate-limit check ──────
 @app.before_request
 def handle_options_preflight():
-    """FIX #CORS-2: Return 200 immediately for all OPTIONS requests."""
+    """Return 200 immediately for all OPTIONS requests."""
     if request.method == "OPTIONS":
         resp = make_response("", 200)
         _apply_cors(resp)
@@ -190,9 +193,7 @@ def handle_options_preflight():
 # ── Security headers ──────────────────────────────────────────────────────────
 @app.after_request
 def add_security_headers(response):
-    # CORS re-application — flask_cors handles most cases but this catches edge cases
     _apply_cors(response)
-
     response.headers["X-Content-Type-Options"]  = "nosniff"
     response.headers["X-Frame-Options"]          = "DENY"
     response.headers["X-XSS-Protection"]         = "1; mode=block"
@@ -275,6 +276,19 @@ def too_many_requests(e):
     _apply_cors(resp)
     return resp
 
+@app.errorhandler(404)
+def not_found(e):
+    """
+    FIX #BUG-CORS-404: Without this, OPTIONS preflight to unknown routes returns
+    a bare 404 with no CORS headers, causing the browser to block the actual request
+    with a confusing CORS error rather than a 404. This handler adds CORS so the
+    real 404 reaches the frontend correctly.
+    """
+    resp = jsonify({"error": "Not found"})
+    resp.status_code = 404
+    _apply_cors(resp)
+    return resp
+
 @app.errorhandler(413)
 def too_large(e):
     resp = jsonify({"error": "File too large. Maximum 5MB."})
@@ -289,8 +303,7 @@ def handle_exception(e):
     track("errors_500")
     resp = jsonify({"error": "Something went wrong. Please try again."})
     resp.status_code = 500
-    # FIX #CORS-1: Manually apply CORS — after_request may not fire on
-    # unhandled exceptions in all Flask/Werkzeug versions.
+    # Manually apply CORS — after_request may not fire on unhandled exceptions
     _apply_cors(resp)
     return resp
 

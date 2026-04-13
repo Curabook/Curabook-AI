@@ -7,18 +7,21 @@
 # 1. Facts were only extracted AFTER the LLM replied, using keyword matching
 #    on the combined user+AI text. If the reply didn't echo the user's words,
 #    the fact was lost. Now we extract from the user message FIRST using
-#    regex — instant, no LLM call, catches explicit statements like
-#    "I take metformin" or "I have diabetes" immediately.
+#    regex — instant, no LLM call, catches explicit statements immediately.
 #
 # 2. Memory was being saved to conversation_memories but silently failing
-#    on some schema variants. Added explicit logging so Render logs show
-#    exactly how many facts were saved each turn.
+#    on some schema variants. memory.py now has a robust two-attempt save
+#    and always logs how many facts were saved vs dropped.
 #
 # 3. build_health_context_block() is called correctly and fetches all
 #    stored memories — but if nothing was ever saved (bug 1+2), it returns
 #    empty, making every new conversation feel like a fresh start.
 #    Fix: by saving facts in Step 1b before the LLM even responds, the
 #    NEXT conversation immediately has context.
+#
+# FIX #BUG-4: Added 404 error handler with CORS headers in app.py.
+# FIX #TOKEN-TIMING: _extract_facts_from_message runs unconditionally before
+#    the LLM call so even if the LLM path fails, user facts are preserved.
 
 import re
 import unicodedata
@@ -104,14 +107,14 @@ def _sort_by_priority(markers: list) -> list:
 # ─────────────────────────────────────────
 
 _HEALTH_FACT_PATTERNS = [
-    # Medications: "I take metformin 500mg", "I am taking vitamin D"
+    # Medications
     (re.compile(
         r'\b(i\s+(?:take|am taking|use|started|been taking)|taking|on)\s+'
         r'([a-z][a-z\s\-]{2,30}?)(?:\s+(\d+\s*(?:mg|mcg|iu|ml|g)\b))?',
         re.I
     ), lambda m: f"User takes {m.group(2).strip()}{' ' + m.group(3) if m.group(3) else ''}"),
 
-    # Symptoms: "I have fatigue", "I feel dizzy", "I experience pain"
+    # Symptoms
     (re.compile(
         r'\bi\s+(?:have|feel|experience|suffer from|get|am experiencing)\s+'
         r'([a-z][a-z\s\-]{2,40}?)(?:\s|$|[.,])',
@@ -124,13 +127,13 @@ _HEALTH_FACT_PATTERNS = [
         re.I
     ), lambda m: f"Family history noted: {m.group(0).strip()[:120]}"),
 
-    # Lifestyle: "I walk 30 min", "I exercise", "I don't eat meat"
+    # Lifestyle
     (re.compile(
         r'\bi\s+(?:walk|run|exercise|go to gym|workout|eat|drink|smoke|follow a|am vegetarian|am vegan).{0,60}',
         re.I
     ), lambda m: f"Lifestyle: {m.group(0).strip()[:120]}"),
 
-    # Diagnoses: "I have diabetes", "I was diagnosed with hypothyroid"
+    # Diagnoses
     (re.compile(
         r'\bi\s+(?:have|was diagnosed with|am|got)\s+'
         r'(diabetes|hypertension|thyroid|pcod|pcos|anaemia|anemia|'
@@ -139,7 +142,7 @@ _HEALTH_FACT_PATTERNS = [
         re.I
     ), lambda m: f"User has condition: {m.group(1).strip()}"),
 
-    # Upcoming events: "I have a doctor appointment", "seeing cardiologist"
+    # Upcoming appointments
     (re.compile(
         r'\b(?:appointment|seeing|visit(?:ing)?)\s+(?:my\s+)?'
         r'(?:doctor|cardiologist|endocrinologist|specialist|physician).{0,60}',
@@ -318,15 +321,21 @@ def chat():
 
     # ── STEP 1b: FIX #MEM-CROSS-CONV ─────────────────────────────────────────
     # Save facts from user message IMMEDIATELY — before LLM call.
+    # This runs unconditionally so even if the LLM call fails later,
+    # the user's stated facts (medications, symptoms, etc.) are persisted.
+    regex_facts_saved = 0
     try:
         immediate_facts = _extract_facts_from_message(message)
         if immediate_facts:
-            saved = save_conversation_memory(
+            regex_facts_saved = save_conversation_memory(
                 supabase, user.id, immediate_facts, conversation_id
             )
-            print(f"[CHAT] Immediate facts saved: {saved} for {user.id[:8]} — {immediate_facts}")
+            if regex_facts_saved > 0:
+                print(f"[CHAT] ✅ Regex facts saved: {regex_facts_saved}/{len(immediate_facts)} for {user.id[:8]}")
+            else:
+                print(f"[CHAT] ⚠️ Regex facts extracted ({len(immediate_facts)}) but 0 saved — check DB schema for {user.id[:8]}")
     except Exception as e:
-        print(f"[CHAT] Immediate fact save (non-fatal): {e}")
+        print(f"[CHAT] Immediate fact save (non-fatal): {type(e).__name__}: {e}")
 
     # ── STEP 2: Build full health context ─────────────────────────────────────
     health_context = _build_context(
@@ -365,8 +374,6 @@ def chat():
     )
 
     # ── STEP 5: LLM call ──────────────────────────────────────────────────────
-    # Dev:  Groq llama-3.3-70b-versatile (set GROQ_API_KEY)
-    # Prod: GPT-4o-mini — just set OPENAI_API_KEY, call_llm handles the switch
     reply = call_llm(groq_client, messages)
     if not reply:
         reply = "I'm having trouble right now. Please try again in a moment."
@@ -395,18 +402,17 @@ def chat():
 
     # ── STEP 8: LLM memory extraction — catches what regex misses ─────────────
     # Regex (Step 1b) catches explicit statements.
-    # LLM extraction catches contextual/implicit facts:
-    # "My doctor told me to cut salt" → "User advised to reduce sodium"
+    # LLM extraction catches contextual/implicit facts.
     try:
         llm_facts = extract_conversation_memories(groq_client, message, reply)
         if llm_facts:
             saved = save_conversation_memory(
                 supabase, user.id, llm_facts, conversation_id
             )
-            if saved:
-                print(f"[CHAT] LLM facts saved: {saved} — {llm_facts} for {user.id[:8]}")
+            if saved > 0:
+                print(f"[CHAT] ✅ LLM facts saved: {saved}/{len(llm_facts)} for {user.id[:8]}")
     except Exception as e:
-        print(f"[CHAT] LLM memory extraction (non-fatal): {e}")
+        print(f"[CHAT] LLM memory extraction (non-fatal): {type(e).__name__}: {e}")
 
     return jsonify({
         "reply":           final_reply,

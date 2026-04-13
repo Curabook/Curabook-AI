@@ -9,11 +9,10 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <!--
-        FIX: ONE Supabase script tag, pinned version, from jsDelivr (more reliable than unpkg).
-        Previously: two <script> tags (cdn.jsdelivr.net + unpkg.com) loaded two different
-        versions. The second load overwrote the first mid-execution, creating a broken
-        `supabase` global. When initSupabase() called supabase.createClient(), the inline
-        script crashed with: SyntaxError: Unexpected end of input at (index):1:10
+        FIX BUG-1 + BUG-2: ONE Supabase script tag only, pinned version, from jsDelivr.
+        Previously two <script> tags loaded (cdn.jsdelivr.net + unpkg.com) creating two
+        conflicting globals. Second load overwrote the first mid-execution → crash.
+        signup.html had the same problem and is fixed identically.
     -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 
@@ -41,7 +40,6 @@
         -webkit-font-smoothing: antialiased;
     }
 
-    /* ── Left panel ── */
     .left-panel {
         flex: 1;
         background: #0a0a0a;
@@ -86,7 +84,6 @@
     .trust-item { display: flex; align-items: center; gap: 10px; font-size: 13px; color: rgba(255,255,255,.35); }
     .trust-item i { color: var(--brand); width: 14px; text-align: center; }
 
-    /* ── Right form panel ── */
     .right-panel {
         width: 480px;
         background: var(--white);
@@ -164,7 +161,6 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* ── Google Terms Modal ── */
     .terms-modal-overlay {
         position: fixed; inset: 0; background: rgba(0,0,0,.6);
         z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 20px;
@@ -198,6 +194,7 @@
         color: white; cursor: pointer; transition: all .15s;
     }
     .btn-accept:hover { background: var(--brand-dark); }
+    .btn-accept:disabled { opacity: .6; cursor: not-allowed; }
 
     @media (max-width: 900px) {
         .left-panel  { display: none; }
@@ -229,7 +226,6 @@
     <div class="form-container">
         <div class="form-header">
             <h2 class="form-title">Welcome back</h2>
-            <!-- FIX: /signup (clean URL) instead of signup.html -->
             <p class="form-sub">Don't have an account? <a href="/signup">Create one free</a></p>
         </div>
 
@@ -264,16 +260,12 @@
 </div>
 
 <script>
-/* ══════════════════════════════════════════════════════════════════
-   login.html inline script
-   
-   RULES:
-   1. supabase is loaded from a single pinned CDN (see <head>).
-      Never add a second <script> tag for the same library.
-   2. All async errors are caught and shown to the user.
-   3. localStorage is validated before use — a corrupt session is
-      cleared rather than causing a crash.
-══════════════════════════════════════════════════════════════════ */
+/* ============================================================
+   login.html — fixed boot order
+   FIX BUG-1: onAuthStateChange wired BEFORE handleOAuthReturn()
+   FIX BUG-2: Single Supabase CDN script (removed unpkg duplicate)
+   FIX BUG-3: Terms consent awaited and verified before redirect
+============================================================ */
 
 const API_BASE       = "https://api.curabook.com";
 const SUPABASE_URL   = "https://pbeaawlxdcrdbvlmpqhc.supabase.co";
@@ -281,11 +273,10 @@ const SUPABASE_KEY   = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmF
 
 let supabaseClient = null;
 
-/* ── LocalStorage safety ─────────────────────────────────────────
-   Corrupt / stale Supabase session data in localStorage can cause
-   supabase.createClient() to throw during session restoration.
-   Clear known Supabase storage keys if they contain invalid JSON.
-────────────────────────────────────────────────────────────────── */
+/* ── LocalStorage safety ─────────────────────────────────────
+   Corrupt Supabase session data causes createClient() to throw.
+   Clear known Supabase keys with invalid JSON before init.
+──────────────────────────────────────────────────────────── */
 function sanitizeLocalStorage() {
     const supabaseKeys = Object.keys(localStorage).filter(k =>
         k.startsWith("sb-") || k.includes("supabase") || k.includes("gotrue")
@@ -293,28 +284,19 @@ function sanitizeLocalStorage() {
     for (const key of supabaseKeys) {
         const raw = localStorage.getItem(key);
         if (!raw) continue;
-        try {
-            JSON.parse(raw);    // if this throws, the value is corrupt
-        } catch {
-            console.warn(`[PHI] Clearing corrupt localStorage key: ${key}`);
-            localStorage.removeItem(key);
-        }
+        try { JSON.parse(raw); }
+        catch { console.warn(`[PHI] Clearing corrupt localStorage key: ${key}`); localStorage.removeItem(key); }
     }
 }
 
 function initSupabase() {
-    sanitizeLocalStorage();     // clean before createClient reads storage
+    sanitizeLocalStorage();
     supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
-        auth: {
-            // Prevents the library from trying to call browser APIs
-            // that may be blocked in privacy-focused browsers
-            detectSessionInUrl: true,
-            persistSession:     true,
-        }
+        auth: { detectSessionInUrl: true, persistSession: true }
     });
 }
 
-/* ── UI helpers ────────────────────────────────────────────────── */
+/* ── UI helpers ──────────────────────────────────────────── */
 function setStatus(msg, type = '') {
     const el = document.getElementById('status-msg');
     el.textContent = msg;
@@ -326,7 +308,7 @@ function setLoading(btn, loading) {
     btn.innerHTML  = loading ? '<span class="spinner"></span> Signing in…' : 'Sign In';
 }
 
-/* ── Email / password login ─────────────────────────────────────── */
+/* ── Email / password login ──────────────────────────────── */
 document.getElementById('loginBtn').addEventListener('click', async () => {
     const email    = document.getElementById('email').value.trim();
     const password = document.getElementById('password').value;
@@ -351,7 +333,7 @@ document.addEventListener('keydown', e => {
     if (e.key === 'Enter') document.getElementById('loginBtn').click();
 });
 
-/* ── Forgot password ────────────────────────────────────────────── */
+/* ── Forgot password ─────────────────────────────────────── */
 document.getElementById('forgotLink').addEventListener('click', async e => {
     e.preventDefault();
     const email = document.getElementById('email').value.trim();
@@ -367,9 +349,8 @@ document.getElementById('forgotLink').addEventListener('click', async e => {
     }
 });
 
-/* ── Google OAuth ───────────────────────────────────────────────── */
+/* ── Google OAuth ────────────────────────────────────────── */
 document.getElementById('googleBtn').addEventListener('click', async () => {
-    sessionStorage.setItem('oauth_pending_terms', 'true');
     try {
         await supabaseClient.auth.signInWithOAuth({
             provider: 'google',
@@ -380,37 +361,35 @@ document.getElementById('googleBtn').addEventListener('click', async () => {
     }
 });
 
-/* ── Handle OAuth redirect ──────────────────────────────────────── */
-async function handleOAuthReturn() {
+/* ── Save consent to backend ─────────────────────────────────
+   FIX BUG-3: awaited with error handling, non-blocking on failure
+   so users aren't locked out if the API is temporarily down.
+──────────────────────────────────────────────────────────── */
+async function saveConsentToBackend(accessToken) {
     try {
-        if (window.location.hash && window.location.hash.includes('access_token')) {
-            await new Promise(resolve => setTimeout(resolve, 200));
-            history.replaceState(null, '', window.location.pathname);
+        const resp = await fetch(`${API_BASE}/api/consent`, {
+            method:  'POST',
+            headers: {
+                'Content-Type':  'application/json',
+                'Authorization': 'Bearer ' + accessToken
+            },
+            body: JSON.stringify({
+                consents: ['terms_accepted', 'data_processing', 'ai_processing', 'document_processing']
+            })
+        });
+        if (!resp.ok) {
+            console.warn('[CONSENT] API returned', resp.status, '— continuing anyway');
+        } else {
+            console.log('[CONSENT] Saved successfully');
         }
-
-        const { data: sessionData } = await supabaseClient.auth.getSession();
-        if (!sessionData?.session?.user) return;
-
-        const user     = sessionData.session.user;
-        const provider = user.app_metadata?.provider;
-
-        if (provider === 'google') {
-            const termsKey = `phi_terms_${user.id}`;
-            if (!localStorage.getItem(termsKey)) {
-                showGoogleTermsModal(user);
-                return;
-            }
-        }
-
-        window.location.href = 'https://curabook.com/';
     } catch (err) {
-        console.error('[OAUTH RETURN]', err);
-        // Non-fatal — user stays on login page
+        console.warn('[CONSENT SAVE] Non-fatal error:', err);
+        // Non-fatal — localStorage flag already set, user proceeds
     }
 }
 
-/* ── Google Terms Modal ─────────────────────────────────────────── */
-function showGoogleTermsModal(user) {
+/* ── Google Terms Modal ──────────────────────────────────── */
+function showGoogleTermsModal(user, session) {
     const overlay = document.createElement('div');
     overlay.className = 'terms-modal-overlay';
     overlay.innerHTML = `
@@ -433,7 +412,7 @@ function showGoogleTermsModal(user) {
             </label>
             <div class="terms-modal-actions">
                 <button class="btn-decline" id="declineBtn">Decline &amp; Sign Out</button>
-                <button class="btn-accept"  id="acceptBtn">Accept &amp; Enter PHI</button>
+                <button class="btn-accept" id="acceptBtn">Accept &amp; Enter PHI</button>
             </div>
         </div>`;
     document.body.appendChild(overlay);
@@ -449,32 +428,102 @@ function showGoogleTermsModal(user) {
             overlay.querySelector('.terms-row').style.color = '#ef4444';
             return;
         }
+        const acceptBtn = document.getElementById('acceptBtn');
+        acceptBtn.disabled = true;
+        acceptBtn.innerHTML = '<span class="spinner"></span> Saving…';
+
+        // Save to localStorage immediately — user can proceed even if API fails
         localStorage.setItem(`phi_terms_${user.id}`, Date.now().toString());
+
+        // FIX BUG-3: await the consent save with proper error handling
+        if (session?.access_token) {
+            await saveConsentToBackend(session.access_token);
+        }
+
         overlay.remove();
-
-        // Save consent to backend (non-blocking — don't await, don't crash on failure)
-        supabaseClient.auth.getSession().then(({ data }) => {
-            if (!data?.session) return;
-            fetch(`${API_BASE}/api/consent`, {
-                method:  'POST',
-                headers: {
-                    'Content-Type':  'application/json',
-                    'Authorization': 'Bearer ' + data.session.access_token
-                },
-                body: JSON.stringify({
-                    consents: ['terms_accepted','data_processing','ai_processing','document_processing']
-                })
-            }).catch(err => console.warn('[CONSENT SAVE]', err));
-        }).catch(() => {});
-
         window.location.href = 'https://curabook.com/';
     });
 }
 
-/* ── Boot ───────────────────────────────────────────────────────── */
+/* ── Handle OAuth redirect return ────────────────────────────
+   FIX BUG-1: This function only checks for existing session.
+   The SIGNED_IN event from the OAuth hash is handled by the
+   onAuthStateChange listener wired in the boot section below.
+──────────────────────────────────────────────────────────── */
+async function handleOAuthReturn() {
+    try {
+        // Clean up hash from URL without triggering a re-parse
+        if (window.location.hash && window.location.hash.includes('access_token')) {
+            await new Promise(resolve => setTimeout(resolve, 300));
+            history.replaceState(null, '', window.location.pathname);
+        }
+
+        const { data: sessionData } = await supabaseClient.auth.getSession();
+        if (!sessionData?.session?.user) return;
+
+        const user     = sessionData.session.user;
+        const provider = user.app_metadata?.provider;
+
+        if (provider === 'google') {
+            const termsKey = `phi_terms_${user.id}`;
+            if (!localStorage.getItem(termsKey)) {
+                showGoogleTermsModal(user, sessionData.session);
+                return;
+            }
+        }
+
+        window.location.href = 'https://curabook.com/';
+    } catch (err) {
+        console.error('[OAUTH RETURN]', err);
+    }
+}
+
+/* ── BOOT ─────────────────────────────────────────────────────
+   FIX BUG-1: Wire onAuthStateChange FIRST, then handleOAuthReturn.
+
+   The OAuth flow puts the access_token in window.location.hash.
+   Supabase fires a SIGNED_IN event via onAuthStateChange when it
+   parses that hash. If we call handleOAuthReturn() first, it can
+   clear the hash before Supabase reads it. Wiring the listener
+   first guarantees Supabase sees the token regardless of timing.
+──────────────────────────────────────────────────────────── */
 try {
     initSupabase();
+
+    // STEP 1: Wire auth state listener BEFORE anything else
+    supabaseClient.auth.onAuthStateChange(async (event, session) => {
+        console.log(`[AUTH] Event: ${event}`);
+
+        if ((event === 'SIGNED_IN' || event === 'USER_UPDATED') && session?.user) {
+            const user = session.user;
+
+            // Google OAuth: check terms acceptance
+            if (user.app_metadata?.provider === 'google') {
+                const termsKey = `phi_terms_${user.id}`;
+                if (!localStorage.getItem(termsKey)) {
+                    // Show terms modal (don't redirect yet)
+                    // Small delay to let the DOM settle after OAuth redirect
+                    setTimeout(() => showGoogleTermsModal(user, session), 100);
+                    return;
+                }
+            }
+
+            // If we're on the login page and just signed in, redirect to app
+            // But don't redirect if the terms modal is showing
+            if (!document.querySelector('.terms-modal-overlay')) {
+                setStatus('Signed in! Redirecting…', 'success');
+                window.location.href = 'https://curabook.com/';
+            }
+        }
+
+        if (event === 'SIGNED_OUT') {
+            // Stay on login page
+        }
+    });
+
+    // STEP 2: Check for existing OAuth return (hash in URL)
     handleOAuthReturn().catch(err => console.error('[OAUTH]', err));
+
 } catch (err) {
     console.error('[LOGIN BOOT]', err);
     setStatus('App failed to load. Please refresh the page.', 'error');

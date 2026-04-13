@@ -6,7 +6,13 @@
     <title>Create Account — Curabook PHI</title>
     <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+
+    <!--
+        FIX BUG-2: Single Supabase CDN (was unpkg.com, which conflicted with login.html's
+        jsdelivr load when navigating between pages — and broke on its own in some regions).
+    -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+
     <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
     :root {
@@ -75,7 +81,6 @@
     .spinner { width:16px;height:16px;border:2px solid rgba(255,255,255,.4);border-top-color:white;border-radius:50%;animation:spin .6s linear infinite;display:inline-block;margin-right:6px; }
     @keyframes spin { to { transform:rotate(360deg); } }
 
-    /* ── Success state ── */
     .success-state {
         display: none;
         text-align: center;
@@ -138,7 +143,6 @@
 <div class="right-panel">
     <div class="form-container">
 
-        <!-- Sign-up form -->
         <div id="signupForm">
             <div class="form-header">
                 <h2 class="form-title">Create your account</h2>
@@ -189,7 +193,6 @@
             </div>
         </div>
 
-        <!-- Personalized success state — shown after signup -->
         <div id="successState" class="success-state">
             <div class="success-icon"><i class="fa-solid fa-envelope-open-text"></i></div>
             <h2 class="success-title" id="successTitle">Almost there!</h2>
@@ -210,10 +213,12 @@
 const API_BASE = "https://api.curabook.com";
 let supabaseClient = null;
 
-async function initSupabase() {
+function initSupabase() {
     const SUPABASE_URL = "https://pbeaawlxdcrdbvlmpqhc.supabase.co";
     const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBiZWFhd2x4ZGNyZGJ2bG1wcWhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwMDk0MzksImV4cCI6MjA5MTU4NTQzOX0.6bUpYrDbe0mQjjBHX8Qscj-5R8i4-SqAtW_Z1UFzJ10";
-    supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+        auth: { detectSessionInUrl: true, persistSession: true }
+    });
 }
 
 function setStatus(msg, type = '') {
@@ -222,16 +227,10 @@ function setStatus(msg, type = '') {
     el.className = 'status-msg ' + type;
 }
 
-/**
- * PERSONALIZED SUCCESS STATE
- * Shows "Almost there, Aarav! Check your inbox to activate PHI."
- * instead of the generic "Check your email" message.
- */
 function showSuccessState(firstName, email) {
     document.getElementById('signupForm').style.display = 'none';
     const ss = document.getElementById('successState');
     ss.style.display = 'block';
-
     if (firstName) {
         document.getElementById('successTitle').textContent = `Almost there, ${firstName}!`;
         document.getElementById('successBody').innerHTML =
@@ -260,37 +259,44 @@ document.getElementById('signupBtn').addEventListener('click', async () => {
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span> Creating account…';
 
-    const { data, error } = await supabaseClient.auth.signUp({
-        email, password,
-        options: {
-            data: { first_name: firstName, last_name: lastName },
-            redirectTo: "https://curabook.com/login",
-        },
-    });
+    try {
+        const { data, error } = await supabaseClient.auth.signUp({
+            email, password,
+            options: {
+                data: { first_name: firstName, last_name: lastName },
+                redirectTo: "https://curabook.com/login",
+            },
+        });
 
-    if (error) {
-        setStatus(error.message, 'error');
+        if (error) {
+            setStatus(error.message, 'error');
+            btn.disabled = false;
+            btn.innerHTML = 'Create Free Account';
+            return;
+        }
+
+        if (data.user) {
+            localStorage.setItem(`phi_terms_${data.user.id}`, Date.now().toString());
+        }
+
+        if (data.session) {
+            // Email confirmation disabled — go straight to app
+            setStatus(`Welcome${firstName ? ', ' + firstName : ''}! Taking you to PHI…`, 'success');
+            setTimeout(() => window.location.href = 'https://curabook.com/', 900);
+        } else {
+            // Email confirmation required
+            showSuccessState(firstName, email);
+        }
+    } catch (err) {
+        console.error('[SIGNUP]', err);
+        setStatus('Something went wrong. Please try again.', 'error');
         btn.disabled = false;
         btn.innerHTML = 'Create Free Account';
-        return;
-    }
-
-    if (data.user) {
-        localStorage.setItem(`phi_terms_${data.user.id}`, Date.now().toString());
-    }
-
-    if (data.session) {
-        // Email confirmation disabled — go straight to app
-        setStatus(`Welcome${firstName ? ', ' + firstName : ''}! Taking you to PHI…`, 'success');
-        setTimeout(() => window.location.href = 'https://curabook.com/', 900);
-    } else {
-        // Email confirmation required — show personalized success state
-        showSuccessState(firstName, email);
     }
 });
 
 document.getElementById('googleBtn').addEventListener('click', async () => {
-    sessionStorage.setItem('oauth_pending_terms', 'true');
+    if (!supabaseClient) return;
     await supabaseClient.auth.signInWithOAuth({
         provider: 'google',
         options: { redirectTo: "https://curabook.com/login" },
@@ -301,7 +307,12 @@ document.addEventListener('keydown', e => {
     if (e.key === 'Enter') document.getElementById('signupBtn').click();
 });
 
-initSupabase().catch(console.error);
+try {
+    initSupabase();
+} catch (err) {
+    console.error('[SIGNUP BOOT]', err);
+    setStatus('App failed to load. Please refresh.', 'error');
+}
 </script>
 </body>
 </html>
