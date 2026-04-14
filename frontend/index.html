@@ -162,6 +162,10 @@
             <i class="fa-solid fa-person-walking"></i>
             <span>Log Activity</span>
         </button>
+        <button id="btn-advocacy" class="nav-item">
+            <i class="fa-solid fa-file-shield"></i>
+            <span>Insurance Advocacy</span>
+        </button>
     </nav>
 
     <div class="nav-divider"></div>
@@ -294,7 +298,6 @@
 
 <!-- ═══════════════════════════════════════════════════════════════════
      HEALTH PULSE MODAL — Temporal Intelligence
-     Three sections: Your Story · Current Snapshot · Active Insights
 ═══════════════════════════════════════════════════════════════════ -->
 <div id="pulse-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="pulse-modal-title">
     <div class="modal-box modal-box-wide">
@@ -517,87 +520,111 @@
 </div>
 
 <!-- ═══════════════════════════════════════════════════════════════════
-     ADVOCACY GUIDE MODAL — Task 2 / Insurance PA Support
+     ADVOCACY GUIDE MODAL — legacy (kept for backward compat, hidden)
 ═══════════════════════════════════════════════════════════════════ -->
-<div id="advocacy-guide-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="advocacy-guide-title">
-    <div class="modal-box modal-box-wide">
+<div id="advocacy-guide-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="advocacy-guide-title" style="display:none!important"></div>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     NEW ADVOCACY MODAL — Full GLP-1 PA Workflow (3-step)
+═══════════════════════════════════════════════════════════════════ -->
+<div id="advocacy-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="adv-modal-title">
+    <div class="modal-box modal-box-wide" style="max-height:92vh;overflow-y:auto;padding:20px">
+
         <div class="modal-header">
-            <h3 id="advocacy-guide-title">
+            <h3 id="adv-modal-title">
                 <i class="fa-solid fa-file-shield" style="color:var(--brand)"></i>
-                Insurance Advocacy Guide
+                GLP-1 Prior Authorization Support
             </h3>
             <button class="close-btn" onclick="window.closeModals()" aria-label="Close">
                 <i class="fa-solid fa-xmark"></i>
             </button>
         </div>
 
-        <div style="margin-bottom:16px">
-            <h4 style="font-size:14px;font-weight:700;margin-bottom:8px">What is the Advocacy Brief?</h4>
-            <p style="font-size:13.5px;color:var(--text-muted);line-height:1.65">
-                PHI translates your lab data into <strong>insurance-ready language</strong> — organizing
-                your clinical facts (BMI, HbA1c, medication history) into a structured Medical Necessity
-                Support Packet for medications like GLP-1 agonists (Zepbound, Wegovy, Ozempic).
-                Your doctor uses this as a reference when submitting a prior authorization.
-            </p>
-        </div>
-
-        <!-- PA criteria reference -->
-        <div style="background:var(--brand-dim);border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px">
-            <div style="font-weight:700;margin-bottom:8px;color:var(--brand)">
-                <i class="fa-solid fa-list-check"></i> &nbsp;Common US PA Criteria for GLP-1s
-            </div>
-            <ul style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:5px;color:var(--text-muted)">
-                <li><i class="fa-solid fa-check" style="color:var(--brand);margin-right:7px;width:14px"></i>BMI ≥ 30 (obesity) <em>or</em> BMI ≥ 27 with comorbidity</li>
-                <li><i class="fa-solid fa-check" style="color:var(--brand);margin-right:7px;width:14px"></i>Type 2 Diabetes diagnosis (HbA1c ≥ 6.5%)</li>
-                <li><i class="fa-solid fa-check" style="color:var(--brand);margin-right:7px;width:14px"></i>Documented failed diet/exercise program</li>
-                <li><i class="fa-solid fa-check" style="color:var(--brand);margin-right:7px;width:14px"></i>Prior medication failures (Metformin, etc.)</li>
-            </ul>
-        </div>
-
-        <h4 style="font-size:14px;font-weight:700;margin-bottom:10px">How to use it</h4>
-        <div class="advocacy-steps">
-            <div class="advocacy-step">
-                <div class="advocacy-step-num">1</div>
-                <div class="advocacy-step-text">
-                    <h5>Upload your lab reports</h5>
-                    <p>PHI needs BMI, HbA1c, glucose, cholesterol, and weight data. More reports = stronger evidence packet.</p>
-                </div>
-            </div>
-            <div class="advocacy-step">
-                <div class="advocacy-step-num">2</div>
-                <div class="advocacy-step-text">
-                    <h5>Tell PHI your medication history</h5>
-                    <p>Chat: "I've been taking Metformin 500mg since 2022 with limited effect." PHI stores this and includes it in the packet.</p>
-                </div>
-            </div>
-            <div class="advocacy-step">
-                <div class="advocacy-step-num">3</div>
-                <div class="advocacy-step-text">
-                    <h5>Generate the packet</h5>
-                    <p>Click "Generate My Brief" below or ask PHI directly. PHI scores your evidence and produces a structured document.</p>
-                </div>
-            </div>
-            <div class="advocacy-step">
-                <div class="advocacy-step-num">4</div>
-                <div class="advocacy-step-text">
-                    <h5>Share with your provider</h5>
-                    <p>This is informational. Your doctor reviews it and submits the actual PA. PHI never contacts insurers directly.</p>
-                </div>
-            </div>
-        </div>
-
-        <div style="background:rgba(255,107,107,.08);border:1px solid rgba(255,107,107,.2);border-radius:8px;padding:11px 14px;font-size:12px;color:var(--text-muted);margin-top:14px;line-height:1.6">
-            <strong style="color:#ff6b6b">⚕️ Important:</strong>
-            This is a health information tool — not a medical or legal service.
-            The Advocacy Brief is educational only. Your healthcare provider makes all clinical and authorization decisions.
-        </div>
-
-        <div class="modal-actions" style="margin-top:16px">
-            <button class="btn-cancel" onclick="window.closeModals()">Close</button>
-            <button id="startAdvocacyBtn" style="padding:9px 18px;background:var(--brand);border:none;border-radius:8px;color:white;font-size:13.5px;font-weight:600;font-family:var(--font);cursor:pointer;display:flex;align-items:center;gap:7px">
-                <i class="fa-solid fa-wand-magic-sparkles"></i> Generate My Brief
+        <!-- Stepper -->
+        <div class="adv-stepper" id="advStepper">
+            <button class="adv-step active" data-step="0" onclick="advGoStep(0)">
+                <span class="adv-step-num">1</span>
+                <span class="adv-step-label">Eligibility</span>
+            </button>
+            <div class="adv-connector"></div>
+            <button class="adv-step" data-step="1" onclick="advGoStep(1)">
+                <span class="adv-step-num">2</span>
+                <span class="adv-step-label">Evidence</span>
+            </button>
+            <div class="adv-connector"></div>
+            <button class="adv-step" data-step="2" onclick="advGoStep(2)">
+                <span class="adv-step-num">3</span>
+                <span class="adv-step-label">PA Brief</span>
             </button>
         </div>
+
+        <!-- Panel 0: Eligibility -->
+        <div class="adv-panel active" id="advPanel0">
+            <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px;line-height:1.6">
+                PHI checks your health record against standard US payer criteria for GLP-1 prior authorizations.
+            </p>
+            <div id="advCriteriaList">
+                <div class="loading-text"><i class="fa-solid fa-spinner fa-spin"></i> Checking your health record…</div>
+            </div>
+            <div style="margin-top:14px;background:rgba(255,107,107,.06);border:1px solid rgba(255,107,107,.2);border-radius:8px;padding:10px 13px;font-size:12px;color:var(--text-muted);line-height:1.6">
+                <strong style="color:#ff6b6b">⚕️ Informational only.</strong>
+                This assessment is educational. Your healthcare provider makes all clinical and authorization decisions.
+            </div>
+            <div class="modal-actions" style="margin-top:14px">
+                <button class="btn-cancel" onclick="window.closeModals()">Close</button>
+                <button class="adv-next-btn" onclick="advGoStep(1)">
+                    Review evidence <i class="fa-solid fa-arrow-right"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Panel 1: Evidence -->
+        <div class="adv-panel hidden" id="advPanel1">
+            <div id="advEvidenceContent">
+                <div class="loading-text"><i class="fa-solid fa-spinner fa-spin"></i> Loading evidence…</div>
+            </div>
+            <div class="modal-actions" style="margin-top:14px">
+                <button class="btn-cancel" onclick="advGoStep(0)"><i class="fa-solid fa-arrow-left"></i> Back</button>
+                <button class="adv-next-btn" id="advGenBtn" onclick="advGoStep(2)">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> Generate PA brief
+                </button>
+            </div>
+        </div>
+
+        <!-- Panel 2: PA Brief -->
+        <div class="adv-panel hidden" id="advPanel2">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+                <div>
+                    <div style="font-size:14px;font-weight:600">Medical Necessity Support Packet</div>
+                    <div style="font-size:12px;color:var(--text-muted)">GLP-1 Prior Authorization · Informational only</div>
+                </div>
+                <button id="advCopyBtn" onclick="advCopyBrief()" style="background:none;border:1px solid var(--border);border-radius:7px;padding:5px 12px;font-size:12px;color:var(--brand);cursor:pointer;font-family:var(--font)">
+                    <i class="fa-regular fa-copy"></i> Copy
+                </button>
+            </div>
+            <div id="advBriefContent">
+                <div class="loading-text" style="text-align:center;padding:2rem 1rem">
+                    <i class="fa-solid fa-spinner fa-spin" style="font-size:1.3rem;color:var(--brand);margin-bottom:12px;display:block"></i>
+                    Generating your PA support packet…
+                </div>
+            </div>
+            <div id="advNextSteps" style="display:none;margin-top:14px;background:var(--brand-dim);border-radius:8px;padding:12px 14px">
+                <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--brand);margin-bottom:8px">Recommended next steps</div>
+                <div id="advNextStepsList"></div>
+            </div>
+            <div style="margin-top:12px;background:rgba(255,107,107,.06);border:1px solid rgba(255,107,107,.2);border-radius:8px;padding:10px 13px;font-size:12px;color:var(--text-muted);line-height:1.6">
+                <strong style="color:#ff6b6b">⚕️ Important:</strong>
+                This packet is informational. Your healthcare provider reviews it and submits the actual PA. PHI never contacts insurers or payers directly.
+            </div>
+            <div class="modal-actions" style="margin-top:14px;flex-wrap:wrap;gap:8px">
+                <button class="btn-cancel" onclick="advGoStep(1)"><i class="fa-solid fa-arrow-left"></i> Back</button>
+                <button id="advRegenerateBtn" class="btn-cancel" onclick="advGenerateBrief(true)">Regenerate</button>
+                <button class="adv-next-btn" onclick="window.closeModals();sendChip('My PA brief is ready — how do I present this to my doctor at my upcoming cardiology appointment?')">
+                    Ask PHI how to present this ↗
+                </button>
+            </div>
+        </div>
+
     </div>
 </div>
 

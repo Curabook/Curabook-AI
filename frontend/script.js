@@ -92,6 +92,8 @@ function buildDOM() {
         logActivityModal:    $id("log-activity-modal"),
         advocacyGuideModal:  $id("advocacy-guide-modal"),
         advocacyInfoBtn:     $id("advocacyInfoBtn"),
+        btnAdvocacy:      $id("btn-advocacy"),
+        advocacyModal:    $id("advocacy-modal"),
         profileModal:   $id("profile-modal"),
         settingsModal:  $id("settings-modal"),
         deleteModal:    $id("delete-modal"),
@@ -1035,10 +1037,11 @@ function openSidebar()  { DOM.sidebar.classList.add("open");    DOM.overlay.clas
 function closeSidebar() { DOM.sidebar.classList.remove("open"); DOM.overlay.classList.remove("active"); }
 
 window.closeModals = () => {
-    [
-        DOM.profileModal, DOM.settingsModal, DOM.deleteModal,
-        DOM.pulseModal, DOM.logActivityModal, DOM.advocacyGuideModal,
-    ].forEach(m => m?.classList.add("hidden"));
+  [
+    DOM.profileModal, DOM.settingsModal, DOM.deleteModal,
+    DOM.pulseModal, DOM.logActivityModal, DOM.advocacyGuideModal,
+    DOM.advocacyModal,   // ← add this
+  ].forEach(m => m?.classList.add('hidden'));
 };
 
 [DOM.profileModal, DOM.settingsModal, DOM.deleteModal,
@@ -1327,6 +1330,8 @@ function wireEvents() {
     DOM.btnHealthPulse?.addEventListener("click",() => { closeSidebar(); openPulseModal(); });
     DOM.btnLogActivity?.addEventListener("click", () => { closeSidebar(); openLogActivity(); });
     DOM.advocacyInfoBtn?.addEventListener("click", openAdvocacyGuide);
+    DOM.btnAdvocacy?.addEventListener('click', () => { closeSidebar(); openAdvocacyModal(); });
+    DOM.advocacyInfoBtn?.addEventListener('click', openAdvocacyModal); // replaces old handler
 
     DOM.fileInput?.addEventListener("change", e => {
         Array.from(e.target.files||[]).forEach(f => {
@@ -1401,3 +1406,284 @@ document.addEventListener("DOMContentLoaded", async () => {
     loadUserPreferences();
     await handleLoginSuccess(user);
 });
+
+/* ── Advocacy modal state ───────────────────────────────────── */
+let _advStep = 0;
+let _advBriefText = '';
+let _advData = null;   // cached from /api/advocacy
+
+function openAdvocacyModal() {
+  window.closeModals();
+  const modal = document.getElementById('advocacy-modal');
+  if (!modal) return;
+  modal.classList.remove('hidden');
+  _advStep = 0;
+  _advBriefText = '';
+  _advData = null;
+  _advRenderStep(0);
+  _advLoadEligibility();
+}
+
+async function advGoStep(n) {
+  _advStep = n;
+  _advRenderStep(n);
+  if (n === 1 && !_advData) await _advLoadEvidence();
+  if (n === 2) advGenerateBrief(false);
+}
+
+function _advRenderStep(n) {
+  for (let i = 0; i < 3; i++) {
+    const panel = document.getElementById('advPanel' + i);
+    const tab   = document.querySelector(`.adv-step[data-step="${i}"]`);
+    if (!panel || !tab) continue;
+    panel.classList.toggle('active', i === n);
+    panel.classList.toggle('hidden', i !== n);
+    tab.classList.remove('active', 'done');
+    if (i < n)      { tab.classList.add('done'); tab.querySelector('.adv-step-num').textContent = '✓'; }
+    else if (i === n) { tab.classList.add('active'); tab.querySelector('.adv-step-num').textContent = i + 1; }
+    else              { tab.querySelector('.adv-step-num').textContent = i + 1; }
+  }
+  const connectors = document.querySelectorAll('.adv-connector');
+  connectors.forEach((c, i) => {
+    c.style.background = i < n ? '#22c55e' : 'var(--border)';
+  });
+}
+
+async function _advLoadEligibility() {
+  const el = document.getElementById('advCriteriaList');
+  if (!el) return;
+
+  try {
+    const h   = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/api/advocacy?medication=GLP-1&raw=false`, { headers: h });
+    const d   = await safeJson(res);
+    if (!res.ok || d.error) throw new Error(d.error || 'API error');
+
+    _advData = d;
+    const facts    = d.clinical_facts    || [];
+    const missing  = d.missing_data      || [];
+    const strength = d.evidence_strength || 'limited';
+
+    // Build criteria display from clinical facts
+    const criteriaMap = _buildCriteriaFromFacts(facts, missing);
+    el.innerHTML = criteriaMap.map(c => `
+      <div class="adv-criterion ${c.status}">
+        <div class="adv-crit-icon">${c.status === 'met' ? '✓' : c.status === 'partial' ? '!' : '?'}</div>
+        <div style="flex:1">
+          <div class="adv-crit-title">${escapeHtml(c.title)}</div>
+          <div class="adv-crit-detail">${escapeHtml(c.detail)}</div>
+          <span class="adv-crit-tag">${escapeHtml(c.tag)}</span>
+        </div>
+      </div>`).join('');
+
+  } catch (e) {
+    el.innerHTML = _advFallbackCriteria();
+  }
+}
+
+async function _advLoadEvidence() {
+  const el = document.getElementById('advEvidenceContent');
+  if (!el) return;
+
+  if (!_advData) {
+    try {
+      const h   = await getAuthHeaders();
+      const res = await fetch(`${API_BASE}/api/advocacy?medication=GLP-1&raw=true`, { headers: h });
+      const d   = await safeJson(res);
+      if (!res.ok || d.error) throw new Error(d.error);
+      _advData = d;
+    } catch (e) {
+      el.innerHTML = '<div class="loading-text" style="color:var(--accent-warn)">Could not load evidence. Check connection.</div>';
+      return;
+    }
+  }
+
+  const facts    = _advData.clinical_facts    || [];
+  const missing  = _advData.missing_data      || [];
+  const strength = _advData.evidence_strength || 'limited';
+  const fillPct  = strength === 'strong' ? 85 : strength === 'moderate' ? 55 : 25;
+  const met      = facts.filter(f => f.pa_relevant).length;
+
+  el.innerHTML = `
+    <div style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+        <span style="font-size:12.5px;color:var(--text-muted)">PA evidence strength</span>
+        <strong style="font-size:13px;text-transform:capitalize">${strength}</strong>
+      </div>
+      <div class="adv-strength-track">
+        <div class="adv-strength-fill ${strength}" id="advStrengthFill" style="width:0%"></div>
+      </div>
+      <div style="display:flex;gap:10px">
+        <div style="flex:1;background:var(--bg);border-radius:6px;padding:8px;text-align:center;border:1px solid var(--border)">
+          <div style="font-size:1.2rem;font-weight:700;color:var(--brand)">${met}</div>
+          <div style="font-size:11px;color:var(--text-muted)">facts in record</div>
+        </div>
+        <div style="flex:1;background:var(--bg);border-radius:6px;padding:8px;text-align:center;border:1px solid var(--border)">
+          <div style="font-size:1.2rem;font-weight:700;color:#f59e0b">${missing.length}</div>
+          <div style="font-size:11px;color:var(--text-muted)">data gaps</div>
+        </div>
+      </div>
+    </div>
+
+    ${facts.filter(f => f.pa_relevant).length ? `
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--text-muted);margin-bottom:8px">Clinical facts</div>
+    <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:12px">
+      ${facts.filter(f => f.pa_relevant).slice(0, 6).map(f => `
+        <div style="padding:9px 11px;background:var(--bg);border-radius:6px;border:1px solid var(--border)">
+          <div style="font-size:12.5px;font-weight:500;margin-bottom:2px">${escapeHtml(f.label || '')}</div>
+          <div style="font-size:12px;color:var(--text-muted)">${escapeHtml(String(f.value || '').slice(0, 120))}</div>
+        </div>`).join('')}
+    </div>` : ''}
+
+    ${missing.length ? `
+    <div style="background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.25);border-radius:8px;padding:11px 13px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:#f59e0b;margin-bottom:7px">Data gaps to address</div>
+      ${missing.slice(0, 4).map(m => `
+        <div style="display:flex;align-items:flex-start;gap:7px;font-size:12px;color:var(--text-muted);padding:4px 0;line-height:1.55">
+          <span style="width:5px;height:5px;border-radius:50%;background:#f59e0b;flex-shrink:0;margin-top:4px"></span>
+          ${escapeHtml(m)}
+        </div>`).join('')}
+    </div>` : ''}`;
+
+  setTimeout(() => {
+    const fill = document.getElementById('advStrengthFill');
+    if (fill) fill.style.width = fillPct + '%';
+  }, 80);
+}
+
+async function advGenerateBrief(forceRegen) {
+  const el = document.getElementById('advBriefContent');
+  if (!el) return;
+  if (_advBriefText && !forceRegen) {
+    el.innerHTML = `<div class="adv-brief-box">${escapeHtml(_advBriefText)}</div>`;
+    return;
+  }
+
+  const btn = document.getElementById('advRegenerateBtn');
+  if (btn) btn.disabled = true;
+  el.innerHTML = '<div class="loading-text" style="text-align:center;padding:1.5rem"><i class="fa-solid fa-spinner fa-spin" style="font-size:1.2rem;color:var(--brand);display:block;margin-bottom:10px"></i>Generating PA support packet…</div>';
+
+  // Ensure we have advocacy data
+  if (!_advData) {
+    try {
+      const h   = await getAuthHeaders();
+      const res = await fetch(`${API_BASE}/api/advocacy?medication=GLP-1&raw=true`, { headers: h });
+      const d   = await safeJson(res);
+      if (res.ok && !d.error) _advData = d;
+    } catch {}
+  }
+
+  const packetText = _advData?.pa_packet || '';
+
+  if (packetText && packetText.length > 100) {
+    // Backend already generated it — clean up and display
+    _advBriefText = packetText.replace(/─+/g, '').replace(/⚕️.*?$/ms, '').trim();
+    el.innerHTML = `<div class="adv-brief-box">${escapeHtml(_advBriefText)}</div>`;
+    _advRenderNextSteps(_advData.next_steps || []);
+  } else {
+    // Fall back: ask PHI via /chat
+    try {
+      const h = await getAuthHeaders();
+      if (!activeConvId) await createConversation();
+      const res = await fetch(`${API_BASE}/chat`, {
+        method: 'POST', headers: h,
+        body: JSON.stringify({
+          conversation_id: activeConvId,
+          message: 'Generate a structured GLP-1 prior authorization medical necessity support packet from my full health record. Format it with clear section headers: Patient Data Summary, Clinical Facts Supporting Medical Necessity, Cardiovascular Risk Documentation, Metabolic History, Lifestyle Intervention History, Data Gaps, and Recommended Provider Actions. Use specific dates and values from my record.',
+          has_documents: false,
+        }),
+      });
+      const d = await safeJson(res);
+      _advBriefText = (d.reply || '').replace(/^---[\s\S]*$/m, '').trim();
+      el.innerHTML = `<div class="adv-brief-box">${renderMarkdown(_advBriefText)}</div>`;
+      _advRenderNextSteps([
+        'Share this document with your healthcare provider — they make all clinical and authorization decisions',
+        'Ask your provider to document BMI and any prior medication history at your next visit',
+        'Bring your LDL trajectory data (specific dates and values) to the cardiology appointment',
+        'Upload any prior prescriptions or insurance correspondence to PHI to build a stronger record',
+      ]);
+    } catch {
+      el.innerHTML = '<div class="loading-text" style="color:var(--accent-warn)">Could not generate. Please try again.</div>';
+    }
+  }
+
+  if (btn) btn.disabled = false;
+}
+
+function _advRenderNextSteps(steps) {
+  const card = document.getElementById('advNextSteps');
+  const list = document.getElementById('advNextStepsList');
+  if (!card || !list || !steps.length) return;
+  list.innerHTML = steps.map((s, i) => `
+    <div class="adv-next-step-item">
+      <div class="adv-next-step-num">${i + 1}</div>
+      <span>${escapeHtml(s)}</span>
+    </div>`).join('');
+  card.style.display = 'block';
+}
+
+function advCopyBrief() {
+  if (!_advBriefText) return;
+  navigator.clipboard.writeText(_advBriefText).then(() => {
+    const btn = document.getElementById('advCopyBtn');
+    if (btn) { btn.innerHTML = '<i class="fa-solid fa-check"></i> Copied!'; setTimeout(() => btn.innerHTML = '<i class="fa-regular fa-copy"></i> Copy', 2000); }
+  });
+}
+
+function _buildCriteriaFromFacts(facts, missing) {
+  const hasBMI      = facts.some(f => f.category === 'bmi' || f.category === 'weight');
+  const hasHba1c    = facts.some(f => f.category === 'hba1c');
+  const hasMeds     = facts.some(f => f.category === 'medication_history');
+  const hasLifestyle= facts.some(f => f.category === 'lifestyle_attempt');
+  const hasComorbid = facts.some(f => f.category === 'comorbidity');
+
+  const bmiMissing     = missing.some(m => m.toLowerCase().includes('bmi'));
+  const medsMissing    = missing.some(m => m.toLowerCase().includes('medication'));
+  const styleMissing   = missing.some(m => m.toLowerCase().includes('diet') || m.toLowerCase().includes('lifestyle'));
+
+  return [
+    {
+      status: hasBMI ? 'met' : (bmiMissing ? 'missing' : 'partial'),
+      title:  'BMI ≥ 30 (obesity) or ≥ 27 with comorbidity',
+      detail: hasBMI ? 'BMI data found in your health record.' : hasComorbid ? 'BMI not directly recorded but cardiovascular comorbidities are documented — satisfies the ≥27 + comorbidity path.' : 'BMI not recorded. Your provider can measure this at the next visit.',
+      tag:    hasBMI ? 'Met — BMI documented' : hasComorbid ? 'Partial — comorbidity present, BMI needed' : 'Data gap — provider to document',
+    },
+    {
+      status: hasHba1c ? 'met' : 'missing',
+      title:  'Metabolic dysregulation (HbA1c / prediabetes)',
+      detail: hasHba1c ? 'HbA1c history found. Prediabetes-range values documented, supporting metabolic risk.' : 'No HbA1c in record. Upload a lab report containing this value.',
+      tag:    hasHba1c ? 'Met — HbA1c history in record' : 'Data gap — upload recent lab report',
+    },
+    {
+      status: hasLifestyle ? 'partial' : (styleMissing ? 'missing' : 'partial'),
+      title:  'Failed diet / exercise program',
+      detail: hasLifestyle ? 'Lifestyle attempts documented from conversation history. A formal structured program (dietitian referral, Weight Watchers) would further strengthen this criterion.' : 'No lifestyle program documented. Tell PHI about any diet or exercise changes you\'ve made.',
+      tag:    hasLifestyle ? 'Partial — informal record, formal documentation strengthens this' : 'Data gap — document lifestyle history',
+    },
+    {
+      status: hasComorbid ? 'met' : 'partial',
+      title:  'Cardiovascular / metabolic comorbidities',
+      detail: hasComorbid ? 'Relevant comorbidity markers (elevated LDL, CRP, or other cardiovascular indicators) are present in your record.' : 'Some markers suggest cardiovascular risk. Upload a full lipid panel to confirm.',
+      tag:    hasComorbid ? 'Met — comorbidity markers documented' : 'Partial — upload lipid panel',
+    },
+    {
+      status: hasMeds ? 'met' : (medsMissing ? 'missing' : 'missing'),
+      title:  'Prior medication history (Metformin / first-line agents)',
+      detail: hasMeds ? 'Prior medication history found in your conversation record.' : 'No medication history documented. Tell PHI: "I have/haven\'t tried Metformin or other treatments" and your provider should document this.',
+      tag:    hasMeds ? 'Met — medication history recorded' : 'Data gap — discuss with provider',
+    },
+  ];
+}
+
+function _advFallbackCriteria() {
+  return ['BMI ≥ 30 or ≥ 27 with comorbidity','Prediabetes or Type 2 Diabetes (HbA1c ≥ 5.7%)','Failed diet/exercise program','Cardiovascular or metabolic comorbidity','Prior first-line medication history'].map((t, i) =>
+    `<div class="adv-criterion partial">
+       <div class="adv-crit-icon">?</div>
+       <div style="flex:1">
+         <div class="adv-crit-title">${escapeHtml(t)}</div>
+         <div class="adv-crit-detail">Upload lab reports and chat with PHI to populate this criterion from your health record.</div>
+         <span class="adv-crit-tag">Upload a report to check</span>
+       </div>
+     </div>`
+  ).join('');
+}

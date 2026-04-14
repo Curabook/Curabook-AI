@@ -831,3 +831,125 @@ input:focus-visible, textarea:focus-visible { outline: none; }
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+
+/* ══════════════════════════════════════════════════════════════
+   ADVOCACY MODAL — GLP-1 PA Workflow (3-step stepper)
+   Append this block to the END of style.css
+══════════════════════════════════════════════════════════════ */
+
+/* ── Stepper ─────────────────────────────────────────────────── */
+.adv-stepper {
+  display: flex; align-items: center; gap: 0;
+  margin-bottom: 18px; padding: 0 2px;
+}
+
+.adv-step {
+  display: flex; align-items: center; gap: 7px; flex: 1;
+  background: none; border: none; cursor: pointer;
+  padding: 8px 10px; border-radius: var(--radius-sm);
+  transition: background .15s; text-align: left;
+}
+.adv-step:hover { background: var(--bg-hover); }
+
+.adv-step-num {
+  width: 24px; height: 24px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 600; border: 1.5px solid var(--border);
+  color: var(--text-muted); background: var(--bg-input);
+  transition: all .2s; flex-shrink: 0;
+}
+.adv-step.active .adv-step-num { background: var(--brand); color: #fff; border-color: var(--brand); }
+.adv-step.done .adv-step-num   { background: #22c55e; color: #fff; border-color: #22c55e; }
+
+.adv-step-label { font-size: 12.5px; color: var(--text-muted); }
+.adv-step.active .adv-step-label { color: var(--text-main); font-weight: 500; }
+
+.adv-connector { width: 20px; height: 1.5px; background: var(--border); flex-shrink: 0; }
+.adv-step.done + .adv-connector { background: #22c55e; }
+
+/* ── Panels ──────────────────────────────────────────────────── */
+.adv-panel        { display: none; }
+.adv-panel.active { display: block; }
+
+/* ── Next button ─────────────────────────────────────────────── */
+.adv-next-btn {
+  padding: 8px 16px; background: var(--brand); border: none;
+  border-radius: var(--radius-sm); color: white; font-size: 13.5px;
+  font-weight: 600; font-family: var(--font); cursor: pointer;
+  display: flex; align-items: center; gap: 6px; transition: all .15s;
+}
+.adv-next-btn:hover    { background: var(--brand-dark); }
+.adv-next-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ── Criteria cards ──────────────────────────────────────────── */
+.adv-criterion {
+  display: flex; align-items: flex-start; gap: 11px;
+  padding: 11px 13px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); margin-bottom: 8px;
+  background: var(--bg-body);
+}
+.adv-criterion.met     { border-color: rgba(34,197,94,.3);  background: rgba(34,197,94,.05); }
+.adv-criterion.partial { border-color: rgba(245,158,11,.3); background: rgba(245,158,11,.05); }
+.adv-criterion.missing { border-color: rgba(239,68,68,.2);  background: rgba(239,68,68,.04); }
+
+.adv-crit-icon {
+  width: 22px; height: 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; font-size: 11px; font-weight: 700; margin-top: 1px;
+}
+.adv-criterion.met     .adv-crit-icon { background: #22c55e; color: #fff; }
+.adv-criterion.partial .adv-crit-icon { background: #f59e0b; color: #fff; }
+.adv-criterion.missing .adv-crit-icon { background: rgba(239,68,68,.15); color: #ef4444; }
+
+.adv-crit-title  { font-size: 13px; font-weight: 600; margin-bottom: 3px; }
+.adv-crit-detail { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+
+.adv-crit-tag {
+  display: inline-block; font-size: 11px; font-weight: 600;
+  padding: 2px 9px; border-radius: 20px; margin-top: 5px;
+}
+.adv-criterion.met     .adv-crit-tag { background: rgba(34,197,94,.12);  color: #166534; }
+.adv-criterion.partial .adv-crit-tag { background: rgba(245,158,11,.12); color: #92400e; }
+.adv-criterion.missing .adv-crit-tag { background: rgba(239,68,68,.1);   color: #991b1b; }
+
+/* ── Strength bar ────────────────────────────────────────────── */
+.adv-strength-track {
+  height: 7px; background: var(--border);
+  border-radius: 4px; overflow: hidden; margin: 6px 0 14px;
+}
+.adv-strength-fill {
+  height: 100%; border-radius: 4px;
+  transition: width 1.2s cubic-bezier(.4,0,.2,1);
+}
+.adv-strength-fill.strong   { background: #22c55e; }
+.adv-strength-fill.moderate { background: #f59e0b; }
+.adv-strength-fill.limited  { background: #ef4444; }
+
+/* ── Brief box ───────────────────────────────────────────────── */
+.adv-brief-box {
+  background: var(--bg-body); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 14px;
+  font-size: 12.5px; line-height: 1.75; color: var(--text-main);
+  max-height: 300px; overflow-y: auto;
+  white-space: pre-wrap; font-family: var(--font);
+}
+
+/* ── Next step items ─────────────────────────────────────────── */
+.adv-next-step-item {
+  display: flex; gap: 9px; font-size: 12.5px;
+  color: var(--text-muted); line-height: 1.55; padding: 5px 0;
+}
+.adv-next-step-num {
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--brand-dim); color: var(--brand);
+  font-size: 10px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; margin-top: 1px;
+}
+
+/* ── Dark mode overrides ─────────────────────────────────────── */
+body.dark-mode .adv-criterion.met     { background: rgba(34,197,94,.08); }
+body.dark-mode .adv-criterion.partial { background: rgba(245,158,11,.08); }
+body.dark-mode .adv-criterion.missing { background: rgba(239,68,68,.06); }
+body.dark-mode .adv-brief-box         { background: #111118; }
+body.dark-mode .adv-crit-icon         { border: none; }
