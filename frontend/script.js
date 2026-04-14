@@ -4,15 +4,18 @@
  * FIXES IN THIS VERSION:
  *
  * #B-05  Removed injectGroupLabelStyle() — .history-group-label is now
- *        defined in style.css. JS-injected styles were overriding the
- *        CSS file and causing double-definition warnings.
+ * defined in style.css. JS-injected styles were overriding the
+ * CSS file and causing double-definition warnings.
  *
  * #B-06  DOM object wrapped in a factory function called after
- *        DOMContentLoaded to prevent null refs at parse time.
- *        All DOM.$id() calls are now safe.
+ * DOMContentLoaded to prevent null refs at parse time.
+ * All DOM.$id() calls are now safe.
  *
  * #B-07  Consent save uses only valid types: data_processing,
- *        ai_processing, document_processing. Removed terms_accepted.
+ * ai_processing, document_processing. Removed terms_accepted.
+ *
+ * #B-08  Decoupled Promise.all fetching in loadHealthDashboard and 
+ * renderPulseModalContent to prevent infinite loading.
  *
  * All other original functionality preserved.
  */
@@ -428,18 +431,18 @@ async function openPulseModal() {
     renderPulseModalContent();
 }
 
+/* ── FIX B-08: Progressive Loading for Pulse Modal ───────────── */
 async function renderPulseModalContent() {
     if (!DOM.pulseModalBody) return;
     DOM.pulseModalBody.innerHTML = '<div class="temporal-loading"><div class="pulse-spinner"></div><span>Loading health intelligence…</span></div>';
+
     try {
         const h = await getAuthHeaders();
-        const [mr, ir] = await Promise.all([
-            fetch(`${API_BASE}/api/health-markers`,  { headers:h }),
-            fetch(`${API_BASE}/api/health-insights`, { headers:h }),
-        ]);
-        const [markers, insights] = await Promise.all([safeJson(mr), safeJson(ir)]);
-        const mArr = Array.isArray(markers)  ? markers  : [];
-        const iArr = Array.isArray(insights) ? insights : [];
+
+        // 1. Fetch markers first (FAST)
+        const mr = await fetch(`${API_BASE}/api/health-markers`, { headers: h });
+        const markers = mr.ok ? await safeJson(mr) : [];
+        const mArr = Array.isArray(markers) ? markers : [];
 
         if (!mArr.length) {
             DOM.pulseModalBody.innerHTML = _emptyHealthState(
@@ -454,49 +457,73 @@ async function renderPulseModalContent() {
             return;
         }
 
-        const rows = mArr.map(m => {
-            const color = m.status==="HIGH"||m.status==="LOW"?"var(--accent-warn)":m.status==="NORMAL"?"var(--accent-ok)":"var(--text-muted)";
-            const badge = m.status==="HIGH"?"⬆ HIGH":m.status==="LOW"?"⬇ LOW":"✓ NORMAL";
-            return `<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border)">
-                <div>
-                    <div style="font-weight:500;font-size:13px">${escapeHtml(m.marker_name)}</div>
-                    <div style="font-size:11.5px;color:var(--text-muted)">Normal: ${escapeHtml(m.reference_range||"—")} · ${escapeHtml(m.date||"")}</div>
-                </div>
-                <div style="text-align:right">
-                    <div style="font-weight:700;font-size:14px;color:${color}">${m.value} <span style="font-size:11px;font-weight:400">${escapeHtml(m.unit||"")}</span></div>
-                    <div style="font-size:10.5px;font-weight:700;color:${color}">${badge}</div>
-                </div>
-            </div>`;
-        }).join("");
+        // Helper function to render the modal HTML
+        const renderModal = (iArr) => {
+            const rows = mArr.map(m => {
+                const color = m.status==="HIGH"||m.status==="LOW"?"var(--accent-warn)":m.status==="NORMAL"?"var(--accent-ok)":"var(--text-muted)";
+                const badge = m.status==="HIGH"?"⬆ HIGH":m.status==="LOW"?"⬇ LOW":"✓ NORMAL";
+                return `<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border)">
+                    <div>
+                        <div style="font-weight:500;font-size:13px">${escapeHtml(m.marker_name)}</div>
+                        <div style="font-size:11.5px;color:var(--text-muted)">Normal: ${escapeHtml(m.reference_range||"—")} · ${escapeHtml(m.date||"")}</div>
+                    </div>
+                    <div style="text-align:right">
+                        <div style="font-weight:700;font-size:14px;color:${color}">${m.value} <span style="font-size:11px;font-weight:400">${escapeHtml(m.unit||"")}</span></div>
+                        <div style="font-size:10.5px;font-weight:700;color:${color}">${badge}</div>
+                    </div>
+                </div>`;
+            }).join("");
 
-        const insH = iArr.map(ins =>
-            `<div style="border-left:3px solid ${ins.severity==="high"?"var(--accent-warn)":ins.severity==="medium"?"var(--accent-amber)":"var(--accent-ok)"};padding:8px 11px;margin-bottom:7px;background:var(--bg-hover);border-radius:0 8px 8px 0">
-                <div style="font-weight:600;font-size:13px">${escapeHtml(ins.headline||"")}</div>
-                <div style="font-size:12px;color:var(--text-muted);margin-top:2px">${escapeHtml(ins.detail||"")}</div>
-            </div>`
-        ).join("");
+            const insH = iArr.map(ins =>
+                `<div style="border-left:3px solid ${ins.severity==="high"?"var(--accent-warn)":ins.severity==="medium"?"var(--accent-amber)":"var(--accent-ok)"};padding:8px 11px;margin-bottom:7px;background:var(--bg-hover);border-radius:0 8px 8px 0">
+                    <div style="font-weight:600;font-size:13px">${escapeHtml(ins.headline||"")}</div>
+                    <div style="font-size:12px;color:var(--text-muted);margin-top:2px">${escapeHtml(ins.detail||"")}</div>
+                </div>`
+            ).join("");
 
-        DOM.pulseModalBody.innerHTML = `
-            ${iArr.length ? `<div style="margin-bottom:18px">
-                <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">
-                    <i class="fa-solid fa-lightbulb" style="color:var(--accent-amber)"></i> PHI Synthesis
-                </div>${insH}</div>` : ""}
-            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">
-                All Markers (${mArr.length})
-                <span style="color:var(--accent-warn);margin-left:8px">${mArr.filter(m=>m.status==="HIGH"||m.status==="LOW").length} need attention</span>
-            </div>${rows}
-            <div style="margin-top:16px;text-align:center">
-                <button id="pulseModalDoctorBtn"
-                    style="padding:10px 20px;background:var(--brand);color:white;border:none;border-radius:8px;font-size:13.5px;font-weight:600;font-family:var(--font);cursor:pointer">
-                    <i class="fa-solid fa-stethoscope"></i> Generate Doctor Visit Prep
-                </button>
-            </div>`;
+            DOM.pulseModalBody.innerHTML = `
+                ${iArr.length ? `<div style="margin-bottom:18px">
+                    <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">
+                        <i class="fa-solid fa-lightbulb" style="color:var(--accent-amber)"></i> PHI Synthesis
+                    </div>${insH}</div>` : `<div style="margin-bottom:18px;font-size:12px;color:var(--text-muted);"><i class="fa-solid fa-spinner fa-spin"></i> Generating AI insights...</div>`}
+                <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">
+                    All Markers (${mArr.length})
+                    <span style="color:var(--accent-warn);margin-left:8px">${mArr.filter(m=>m.status==="HIGH"||m.status==="LOW").length} need attention</span>
+                </div>${rows}
+                <div style="margin-top:16px;text-align:center">
+                    <button id="pulseModalDoctorBtn"
+                        style="padding:10px 20px;background:var(--brand);color:white;border:none;border-radius:8px;font-size:13.5px;font-weight:600;font-family:var(--font);cursor:pointer">
+                        <i class="fa-solid fa-stethoscope"></i> Generate Doctor Visit Prep
+                    </button>
+                </div>`;
 
-        document.getElementById("pulseModalDoctorBtn")?.addEventListener("click", () => {
-            window.closeModals();
-            sendChip("Prepare me for my next doctor visit based on my full health picture");
-        });
-    } catch {
+            document.getElementById("pulseModalDoctorBtn")?.addEventListener("click", () => {
+                window.closeModals();
+                sendChip("Prepare me for my next doctor visit based on my full health picture");
+            });
+        };
+
+        // 2. Render instantly without insights
+        renderModal([]);
+
+        // 3. Fetch AI insights in background (SLOW)
+        fetch(`${API_BASE}/api/health-insights`, { headers: h })
+            .then(r => r.ok ? safeJson(r) : [])
+            .then(insights => {
+                const iArr = Array.isArray(insights) ? insights : [];
+                if (iArr.length) {
+                    renderModal(iArr);
+                } else {
+                     // remove the spinner if no insights
+                     const spinner = DOM.pulseModalBody.querySelector('.fa-spinner')?.parentNode;
+                     if (spinner) spinner.remove();
+                }
+            }).catch(() => {
+                const spinner = DOM.pulseModalBody.querySelector('.fa-spinner')?.parentNode;
+                if (spinner) spinner.remove();
+            });
+
+    } catch (e) {
         DOM.pulseModalBody.innerHTML = '<div class="loading-text" style="color:var(--accent-warn)">Could not load health data.</div>';
     }
 }
@@ -1066,30 +1093,46 @@ function _renderProfileDemographics(profile) {
     }
 }
 
+/* ── FIX B-08: Progressive Loading for Health Dashboard ──────── */
 async function loadHealthDashboard() {
     if (!DOM.healthDash) return;
     DOM.healthDash.innerHTML = '<div class="loading-text"><i class="fa-solid fa-spinner fa-spin"></i> Loading…</div>';
-    const h = await getAuthHeaders();
-    const [mr, ir] = await Promise.all([
-        fetch(`${API_BASE}/api/health-markers`,  {headers:h}).catch(()=>null),
-        fetch(`${API_BASE}/api/health-insights`, {headers:h}).catch(()=>null),
-    ]);
-    const markers  = mr?.ok  ? await safeJson(mr)  : [];
-    const insights = ir?.ok  ? await safeJson(ir)  : [];
 
-    if (!Array.isArray(markers) || !markers.length) {
-        DOM.healthDash.innerHTML = _emptyHealthState(
-            "No lab reports yet",
-            "Upload a PDF lab report using the paperclip button. PHI will extract all your markers, explain what they mean, and track changes over time.",
-            "Upload My First Report"
-        );
-        DOM.healthDash.querySelector(".empty-cta-btn")?.addEventListener("click", () => {
-            window.closeModals();
-            DOM.fileInput?.click();
-        });
-        return;
+    try {
+        const h = await getAuthHeaders();
+
+        // 1. Fetch markers first (FAST)
+        const mr = await fetch(`${API_BASE}/api/health-markers`, {headers: h});
+        const markers = mr.ok ? await safeJson(mr) : [];
+
+        if (!Array.isArray(markers) || !markers.length) {
+            DOM.healthDash.innerHTML = _emptyHealthState(
+                "No lab reports yet",
+                "Upload a PDF lab report using the paperclip button. PHI will extract all your markers, explain what they mean, and track changes over time.",
+                "Upload My First Report"
+            );
+            DOM.healthDash.querySelector(".empty-cta-btn")?.addEventListener("click", () => {
+                window.closeModals();
+                DOM.fileInput?.click();
+            });
+            return;
+        }
+
+        // 2. Render instantly without insights
+        renderHealthDashboard(markers, []);
+
+        // 3. Fetch insights in background (SLOW)
+        fetch(`${API_BASE}/api/health-insights`, {headers: h})
+            .then(r => r.ok ? safeJson(r) : [])
+            .then(insights => {
+                if (Array.isArray(insights) && insights.length) {
+                    renderHealthDashboard(markers, insights);
+                }
+            }).catch(() => {});
+
+    } catch (e) {
+        DOM.healthDash.innerHTML = '<div class="loading-text" style="color:var(--accent-warn)">Could not load health data.</div>';
     }
-    renderHealthDashboard(markers, Array.isArray(insights)?insights:[]);
 }
 
 function renderHealthDashboard(markers, insights) {
