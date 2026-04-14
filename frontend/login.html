@@ -378,7 +378,7 @@ document.getElementById('googleBtn').addEventListener('click', async () => {
     try {
         await supabaseClient.auth.signInWithOAuth({
             provider: 'google',
-            options: { redirectTo: "https://curabook.com/login" }
+            options: { redirectTo: "https://curabook.com" }
         });
     } catch {
         setStatus('Google sign-in unavailable. Try email instead.', 'error');
