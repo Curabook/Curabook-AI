@@ -1,19 +1,53 @@
 """
 api/health_routes.py — Complete with memory context API
 ─────────────────────────────────────────────────────────────────────────────
+FIX B-04: _compute_status imported and called with correct signature.
+          Previously: from health_memory.memory import ... _compute_status
+          then called as _compute_status(value, ref, status) — but the
+          function signature is _compute_status(value, reference_range, existing_status).
+          The import is from a private function (_compute_status) which is
+          fragile. This version uses the public-facing logic inline to avoid
+          relying on a private helper from another module.
+
 Endpoints:
   GET  /api/health-timeline     — chronological marker readings for charts
   GET  /api/health-markers      — latest value per marker
   GET  /api/health-insights     — AI-generated insights (cached 24h)
   GET  /api/dashboard           — full dashboard data (stats + feed + trends)
   POST /api/doctor-brief        — generate doctor visit prep
-  GET  /api/memory/context      — structured JSON health context (NEW)
-  GET  /api/memory/facts        — conversation memory facts (NEW)
+  GET  /api/memory/context      — structured JSON health context
+  GET  /api/memory/facts        — conversation memory facts
 """
 
 from flask import Blueprint, request, jsonify
 
 health_bp = Blueprint("health", __name__)
+
+
+def _resolve_status(value, reference_range: str, existing_status: str = "") -> str:
+    """
+    FIX B-04: Local copy of status resolution — avoids importing a private
+    function from another module. Keeps this module self-contained.
+    """
+    if existing_status in ("HIGH", "LOW", "NORMAL"):
+        return existing_status
+    try:
+        if not reference_range or value is None:
+            return "UNKNOWN"
+        v = float(value)
+        r = str(reference_range).strip()
+        if r.startswith("<"):
+            return "HIGH" if v > float(r[1:]) else "NORMAL"
+        if r.startswith(">"):
+            return "LOW"  if v < float(r[1:]) else "NORMAL"
+        if "-" in r:
+            lo, hi = r.split("-", 1)
+            if v < float(lo): return "LOW"
+            if v > float(hi): return "HIGH"
+            return "NORMAL"
+    except (ValueError, AttributeError, TypeError):
+        pass
+    return "UNKNOWN"
 
 
 # ── Health timeline ───────────────────────────────────────────────────────────
@@ -167,38 +201,21 @@ Plain language. End: "⚕️ For informational purposes only. Always follow your
     return jsonify({"brief": brief})
 
 
-# ── NEW: Structured memory context (JSON) ─────────────────────────────────────
+# ── Structured memory context (JSON) ─────────────────────────────────────────
 
 @health_bp.route("/api/memory/context", methods=["GET"])
 def memory_context():
     """
     Returns the user's complete health context as structured JSON.
-
-    Response shape:
-    {
-        "conditions":      ["LDL Cholesterol is HIGH", ...],
-        "recent_metrics":  {"LDL Cholesterol": {"value": 172, "unit": "mg/dL", ...}},
-        "trends":          [{"marker": "LDL Cholesterol", "direction": "rising", ...}],
-        "alerts":          [{"marker": "...", "severity": "high", "message": "..."}],
-        "conversation_facts": ["User takes Vitamin D supplements", ...],
-        "summary":         "3 markers need attention. LDL has risen 21% over 9 months.",
-        "has_data":        true,
-        "total_markers":   15,
-        "report_count":    3,
-        "last_updated":    "2025-03-15"
-    }
-
-    Used by:
-    - Frontend dashboard
-    - External integrations
-    - Debugging memory issues
+    FIX B-04: Uses local _resolve_status() instead of importing private
+    _compute_status from health_memory.memory.
     """
     from app import supabase
     from services.auth        import get_authenticated_user
     from services.compliance  import audit_log
     from health_memory.memory import (
         get_latest_markers, get_health_trends,
-        get_conversation_memories, get_user_markers, _compute_status,
+        get_conversation_memories, get_user_markers,
     )
 
     user = get_authenticated_user(supabase)
@@ -229,7 +246,8 @@ def memory_context():
         conditions = []
         alerts     = []
         for name, m in sorted(latest.items()):
-            status = _compute_status(
+            # FIX B-04: use local resolver, not imported private function
+            status = _resolve_status(
                 m.get("value"), m.get("reference_range", ""), m.get("status", "")
             )
             if status in ("HIGH", "LOW"):
@@ -238,7 +256,6 @@ def memory_context():
                     f"{name} is {status} — "
                     f"{m['value']} {m.get('unit','')} ({direction} normal range {m.get('reference_range','')})"
                 )
-                # Build alert
                 concerning_trend = any(
                     t["marker"] == name and t["concerning"]
                     for t in trends
@@ -259,13 +276,12 @@ def memory_context():
                     "is_stale": m.get("is_stale", False),
                 })
 
-        # Build recent_metrics dict (all latest values)
         recent_metrics = {
             name: {
                 "value":           m.get("value"),
                 "unit":            m.get("unit", ""),
                 "reference_range": m.get("reference_range", ""),
-                "status":          _compute_status(
+                "status":          _resolve_status(
                                        m.get("value"),
                                        m.get("reference_range", ""),
                                        m.get("status", "")
@@ -277,20 +293,17 @@ def memory_context():
             for name, m in latest.items()
         }
 
-        # Count unique source documents
         report_count = len(set(
             m.get("source_document", "")
             for m in all_marks
             if m.get("source_document")
         ))
 
-        # Most recent data date
         last_updated = max(
             (m.get("date", "") for m in latest.values()),
             default=None
         )
 
-        # Build summary sentence
         abnormal_count = len(conditions)
         concerning_ct  = len([t for t in trends if t["concerning"]])
         if abnormal_count == 0:
@@ -325,14 +338,10 @@ def memory_context():
         return jsonify({"error": "Failed to load health context"}), 500
 
 
-# ── NEW: Conversation memory facts ────────────────────────────────────────────
+# ── Conversation memory facts ─────────────────────────────────────────────────
 
 @health_bp.route("/api/memory/facts", methods=["GET"])
 def memory_facts():
-    """
-    Returns all active conversation memory facts for the user.
-    These are health facts PHI learned from past conversations.
-    """
     from app import supabase
     from services.auth        import get_authenticated_user
     from health_memory.memory import get_conversation_memories
@@ -345,14 +354,10 @@ def memory_facts():
     return jsonify({"facts": facts, "count": len(facts)})
 
 
-# ── NEW: Delete a conversation memory fact ────────────────────────────────────
+# ── Delete a conversation memory fact ─────────────────────────────────────────
 
 @health_bp.route("/api/memory/facts/<fact_id>", methods=["DELETE"])
 def delete_memory_fact(fact_id: str):
-    """
-    Deactivate a specific conversation memory fact.
-    User can manage what PHI remembers about them.
-    """
     from app import supabase
     from services.auth       import get_authenticated_user
     from services.compliance import audit_log

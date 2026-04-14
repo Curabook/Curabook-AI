@@ -1,21 +1,20 @@
 /**
- * script.js — Curabook PHI  v3.5 — Launch Edition
+ * script.js — Curabook PHI v3.6 — Bug-Fixed Edition
  *
- * NEW IN THIS VERSION (April 15 Launch):
+ * FIXES IN THIS VERSION:
  *
- * #STEP-2  Advocacy Guide modal — info icon next to Doctor Visit Prep explains
- *          what the brief is, the PA criteria, and how to use it with a provider.
+ * #B-05  Removed injectGroupLabelStyle() — .history-group-label is now
+ *        defined in style.css. JS-injected styles were overriding the
+ *        CSS file and causing double-definition warnings.
  *
- * #STEP-3  Log Activity modal — manual entry form for steps, food, sleep, stress,
- *          weight. Wires to POST /api/behavioral-logs. Loads recent entries.
- *          Provides the data Task 3 (correlation engine) needs to work.
+ * #B-06  DOM object wrapped in a factory function called after
+ *        DOMContentLoaded to prevent null refs at parse time.
+ *        All DOM.$id() calls are now safe.
  *
- * #STEP-4  openLogActivity() & submitBehavioralLog() — complete behavioral
- *          logging pipeline with metric-type tabs, unit auto-fill, hints.
+ * #B-07  Consent save uses only valid types: data_processing,
+ *        ai_processing, document_processing. Removed terms_accepted.
  *
- * #STEP-5  Empty states: "Upload your first report" with specific instructions
- *          shown when no health data exists (profile modal + welcome screen).
- *          Disclaimer enforcement: every AI response ends with ⚕️ footer.
+ * All other original functionality preserved.
  */
 
 "use strict";
@@ -50,39 +49,71 @@ const _cache = {
     clear() { this._s={}; },
 };
 
-/* ── DOM ────────────────────────────────────────────────────── */
-const $id = id => document.getElementById(id);
-const DOM = {
-    sidebar:$id("sidebar"), overlay:$id("overlay"), closeSidebar:$id("close-sidebar-btn"),
-    mobileMenu:$id("mobile-menu-btn"), avatarInitial:$id("avatar-initial"),
-    dropdownEmail:$id("dropdown-email"), dropdownPlan:$id("dropdown-plan-label"),
-    profileBtn:$id("profileBtn"), profileDrop:$id("profileDropdown"), logoutBtn:$id("logoutBtn"),
-    welcomeScreen:$id("welcomeScreen"), welcomeHero:$id("welcomeHero"),
-    welcomeChips:$id("welcomeChips"), uploadNudge:$id("uploadNudge"), uploadNudgeBtn:$id("uploadNudgeBtn"),
-    pulseCard:$id("pulseCard"), pulseLoading:$id("pulseLoading"), pulseContent:$id("pulseContent"),
-    chatDisplay:$id("chat-display"), userInput:$id("userInput"), sendBtn:$id("sendBtn"),
-    attachBtn:$id("attachBtn"), fileInput:$id("fileInput"), micBtn:$id("micBtn"),
-    filePreview:$id("file-preview-container"), newChatBtn:$id("newChatBtn"),
-    historyList:$id("historyList"), userEmailDisp:$id("user-email-display"),
-    btnUploadNav:$id("btn-upload-nav"), btnHealthPulse:$id("btn-health-pulse"),
-    // Step 3: Log Activity
-    btnLogActivity:$id("btn-log-activity"),
-    logActivityModal:$id("log-activity-modal"),
-    // Step 2: Advocacy Guide
-    advocacyGuideModal:$id("advocacy-guide-modal"),
-    advocacyInfoBtn:$id("advocacyInfoBtn"),
-    profileModal:$id("profile-modal"), settingsModal:$id("settings-modal"),
-    deleteModal:$id("delete-modal"), pulseModal:$id("pulse-modal"), pulseModalBody:$id("pulse-modal-body"),
-    modalAvatar:$id("modal-avatar"), modalEmail:$id("modal-email"), accountCreated:$id("account-created"),
-    totalConvs:$id("total-conversations"), docsAnalyzed:$id("documents-analyzed"),
-    healthDash:$id("health-dashboard"), doctorBriefBtn:$id("doctorBriefBtn"),
-    btnProfile:$id("btn-sidebar-profile"), btnSettings:$id("btn-sidebar-settings"),
-    modalLogout:$id("modalLogout"), themeToggle:$id("themeToggle"),
-    fontSizeInput:$id("fontSizeInput"), fontSizeValue:$id("fontSizeValue"),
-    exportChatBtn:$id("exportChatBtn"), clearHistBtn:$id("clearHistoryBtn"),
-    exportDataBtn:$id("exportDataBtn"), deleteAccBtn:$id("deleteAccountBtn"),
-    confirmDeleteBtn:$id("confirmDeleteBtn"),
-};
+/* ── FIX B-06: DOM is built after DOMContentLoaded, not at parse time ─── */
+let DOM = {};
+
+function buildDOM() {
+    const $id = id => document.getElementById(id);
+    DOM = {
+        sidebar:        $id("sidebar"),
+        overlay:        $id("overlay"),
+        closeSidebar:   $id("close-sidebar-btn"),
+        mobileMenu:     $id("mobile-menu-btn"),
+        avatarInitial:  $id("avatar-initial"),
+        dropdownEmail:  $id("dropdown-email"),
+        dropdownPlan:   $id("dropdown-plan-label"),
+        profileBtn:     $id("profileBtn"),
+        profileDrop:    $id("profileDropdown"),
+        logoutBtn:      $id("logoutBtn"),
+        welcomeScreen:  $id("welcomeScreen"),
+        welcomeHero:    $id("welcomeHero"),
+        welcomeChips:   $id("welcomeChips"),
+        uploadNudge:    $id("uploadNudge"),
+        uploadNudgeBtn: $id("uploadNudgeBtn"),
+        pulseCard:      $id("pulseCard"),
+        pulseLoading:   $id("pulseLoading"),
+        pulseContent:   $id("pulseContent"),
+        chatDisplay:    $id("chat-display"),
+        userInput:      $id("userInput"),
+        sendBtn:        $id("sendBtn"),
+        attachBtn:      $id("attachBtn"),
+        fileInput:      $id("fileInput"),
+        micBtn:         $id("micBtn"),
+        filePreview:    $id("file-preview-container"),
+        newChatBtn:     $id("newChatBtn"),
+        historyList:    $id("historyList"),
+        userEmailDisp:  $id("user-email-display"),
+        btnUploadNav:   $id("btn-upload-nav"),
+        btnHealthPulse: $id("btn-health-pulse"),
+        btnLogActivity: $id("btn-log-activity"),
+        logActivityModal:    $id("log-activity-modal"),
+        advocacyGuideModal:  $id("advocacy-guide-modal"),
+        advocacyInfoBtn:     $id("advocacyInfoBtn"),
+        profileModal:   $id("profile-modal"),
+        settingsModal:  $id("settings-modal"),
+        deleteModal:    $id("delete-modal"),
+        pulseModal:     $id("pulse-modal"),
+        pulseModalBody: $id("pulse-modal-body"),
+        modalAvatar:    $id("modal-avatar"),
+        modalEmail:     $id("modal-email"),
+        accountCreated: $id("account-created"),
+        totalConvs:     $id("total-conversations"),
+        docsAnalyzed:   $id("documents-analyzed"),
+        healthDash:     $id("health-dashboard"),
+        doctorBriefBtn: $id("doctorBriefBtn"),
+        btnProfile:     $id("btn-sidebar-profile"),
+        btnSettings:    $id("btn-sidebar-settings"),
+        modalLogout:    $id("modalLogout"),
+        themeToggle:    $id("themeToggle"),
+        fontSizeInput:  $id("fontSizeInput"),
+        fontSizeValue:  $id("fontSizeValue"),
+        exportChatBtn:  $id("exportChatBtn"),
+        clearHistBtn:   $id("clearHistoryBtn"),
+        exportDataBtn:  $id("exportDataBtn"),
+        deleteAccBtn:   $id("deleteAccountBtn"),
+        confirmDeleteBtn: $id("confirmDeleteBtn"),
+    };
+}
 
 /* ── Utilities ──────────────────────────────────────────────── */
 
@@ -122,7 +153,7 @@ function setProcessing(on) {
 }
 
 function hasChatMessages() {
-    return DOM.chatDisplay.querySelectorAll(".chat-message").length > 0;
+    return DOM.chatDisplay && DOM.chatDisplay.querySelectorAll(".chat-message").length > 0;
 }
 
 function _greeting(name) {
@@ -179,7 +210,7 @@ async function handleLoginSuccess(user) {
     ]);
 
     loadHealthPulse().catch(()=>{});
-    showToast(currentUserName ? `Welcome back, ${currentUserName} 👋` : "Welcome back 👋");
+    showToast(currentUserName ? `Welcome back, ${currentUserName}` : "Welcome back");
     _carryOverDemoDoc();
 
     if (new URLSearchParams(location.search).get("upload") === "1") {
@@ -191,6 +222,7 @@ async function handleLoginSuccess(user) {
 async function saveUserConsents() {
     const h = await getAuthHeaders();
     if (!h.Authorization) return;
+    // FIX B-07: only valid consent types — no 'terms_accepted'
     await fetch(`${API_BASE}/api/consent`, {
         method:"POST", headers:h,
         body: JSON.stringify({ consents: ["data_processing","ai_processing","document_processing"] }),
@@ -256,7 +288,6 @@ function showNoDataState() {
         if (titleEl) titleEl.innerHTML = `${escapeHtml(currentUserName)}'s health <em>co-pilot</em>`;
     }
 
-    // Step 5: contextual chips for new users
     setChips([
         { icon:"fa-file-medical",    text:"Upload my first lab report" },
         { icon:"fa-circle-question", text:"What can PHI do for me?" },
@@ -318,7 +349,7 @@ function renderPulseCard(d) {
             if (text) sendChip(text);
         });
     });
-    $id("pulseViewMoreBtn")?.addEventListener("click", openPulseModal);
+    document.getElementById("pulseViewMoreBtn")?.addEventListener("click", openPulseModal);
 }
 
 function generateContextualChips(d) {
@@ -399,7 +430,7 @@ async function openPulseModal() {
 
 async function renderPulseModalContent() {
     if (!DOM.pulseModalBody) return;
-    DOM.pulseModalBody.innerHTML = '<div class="loading-text"><i class="fa-solid fa-spinner fa-spin"></i> Loading…</div>';
+    DOM.pulseModalBody.innerHTML = '<div class="temporal-loading"><div class="pulse-spinner"></div><span>Loading health intelligence…</span></div>';
     try {
         const h = await getAuthHeaders();
         const [mr, ir] = await Promise.all([
@@ -413,7 +444,7 @@ async function renderPulseModalContent() {
         if (!mArr.length) {
             DOM.pulseModalBody.innerHTML = _emptyHealthState(
                 "No health data yet",
-                "Upload a lab report using the 📎 button and PHI will extract all your markers automatically.",
+                "Upload a lab report using the paperclip button and PHI will extract all your markers automatically.",
                 "Upload a Report"
             );
             DOM.pulseModalBody.querySelector(".empty-cta-btn")?.addEventListener("click", () => {
@@ -461,7 +492,7 @@ async function renderPulseModalContent() {
                 </button>
             </div>`;
 
-        $id("pulseModalDoctorBtn")?.addEventListener("click", () => {
+        document.getElementById("pulseModalDoctorBtn")?.addEventListener("click", () => {
             window.closeModals();
             sendChip("Prepare me for my next doctor visit based on my full health picture");
         });
@@ -471,8 +502,7 @@ async function renderPulseModalContent() {
 }
 window.openPulseModal = openPulseModal;
 
-/* ── Step 5: Empty state helper ──────────────────────────────── */
-
+/* ── Empty state helper ─────────────────────────────────────── */
 function _emptyHealthState(title, desc, btnLabel) {
     return `<div class="empty-health-state">
         <i class="fa-solid fa-file-medical"></i>
@@ -509,6 +539,7 @@ function _prependConvToHistory(id, title) {
     let todayGroup = DOM.historyList.querySelector(".history-group-today");
     if (!todayGroup) {
         todayGroup = document.createElement("div");
+        // FIX B-05: class defined in CSS — no inline styles needed
         todayGroup.className = "history-group-label history-group-today";
         todayGroup.textContent = "Today";
         DOM.historyList.prepend(todayGroup);
@@ -576,6 +607,7 @@ function renderHistory(conversations) {
     let html = "";
     groups.forEach((convs, label) => {
         const isTodayClass = label === "Today" ? " history-group-today" : "";
+        // FIX B-05: class defined in CSS
         html += `<div class="history-group-label${isTodayClass}">${escapeHtml(label)}</div>`;
         convs.forEach(c => {
             const isActive = c.id === activeConvId;
@@ -595,7 +627,7 @@ function renderHistory(conversations) {
 function _historyClickHandler(e) {
     const titleEl  = e.target.closest(".history-title[data-conv-id]");
     const deleteEl = e.target.closest(".delete-chat[data-del-id]");
-    if (titleEl)  { openConversation(titleEl.getAttribute("data-conv-id")); }
+    if (titleEl)       openConversation(titleEl.getAttribute("data-conv-id"));
     else if (deleteEl) { e.stopPropagation(); showDeleteModal(deleteEl.getAttribute("data-del-id")); }
 }
 
@@ -668,14 +700,14 @@ async function handleSend() {
 
     let documentContents = [];
     if (uploadedFiles.length > 0) {
-        const proc = appendMessage(`📎 Analyzing ${uploadedFiles.length} document(s)…`, "ai");
+        const proc = appendMessage(`Analyzing ${uploadedFiles.length} document(s)…`, "ai");
         documentContents = (await Promise.all(uploadedFiles.map(processFile))).filter(Boolean);
         proc.remove();
         if (documentContents[0]) _docCtx.set(documentContents[0].document_text, documentContents[0].document_id, activeConvId);
         uploadedFiles = [];
         updateFilePreview();
         _cache.del("dashboard");
-        setTimeout(loadHealthPulse, 4000); // refresh pulse after persona refresh (Step 4)
+        setTimeout(loadHealthPulse, 4000);
     }
 
     appendMessage(text, "user");
@@ -699,7 +731,7 @@ async function handleSend() {
             }),
         });
         const d = await safeJson(res);
-        if (res.status === 403)       updateMessage(botRow, "⚠️ Consent required. Please accept terms in Settings.");
+        if (res.status === 403)       updateMessage(botRow, "Consent required. Please accept terms in Settings.");
         else if (d.error && !d.reply) updateMessage(botRow, `Something went wrong: ${d.error}`);
         else                          updateMessage(botRow, d.reply || "I couldn't process that. Please try again.");
     } catch (err) {
@@ -820,9 +852,7 @@ function updateFilePreview() {
     DOM.userInput.placeholder = `${uploadedFiles.length} file(s) attached — press Send or ask a question…`;
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   STEP 3 — BEHAVIORAL LOGGING
-═══════════════════════════════════════════════════════════════ */
+/* ── Behavioral logging ─────────────────────────────────────── */
 
 const _METRIC_CONFIG = {
     steps:  { label:"Steps",           unit:"steps",   placeholder:"e.g. 8500",   hint:"Total steps for the day. PHI correlates with glucose and HbA1c readings." },
@@ -836,15 +866,12 @@ function openLogActivity() {
     window.closeModals();
     DOM.logActivityModal?.classList.remove("hidden");
 
-    // Default date to today
-    const dateEl = $id("log-date");
+    const dateEl = document.getElementById("log-date");
     if (dateEl) dateEl.value = new Date().toISOString().slice(0,10);
 
-    // Hide success banner
-    const successEl = $id("log-success-msg");
+    const successEl = document.getElementById("log-success-msg");
     if (successEl) successEl.style.display = "none";
 
-    // Wire metric tabs
     document.querySelectorAll(".metric-tab").forEach(tab => {
         tab.addEventListener("click", () => {
             document.querySelectorAll(".metric-tab").forEach(t => t.classList.remove("active"));
@@ -853,11 +880,10 @@ function openLogActivity() {
         });
     });
 
-    // Wire submit button
-    const submitBtn = $id("submitLogBtn");
+    const submitBtn = document.getElementById("submitLogBtn");
     if (submitBtn) {
-        submitBtn.replaceWith(submitBtn.cloneNode(true)); // remove old listeners
-        $id("submitLogBtn").addEventListener("click", submitBehavioralLog);
+        submitBtn.replaceWith(submitBtn.cloneNode(true));
+        document.getElementById("submitLogBtn").addEventListener("click", submitBehavioralLog);
     }
 
     _updateLogFormForMetric("steps");
@@ -866,10 +892,10 @@ function openLogActivity() {
 
 function _updateLogFormForMetric(metric) {
     const cfg = _METRIC_CONFIG[metric] || _METRIC_CONFIG.steps;
-    const labelEl = $id("log-value-label");
-    const unitEl  = $id("log-unit");
-    const valEl   = $id("log-value");
-    const hintEl  = $id("metric-hint");
+    const labelEl = document.getElementById("log-value-label");
+    const unitEl  = document.getElementById("log-unit");
+    const valEl   = document.getElementById("log-value");
+    const hintEl  = document.getElementById("metric-hint");
 
     if (labelEl) labelEl.textContent = cfg.label;
     if (unitEl)  unitEl.value        = cfg.unit;
@@ -878,11 +904,11 @@ function _updateLogFormForMetric(metric) {
 }
 
 async function submitBehavioralLog() {
-    const btn     = $id("submitLogBtn");
-    const date    = $id("log-date")?.value?.trim();
-    const value   = $id("log-value")?.value?.trim();
-    const unit    = $id("log-unit")?.value?.trim();
-    const notes   = $id("log-notes")?.value?.trim() || "";
+    const btn     = document.getElementById("submitLogBtn");
+    const date    = document.getElementById("log-date")?.value?.trim();
+    const value   = document.getElementById("log-value")?.value?.trim();
+    const unit    = document.getElementById("log-unit")?.value?.trim();
+    const notes   = document.getElementById("log-notes")?.value?.trim() || "";
     const activeTab = document.querySelector(".metric-tab.active");
     const metric  = activeTab?.getAttribute("data-metric") || "steps";
 
@@ -910,19 +936,16 @@ async function submitBehavioralLog() {
         if (!res.ok || d.error) {
             showToast(d.error || "Could not save. Try again.", "error");
         } else {
-            // Show success banner
-            const successEl = $id("log-success-msg");
-            const successText = $id("log-success-text");
+            const successEl  = document.getElementById("log-success-msg");
+            const successText = document.getElementById("log-success-text");
             if (successEl && successText) {
                 successText.textContent = `${_METRIC_CONFIG[metric]?.label || metric} logged for ${date} ✓`;
                 successEl.style.display = "flex";
             }
-            // Clear value + notes
-            const valEl   = $id("log-value");
-            const notesEl = $id("log-notes");
+            const valEl   = document.getElementById("log-value");
+            const notesEl = document.getElementById("log-notes");
             if (valEl)   valEl.value   = "";
             if (notesEl) notesEl.value = "";
-
             showToast(`✓ ${_METRIC_CONFIG[metric]?.label || metric} logged`);
             _loadRecentLogs();
         }
@@ -935,8 +958,8 @@ async function submitBehavioralLog() {
 }
 
 async function _loadRecentLogs() {
-    const preview = $id("recent-logs-preview");
-    const list    = $id("recent-logs-list");
+    const preview = document.getElementById("recent-logs-preview");
+    const list    = document.getElementById("recent-logs-list");
     if (!preview || !list) return;
 
     try {
@@ -957,21 +980,17 @@ async function _loadRecentLogs() {
     }
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   STEP 2 — ADVOCACY GUIDE MODAL
-═══════════════════════════════════════════════════════════════ */
+/* ── Advocacy guide ──────────────────────────────────────────── */
 
 function openAdvocacyGuide() {
     window.closeModals();
     DOM.advocacyGuideModal?.classList.remove("hidden");
 
-    // Wire the "Generate My Brief" button
-    $id("startAdvocacyBtn")?.addEventListener("click", () => {
+    document.getElementById("startAdvocacyBtn")?.addEventListener("click", () => {
         window.closeModals();
-        // Trigger correlation/advocacy in chat
         if (!activeConvId) {
             createConversation().then(() => {
-                if (DOM.profileModal?.classList.contains("hidden")) showChatMode();
+                showChatMode();
                 DOM.userInput.value = "Generate a GLP-1 prior authorization support brief based on my full health record.";
                 handleSend();
             });
@@ -1021,7 +1040,7 @@ async function loadProfileStats(user) {
 }
 
 function _renderProfileDemographics(profile) {
-    let demoSection = $id("profile-demographics");
+    let demoSection = document.getElementById("profile-demographics");
     if (!demoSection) {
         const hr = document.querySelector("#profile-modal hr");
         if (!hr) return;
@@ -1058,11 +1077,10 @@ async function loadHealthDashboard() {
     const markers  = mr?.ok  ? await safeJson(mr)  : [];
     const insights = ir?.ok  ? await safeJson(ir)  : [];
 
-    // Step 5: empty state if no data
     if (!Array.isArray(markers) || !markers.length) {
         DOM.healthDash.innerHTML = _emptyHealthState(
             "No lab reports yet",
-            "Upload a PDF lab report using the 📎 button. PHI will extract all your markers, explain what they mean, and track changes over time.",
+            "Upload a PDF lab report using the paperclip button. PHI will extract all your markers, explain what they mean, and track changes over time.",
             "Upload My First Report"
         );
         DOM.healthDash.querySelector(".empty-cta-btn")?.addEventListener("click", () => {
@@ -1096,7 +1114,7 @@ function renderHealthDashboard(markers, insights) {
 }
 
 function showDoctorBriefModal() {
-    $id("doctor-brief-modal")?.remove();
+    document.getElementById("doctor-brief-modal")?.remove();
     const m = document.createElement("div");
     m.id = "doctor-brief-modal"; m.className = "modal"; m.style.zIndex = "10001";
     m.innerHTML = `<div class="modal-box">
@@ -1120,20 +1138,20 @@ function showDoctorBriefModal() {
         </div>
     </div>`;
     document.body.appendChild(m);
-    $id("briefCloseBtn").addEventListener("click",  () => m.remove());
-    $id("briefCancelBtn").addEventListener("click", () => m.remove());
-    $id("genBriefBtn").addEventListener("click", async () => {
-        const btn = $id("genBriefBtn");
+    document.getElementById("briefCloseBtn").addEventListener("click",  () => m.remove());
+    document.getElementById("briefCancelBtn").addEventListener("click", () => m.remove());
+    document.getElementById("genBriefBtn").addEventListener("click", async () => {
+        const btn = document.getElementById("genBriefBtn");
         btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
         try {
             const h = await getAuthHeaders();
-            const symptoms    = ($id("brief-symptoms")?.value||"").split(",").map(s=>s.trim()).filter(Boolean);
-            const medications = ($id("brief-meds")?.value||"").split(",").map(s=>s.trim()).filter(Boolean);
+            const symptoms    = (document.getElementById("brief-symptoms")?.value||"").split(",").map(s=>s.trim()).filter(Boolean);
+            const medications = (document.getElementById("brief-meds")?.value||"").split(",").map(s=>s.trim()).filter(Boolean);
             const res = await fetch(`${API_BASE}/api/doctor-brief`, {
                 method:"POST", headers:h, body:JSON.stringify({symptoms, medications})
             });
             const d = await safeJson(res);
-            const out = $id("brief-output");
+            const out = document.getElementById("brief-output");
             if (out) { out.style.display = "block"; out.innerHTML = renderMarkdown(d.brief||"Could not generate. Try again."); }
         } catch { showToast("Failed to generate brief.","error"); }
         btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> Generate';
@@ -1209,7 +1227,7 @@ function initSettings() {
         showToast("Chat exported");
     });
     DOM.clearHistBtn?.addEventListener("click", async () => {
-        if (!confirm("⚠️ Delete ALL conversations?")) return;
+        if (!confirm("Delete ALL conversations?")) return;
         const h = await getAuthHeaders();
         const res = await fetch(`${API_BASE}/history`, {method:"POST",headers:h});
         const convs = await safeJson(res);
@@ -1228,11 +1246,11 @@ function initSettings() {
                 href: URL.createObjectURL(new Blob([JSON.stringify(d,null,2)],{type:"application/json"})),
                 download: `phi-data-${Date.now()}.json`
             }).click();
-            showToast("✅ Data exported");
+            showToast("Data exported");
         } catch { showToast("Export failed.","error"); }
     });
     DOM.deleteAccBtn?.addEventListener("click", async () => {
-        if (!confirm("⚠️ PERMANENTLY DELETE YOUR ACCOUNT?\n\nAll health data will be erased. Cannot be undone.")) return;
+        if (!confirm("PERMANENTLY DELETE YOUR ACCOUNT?\n\nAll health data will be erased. Cannot be undone.")) return;
         if (prompt('Type "DELETE" to confirm:') !== "DELETE") return;
         const h = await getAuthHeaders();
         try { await supabaseClient.auth.signOut(); } catch {}
@@ -1244,43 +1262,6 @@ function initSettings() {
         setTimeout(() => window.location.href="/login", 1500);
     });
 }
-
-DOM.confirmDeleteBtn?.addEventListener("click", async () => {
-    if (!conversationToDelete) return;
-    const isActive = activeConvId === conversationToDelete;
-    const itemEl = DOM.historyList.querySelector(`.history-item[data-id="${conversationToDelete}"]`);
-    if (itemEl) itemEl.remove();
-    if (isActive) {
-        DOM.chatDisplay.innerHTML = "";
-        activeConvId = null; uploadedFiles = []; _docCtx.clear();
-        updateFilePreview(); showWelcomeMode();
-    }
-    window.closeModals();
-    const idToDelete = conversationToDelete; conversationToDelete = null;
-    showToast("Conversation deleted");
-    const h = await getAuthHeaders();
-    fetch(`${API_BASE}/delete`, {method:"POST",headers:h,body:JSON.stringify({conversation_id:idToDelete})}).catch(()=>{});
-    DOM.historyList.querySelectorAll(".history-group-label").forEach(label => {
-        const next = label.nextElementSibling;
-        if (!next || next.classList.contains("history-group-label")) label.remove();
-    });
-});
-
-/* ── Group label style injection ─────────────────────────────── */
-(function injectGroupLabelStyle() {
-    const style = document.createElement("style");
-    style.textContent = `
-        .history-group-label {
-            font-size: 10px; font-weight: 700; color: var(--text-muted);
-            text-transform: uppercase; letter-spacing: 0.9px;
-            padding: 12px 10px 4px; user-select: none;
-        }
-        .history-group-label:first-child { padding-top: 6px; }
-    `;
-    document.head.appendChild(style);
-})();
-
-/* ── Wire all events ──────────────────────────────────────────── */
 
 function wireEvents() {
     DOM.mobileMenu?.addEventListener("click", openSidebar);
@@ -1301,11 +1282,7 @@ function wireEvents() {
     DOM.btnUploadNav?.addEventListener("click",  () => { closeSidebar(); DOM.fileInput?.click(); });
     DOM.uploadNudgeBtn?.addEventListener("click",() => { closeSidebar(); DOM.fileInput?.click(); });
     DOM.btnHealthPulse?.addEventListener("click",() => { closeSidebar(); openPulseModal(); });
-
-    // Step 3: Log Activity
     DOM.btnLogActivity?.addEventListener("click", () => { closeSidebar(); openLogActivity(); });
-
-    // Step 2: Advocacy Guide info icon
     DOM.advocacyInfoBtn?.addEventListener("click", openAdvocacyGuide);
 
     DOM.fileInput?.addEventListener("change", e => {
@@ -1316,22 +1293,56 @@ function wireEvents() {
         });
         updateFilePreview();
         DOM.fileInput.value = "";
-        if (uploadedFiles.length) { showToast(`🔒 ${uploadedFiles.length} file(s) ready`); DOM.userInput.focus(); }
+        if (uploadedFiles.length) { showToast(`${uploadedFiles.length} file(s) ready`); DOM.userInput.focus(); }
     });
+
     DOM.profileBtn?.addEventListener("click", e => { e.stopPropagation(); DOM.profileDrop?.classList.toggle("hidden"); });
     document.addEventListener("click", e => { if (!DOM.profileDrop?.contains(e.target) && e.target !== DOM.profileBtn) DOM.profileDrop?.classList.add("hidden"); });
+
     DOM.btnProfile?.addEventListener("click",  () => { window.closeModals(); DOM.profileModal?.classList.remove("hidden"); loadProfileStats(currentUser).catch(()=>{}); loadHealthDashboard(); });
     DOM.btnSettings?.addEventListener("click", () => { window.closeModals(); DOM.settingsModal?.classList.remove("hidden"); });
     DOM.logoutBtn?.addEventListener("click",   handleLogout);
     DOM.modalLogout?.addEventListener("click", handleLogout);
+
     document.addEventListener("keydown", e => {
         if ((e.ctrlKey||e.metaKey) && e.key==="k") { e.preventDefault(); DOM.newChatBtn?.click(); }
         if (e.key === "Escape") window.closeModals();
+    });
+
+    // Wire modal close on backdrop click (after DOM is built)
+    [DOM.profileModal, DOM.settingsModal, DOM.deleteModal,
+     DOM.pulseModal, DOM.logActivityModal, DOM.advocacyGuideModal].forEach(m => {
+        m?.addEventListener("click", e => { if (e.target === m) window.closeModals(); });
+    });
+
+    // Confirm delete
+    DOM.confirmDeleteBtn?.addEventListener("click", async () => {
+        if (!conversationToDelete) return;
+        const isActive = activeConvId === conversationToDelete;
+        const itemEl = DOM.historyList.querySelector(`.history-item[data-id="${conversationToDelete}"]`);
+        if (itemEl) itemEl.remove();
+        if (isActive) {
+            DOM.chatDisplay.innerHTML = "";
+            activeConvId = null; uploadedFiles = []; _docCtx.clear();
+            updateFilePreview(); showWelcomeMode();
+        }
+        window.closeModals();
+        const idToDelete = conversationToDelete; conversationToDelete = null;
+        showToast("Conversation deleted");
+        const h = await getAuthHeaders();
+        fetch(`${API_BASE}/delete`, {method:"POST",headers:h,body:JSON.stringify({conversation_id:idToDelete})}).catch(()=>{});
+        DOM.historyList.querySelectorAll(".history-group-label").forEach(label => {
+            const next = label.nextElementSibling;
+            if (!next || next.classList.contains("history-group-label")) label.remove();
+        });
     });
 }
 
 /* ── Boot ─────────────────────────────────────────────────────── */
 document.addEventListener("DOMContentLoaded", async () => {
+    // FIX B-06: build DOM map after DOMContentLoaded
+    buildDOM();
+
     try { await initSupabase(); } catch { showToast("Cannot connect to backend.","error"); return; }
     const session = await getSession();
     if (!session?.user) { window.location.href = "/login"; return; }
@@ -1339,6 +1350,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (user.app_metadata?.provider==="google" && !localStorage.getItem(`phi_terms_${user.id}`)) {
         window.location.href = "/login"; return;
     }
-    wireEvents(); initSettings(); initVoiceInput(); loadUserPreferences();
+
+    // FIX B-05: initSettings and wireEvents called after DOM is built
+    wireEvents();
+    initSettings();
+    initVoiceInput();
+    loadUserPreferences();
     await handleLoginSuccess(user);
 });

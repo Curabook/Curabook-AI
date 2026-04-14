@@ -7,21 +7,15 @@
     <meta name="description" content="Sign in to your Curabook PHI health intelligence dashboard">
     <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-
-    <!--
-        FIX BUG-1 + BUG-2: ONE Supabase script tag only, pinned version, from jsDelivr.
-        Previously two <script> tags loaded (cdn.jsdelivr.net + unpkg.com) creating two
-        conflicting globals. Second load overwrote the first mid-execution → crash.
-        signup.html had the same problem and is fixed identically.
-    -->
+    <!-- SINGLE Supabase CDN — never load twice, pinned version -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 
     <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
     :root {
-        --brand: #00BCD5;
-        --brand-dark: #0097a7;
+        --brand: #00C8E0;
+        --brand-dark: #009db5;
         --text: #111111;
         --muted: #6b7280;
         --border: #e5e7eb;
@@ -55,7 +49,7 @@
         position: absolute;
         top: -60px; right: -60px;
         width: 360px; height: 360px;
-        background: radial-gradient(circle, rgba(0,188,213,.14) 0%, transparent 70%);
+        background: radial-gradient(circle, rgba(0,200,224,.14) 0%, transparent 70%);
         pointer-events: none;
     }
     .left-brand { display: flex; align-items: center; gap: 12px; z-index: 1; }
@@ -67,7 +61,7 @@
     }
     .left-brand-name { font-family: var(--serif); font-size: 1.35rem; color: white; font-weight: 400; }
     .left-brand-tag {
-        font-size: 11px; background: rgba(0,188,213,.18); color: var(--brand);
+        font-size: 11px; background: rgba(0,200,224,.18); color: var(--brand);
         padding: 2px 8px; border-radius: 20px; font-weight: 600;
     }
     .left-content { z-index: 1; }
@@ -106,7 +100,7 @@
         background: var(--white); outline: none;
         transition: border-color .2s, box-shadow .2s;
     }
-    .form-input:focus { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(0,188,213,.1); }
+    .form-input:focus { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(0,200,224,.1); }
     .form-input::placeholder { color: #9ca3af; }
 
     .forgot-link {
@@ -175,7 +169,7 @@
     .terms-modal p  { font-size: 13.5px; color: var(--muted); margin-bottom: 16px; line-height: 1.6; }
     .terms-modal ul { margin: 12px 0 16px 20px; font-size: 13px; color: var(--muted); line-height: 1.8; }
     .consent-badge {
-        background: rgba(0,188,213,.07); border: 1px solid rgba(0,188,213,.2);
+        background: rgba(0,200,224,.07); border: 1px solid rgba(0,200,224,.2);
         border-radius: 8px; padding: 10px 14px; font-size: 12px;
         color: var(--brand); font-weight: 600; text-align: center; margin-bottom: 16px;
     }
@@ -261,42 +255,45 @@
 
 <script>
 /* ============================================================
-   login.html — fixed boot order
-   FIX BUG-1: onAuthStateChange wired BEFORE handleOAuthReturn()
-   FIX BUG-2: Single Supabase CDN script (removed unpkg duplicate)
-   FIX BUG-3: Terms consent awaited and verified before redirect
+   login.html — fixed OAuth race + consent types
+   FIX B-02 / B-03: onAuthStateChange wired FIRST, hash only
+   cleared AFTER Supabase confirms session.
+   FIX B-07: removed invalid 'terms_accepted' consent type.
 ============================================================ */
 
-const API_BASE       = "https://api.curabook.com";
-const SUPABASE_URL   = "https://pbeaawlxdcrdbvlmpqhc.supabase.co";
-const SUPABASE_KEY   = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBiZWFhd2x4ZGNyZGJ2bG1wcWhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwMDk0MzksImV4cCI6MjA5MTU4NTQzOX0.6bUpYrDbe0mQjjBHX8Qscj-5R8i4-SqAtW_Z1UFzJ10";
+const API_BASE     = "https://api.curabook.com";
+const SUPABASE_URL = "https://pbeaawlxdcrdbvlmpqhc.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBiZWFhd2x4ZGNyZGJ2bG1wcWhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwMDk0MzksImV4cCI6MjA5MTU4NTQzOX0.6bUpYrDbe0mQjjBHX8Qscj-5R8i4-SqAtW_Z1UFzJ10";
 
 let supabaseClient = null;
+// Track whether we've already redirected to avoid double-fires
+let _redirected = false;
 
-/* ── LocalStorage safety ─────────────────────────────────────
-   Corrupt Supabase session data causes createClient() to throw.
-   Clear known Supabase keys with invalid JSON before init.
-──────────────────────────────────────────────────────────── */
 function sanitizeLocalStorage() {
-    const supabaseKeys = Object.keys(localStorage).filter(k =>
+    const keys = Object.keys(localStorage).filter(k =>
         k.startsWith("sb-") || k.includes("supabase") || k.includes("gotrue")
     );
-    for (const key of supabaseKeys) {
+    for (const key of keys) {
         const raw = localStorage.getItem(key);
         if (!raw) continue;
         try { JSON.parse(raw); }
-        catch { console.warn(`[PHI] Clearing corrupt localStorage key: ${key}`); localStorage.removeItem(key); }
+        catch { console.warn("[PHI] Clearing corrupt localStorage key:", key); localStorage.removeItem(key); }
     }
 }
 
 function initSupabase() {
     sanitizeLocalStorage();
     supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
-        auth: { detectSessionInUrl: true, persistSession: true }
+        auth: {
+            detectSessionInUrl: true,
+            persistSession: true,
+            // FIX B-03: do NOT auto-detect — we handle the redirect manually
+            // so we control exactly when the hash is cleared
+            flowType: 'implicit'
+        }
     });
 }
 
-/* ── UI helpers ──────────────────────────────────────────── */
 function setStatus(msg, type = '') {
     const el = document.getElementById('status-msg');
     el.textContent = msg;
@@ -308,63 +305,7 @@ function setLoading(btn, loading) {
     btn.innerHTML  = loading ? '<span class="spinner"></span> Signing in…' : 'Sign In';
 }
 
-/* ── Email / password login ──────────────────────────────── */
-document.getElementById('loginBtn').addEventListener('click', async () => {
-    const email    = document.getElementById('email').value.trim();
-    const password = document.getElementById('password').value;
-    const btn      = document.getElementById('loginBtn');
-
-    if (!email || !password) { setStatus('Please enter your email and password.', 'error'); return; }
-    setLoading(btn, true);
-
-    try {
-        const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
-        if (error) { setStatus(error.message, 'error'); setLoading(btn, false); return; }
-        setStatus('Signing in…', 'success');
-        window.location.href = 'https://curabook.com/';
-    } catch (err) {
-        console.error('[LOGIN]', err);
-        setStatus('Something went wrong. Please try again.', 'error');
-        setLoading(btn, false);
-    }
-});
-
-document.addEventListener('keydown', e => {
-    if (e.key === 'Enter') document.getElementById('loginBtn').click();
-});
-
-/* ── Forgot password ─────────────────────────────────────── */
-document.getElementById('forgotLink').addEventListener('click', async e => {
-    e.preventDefault();
-    const email = document.getElementById('email').value.trim();
-    if (!email) { setStatus('Enter your email address first.', 'error'); return; }
-    try {
-        const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
-            redirectTo: "https://curabook.com/"
-        });
-        if (error) { setStatus(error.message, 'error'); return; }
-        setStatus('Password reset email sent. Check your inbox.', 'success');
-    } catch (err) {
-        setStatus('Could not send reset email. Try again.', 'error');
-    }
-});
-
-/* ── Google OAuth ────────────────────────────────────────── */
-document.getElementById('googleBtn').addEventListener('click', async () => {
-    try {
-        await supabaseClient.auth.signInWithOAuth({
-            provider: 'google',
-            options:  { redirectTo: "https://curabook.com/login" }
-        });
-    } catch (err) {
-        setStatus('Google sign-in unavailable. Try email instead.', 'error');
-    }
-});
-
-/* ── Save consent to backend ─────────────────────────────────
-   FIX BUG-3: awaited with error handling, non-blocking on failure
-   so users aren't locked out if the API is temporarily down.
-──────────────────────────────────────────────────────────── */
+/* ── FIX B-07: only valid consent types from backend _VALID_CONSENT_TYPES ── */
 async function saveConsentToBackend(accessToken) {
     try {
         const resp = await fetch(`${API_BASE}/api/consent`, {
@@ -373,34 +314,93 @@ async function saveConsentToBackend(accessToken) {
                 'Content-Type':  'application/json',
                 'Authorization': 'Bearer ' + accessToken
             },
+            // Removed 'terms_accepted' — not in backend _VALID_CONSENT_TYPES
             body: JSON.stringify({
-                consents: ['terms_accepted', 'data_processing', 'ai_processing', 'document_processing']
+                consents: ['data_processing', 'ai_processing', 'document_processing']
             })
         });
-        if (!resp.ok) {
-            console.warn('[CONSENT] API returned', resp.status, '— continuing anyway');
-        } else {
-            console.log('[CONSENT] Saved successfully');
-        }
+        if (!resp.ok) console.warn('[CONSENT] API returned', resp.status);
+        else console.log('[CONSENT] Saved');
     } catch (err) {
-        console.warn('[CONSENT SAVE] Non-fatal error:', err);
-        // Non-fatal — localStorage flag already set, user proceeds
+        console.warn('[CONSENT SAVE] Non-fatal:', err);
     }
 }
 
-/* ── Google Terms Modal ──────────────────────────────────── */
+function _doRedirect() {
+    if (_redirected) return;
+    _redirected = true;
+    setStatus('Signing in…', 'success');
+    window.location.href = 'https://curabook.com/';
+}
+
+/* ── Email / password login ── */
+document.getElementById('loginBtn').addEventListener('click', async () => {
+    const email    = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const btn      = document.getElementById('loginBtn');
+    if (!email || !password) { setStatus('Please enter your email and password.', 'error'); return; }
+    setLoading(btn, true);
+    try {
+        const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+        if (error) { setStatus(error.message, 'error'); setLoading(btn, false); return; }
+        _doRedirect();
+    } catch (err) {
+        console.error('[LOGIN]', err);
+        setStatus('Something went wrong. Please try again.', 'error');
+        setLoading(btn, false);
+    }
+});
+
+document.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !document.querySelector('.terms-modal-overlay')) {
+        document.getElementById('loginBtn').click();
+    }
+});
+
+/* ── Forgot password ── */
+document.getElementById('forgotLink').addEventListener('click', async e => {
+    e.preventDefault();
+    const email = document.getElementById('email').value.trim();
+    if (!email) { setStatus('Enter your email address first.', 'error'); return; }
+    try {
+        const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+            redirectTo: "https://curabook.com/login"
+        });
+        if (error) { setStatus(error.message, 'error'); return; }
+        setStatus('Password reset email sent. Check your inbox.', 'success');
+    } catch {
+        setStatus('Could not send reset email. Try again.', 'error');
+    }
+});
+
+/* ── Google OAuth ── */
+document.getElementById('googleBtn').addEventListener('click', async () => {
+    try {
+        await supabaseClient.auth.signInWithOAuth({
+            provider: 'google',
+            options: { redirectTo: "https://curabook.com/login" }
+        });
+    } catch {
+        setStatus('Google sign-in unavailable. Try email instead.', 'error');
+    }
+});
+
+/* ── Google Terms Modal ── */
 function showGoogleTermsModal(user, session) {
+    // Remove any existing modal
+    document.querySelector('.terms-modal-overlay')?.remove();
+
     const overlay = document.createElement('div');
     overlay.className = 'terms-modal-overlay';
     overlay.innerHTML = `
         <div class="terms-modal">
-            <h3>⚕️ Before You Continue</h3>
-            <p>Curabook PHI stores and analyzes your personal health data. Please review and accept the following before accessing your account.</p>
+            <h3>Before you continue</h3>
+            <p>Curabook PHI stores and analyzes your personal health data. Please review and accept before accessing your account.</p>
             <ul>
-                <li>Your data is encrypted at rest (AES-256) and in transit (TLS)</li>
-                <li>Your name and ID are removed before any AI processing</li>
-                <li>Your data is never sold to advertisers or third parties</li>
-                <li>You can export or delete all your data at any time</li>
+                <li>Data encrypted at rest (AES-256) and in transit (TLS)</li>
+                <li>Your name and ID removed before any AI processing</li>
+                <li>Data never sold to advertisers or third parties</li>
+                <li>Export or delete all data at any time</li>
             </ul>
             <div class="consent-badge">
                 <i class="fa-solid fa-shield-halved"></i>
@@ -408,7 +408,7 @@ function showGoogleTermsModal(user, session) {
             </div>
             <label class="terms-row">
                 <input type="checkbox" id="googleTermsCheck">
-                <span>I agree to the <a href="/terms" target="_blank">Terms of Service</a> and <a href="/privacy" target="_blank">Privacy Policy</a>, and I consent to Curabook PHI processing my health data as described above.</span>
+                <span>I agree to the <a href="/terms" target="_blank">Terms of Service</a> and <a href="/privacy" target="_blank">Privacy Policy</a>, and consent to Curabook PHI processing my health data as described above.</span>
             </label>
             <div class="terms-modal-actions">
                 <button class="btn-decline" id="declineBtn">Decline &amp; Sign Out</button>
@@ -428,101 +428,75 @@ function showGoogleTermsModal(user, session) {
             overlay.querySelector('.terms-row').style.color = '#ef4444';
             return;
         }
-        const acceptBtn = document.getElementById('acceptBtn');
-        acceptBtn.disabled = true;
-        acceptBtn.innerHTML = '<span class="spinner"></span> Saving…';
+        const btn = document.getElementById('acceptBtn');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> Saving…';
 
-        // Save to localStorage immediately — user can proceed even if API fails
+        // Save to localStorage first — user proceeds even if API slow
         localStorage.setItem(`phi_terms_${user.id}`, Date.now().toString());
 
-        // FIX BUG-3: await the consent save with proper error handling
         if (session?.access_token) {
             await saveConsentToBackend(session.access_token);
         }
 
         overlay.remove();
-        window.location.href = 'https://curabook.com/';
+        _doRedirect();
     });
 }
 
-/* ── Handle OAuth redirect return ────────────────────────────
-   FIX BUG-1: This function only checks for existing session.
-   The SIGNED_IN event from the OAuth hash is handled by the
-   onAuthStateChange listener wired in the boot section below.
-──────────────────────────────────────────────────────────── */
-async function handleOAuthReturn() {
-    try {
-        // Clean up hash from URL without triggering a re-parse
-        if (window.location.hash && window.location.hash.includes('access_token')) {
-            await new Promise(resolve => setTimeout(resolve, 300));
-            history.replaceState(null, '', window.location.pathname);
-        }
-
-        const { data: sessionData } = await supabaseClient.auth.getSession();
-        if (!sessionData?.session?.user) return;
-
-        const user     = sessionData.session.user;
-        const provider = user.app_metadata?.provider;
-
-        if (provider === 'google') {
-            const termsKey = `phi_terms_${user.id}`;
-            if (!localStorage.getItem(termsKey)) {
-                showGoogleTermsModal(user, sessionData.session);
-                return;
-            }
-        }
-
-        window.location.href = 'https://curabook.com/';
-    } catch (err) {
-        console.error('[OAUTH RETURN]', err);
-    }
-}
-
-/* ── BOOT ─────────────────────────────────────────────────────
-   FIX BUG-1: Wire onAuthStateChange FIRST, then handleOAuthReturn.
-
-   The OAuth flow puts the access_token in window.location.hash.
-   Supabase fires a SIGNED_IN event via onAuthStateChange when it
-   parses that hash. If we call handleOAuthReturn() first, it can
-   clear the hash before Supabase reads it. Wiring the listener
-   first guarantees Supabase sees the token regardless of timing.
-──────────────────────────────────────────────────────────── */
+/* ── BOOT ──────────────────────────────────────────────────────────────
+   FIX B-03: Wire onAuthStateChange FIRST.
+   Never call history.replaceState to strip the hash early —
+   only clear it after Supabase has processed the session.
+─────────────────────────────────────────────────────────────────────── */
 try {
     initSupabase();
 
-    // STEP 1: Wire auth state listener BEFORE anything else
+    // STEP 1: Auth state listener — registered before any other async work
     supabaseClient.auth.onAuthStateChange(async (event, session) => {
-        console.log(`[AUTH] Event: ${event}`);
+        console.log('[AUTH] Event:', event);
 
-        if ((event === 'SIGNED_IN' || event === 'USER_UPDATED') && session?.user) {
+        if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
             const user = session.user;
+            const isGoogle = user.app_metadata?.provider === 'google';
 
-            // Google OAuth: check terms acceptance
-            if (user.app_metadata?.provider === 'google') {
+            if (isGoogle) {
                 const termsKey = `phi_terms_${user.id}`;
                 if (!localStorage.getItem(termsKey)) {
-                    // Show terms modal (don't redirect yet)
-                    // Small delay to let the DOM settle after OAuth redirect
-                    setTimeout(() => showGoogleTermsModal(user, session), 100);
+                    // Show terms — don't redirect yet
+                    setTimeout(() => showGoogleTermsModal(user, session), 50);
                     return;
                 }
             }
 
-            // If we're on the login page and just signed in, redirect to app
-            // But don't redirect if the terms modal is showing
-            if (!document.querySelector('.terms-modal-overlay')) {
-                setStatus('Signed in! Redirecting…', 'success');
-                window.location.href = 'https://curabook.com/';
+            // Clear the hash only AFTER Supabase has confirmed the session
+            if (window.location.hash.includes('access_token')) {
+                history.replaceState(null, '', window.location.pathname);
             }
-        }
 
-        if (event === 'SIGNED_OUT') {
-            // Stay on login page
+            if (!document.querySelector('.terms-modal-overlay')) {
+                _doRedirect();
+            }
         }
     });
 
-    // STEP 2: Check for existing OAuth return (hash in URL)
-    handleOAuthReturn().catch(err => console.error('[OAUTH]', err));
+    // STEP 2: Check for existing session (returning user, not OAuth redirect)
+    // OAuth redirect is handled by onAuthStateChange above — don't race with it
+    (async () => {
+        // Only check for existing session if there's no hash (not an OAuth return)
+        if (!window.location.hash.includes('access_token')) {
+            const { data } = await supabaseClient.auth.getSession();
+            if (data?.session?.user) {
+                const user = data.session.user;
+                const isGoogle = user.app_metadata?.provider === 'google';
+                if (isGoogle && !localStorage.getItem(`phi_terms_${user.id}`)) {
+                    showGoogleTermsModal(user, data.session);
+                    return;
+                }
+                _doRedirect();
+            }
+        }
+    })();
 
 } catch (err) {
     console.error('[LOGIN BOOT]', err);
