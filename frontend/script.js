@@ -2,18 +2,15 @@
  * PATCH FILE — Apply these changes to script.js
  *
  * FIX #CHAT-500-ROOT: The real root cause is that /chat re-calls explain_markers()
- *   on document_text even though /analyze already stored them. This creates a
- *   second Groq call that hits 429 → retry sleep → worker timeout → CORS-less 500.
- *   The fix in chat_routes.py removes the explain_markers call from /chat.
- *   The JS fixes below address the 5 product tasks.
+ * on document_text even though /analyze already stored them.
  *
  * CHANGES vs original script.js:
- *
  * 1. OAuth fix: onAuthStateChange wired before DOMContentLoaded async check
  * 2. Skeleton/partial loading: persona → labs → insights pipeline
  * 3. Advocacy button on main dashboard
  * 4. Proactive post-upload refresh with status bar
- * 5. Behavioral log form fully wired (was already wired, confirmed + enhanced)
+ * 5. Behavioral log form fully wired
+ * 6. NEW: Decoupled Promise.all to prevent infinite loading on dashboard and modals.
  */
 
 "use strict";
@@ -48,7 +45,7 @@ const _cache = {
     clear() { this._s={}; },
 };
 
-/* ── FIX B-06: DOM is built after DOMContentLoaded ─── */
+/* ── DOM Elements ───────────────────────────────────────────── */
 let DOM = {};
 
 function buildDOM() {
@@ -208,7 +205,6 @@ async function handleLoginSuccess(user) {
         loadPlanStatus().catch(()=>{}),
     ]);
 
-    // FIX STEP 2: Use skeleton/partial loading instead of single blocking fetch
     loadHealthPulseProgressive().catch(()=>{});
     showToast(currentUserName ? `Welcome back, ${currentUserName}` : "Welcome back");
     _carryOverDemoDoc();
@@ -252,13 +248,7 @@ function _carryOverDemoDoc() {
     }, 1200);
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   FIX STEP 2: Progressive / Skeleton Health Pulse Loading
-   Instead of one blocking /api/dashboard call, we load in 3 phases:
-     Phase 1 — Instant: persona from user_profiles (cached, fast)
-     Phase 2 — Fast:    latest markers from /api/health-markers
-     Phase 3 — Slow:    AI insights from /api/health-insights (can be 3-5s)
-═══════════════════════════════════════════════════════════════ */
+/* ── Health Pulse ────────────────────────────────────────────── */
 
 async function loadHealthPulseProgressive() {
     if (DOM.pulseLoading) DOM.pulseLoading.classList.remove("hidden");
@@ -289,7 +279,7 @@ async function loadHealthPulseProgressive() {
             return;
         }
 
-        // Build partial dashboard from markers alone (no insights yet)
+        // Build partial dashboard from markers alone
         const partialDash = _buildDashFromMarkers(mArr);
         _healthContext = partialDash;
         renderPulseCard(partialDash);
@@ -298,7 +288,7 @@ async function loadHealthPulseProgressive() {
         if (DOM.pulseLoading) DOM.pulseLoading.classList.add("hidden");
         if (DOM.pulseContent) DOM.pulseContent.classList.remove("hidden");
 
-        // Phase 3: Load insights in background (slow, optional)
+        // Phase 3: Load insights in background
         fetch(`${API_BASE}/api/health-insights`, { headers: h })
             .then(r => r.ok ? safeJson(r) : [])
             .then(insights => {
@@ -310,7 +300,6 @@ async function loadHealthPulseProgressive() {
             })
             .catch(() => {});
 
-        // Also fetch full dashboard for nudge/trends (background)
         fetch(`${API_BASE}/api/dashboard`, { headers: h })
             .then(r => r.ok ? safeJson(r) : null)
             .then(d => {
@@ -387,7 +376,6 @@ function _injectInsightsBadge(insights) {
     DOM.pulseContent.appendChild(strip);
 }
 
-/* ── Legacy full dashboard loader (kept for cache hits) ── */
 async function loadHealthPulse() {
     return loadHealthPulseProgressive();
 }
@@ -446,7 +434,6 @@ function renderPulseCard(d) {
         </div>`;
     }).join("");
 
-    /* ── FIX STEP 3: Add Advocacy Brief button to pulse card ── */
     const advocacyBtn = `
         <button id="dashAdvocacyBtn" style="
             display:inline-flex;align-items:center;gap:7px;
@@ -560,18 +547,18 @@ async function openPulseModal() {
     renderPulseModalContent();
 }
 
+/* ── FIX: Decoupled Pulse Modal Loading ──────────────────────── */
 async function renderPulseModalContent() {
     if (!DOM.pulseModalBody) return;
-    DOM.pulseModalBody.innerHTML = '<div class="temporal-loading"><div class="pulse-spinner"></div><span>Loading health intelligence…</span></div>';
+    DOM.pulseModalBody.innerHTML = '<div class="temporal-loading"><div class="pulse-spinner"></div><span>Loading health data…</span></div>';
+
     try {
         const h = await getAuthHeaders();
-        const [mr, ir] = await Promise.all([
-            fetch(`${API_BASE}/api/health-markers`,  { headers:h }),
-            fetch(`${API_BASE}/api/health-insights`, { headers:h }),
-        ]);
-        const [markers, insights] = await Promise.all([safeJson(mr), safeJson(ir)]);
-        const mArr = Array.isArray(markers)  ? markers  : [];
-        const iArr = Array.isArray(insights) ? insights : [];
+
+        // 1. Fetch fast markers first
+        const mr = await fetch(`${API_BASE}/api/health-markers`, { headers: h });
+        const markers = mr.ok ? await safeJson(mr) : [];
+        const mArr = Array.isArray(markers) ? markers : [];
 
         if (!mArr.length) {
             DOM.pulseModalBody.innerHTML = _emptyHealthState(
@@ -586,49 +573,76 @@ async function renderPulseModalContent() {
             return;
         }
 
-        const rows = mArr.map(m => {
-            const color = m.status==="HIGH"||m.status==="LOW"?"var(--accent-warn)":m.status==="NORMAL"?"var(--accent-ok)":"var(--text-muted)";
-            const badge = m.status==="HIGH"?"⬆ HIGH":m.status==="LOW"?"⬇ LOW":"✓ NORMAL";
-            return `<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border)">
-                <div>
-                    <div style="font-weight:500;font-size:13px">${escapeHtml(m.marker_name)}</div>
-                    <div style="font-size:11.5px;color:var(--text-muted)">Normal: ${escapeHtml(m.reference_range||"—")} · ${escapeHtml(m.date||"")}</div>
-                </div>
-                <div style="text-align:right">
-                    <div style="font-weight:700;font-size:14px;color:${color}">${m.value} <span style="font-size:11px;font-weight:400">${escapeHtml(m.unit||"")}</span></div>
-                    <div style="font-size:10.5px;font-weight:700;color:${color}">${badge}</div>
-                </div>
-            </div>`;
-        }).join("");
+        // 2. Define the render helper for the modal
+        const renderModal = (iArr) => {
+            const rows = mArr.map(m => {
+                const color = m.status==="HIGH"||m.status==="LOW"?"var(--accent-warn)":m.status==="NORMAL"?"var(--accent-ok)":"var(--text-muted)";
+                const badge = m.status==="HIGH"?"⬆ HIGH":m.status==="LOW"?"⬇ LOW":"✓ NORMAL";
+                return `<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border)">
+                    <div>
+                        <div style="font-weight:500;font-size:13px">${escapeHtml(m.marker_name)}</div>
+                        <div style="font-size:11.5px;color:var(--text-muted)">Normal: ${escapeHtml(m.reference_range||"—")} · ${escapeHtml(m.date||"")}</div>
+                    </div>
+                    <div style="text-align:right">
+                        <div style="font-weight:700;font-size:14px;color:${color}">${m.value} <span style="font-size:11px;font-weight:400">${escapeHtml(m.unit||"")}</span></div>
+                        <div style="font-size:10.5px;font-weight:700;color:${color}">${badge}</div>
+                    </div>
+                </div>`;
+            }).join("");
 
-        const insH = iArr.map(ins =>
-            `<div style="border-left:3px solid ${ins.severity==="high"?"var(--accent-warn)":ins.severity==="medium"?"var(--accent-amber)":"var(--accent-ok)"};padding:8px 11px;margin-bottom:7px;background:var(--bg-hover);border-radius:0 8px 8px 0">
-                <div style="font-weight:600;font-size:13px">${escapeHtml(ins.headline||"")}</div>
-                <div style="font-size:12px;color:var(--text-muted);margin-top:2px">${escapeHtml(ins.detail||"")}</div>
-            </div>`
-        ).join("");
+            const insH = iArr.map(ins =>
+                `<div style="border-left:3px solid ${ins.severity==="high"?"var(--accent-warn)":ins.severity==="medium"?"var(--accent-amber)":"var(--accent-ok)"};padding:8px 11px;margin-bottom:7px;background:var(--bg-hover);border-radius:0 8px 8px 0">
+                    <div style="font-weight:600;font-size:13px">${escapeHtml(ins.headline||"")}</div>
+                    <div style="font-size:12px;color:var(--text-muted);margin-top:2px">${escapeHtml(ins.detail||"")}</div>
+                </div>`
+            ).join("");
 
-        DOM.pulseModalBody.innerHTML = `
-            ${iArr.length ? `<div style="margin-bottom:18px">
-                <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">
-                    <i class="fa-solid fa-lightbulb" style="color:var(--accent-amber)"></i> PHI Synthesis
-                </div>${insH}</div>` : ""}
-            <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">
-                All Markers (${mArr.length})
-                <span style="color:var(--accent-warn);margin-left:8px">${mArr.filter(m=>m.status==="HIGH"||m.status==="LOW").length} need attention</span>
-            </div>${rows}
-            <div style="margin-top:16px;text-align:center">
-                <button id="pulseModalDoctorBtn"
-                    style="padding:10px 20px;background:var(--brand);color:white;border:none;border-radius:8px;font-size:13.5px;font-weight:600;font-family:var(--font);cursor:pointer">
-                    <i class="fa-solid fa-stethoscope"></i> Generate Doctor Visit Prep
-                </button>
-            </div>`;
+            DOM.pulseModalBody.innerHTML = `
+                ${iArr.length ? `<div style="margin-bottom:18px">
+                    <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">
+                        <i class="fa-solid fa-lightbulb" style="color:var(--accent-amber)"></i> PHI Synthesis
+                    </div>${insH}</div>` : (
+                    `<div style="margin-bottom:18px;font-size:12px;color:var(--text-muted);display:flex;align-items:center;gap:6px;">
+                        <i class="fa-solid fa-spinner fa-spin"></i> Generating AI insights...
+                    </div>`
+                )}
+                <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">
+                    All Markers (${mArr.length})
+                    <span style="color:var(--accent-warn);margin-left:8px">${mArr.filter(m=>m.status==="HIGH"||m.status==="LOW").length} need attention</span>
+                </div>${rows}
+                <div style="margin-top:16px;text-align:center">
+                    <button id="pulseModalDoctorBtn"
+                        style="padding:10px 20px;background:var(--brand);color:white;border:none;border-radius:8px;font-size:13.5px;font-weight:600;font-family:var(--font);cursor:pointer">
+                        <i class="fa-solid fa-stethoscope"></i> Generate Doctor Visit Prep
+                    </button>
+                </div>`;
 
-        document.getElementById("pulseModalDoctorBtn")?.addEventListener("click", () => {
-            window.closeModals();
-            sendChip("Prepare me for my next doctor visit based on my full health picture");
-        });
-    } catch {
+            document.getElementById("pulseModalDoctorBtn")?.addEventListener("click", () => {
+                window.closeModals();
+                sendChip("Prepare me for my next doctor visit based on my full health picture");
+            });
+        };
+
+        // Render immediately without insights
+        renderModal([]);
+
+        // 3. Fetch slow AI insights in background
+        fetch(`${API_BASE}/api/health-insights`, { headers: h })
+            .then(r => r.ok ? safeJson(r) : [])
+            .then(insights => {
+                const iArr = Array.isArray(insights) ? insights : [];
+                if (iArr.length) renderModal(iArr);
+                else {
+                    const spinner = DOM.pulseModalBody.querySelector('.fa-spinner')?.parentNode;
+                    if (spinner) spinner.remove();
+                }
+            })
+            .catch(() => {
+                const spinner = DOM.pulseModalBody.querySelector('.fa-spinner')?.parentNode;
+                if (spinner) spinner.remove();
+            });
+
+    } catch (e) {
         DOM.pulseModalBody.innerHTML = '<div class="loading-text" style="color:var(--accent-warn)">Could not load health data.</div>';
     }
 }
@@ -837,7 +851,6 @@ async function handleSend() {
         uploadedFiles = [];
         updateFilePreview();
         _cache.del("dashboard");
-        // FIX STEP 4: Proactive refresh with status bar instead of blind 4s delay
         _startPostUploadRefresh(documentContents[0]);
     }
 
@@ -858,7 +871,7 @@ async function handleSend() {
                 message:         text,
                 has_documents:   documentContents.length > 0 || !!docId,
                 document_id:     documentContents[0]?.document_id || docId || "",
-                // FIX: Send empty string when no fresh doc — prevents re-calling explain_markers
+                // Sent correctly for 500 error prevention
                 document_text:   sendDocText || "",
             }),
         });
@@ -880,10 +893,7 @@ async function handleSend() {
     }
 }
 
-/* ── FIX STEP 4: Proactive post-upload dashboard refresh ─── */
-
 function _startPostUploadRefresh(docResult) {
-    // Show a synthesis status bar
     const statusBar = document.createElement("div");
     statusBar.id = "phi-synthesis-bar";
     statusBar.style.cssText = `
@@ -901,7 +911,6 @@ function _startPostUploadRefresh(docResult) {
     `;
     document.body.appendChild(statusBar);
 
-    // If the backend told us persona refresh was queued, poll for it
     const hasPersonaRefresh = docResult?.persona_refresh;
     const jobId             = docResult?.job_id;
 
@@ -917,7 +926,6 @@ function _startPostUploadRefresh(docResult) {
     };
 
     if (hasPersonaRefresh && jobId) {
-        // Poll for doctor prep completion as a proxy for persona readiness
         let attempts = 0;
         const poll = setInterval(async () => {
             attempts++;
@@ -935,7 +943,6 @@ function _startPostUploadRefresh(docResult) {
             }
         }, 2500);
     } else {
-        // Simple delay fallback
         setTimeout(_refresh, 3500);
     }
 }
@@ -1046,11 +1053,7 @@ function updateFilePreview() {
     DOM.userInput.placeholder = `${uploadedFiles.length} file(s) attached — press Send or ask a question…`;
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   FIX STEP 5: Behavioral logging — fully wired
-   (Was already partially wired; this version adds metric config,
-   recent log preview, and success feedback)
-═══════════════════════════════════════════════════════════════ */
+/* ── Behavioral logging ─────────────────────────────────────── */
 
 const _METRIC_CONFIG = {
     steps:  { label:"Steps",           unit:"steps",   placeholder:"e.g. 8500",   hint:"Total steps for the day. PHI correlates with glucose and HbA1c readings." },
@@ -1070,10 +1073,8 @@ function openLogActivity() {
     const successEl = document.getElementById("log-success-msg");
     if (successEl) successEl.style.display = "none";
 
-    // Reset metric tabs
     document.querySelectorAll(".metric-tab").forEach(tab => {
         tab.classList.toggle("active", tab.getAttribute("data-metric") === "steps");
-        // Re-wire click (clone to remove old listeners)
         const fresh = tab.cloneNode(true);
         tab.parentNode.replaceChild(fresh, tab);
         fresh.addEventListener("click", () => {
@@ -1083,7 +1084,6 @@ function openLogActivity() {
         });
     });
 
-    // Wire submit button (fresh clone to avoid duplicate listeners)
     const submitBtn = document.getElementById("submitLogBtn");
     if (submitBtn) {
         const freshBtn = submitBtn.cloneNode(true);
@@ -1147,7 +1147,6 @@ async function submitBehavioralLog() {
                 successEl.style.display = "flex";
                 setTimeout(() => { successEl.style.display = "none"; }, 3500);
             }
-            // Clear value and notes but keep date and metric
             const valEl   = document.getElementById("log-value");
             const notesEl = document.getElementById("log-notes");
             if (valEl)   valEl.value   = "";
@@ -1194,7 +1193,6 @@ function openAdvocacyGuide() {
     window.closeModals();
     DOM.advocacyGuideModal?.classList.remove("hidden");
 
-    // Wire the "Generate My Brief" button (fresh clone)
     const startBtn = document.getElementById("startAdvocacyBtn");
     if (startBtn) {
         const fresh = startBtn.cloneNode(true);
@@ -1273,30 +1271,47 @@ function _renderProfileDemographics(profile) {
     }
 }
 
+/* ── FIX: Decoupled Dashboard Loading ────────────────────────── */
 async function loadHealthDashboard() {
     if (!DOM.healthDash) return;
-    DOM.healthDash.innerHTML = '<div class="loading-text"><i class="fa-solid fa-spinner fa-spin"></i> Loading…</div>';
-    const h = await getAuthHeaders();
-    const [mr, ir] = await Promise.all([
-        fetch(`${API_BASE}/api/health-markers`,  {headers:h}).catch(()=>null),
-        fetch(`${API_BASE}/api/health-insights`, {headers:h}).catch(()=>null),
-    ]);
-    const markers  = mr?.ok  ? await safeJson(mr)  : [];
-    const insights = ir?.ok  ? await safeJson(ir)  : [];
+    DOM.healthDash.innerHTML = '<div class="loading-text"><i class="fa-solid fa-spinner fa-spin"></i> Loading health memory…</div>';
 
-    if (!Array.isArray(markers) || !markers.length) {
-        DOM.healthDash.innerHTML = _emptyHealthState(
-            "No lab reports yet",
-            "Upload a PDF lab report using the paperclip button. PHI will extract all your markers, explain what they mean, and track changes over time.",
-            "Upload My First Report"
-        );
-        DOM.healthDash.querySelector(".empty-cta-btn")?.addEventListener("click", () => {
-            window.closeModals();
-            DOM.fileInput?.click();
-        });
-        return;
+    try {
+        const h = await getAuthHeaders();
+
+        // 1. Fetch fast markers immediately
+        const mr = await fetch(`${API_BASE}/api/health-markers`, {headers: h});
+        const markers = mr.ok ? await safeJson(mr) : [];
+
+        if (!Array.isArray(markers) || !markers.length) {
+            DOM.healthDash.innerHTML = _emptyHealthState(
+                "No lab reports yet",
+                "Upload a PDF lab report using the paperclip button. PHI will extract all your markers, explain what they mean, and track changes over time.",
+                "Upload My First Report"
+            );
+            DOM.healthDash.querySelector(".empty-cta-btn")?.addEventListener("click", () => {
+                window.closeModals();
+                DOM.fileInput?.click();
+            });
+            return;
+        }
+
+        // 2. Render immediately with NO insights
+        renderHealthDashboard(markers, []);
+
+        // 3. Fetch slow AI insights in the background
+        fetch(`${API_BASE}/api/health-insights`, {headers: h})
+            .then(r => r.ok ? safeJson(r) : [])
+            .then(insights => {
+                if (Array.isArray(insights) && insights.length) {
+                    renderHealthDashboard(markers, insights); 
+                }
+            })
+            .catch(() => {});
+
+    } catch (e) {
+        DOM.healthDash.innerHTML = '<div class="loading-text" style="color:var(--accent-warn)">Could not load health data.</div>';
     }
-    renderHealthDashboard(markers, Array.isArray(insights)?insights:[]);
 }
 
 function renderHealthDashboard(markers, insights) {
@@ -1543,15 +1558,7 @@ function wireEvents() {
     });
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   FIX STEP 1: Boot — OAuth-safe with onAuthStateChange
-   The previous version did a getSession() check in DOMContentLoaded
-   which could run before Supabase parsed the #access_token hash from
-   Google OAuth redirect, causing an immediate redirect to /login.
-
-   Fix: use onAuthStateChange as the authoritative source of truth.
-   getSession() is only used as a fast-path for returning users (no hash).
-═══════════════════════════════════════════════════════════════ */
+/* ── Boot ─────────────────────────────────────────────────────── */
 let _loginHandled = false;
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -1564,12 +1571,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     initVoiceInput();
     loadUserPreferences();
 
-    // STEP 1a: Auth state listener — catches OAuth redirects reliably
     supabaseClient.auth.onAuthStateChange(async (event, session) => {
         if (_loginHandled) return;
         if ((event === "SIGNED_IN" || event === "TOKEN_REFRESHED") && session?.user) {
             _loginHandled = true;
-            // Clear the OAuth hash from the URL without triggering a reload
             if (window.location.hash.includes("access_token")) {
                 history.replaceState(null, "", window.location.pathname + window.location.search);
             }
@@ -1577,7 +1582,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
     });
 
-    // STEP 1b: Fast-path for returning users (no OAuth hash in URL)
     if (!window.location.hash.includes("access_token")) {
         const session = await getSession();
         if (!session?.user) {
@@ -1593,10 +1597,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             }
             await handleLoginSuccess(user);
         }
-    }
-    // If hash IS present, onAuthStateChange above will handle it.
-    // Add a safety timeout in case Supabase never fires the event (e.g., expired token).
-    else {
+    } else {
         setTimeout(async () => {
             if (!_loginHandled) {
                 console.warn("[PHI] onAuthStateChange did not fire — falling back to getSession");
