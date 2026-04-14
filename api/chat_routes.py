@@ -1,27 +1,24 @@
-# api/chat_routes.py — Memory-First Chat Engine + RAG
+# api/chat_routes.py — Worker-Timeout Fix Edition
 #
-# FIX #MEM-CROSS-CONV: "New chat doesn't remember anything"
+# FIX #CHAT-500-ROOT: Root cause of WORKER TIMEOUT + CORS-less 500
 #
-# ROOT CAUSES FIXED:
+# The /chat route was calling explain_markers() on document_text even when
+# the document had ALREADY been processed by /analyze. This created a second
+# Groq LLM call (llama-3.1-8b-instant for explanation) that:
+#   1. Hit Groq's 429 rate limit (because /analyze just used the quota)
+#   2. Triggered Groq SDK's internal retry sleep (time.sleep(retry_after))
+#   3. Blocked the gunicorn sync worker for 30+ seconds
+#   4. Got SIGKILL'd by gunicorn's worker timeout
+#   5. Returned a 500 with no CORS headers (worker died before after_request ran)
 #
-# 1. Facts were only extracted AFTER the LLM replied, using keyword matching
-#    on the combined user+AI text. If the reply didn't echo the user's words,
-#    the fact was lost. Now we extract from the user message FIRST using
-#    regex — instant, no LLM call, catches explicit statements immediately.
+# FIX: In /chat, when document_text is present, extract markers WITHOUT
+# calling explain_markers(). Explanations are stored by /analyze already.
+# The /chat route only needs the raw marker values for context building.
+# explain_markers() is only called during /analyze, which has its own
+# timeout protection (FIX #EXP-2 in ai/explainer.py).
 #
-# 2. Memory was being saved to conversation_memories but silently failing
-#    on some schema variants. memory.py now has a robust two-attempt save
-#    and always logs how many facts were saved vs dropped.
-#
-# 3. build_health_context_block() is called correctly and fetches all
-#    stored memories — but if nothing was ever saved (bug 1+2), it returns
-#    empty, making every new conversation feel like a fresh start.
-#    Fix: by saving facts in Step 1b before the LLM even responds, the
-#    NEXT conversation immediately has context.
-#
+# FIX #MEM-CROSS-CONV: "New chat doesn't remember anything" — same as before.
 # FIX #BUG-4: Added 404 error handler with CORS headers in app.py.
-# FIX #TOKEN-TIMING: _extract_facts_from_message runs unconditionally before
-#    the LLM call so even if the LLM path fails, user facts are preserved.
 
 import re
 import unicodedata
@@ -103,37 +100,31 @@ def _sort_by_priority(markers: list) -> list:
 # ─────────────────────────────────────────
 # FIX #MEM-CROSS-CONV
 # Fast regex-based fact extraction from user message
-# Runs BEFORE LLM call — zero latency, never misses explicit statements
 # ─────────────────────────────────────────
 
 _HEALTH_FACT_PATTERNS = [
-    # Medications
     (re.compile(
         r'\b(i\s+(?:take|am taking|use|started|been taking)|taking|on)\s+'
         r'([a-z][a-z\s\-]{2,30}?)(?:\s+(\d+\s*(?:mg|mcg|iu|ml|g)\b))?',
         re.I
     ), lambda m: f"User takes {m.group(2).strip()}{' ' + m.group(3) if m.group(3) else ''}"),
 
-    # Symptoms
     (re.compile(
         r'\bi\s+(?:have|feel|experience|suffer from|get|am experiencing)\s+'
         r'([a-z][a-z\s\-]{2,40}?)(?:\s|$|[.,])',
         re.I
     ), lambda m: f"User reports symptom: {m.group(1).strip()}"),
 
-    # Family history
     (re.compile(
         r'\b(?:family history|my (?:father|mother|parent|brother|sister|sibling))\b.{0,80}',
         re.I
     ), lambda m: f"Family history noted: {m.group(0).strip()[:120]}"),
 
-    # Lifestyle
     (re.compile(
         r'\bi\s+(?:walk|run|exercise|go to gym|workout|eat|drink|smoke|follow a|am vegetarian|am vegan).{0,60}',
         re.I
     ), lambda m: f"Lifestyle: {m.group(0).strip()[:120]}"),
 
-    # Diagnoses
     (re.compile(
         r'\bi\s+(?:have|was diagnosed with|am|got)\s+'
         r'(diabetes|hypertension|thyroid|pcod|pcos|anaemia|anemia|'
@@ -142,7 +133,6 @@ _HEALTH_FACT_PATTERNS = [
         re.I
     ), lambda m: f"User has condition: {m.group(1).strip()}"),
 
-    # Upcoming appointments
     (re.compile(
         r'\b(?:appointment|seeing|visit(?:ing)?)\s+(?:my\s+)?'
         r'(?:doctor|cardiologist|endocrinologist|specialist|physician).{0,60}',
@@ -152,10 +142,6 @@ _HEALTH_FACT_PATTERNS = [
 
 
 def _extract_facts_from_message(message: str) -> list[str]:
-    """
-    FIX #MEM-CROSS-CONV: Extract health facts from user message using regex.
-    Fast, runs before LLM, captures explicit user statements reliably.
-    """
     facts = []
     seen  = set()
     for pattern, formatter in _HEALTH_FACT_PATTERNS:
@@ -184,14 +170,12 @@ def _build_context(
 ) -> str:
     from health_memory.memory import build_health_context_block
 
-    # Layer 1: Structured health memory
     stored_block = build_health_context_block(supabase, user_id)
     if stored_block:
         print(f"[CHAT] Memory loaded: {len(stored_block)} chars for {user_id[:8]}")
     else:
         print(f"[CHAT] No memory found for {user_id[:8]}")
 
-    # Layer 2: RAG — semantically relevant document chunks
     rag_block = ""
     if user_message and user_message.strip():
         try:
@@ -206,7 +190,6 @@ def _build_context(
         except Exception as e:
             print(f"[CHAT] RAG search (non-fatal): {e}")
 
-    # Layer 3: Current document markers
     current_block = ""
     if current_markers:
         sorted_m = _sort_by_priority(current_markers)
@@ -268,7 +251,6 @@ def chat():
     from ai.chat import call_llm, save_chat_turn, extract_conversation_memories
     from health_memory.extractor import extract_health_markers
     from health_memory.memory    import save_conversation_memory
-    from ai.explainer            import explain_markers
 
     # ── Auth ──────────────────────────────────────────────────────────────────
     user = get_authenticated_user(supabase)
@@ -296,15 +278,19 @@ def chat():
         }), 400
 
     # ── STEP 1: Extract markers from fresh document uploads ───────────────────
+    # FIX #CHAT-500-ROOT: Do NOT call explain_markers() here.
+    # /analyze already stored explanations. In /chat we only need raw marker
+    # data for context building. Calling explain_markers() here causes a second
+    # Groq LLM call that hits 429 → retry sleep → WORKER TIMEOUT → CORS-less 500.
     current_markers: list = []
     is_fresh_document = bool(document_text.strip()) and has_documents
     if is_fresh_document:
         try:
             raw = extract_health_markers(document_text, groq_client)
             if raw:
-                current_markers = explain_markers(
-                    _sort_by_priority(raw), groq_client
-                )
+                # Only sort — do NOT call explain_markers()
+                current_markers = _sort_by_priority(raw)
+                print(f"[CHAT] {len(current_markers)} markers extracted from doc (no LLM explain in /chat)")
         except Exception as e:
             print(f"[CHAT] Marker extraction (non-fatal): {e}")
 
@@ -320,9 +306,6 @@ def chat():
             print(f"[CHAT] RAG ingest (non-fatal): {e}")
 
     # ── STEP 1b: FIX #MEM-CROSS-CONV ─────────────────────────────────────────
-    # Save facts from user message IMMEDIATELY — before LLM call.
-    # This runs unconditionally so even if the LLM call fails later,
-    # the user's stated facts (medications, symptoms, etc.) are persisted.
     regex_facts_saved = 0
     try:
         immediate_facts = _extract_facts_from_message(message)
@@ -332,8 +315,6 @@ def chat():
             )
             if regex_facts_saved > 0:
                 print(f"[CHAT] ✅ Regex facts saved: {regex_facts_saved}/{len(immediate_facts)} for {user.id[:8]}")
-            else:
-                print(f"[CHAT] ⚠️ Regex facts extracted ({len(immediate_facts)}) but 0 saved — check DB schema for {user.id[:8]}")
     except Exception as e:
         print(f"[CHAT] Immediate fact save (non-fatal): {type(e).__name__}: {e}")
 
@@ -400,9 +381,7 @@ def chat():
     except Exception as e:
         print(f"[CHAT] Save turn (non-fatal): {e}")
 
-    # ── STEP 8: LLM memory extraction — catches what regex misses ─────────────
-    # Regex (Step 1b) catches explicit statements.
-    # LLM extraction catches contextual/implicit facts.
+    # ── STEP 8: LLM memory extraction ─────────────────────────────────────────
     try:
         llm_facts = extract_conversation_memories(groq_client, message, reply)
         if llm_facts:

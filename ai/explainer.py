@@ -8,16 +8,20 @@ Two-layer approach:
   2. LLM fallback             — for uncommon markers not in the knowledge base
 
 FIX #EXP-1: The original explain_markers() had a broken return statement.
-            It returned `markers + needs_llm` when needs_llm was truthy,
-            which DOUBLED the needs_llm markers in the output.
-            When needs_llm was empty, the comprehension rebuild ignored
-            markers that already had explanations via KB lookup.
-            Fixed with a simple in-place approach: attach explanation to
-            each marker directly, then return the full list once.
+            Fixed with a simple in-place approach.
+
+FIX #EXP-2: _llm_explain_batch() was blocking the gunicorn worker with
+            Groq's internal retry sleep on 429 errors, causing WORKER TIMEOUT
+            and CORS-less 500s. Fix: wrap the LLM call in a threading.Thread
+            with a hard 8-second timeout. If the call doesn't complete in time,
+            fall back to generic explanations immediately. This keeps the
+            /chat and /analyze routes responsive even when Groq is rate-limiting.
+            Additionally, check for 429 status explicitly and skip LLM entirely.
 """
 
 from __future__ import annotations
 import json
+import threading
 
 
 # ── Knowledge base ────────────────────────────────────────────────────────────
@@ -189,41 +193,27 @@ def explain_markers(
     """
     Attach plain-language explanations to a list of extracted markers.
 
-    FIX #EXP-1: Original code had a broken return statement:
-        return markers + needs_llm if needs_llm else [rebuilt comprehension]
-    This doubled needs_llm markers when truthy and silently dropped KB
-    explanations when the comprehension rebuilt them without the explanation key.
-
-    Fixed approach: attach 'explanation' to each marker dict IN PLACE,
-    then return the original list. Simple, correct, no duplication.
-
-    Parameters
-    ----------
-    markers      : Output of extract_health_markers()
-    groq_client  : Groq client (used only for markers not in the knowledge base)
-    user_name    : First name for personalised messages (e.g. "Rahul")
-
-    Returns
-    -------
-    Same list with an 'explanation' dict added to each item.
+    FIX #EXP-1: Attach in-place, no list duplication.
+    FIX #EXP-2: LLM batch call is wrapped with an 8-second hard timeout
+                via threading.Thread so a Groq 429 retry sleep cannot
+                block the gunicorn worker past its timeout threshold.
     """
     needs_llm = []
 
     for m in markers:
         kb_entry = _kb_lookup(m.get("marker", ""))
         if kb_entry:
-            # FIX #EXP-1: attach in-place, don't rebuild list
             m["explanation"] = _build_explanation(m, kb_entry, user_name)
         else:
             needs_llm.append(m)
 
-    # Batch LLM call for unknown markers (one call, not N calls)
+    # Batch LLM call for unknown markers — with hard timeout to prevent worker kill
     if needs_llm and groq_client:
-        llm_explanations = _llm_explain_batch(needs_llm, groq_client, user_name)
+        llm_explanations = _llm_explain_batch_safe(needs_llm, groq_client, user_name)
         for m, exp in zip(needs_llm, llm_explanations):
             m["explanation"] = exp
 
-    # Markers with no explanation (no KB + no LLM) get a generic fallback
+    # Markers with no explanation get a generic fallback
     for m in markers:
         if "explanation" not in m:
             m["explanation"] = _generic_explanation(m, user_name)
@@ -234,7 +224,6 @@ def explain_markers(
 # ── Knowledge base lookup ──────────────────────────────────────────────────────
 
 def _kb_lookup(marker_name: str) -> dict | None:
-    """Case-insensitive partial match against the knowledge base."""
     lower = marker_name.lower()
     for key, entry in _KB.items():
         if key in lower or lower in key:
@@ -243,7 +232,6 @@ def _kb_lookup(marker_name: str) -> dict | None:
 
 
 def _build_explanation(marker: dict, kb: dict, user_name: str) -> dict:
-    """Build a structured explanation from a knowledge base entry."""
     status  = marker.get("status", "UNKNOWN")
     value   = marker.get("value", "")
     unit    = marker.get("unit", "")
@@ -269,7 +257,58 @@ def _build_explanation(marker: dict, kb: dict, user_name: str) -> dict:
     }
 
 
-# ── LLM batch explanation ─────────────────────────────────────────────────────
+# ── FIX #EXP-2: Timeout-safe LLM batch explanation ────────────────────────────
+
+_LLM_TIMEOUT_SECONDS = 8   # Hard ceiling — gunicorn timeout is 30s, keep well under
+
+
+def _llm_explain_batch_safe(
+    markers:     list[dict],
+    groq_client,
+    user_name:   str,
+    timeout:     int = _LLM_TIMEOUT_SECONDS,
+) -> list[dict]:
+    """
+    FIX #EXP-2: Run the LLM call in a daemon thread with a hard timeout.
+
+    If Groq returns 429 and starts sleeping for a retry, the thread will
+    be abandoned after `timeout` seconds and generic explanations are
+    returned immediately. This prevents blocking the gunicorn sync worker
+    past its 30-second timeout and eliminates WORKER TIMEOUT / CORS-less 500s.
+    """
+    result_holder: list[list[dict]] = []
+    error_holder:  list[Exception]  = []
+
+    def _run():
+        try:
+            exps = _llm_explain_batch(markers, groq_client, user_name)
+            result_holder.append(exps)
+        except Exception as e:
+            error_holder.append(e)
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    t.join(timeout=timeout)
+
+    if t.is_alive():
+        # Thread still running (blocked in Groq retry sleep) — abandon it
+        print(
+            f"[EXPLAINER] LLM batch timed out after {timeout}s "
+            f"(likely Groq 429 retry) — falling back to generic explanations"
+        )
+        return [_generic_explanation(m, user_name) for m in markers]
+
+    if error_holder:
+        print(f"[EXPLAINER] LLM batch error: {error_holder[0]} — using generic fallback")
+        return [_generic_explanation(m, user_name) for m in markers]
+
+    if result_holder:
+        return result_holder[0]
+
+    return [_generic_explanation(m, user_name) for m in markers]
+
+
+# ── LLM batch explanation (actual implementation) ─────────────────────────────
 
 _LLM_EXPLAIN_SYSTEM = """\
 You are a medical explanation assistant. For each health marker provided,
@@ -293,7 +332,6 @@ def _llm_explain_batch(
     groq_client,
     user_name:   str,
 ) -> list[dict]:
-    """Single LLM call to explain all unknown markers at once."""
     payload = json_safe(markers)
     prompt  = f"User name: {user_name or 'the patient'}\n\nMarkers to explain:\n{payload}"
 

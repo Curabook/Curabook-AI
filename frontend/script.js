@@ -1,20 +1,19 @@
 /**
- * script.js — Curabook PHI v3.6 — Bug-Fixed Edition
+ * PATCH FILE — Apply these changes to script.js
  *
- * FIXES IN THIS VERSION:
+ * FIX #CHAT-500-ROOT: The real root cause is that /chat re-calls explain_markers()
+ *   on document_text even though /analyze already stored them. This creates a
+ *   second Groq call that hits 429 → retry sleep → worker timeout → CORS-less 500.
+ *   The fix in chat_routes.py removes the explain_markers call from /chat.
+ *   The JS fixes below address the 5 product tasks.
  *
- * #B-05  Removed injectGroupLabelStyle() — .history-group-label is now
- *        defined in style.css. JS-injected styles were overriding the
- *        CSS file and causing double-definition warnings.
+ * CHANGES vs original script.js:
  *
- * #B-06  DOM object wrapped in a factory function called after
- *        DOMContentLoaded to prevent null refs at parse time.
- *        All DOM.$id() calls are now safe.
- *
- * #B-07  Consent save uses only valid types: data_processing,
- *        ai_processing, document_processing. Removed terms_accepted.
- *
- * All other original functionality preserved.
+ * 1. OAuth fix: onAuthStateChange wired before DOMContentLoaded async check
+ * 2. Skeleton/partial loading: persona → labs → insights pipeline
+ * 3. Advocacy button on main dashboard
+ * 4. Proactive post-upload refresh with status bar
+ * 5. Behavioral log form fully wired (was already wired, confirmed + enhanced)
  */
 
 "use strict";
@@ -49,7 +48,7 @@ const _cache = {
     clear() { this._s={}; },
 };
 
-/* ── FIX B-06: DOM is built after DOMContentLoaded, not at parse time ─── */
+/* ── FIX B-06: DOM is built after DOMContentLoaded ─── */
 let DOM = {};
 
 function buildDOM() {
@@ -209,7 +208,8 @@ async function handleLoginSuccess(user) {
         loadPlanStatus().catch(()=>{}),
     ]);
 
-    loadHealthPulse().catch(()=>{});
+    // FIX STEP 2: Use skeleton/partial loading instead of single blocking fetch
+    loadHealthPulseProgressive().catch(()=>{});
     showToast(currentUserName ? `Welcome back, ${currentUserName}` : "Welcome back");
     _carryOverDemoDoc();
 
@@ -222,7 +222,6 @@ async function handleLoginSuccess(user) {
 async function saveUserConsents() {
     const h = await getAuthHeaders();
     if (!h.Authorization) return;
-    // FIX B-07: only valid consent types — no 'terms_accepted'
     await fetch(`${API_BASE}/api/consent`, {
         method:"POST", headers:h,
         body: JSON.stringify({ consents: ["data_processing","ai_processing","document_processing"] }),
@@ -253,29 +252,144 @@ function _carryOverDemoDoc() {
     }, 1200);
 }
 
-/* ── Health Pulse ────────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════
+   FIX STEP 2: Progressive / Skeleton Health Pulse Loading
+   Instead of one blocking /api/dashboard call, we load in 3 phases:
+     Phase 1 — Instant: persona from user_profiles (cached, fast)
+     Phase 2 — Fast:    latest markers from /api/health-markers
+     Phase 3 — Slow:    AI insights from /api/health-insights (can be 3-5s)
+═══════════════════════════════════════════════════════════════ */
 
-async function loadHealthPulse() {
+async function loadHealthPulseProgressive() {
     if (DOM.pulseLoading) DOM.pulseLoading.classList.remove("hidden");
     if (DOM.pulseContent) DOM.pulseContent.classList.add("hidden");
     if (DOM.pulseCard)    DOM.pulseCard.style.display = "";
 
     const cached = _cache.get("dashboard");
-    if (cached) { _healthContext=cached; renderPulseCard(cached); generateContextualChips(cached); return; }
+    if (cached) {
+        _healthContext = cached;
+        renderPulseCard(cached);
+        generateContextualChips(cached);
+        return;
+    }
+
+    // Phase 1: Show skeleton immediately
+    _renderPulseSkeleton();
 
     try {
-        const h   = await getAuthHeaders();
-        const res = await fetch(`${API_BASE}/api/dashboard`, { headers:h });
-        const d   = await safeJson(res);
-        if (!res.ok || d.error || !d.total_markers) { showNoDataState(); return; }
-        _cache.set("dashboard", d, 30000);
-        _healthContext = d;
-        renderPulseCard(d);
-        generateContextualChips(d);
+        const h = await getAuthHeaders();
+
+        // Phase 2: Fetch markers (fast — no LLM)
+        const markersRes = await fetch(`${API_BASE}/api/health-markers`, { headers: h });
+        const markers    = markersRes.ok ? await safeJson(markersRes) : [];
+        const mArr       = Array.isArray(markers) ? markers : [];
+
+        if (!mArr.length) {
+            showNoDataState();
+            return;
+        }
+
+        // Build partial dashboard from markers alone (no insights yet)
+        const partialDash = _buildDashFromMarkers(mArr);
+        _healthContext = partialDash;
+        renderPulseCard(partialDash);
+        generateContextualChips(partialDash);
+
+        if (DOM.pulseLoading) DOM.pulseLoading.classList.add("hidden");
+        if (DOM.pulseContent) DOM.pulseContent.classList.remove("hidden");
+
+        // Phase 3: Load insights in background (slow, optional)
+        fetch(`${API_BASE}/api/health-insights`, { headers: h })
+            .then(r => r.ok ? safeJson(r) : [])
+            .then(insights => {
+                if (Array.isArray(insights) && insights.length) {
+                    partialDash.insights = insights;
+                    _cache.set("dashboard", partialDash, 30000);
+                    _injectInsightsBadge(insights);
+                }
+            })
+            .catch(() => {});
+
+        // Also fetch full dashboard for nudge/trends (background)
+        fetch(`${API_BASE}/api/dashboard`, { headers: h })
+            .then(r => r.ok ? safeJson(r) : null)
+            .then(d => {
+                if (d && !d.error) {
+                    _cache.set("dashboard", d, 30000);
+                    _healthContext = d;
+                }
+            })
+            .catch(() => {});
+
     } catch (e) {
         console.warn("[PULSE]", e);
         showNoDataState();
     }
+}
+
+function _renderPulseSkeleton() {
+    if (!DOM.pulseContent) return;
+    DOM.pulseLoading.classList.add("hidden");
+    DOM.pulseContent.classList.remove("hidden");
+    DOM.pulseContent.innerHTML = `
+        <div style="padding:4px 0">
+            <div style="height:22px;width:40%;background:var(--border);border-radius:20px;margin-bottom:14px;animation:skeletonPulse 1.4s ease infinite"></div>
+            <div style="height:16px;width:75%;background:var(--border);border-radius:8px;margin-bottom:20px;animation:skeletonPulse 1.4s ease infinite 0.1s"></div>
+            ${[1,2,3].map(()=>`
+            <div style="height:52px;background:var(--bg-body);border-radius:10px;margin-bottom:8px;border-left:3px solid var(--border);animation:skeletonPulse 1.4s ease infinite"></div>
+            `).join("")}
+        </div>
+        <style>@keyframes skeletonPulse{0%,100%{opacity:1}50%{opacity:0.4}}</style>`;
+}
+
+function _buildDashFromMarkers(markers) {
+    const abnormal = markers.filter(m => m.status === "HIGH" || m.status === "LOW");
+    const feed = abnormal.slice(0, 4).map(m => ({
+        type:     "alert",
+        icon:     m.status === "HIGH" ? "⬆️" : "⬇️",
+        title:    `${m.marker_name} is ${m.status.toLowerCase()}`,
+        body:     `Your ${m.marker_name} is ${m.value} ${m.unit||""} — outside the normal range.`,
+        severity: "high",
+        cta:      `Ask PHI about my ${m.marker_name}`,
+    }));
+    if (!feed.length) {
+        feed.push({
+            type: "positive", icon: "✅",
+            title: "All markers in range",
+            body:  "All tracked markers are within normal ranges.",
+            severity: "none", cta: "View full health picture",
+        });
+    }
+    return {
+        total_markers:    markers.length,
+        abnormal_count:   abnormal.length,
+        abnormal_markers: abnormal,
+        latest_markers:   markers,
+        trends:           [],
+        feed,
+        document_count:   0,
+        nudge:            abnormal.length > 0 ? "Markers need attention." : "Looking good.",
+    };
+}
+
+function _injectInsightsBadge(insights) {
+    const existing = document.getElementById("phi-insights-strip");
+    if (existing) existing.remove();
+
+    const high = insights.filter(i => i.severity === "high");
+    if (!high.length || !DOM.pulseContent) return;
+
+    const strip = document.createElement("div");
+    strip.id = "phi-insights-strip";
+    strip.style.cssText = "margin-top:10px;padding:8px 12px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.2);border-radius:8px;font-size:12px;color:var(--accent-amber);display:flex;align-items:center;gap:7px;cursor:pointer";
+    strip.innerHTML = `<i class="fa-solid fa-lightbulb"></i> PHI found ${high.length} insight${high.length>1?"s":""} in your data — <strong>view</strong>`;
+    strip.addEventListener("click", openPulseModal);
+    DOM.pulseContent.appendChild(strip);
+}
+
+/* ── Legacy full dashboard loader (kept for cache hits) ── */
+async function loadHealthPulse() {
+    return loadHealthPulseProgressive();
 }
 
 function showNoDataState() {
@@ -332,15 +446,32 @@ function renderPulseCard(d) {
         </div>`;
     }).join("");
 
+    /* ── FIX STEP 3: Add Advocacy Brief button to pulse card ── */
+    const advocacyBtn = `
+        <button id="dashAdvocacyBtn" style="
+            display:inline-flex;align-items:center;gap:7px;
+            padding:8px 14px;background:rgba(0,200,224,.1);
+            border:1.5px solid rgba(0,200,224,.3);border-radius:8px;
+            font-size:12px;font-weight:600;font-family:var(--font);
+            color:var(--brand);cursor:pointer;transition:all .15s;
+            margin-top:10px;
+        " title="Check insurance eligibility for GLP-1 medications">
+            <i class="fa-solid fa-file-shield"></i>
+            Check Insurance Eligibility
+        </button>`;
+
     DOM.pulseContent.innerHTML = `
         <div class="pulse-card-header">
             <span class="pulse-status-pill ${sc}">${label}</span>
             <p class="pulse-headline">${escapeHtml(headline)}</p>
         </div>
         ${alerts ? `<div class="pulse-alerts">${alerts}</div>` : ""}
-        <button class="pulse-view-more" id="pulseViewMoreBtn">
-            <i class="fa-solid fa-chart-line"></i> View full health picture
-        </button>`;
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-top:4px">
+            <button class="pulse-view-more" id="pulseViewMoreBtn">
+                <i class="fa-solid fa-chart-line"></i> View full health picture
+            </button>
+            ${advocacyBtn}
+        </div>`;
 
     DOM.pulseContent.querySelectorAll(".pulse-alert-item[data-chip-id]").forEach(el => {
         el.addEventListener("click", () => {
@@ -350,6 +481,7 @@ function renderPulseCard(d) {
         });
     });
     document.getElementById("pulseViewMoreBtn")?.addEventListener("click", openPulseModal);
+    document.getElementById("dashAdvocacyBtn")?.addEventListener("click", openAdvocacyGuide);
 }
 
 function generateContextualChips(d) {
@@ -539,7 +671,6 @@ function _prependConvToHistory(id, title) {
     let todayGroup = DOM.historyList.querySelector(".history-group-today");
     if (!todayGroup) {
         todayGroup = document.createElement("div");
-        // FIX B-05: class defined in CSS — no inline styles needed
         todayGroup.className = "history-group-label history-group-today";
         todayGroup.textContent = "Today";
         DOM.historyList.prepend(todayGroup);
@@ -607,7 +738,6 @@ function renderHistory(conversations) {
     let html = "";
     groups.forEach((convs, label) => {
         const isTodayClass = label === "Today" ? " history-group-today" : "";
-        // FIX B-05: class defined in CSS
         html += `<div class="history-group-label${isTodayClass}">${escapeHtml(label)}</div>`;
         convs.forEach(c => {
             const isActive = c.id === activeConvId;
@@ -707,7 +837,8 @@ async function handleSend() {
         uploadedFiles = [];
         updateFilePreview();
         _cache.del("dashboard");
-        setTimeout(loadHealthPulse, 4000);
+        // FIX STEP 4: Proactive refresh with status bar instead of blind 4s delay
+        _startPostUploadRefresh(documentContents[0]);
     }
 
     appendMessage(text, "user");
@@ -727,7 +858,8 @@ async function handleSend() {
                 message:         text,
                 has_documents:   documentContents.length > 0 || !!docId,
                 document_id:     documentContents[0]?.document_id || docId || "",
-                document_text:   sendDocText,
+                // FIX: Send empty string when no fresh doc — prevents re-calling explain_markers
+                document_text:   sendDocText || "",
             }),
         });
         const d = await safeJson(res);
@@ -745,6 +877,66 @@ async function handleSend() {
     if (msgCount <= 2 && activeConvId) {
         const newTitle = documentContents.length ? `📄 ${documentContents[0].name}` : text.substring(0, 45);
         renameConversation(activeConvId, newTitle);
+    }
+}
+
+/* ── FIX STEP 4: Proactive post-upload dashboard refresh ─── */
+
+function _startPostUploadRefresh(docResult) {
+    // Show a synthesis status bar
+    const statusBar = document.createElement("div");
+    statusBar.id = "phi-synthesis-bar";
+    statusBar.style.cssText = `
+        position:fixed;bottom:80px;left:50%;transform:translateX(-50%);
+        background:#111118;color:rgba(255,255,255,.85);
+        padding:10px 18px;border-radius:24px;font-size:13px;font-weight:500;
+        display:flex;align-items:center;gap:9px;z-index:9999;
+        box-shadow:0 4px 20px rgba(0,0,0,.3);
+        animation:slideIn .25s ease;
+        border:1px solid rgba(0,200,224,.2);
+    `;
+    statusBar.innerHTML = `
+        <div style="width:14px;height:14px;border:2px solid rgba(0,200,224,.3);border-top-color:#00C8E0;border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0"></div>
+        PHI is synthesizing your new markers…
+    `;
+    document.body.appendChild(statusBar);
+
+    // If the backend told us persona refresh was queued, poll for it
+    const hasPersonaRefresh = docResult?.persona_refresh;
+    const jobId             = docResult?.job_id;
+
+    const _refresh = async () => {
+        try {
+            _cache.clear();
+            await loadHealthPulseProgressive();
+            statusBar.innerHTML = `<i class="fa-solid fa-circle-check" style="color:#4ade80"></i> Health picture updated`;
+            setTimeout(() => statusBar.remove(), 2500);
+        } catch {
+            statusBar.remove();
+        }
+    };
+
+    if (hasPersonaRefresh && jobId) {
+        // Poll for doctor prep completion as a proxy for persona readiness
+        let attempts = 0;
+        const poll = setInterval(async () => {
+            attempts++;
+            try {
+                const h   = await getAuthHeaders();
+                const res = await fetch(`${API_BASE}/doctor-prep/${jobId}`, { headers: h });
+                const d   = await safeJson(res);
+                if (d.ready || attempts >= 8) {
+                    clearInterval(poll);
+                    await _refresh();
+                }
+            } catch {
+                clearInterval(poll);
+                await _refresh();
+            }
+        }, 2500);
+    } else {
+        // Simple delay fallback
+        setTimeout(_refresh, 3500);
     }
 }
 
@@ -821,12 +1013,14 @@ async function processFile(file) {
         if (!res.ok || !d.success) { showToast(d.error || `Could not process ${file.name}`, "error"); return null; }
         showToast(`✓ ${file.name} analyzed (${d.abnormal_count||0} findings)`);
         return {
-            name:          file.name,
-            summary:       d.summary_text || "",
-            document_id:   d.document_id  || "",
-            document_text: d.document_text|| "",
-            markers:       d.markers      || [],
-            abnormal:      d.abnormal_count || 0
+            name:             file.name,
+            summary:          d.summary_text || "",
+            document_id:      d.document_id  || "",
+            document_text:    d.document_text|| "",
+            markers:          d.markers      || [],
+            abnormal:         d.abnormal_count || 0,
+            persona_refresh:  d.persona_refresh || false,
+            job_id:           d.job_id || "",
         };
     } catch {
         showToast(`Upload failed for ${file.name}`, "error");
@@ -852,7 +1046,11 @@ function updateFilePreview() {
     DOM.userInput.placeholder = `${uploadedFiles.length} file(s) attached — press Send or ask a question…`;
 }
 
-/* ── Behavioral logging ─────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════
+   FIX STEP 5: Behavioral logging — fully wired
+   (Was already partially wired; this version adds metric config,
+   recent log preview, and success feedback)
+═══════════════════════════════════════════════════════════════ */
 
 const _METRIC_CONFIG = {
     steps:  { label:"Steps",           unit:"steps",   placeholder:"e.g. 8500",   hint:"Total steps for the day. PHI correlates with glucose and HbA1c readings." },
@@ -872,18 +1070,25 @@ function openLogActivity() {
     const successEl = document.getElementById("log-success-msg");
     if (successEl) successEl.style.display = "none";
 
+    // Reset metric tabs
     document.querySelectorAll(".metric-tab").forEach(tab => {
-        tab.addEventListener("click", () => {
+        tab.classList.toggle("active", tab.getAttribute("data-metric") === "steps");
+        // Re-wire click (clone to remove old listeners)
+        const fresh = tab.cloneNode(true);
+        tab.parentNode.replaceChild(fresh, tab);
+        fresh.addEventListener("click", () => {
             document.querySelectorAll(".metric-tab").forEach(t => t.classList.remove("active"));
-            tab.classList.add("active");
-            _updateLogFormForMetric(tab.getAttribute("data-metric"));
+            fresh.classList.add("active");
+            _updateLogFormForMetric(fresh.getAttribute("data-metric"));
         });
     });
 
+    // Wire submit button (fresh clone to avoid duplicate listeners)
     const submitBtn = document.getElementById("submitLogBtn");
     if (submitBtn) {
-        submitBtn.replaceWith(submitBtn.cloneNode(true));
-        document.getElementById("submitLogBtn").addEventListener("click", submitBehavioralLog);
+        const freshBtn = submitBtn.cloneNode(true);
+        submitBtn.parentNode.replaceChild(freshBtn, submitBtn);
+        freshBtn.addEventListener("click", submitBehavioralLog);
     }
 
     _updateLogFormForMetric("steps");
@@ -899,7 +1104,7 @@ function _updateLogFormForMetric(metric) {
 
     if (labelEl) labelEl.textContent = cfg.label;
     if (unitEl)  unitEl.value        = cfg.unit;
-    if (valEl)   valEl.placeholder   = cfg.placeholder;
+    if (valEl)   { valEl.placeholder = cfg.placeholder; valEl.value = ""; }
     if (hintEl)  hintEl.innerHTML    = `<i class="fa-solid fa-lightbulb" style="color:var(--brand)"></i>&nbsp; ${escapeHtml(cfg.hint)}`;
 }
 
@@ -915,8 +1120,7 @@ async function submitBehavioralLog() {
     if (!date)            { showToast("Please select a date.", "error"); return; }
     if (!value || isNaN(parseFloat(value))) { showToast("Please enter a valid number.", "error"); return; }
 
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving…';
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving…'; }
 
     try {
         const h = await getAuthHeaders();
@@ -926,8 +1130,8 @@ async function submitBehavioralLog() {
             body: JSON.stringify({
                 date,
                 metric_name: metric,
-                value: parseFloat(value),
-                unit: unit || _METRIC_CONFIG[metric]?.unit || "units",
+                value:       parseFloat(value),
+                unit:        unit || _METRIC_CONFIG[metric]?.unit || "units",
                 notes,
             }),
         });
@@ -941,7 +1145,9 @@ async function submitBehavioralLog() {
             if (successEl && successText) {
                 successText.textContent = `${_METRIC_CONFIG[metric]?.label || metric} logged for ${date} ✓`;
                 successEl.style.display = "flex";
+                setTimeout(() => { successEl.style.display = "none"; }, 3500);
             }
+            // Clear value and notes but keep date and metric
             const valEl   = document.getElementById("log-value");
             const notesEl = document.getElementById("log-notes");
             if (valEl)   valEl.value   = "";
@@ -953,8 +1159,7 @@ async function submitBehavioralLog() {
         showToast("Network error. Please try again.", "error");
     }
 
-    btn.disabled = false;
-    btn.innerHTML = '<i class="fa-solid fa-check"></i> Save Entry';
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-check"></i> Save Entry'; }
 }
 
 async function _loadRecentLogs() {
@@ -964,12 +1169,15 @@ async function _loadRecentLogs() {
 
     try {
         const h   = await getAuthHeaders();
-        const res = await fetch(`${API_BASE}/api/behavioral-logs?days=7`, { headers:h });
+        const activeTab = document.querySelector(".metric-tab.active");
+        const metric    = activeTab?.getAttribute("data-metric") || "";
+        const url = `${API_BASE}/api/behavioral-logs?days=7${metric ? `&metric=${metric}` : ""}`;
+        const res = await fetch(url, { headers: h });
         const d   = await safeJson(res);
         if (!res.ok || !Array.isArray(d) || !d.length) { preview.style.display = "none"; return; }
 
         preview.style.display = "";
-        list.innerHTML = d.slice(0,6).map(r =>
+        list.innerHTML = d.slice(0,7).map(r =>
             `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:12.5px">
                 <span style="color:var(--text-muted)">${escapeHtml(r.date||"")} · ${escapeHtml(r.metric_name||"")}</span>
                 <span style="font-weight:600">${r.value} <span style="font-weight:400;opacity:.7">${escapeHtml(r.unit||"")}</span></span>
@@ -986,20 +1194,24 @@ function openAdvocacyGuide() {
     window.closeModals();
     DOM.advocacyGuideModal?.classList.remove("hidden");
 
-    document.getElementById("startAdvocacyBtn")?.addEventListener("click", () => {
-        window.closeModals();
-        if (!activeConvId) {
-            createConversation().then(() => {
-                showChatMode();
-                DOM.userInput.value = "Generate a GLP-1 prior authorization support brief based on my full health record.";
-                handleSend();
-            });
-        } else {
-            showChatMode();
-            DOM.userInput.value = "Generate a GLP-1 prior authorization support brief based on my full health record.";
-            handleSend();
-        }
-    }, { once: true });
+    // Wire the "Generate My Brief" button (fresh clone)
+    const startBtn = document.getElementById("startAdvocacyBtn");
+    if (startBtn) {
+        const fresh = startBtn.cloneNode(true);
+        startBtn.parentNode.replaceChild(fresh, startBtn);
+        fresh.addEventListener("click", _triggerAdvocacyBrief);
+    }
+}
+
+async function _triggerAdvocacyBrief() {
+    window.closeModals();
+    if (!activeConvId) {
+        const c = await createConversation();
+        if (!c) return;
+    }
+    showChatMode();
+    DOM.userInput.value = "Generate a GLP-1 prior authorization support brief based on my full health record.";
+    handleSend();
 }
 
 /* ── Sidebar & modals ────────────────────────────────────────── */
@@ -1013,11 +1225,6 @@ window.closeModals = () => {
         DOM.pulseModal, DOM.logActivityModal, DOM.advocacyGuideModal,
     ].forEach(m => m?.classList.add("hidden"));
 };
-
-[DOM.profileModal, DOM.settingsModal, DOM.deleteModal,
- DOM.pulseModal, DOM.logActivityModal, DOM.advocacyGuideModal].forEach(m => {
-    m?.addEventListener("click", e => { if (e.target === m) window.closeModals(); });
-});
 
 function showDeleteModal(id) { conversationToDelete = id; DOM.deleteModal?.classList.remove("hidden"); }
 window.showDeleteModal = showDeleteModal;
@@ -1309,13 +1516,11 @@ function wireEvents() {
         if (e.key === "Escape") window.closeModals();
     });
 
-    // Wire modal close on backdrop click (after DOM is built)
     [DOM.profileModal, DOM.settingsModal, DOM.deleteModal,
      DOM.pulseModal, DOM.logActivityModal, DOM.advocacyGuideModal].forEach(m => {
         m?.addEventListener("click", e => { if (e.target === m) window.closeModals(); });
     });
 
-    // Confirm delete
     DOM.confirmDeleteBtn?.addEventListener("click", async () => {
         if (!conversationToDelete) return;
         const isActive = activeConvId === conversationToDelete;
@@ -1338,23 +1543,71 @@ function wireEvents() {
     });
 }
 
-/* ── Boot ─────────────────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════════
+   FIX STEP 1: Boot — OAuth-safe with onAuthStateChange
+   The previous version did a getSession() check in DOMContentLoaded
+   which could run before Supabase parsed the #access_token hash from
+   Google OAuth redirect, causing an immediate redirect to /login.
+
+   Fix: use onAuthStateChange as the authoritative source of truth.
+   getSession() is only used as a fast-path for returning users (no hash).
+═══════════════════════════════════════════════════════════════ */
+let _loginHandled = false;
+
 document.addEventListener("DOMContentLoaded", async () => {
-    // FIX B-06: build DOM map after DOMContentLoaded
     buildDOM();
 
     try { await initSupabase(); } catch { showToast("Cannot connect to backend.","error"); return; }
-    const session = await getSession();
-    if (!session?.user) { window.location.href = "/login"; return; }
-    const user = session.user;
-    if (user.app_metadata?.provider==="google" && !localStorage.getItem(`phi_terms_${user.id}`)) {
-        window.location.href = "/login"; return;
-    }
 
-    // FIX B-05: initSettings and wireEvents called after DOM is built
     wireEvents();
     initSettings();
     initVoiceInput();
     loadUserPreferences();
-    await handleLoginSuccess(user);
+
+    // STEP 1a: Auth state listener — catches OAuth redirects reliably
+    supabaseClient.auth.onAuthStateChange(async (event, session) => {
+        if (_loginHandled) return;
+        if ((event === "SIGNED_IN" || event === "TOKEN_REFRESHED") && session?.user) {
+            _loginHandled = true;
+            // Clear the OAuth hash from the URL without triggering a reload
+            if (window.location.hash.includes("access_token")) {
+                history.replaceState(null, "", window.location.pathname + window.location.search);
+            }
+            await handleLoginSuccess(session.user);
+        }
+    });
+
+    // STEP 1b: Fast-path for returning users (no OAuth hash in URL)
+    if (!window.location.hash.includes("access_token")) {
+        const session = await getSession();
+        if (!session?.user) {
+            window.location.href = "/login";
+            return;
+        }
+        if (!_loginHandled) {
+            _loginHandled = true;
+            const user = session.user;
+            if (user.app_metadata?.provider === "google" && !localStorage.getItem(`phi_terms_${user.id}`)) {
+                window.location.href = "/login";
+                return;
+            }
+            await handleLoginSuccess(user);
+        }
+    }
+    // If hash IS present, onAuthStateChange above will handle it.
+    // Add a safety timeout in case Supabase never fires the event (e.g., expired token).
+    else {
+        setTimeout(async () => {
+            if (!_loginHandled) {
+                console.warn("[PHI] onAuthStateChange did not fire — falling back to getSession");
+                const session = await getSession();
+                if (session?.user && !_loginHandled) {
+                    _loginHandled = true;
+                    await handleLoginSuccess(session.user);
+                } else if (!_loginHandled) {
+                    window.location.href = "/login";
+                }
+            }
+        }, 3000);
+    }
 });
