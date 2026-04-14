@@ -377,9 +377,9 @@ document.getElementById('forgotLink').addEventListener('click', async e => {
 document.getElementById('googleBtn').addEventListener('click', async () => {
     try {
         await supabaseClient.auth.signInWithOAuth({
-            provider: 'google',
-            options: { redirectTo: "https://curabook.com" }
-        });
+    provider: 'google',
+    options: { redirectTo: `${window.location.origin}/login` }
+});
     } catch {
         setStatus('Google sign-in unavailable. Try email instead.', 'error');
     }
