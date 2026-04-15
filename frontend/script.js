@@ -1,8 +1,6 @@
 /**
- * script.js — Curabook PHI v3.7 — Market Ready Edition
- *
- * Includes GLP-1 Advocacy Workflow, Behavioral Logging, 
- * Decision Support (Next Steps & Follow-ups), and Single Legal Footer logic.
+ * script.js — Curabook PHI v3.8 — DSS Market Ready
+ * Includes Decision Support UI (Action Plan + Follow-ups) and synchronized branding.
  */
 
 "use strict";
@@ -65,7 +63,6 @@ function buildDOM() {
         sendBtn:        $id("sendBtn"),
         attachBtn:      $id("attachBtn"),
         fileInput:      $id("fileInput"),
-        micBtn:         $id("micBtn"),
         filePreview:    $id("file-preview-container"),
         newChatBtn:     $id("newChatBtn"),
         historyList:    $id("historyList"),
@@ -82,30 +79,11 @@ function buildDOM() {
         settingsModal:  $id("settings-modal"),
         deleteModal:    $id("delete-modal"),
         pulseModal:     $id("pulse-modal"),
-        pulseModalBody: $id("pulse-modal-body"),
-        modalAvatar:    $id("modal-avatar"),
-        modalEmail:     $id("modal-email"),
-        accountCreated: $id("account-created"),
-        totalConvs:     $id("total-conversations"),
-        docsAnalyzed:   $id("documents-analyzed"),
-        healthDash:     $id("health-dashboard"),
-        doctorBriefBtn: $id("doctorBriefBtn"),
-        btnProfile:     $id("btn-sidebar-profile"),
-        btnSettings:    $id("btn-sidebar-settings"),
-        modalLogout:    $id("modalLogout"),
-        themeToggle:    $id("themeToggle"),
-        fontSizeInput:  $id("fontSizeInput"),
-        fontSizeValue:  $id("fontSizeValue"),
-        exportChatBtn:  $id("exportChatBtn"),
-        clearHistBtn:   $id("clearHistoryBtn"),
-        exportDataBtn:  $id("exportDataBtn"),
-        deleteAccBtn:   $id("deleteAccountBtn"),
-        confirmDeleteBtn: $id("confirmDeleteBtn"),
+        pulseModalBody: $id("pulse-modal-body")
     };
 }
 
 /* ── Utilities ──────────────────────────────────────────────── */
-
 async function safeJson(res) {
     if (!res) return { error: "No response" };
     const text = await res.text().catch(() => "");
@@ -136,13 +114,7 @@ function setProcessing(on) {
     isProcessing = on;
     if (DOM.sendBtn)   DOM.sendBtn.disabled  = on;
     if (DOM.userInput) DOM.userInput.disabled = on;
-    if (DOM.sendBtn)   DOM.sendBtn.innerHTML = on
-        ? '<i class="fa-solid fa-spinner fa-spin"></i>'
-        : '<i class="fa-solid fa-arrow-up"></i>';
-}
-
-function hasChatMessages() {
-    return DOM.chatDisplay && DOM.chatDisplay.querySelectorAll(".chat-message").length > 0;
+    if (DOM.sendBtn)   DOM.sendBtn.innerHTML = on ? '<i class="fa-solid fa-spinner fa-spin"></i>' : '<i class="fa-solid fa-arrow-up"></i>';
 }
 
 function _greeting(name) {
@@ -151,8 +123,7 @@ function _greeting(name) {
     return name ? `Good ${period}, ${name}` : `Good ${period}`;
 }
 
-/* ── Auth ────────────────────────────────────────────────────── */
-
+/* ── Auth (Supabase) ────────────────────────────────────────── */
 async function initSupabase() {
     const URL = "https://pbeaawlxdcrdbvlmpqhc.supabase.co";
     const KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBiZWFhd2x4ZGNyZGJ2bG1wcWhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwMDk0MzksImV4cCI6MjA5MTU4NTQzOX0.6bUpYrDbe0mQjjBHX8Qscj-5R8i4-SqAtW_Z1UFzJ10";
@@ -176,562 +147,23 @@ function _extractFirstName(user) {
     if (meta.first_name) return meta.first_name;
     if (meta.name)       return meta.name.split(" ")[0];
     const local = (user.email || "").split("@")[0];
-    return local ? local.charAt(0).toUpperCase() + local.slice(1).replace(/[._-]/g, " ").split(" ")[0] : "";
+    return local ? local.charAt(0).toUpperCase() + local.slice(1) : "";
 }
 
 async function handleLoginSuccess(user) {
     currentUser     = user;
     currentUserName = _extractFirstName(user);
-    _docCtx.clear();
-    _cache.clear();
+    _docCtx.clear(); _cache.clear();
 
     const initial = (user.email||"?")[0].toUpperCase();
     if (DOM.avatarInitial) DOM.avatarInitial.textContent = initial;
     if (DOM.dropdownEmail) DOM.dropdownEmail.textContent = user.email;
     if (DOM.userEmailDisp) DOM.userEmailDisp.textContent = user.email;
-    if (DOM.modalEmail)    DOM.modalEmail.textContent    = user.email;
-    if (DOM.modalAvatar)   DOM.modalAvatar.textContent   = initial;
 
-    await Promise.all([
-        saveUserConsents().catch(()=>{}),
-        loadHistory(),
-        loadPlanStatus().catch(()=>{}),
-    ]);
-
-    loadHealthPulse().catch(()=>{});
-    showToast(currentUserName ? `Welcome back, ${currentUserName}` : "Welcome back");
-    _carryOverDemoDoc();
+    loadHistory(); loadHealthPulse().catch(()=>{});
 }
 
-async function saveUserConsents() {
-    const h = await getAuthHeaders();
-    if (!h.Authorization) return;
-    await fetch(`${API_BASE}/api/consent`, {
-        method:"POST", headers:h,
-        body: JSON.stringify({ consents: ["data_processing","ai_processing","document_processing"] }),
-    }).catch(()=>{});
-}
-
-async function handleLogout() {
-    if (!confirm("Sign out of Curabook PHI?")) return;
-    DOM.profileDrop?.classList.add("hidden");
-    try { await supabaseClient.auth.signOut(); } catch {}
-    window.location.href = "/login";
-}
-
-function _carryOverDemoDoc() {
-    const docText    = sessionStorage.getItem("phi_pending_doc_text");
-    const docName    = sessionStorage.getItem("phi_pending_doc_name");
-    const docSummary = sessionStorage.getItem("phi_pending_doc_summary");
-    if (!docText || !docName) return;
-    sessionStorage.removeItem("phi_pending_doc_text");
-    sessionStorage.removeItem("phi_pending_doc_name");
-    sessionStorage.removeItem("phi_pending_doc_summary");
-    setTimeout(async () => {
-        if (!activeConvId) await createConversation();
-        _docCtx.set(docText, null, activeConvId);
-        if (docSummary) appendMessage(`📋 **${docName}** (from demo)\n\n${docSummary}`, "ai");
-        DOM.userInput.value = "Please explain my uploaded report thoroughly.";
-        handleSend();
-    }, 1200);
-}
-
-/* ── Health Pulse ────────────────────────────────────────────── */
-
-async function loadHealthPulse() {
-    if (DOM.pulseLoading) DOM.pulseLoading.classList.remove("hidden");
-    if (DOM.pulseContent) DOM.pulseContent.classList.add("hidden");
-    if (DOM.pulseCard)    DOM.pulseCard.style.display = "";
-
-    const cached = _cache.get("dashboard");
-    if (cached) { _healthContext=cached; renderPulseCard(cached); generateContextualChips(cached); return; }
-
-    try {
-        const h   = await getAuthHeaders();
-        const res = await fetch(`${API_BASE}/api/dashboard`, { headers:h });
-        const d   = await safeJson(res);
-        if (!res.ok || d.error || !d.total_markers) { showNoDataState(); return; }
-        _cache.set("dashboard", d, 30000);
-        _healthContext = d;
-        renderPulseCard(d);
-        generateContextualChips(d);
-    } catch (e) {
-        showNoDataState();
-    }
-}
-
-function showNoDataState() {
-    if (DOM.pulseCard)   DOM.pulseCard.style.display = "none";
-    if (DOM.welcomeHero) DOM.welcomeHero.style.display = "";
-    if (DOM.uploadNudge) DOM.uploadNudge.classList.remove("hidden");
-
-    if (DOM.welcomeHero && currentUserName) {
-        const titleEl = DOM.welcomeHero.querySelector(".welcome-title");
-        if (titleEl) titleEl.innerHTML = `${escapeHtml(currentUserName)}'s health <em>co-pilot</em>`;
-    }
-
-    setChips([
-        { icon:"fa-file-medical",    text:"Upload my first lab report" },
-        { icon:"fa-circle-question", text:"What can PHI do for me?" },
-        { icon:"fa-stethoscope",     text:"How do I prepare for a doctor visit?" },
-        { icon:"fa-chart-line",      text:"What health markers should I track?" },
-    ]);
-}
-
-function renderPulseCard(d) {
-    if (!DOM.pulseLoading || !DOM.pulseContent) return;
-    DOM.pulseLoading.classList.add("hidden");
-    DOM.pulseContent.classList.remove("hidden");
-
-    const abnormal = d.abnormal_count || 0;
-    const total    = d.total_markers  || 0;
-    const feed     = d.feed           || [];
-    const trends   = d.trends         || [];
-
-    let sc = "healthy", label = "✓ All Looking Good";
-    const greet = currentUserName ? _greeting(currentUserName) + " — " : "";
-    let headline = `${greet}all ${total} tracked markers are within normal ranges.`;
-
-    if (abnormal >= 3)     { sc="urgent";   label="⚠ Needs Attention"; headline=`${greet}${abnormal} markers need attention.`; }
-    else if (abnormal > 0) { sc="moderate"; label="↑ Some Items to Review"; headline=`${greet}${abnormal} marker${abnormal>1?"s":""} outside normal range.`; }
-
-    const worseTrends = trends.filter(t => t.concerning || t.pct_change >= 20);
-    if (worseTrends.length && abnormal === 0) {
-        sc="moderate"; label="↑ Trend to Watch";
-        headline=`${greet}${worseTrends[0].marker} has moved ${worseTrends[0].pct_change}% since ${worseTrends[0].from_date}.`;
-    }
-
-    const alerts = feed.slice(0,4).map(item => {
-        const s = item.severity==="high"?"high":item.severity==="medium"?"medium":item.severity==="none"?"positive":"low";
-        const chipId = _registerChip(item.cta || "Tell me more");
-        return `<div class="pulse-alert-item ${s}" data-chip-id="${chipId}" title="Ask PHI">
-            <span class="alert-icon">${item.icon||"→"}</span>
-            <div class="alert-body">
-                <div class="alert-title">${escapeHtml(item.title||"")}</div>
-                <div class="alert-desc">${escapeHtml(item.body||"")}</div>
-            </div>
-            <span class="alert-cta">Ask →</span>
-        </div>`;
-    }).join("");
-
-    DOM.pulseContent.innerHTML = `
-        <div class="pulse-card-header">
-            <span class="pulse-status-pill ${sc}">${label}</span>
-            <p class="pulse-headline">${escapeHtml(headline)}</p>
-        </div>
-        ${alerts ? `<div class="pulse-alerts">${alerts}</div>` : ""}
-        <button class="pulse-view-more" id="pulseViewMoreBtn">
-            <i class="fa-solid fa-chart-line"></i> View full health picture
-        </button>`;
-
-    DOM.pulseContent.querySelectorAll(".pulse-alert-item[data-chip-id]").forEach(el => {
-        el.addEventListener("click", () => {
-            const id = parseInt(el.getAttribute("data-chip-id"), 10);
-            const text = _chipTexts.get(id);
-            if (text) sendChip(text);
-        });
-    });
-    document.getElementById("pulseViewMoreBtn")?.addEventListener("click", openPulseModal);
-}
-
-function generateContextualChips(d) {
-    const trends   = d.trends           || [];
-    const abnormal = d.abnormal_count   || 0;
-    const markers  = d.abnormal_markers || [];
-    const chips    = [];
-
-    if (markers.length) {
-        const name = markers[0].marker_name || markers[0].name || "my top marker";
-        chips.push({ icon:"fa-triangle-exclamation", text:`What does my ${name} result mean?` });
-    }
-    const top = trends.find(t => t.concerning || t.pct_change >= 15);
-    if (top) chips.push({ icon:"fa-chart-line", text:`Why is my ${top.marker} ${top.direction}?` });
-    chips.push({ icon:"fa-stethoscope", text:"Prepare me for my next doctor visit" });
-    chips.push({
-        icon: abnormal>0 ? "fa-dumbbell" : "fa-heart-pulse",
-        text: abnormal>0 ? "What lifestyle changes will help most?" : "How do I maintain these healthy levels?"
-    });
-    setChips(chips);
-}
-
-/* ── Chip registry ────────────────────────────────────────────── */
-
-function _registerChip(text) {
-    const id = _chipCounter++;
-    _chipTexts.set(id, text);
-    return id;
-}
-
-function setChips(chips) {
-    if (!DOM.welcomeChips) return;
-    _chipTexts.clear();
-    _chipCounter = 0;
-
-    DOM.welcomeChips.innerHTML = chips.map(c => {
-        const id = _registerChip(c.text);
-        return `<button class="chip" data-chip-id="${id}">
-            <i class="fa-solid ${c.icon}"></i> ${escapeHtml(c.text)}
-        </button>`;
-    }).join("");
-
-    DOM.welcomeChips.querySelectorAll(".chip[data-chip-id]").forEach(btn => {
-        btn.addEventListener("click", () => {
-            const id = parseInt(btn.getAttribute("data-chip-id"), 10);
-            const text = _chipTexts.get(id);
-            if (text) sendChip(text);
-        });
-    });
-}
-
-let _sendChipDebounce = null;
-function sendChip(text) {
-    if (isProcessing) return;
-    clearTimeout(_sendChipDebounce);
-    DOM.userInput.value = text;
-    DOM.userInput.focus();
-    _sendChipDebounce = setTimeout(handleSend, 60);
-}
-window.sendChip = sendChip;
-
-async function openPulseModal() {
-    window.closeModals();
-    DOM.pulseModal?.classList.remove("hidden");
-    renderPulseModalContent();
-}
-
-async function renderPulseModalContent() {
-    if (!DOM.pulseModalBody) return;
-    DOM.pulseModalBody.innerHTML = '<div class="temporal-loading"><div class="pulse-spinner"></div><span>Loading health intelligence…</span></div>';
-
-    try {
-        const h = await getAuthHeaders();
-        const mr = await fetch(`${API_BASE}/api/health-markers`, { headers: h });
-        const markers = mr.ok ? await safeJson(mr) : [];
-        const mArr = Array.isArray(markers) ? markers : [];
-
-        if (!mArr.length) {
-            DOM.pulseModalBody.innerHTML = _emptyHealthState(
-                "No health data yet",
-                "Upload a lab report using the paperclip button and PHI will extract all your markers automatically.",
-                "Upload a Report"
-            );
-            DOM.pulseModalBody.querySelector(".empty-cta-btn")?.addEventListener("click", () => {
-                window.closeModals();
-                DOM.fileInput?.click();
-            });
-            return;
-        }
-
-        const renderModal = (iArr) => {
-            const rows = mArr.map(m => {
-                const color = m.status==="HIGH"||m.status==="LOW"?"var(--accent-warn)":m.status==="NORMAL"?"var(--accent-ok)":"var(--text-muted)";
-                const badge = m.status==="HIGH"?"⬆ HIGH":m.status==="LOW"?"⬇ LOW":"✓ NORMAL";
-                return `<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border)">
-                    <div>
-                        <div style="font-weight:500;font-size:13px">${escapeHtml(m.marker_name)}</div>
-                        <div style="font-size:11.5px;color:var(--text-muted)">Normal: ${escapeHtml(m.reference_range||"—")} · ${escapeHtml(m.date||"")}</div>
-                    </div>
-                    <div style="text-align:right">
-                        <div style="font-weight:700;font-size:14px;color:${color}">${m.value} <span style="font-size:11px;font-weight:400">${escapeHtml(m.unit||"")}</span></div>
-                        <div style="font-size:10.5px;font-weight:700;color:${color}">${badge}</div>
-                    </div>
-                </div>`;
-            }).join("");
-
-            const insH = iArr.map(ins =>
-                `<div style="border-left:3px solid ${ins.severity==="high"?"var(--accent-warn)":ins.severity==="medium"?"var(--accent-amber)":"var(--accent-ok)"};padding:8px 11px;margin-bottom:7px;background:var(--bg-hover);border-radius:0 8px 8px 0">
-                    <div style="font-weight:600;font-size:13px">${escapeHtml(ins.headline||"")}</div>
-                    <div style="font-size:12px;color:var(--text-muted);margin-top:2px">${escapeHtml(ins.detail||"")}</div>
-                </div>`
-            ).join("");
-
-            DOM.pulseModalBody.innerHTML = `
-                ${iArr.length ? `<div style="margin-bottom:18px">
-                    <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">
-                        <i class="fa-solid fa-lightbulb" style="color:var(--accent-amber)"></i> PHI Synthesis
-                    </div>${insH}</div>` : `<div style="margin-bottom:18px;font-size:12px;color:var(--text-muted);"><i class="fa-solid fa-spinner fa-spin"></i> Generating AI insights...</div>`}
-                <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">
-                    All Markers (${mArr.length})
-                    <span style="color:var(--accent-warn);margin-left:8px">${mArr.filter(m=>m.status==="HIGH"||m.status==="LOW").length} need attention</span>
-                </div>${rows}
-                <div style="margin-top:16px;text-align:center">
-                    <button id="pulseModalDoctorBtn"
-                        style="padding:10px 20px;background:var(--brand);color:white;border:none;border-radius:8px;font-size:13.5px;font-weight:600;font-family:var(--font);cursor:pointer">
-                        <i class="fa-solid fa-stethoscope"></i> Generate Doctor Visit Prep
-                    </button>
-                </div>`;
-
-            document.getElementById("pulseModalDoctorBtn")?.addEventListener("click", () => {
-                window.closeModals();
-                sendChip("Prepare me for my next doctor visit based on my full health picture");
-            });
-        };
-
-        renderModal([]);
-        fetch(`${API_BASE}/api/health-insights`, { headers: h })
-            .then(r => r.ok ? safeJson(r) : [])
-            .then(insights => {
-                const iArr = Array.isArray(insights) ? insights : [];
-                if (iArr.length) renderModal(iArr);
-                else {
-                     const spinner = DOM.pulseModalBody.querySelector('.fa-spinner')?.parentNode;
-                     if (spinner) spinner.remove();
-                }
-            }).catch(() => {
-                const spinner = DOM.pulseModalBody.querySelector('.fa-spinner')?.parentNode;
-                if (spinner) spinner.remove();
-            });
-
-    } catch (e) {
-        DOM.pulseModalBody.innerHTML = '<div class="loading-text" style="color:var(--accent-warn)">Could not load health data.</div>';
-    }
-}
-window.openPulseModal = openPulseModal;
-
-function _emptyHealthState(title, desc, btnLabel) {
-    return `<div class="empty-health-state">
-        <i class="fa-solid fa-file-medical"></i>
-        <h4>${escapeHtml(title)}</h4>
-        <p>${escapeHtml(desc)}</p>
-        ${btnLabel ? `<button class="upload-nudge-btn empty-cta-btn" style="font-size:13px;padding:9px 18px">
-            <i class="fa-solid fa-upload"></i> ${escapeHtml(btnLabel)}
-        </button>` : ""}
-    </div>`;
-}
-
-/* ── Conversations ───────────────────────────────────────────── */
-
-async function createConversation() {
-    const h = await getAuthHeaders();
-    const res = await fetch(`${API_BASE}/conversation/create`, {
-        method:"POST", headers:h, body:JSON.stringify({})
-    }).catch(()=>null);
-    if (!res) return null;
-    const d = await safeJson(res);
-    if (res.status===403) { showToast("Consent required. Accept terms in Settings.","error"); return null; }
-    if (res.ok && d.conversation_id) {
-        activeConvId = d.conversation_id;
-        _prependConvToHistory(d.conversation_id, "New Chat");
-    }
-    return d.conversation_id || null;
-}
-
-function _prependConvToHistory(id, title) {
-    if (!DOM.historyList) return;
-    const existing = DOM.historyList.querySelector(".empty-state");
-    if (existing) existing.remove();
-
-    let todayGroup = DOM.historyList.querySelector(".history-group-today");
-    if (!todayGroup) {
-        todayGroup = document.createElement("div");
-        todayGroup.className = "history-group-label history-group-today";
-        todayGroup.textContent = "Today";
-        DOM.historyList.prepend(todayGroup);
-    }
-
-    const item = document.createElement("div");
-    item.className = "history-item active";
-    item.setAttribute("data-id", id);
-    item.innerHTML = `
-        <span class="history-title" data-conv-id="${id}">${escapeHtml(title)}</span>
-        <button class="delete-chat" title="Delete" data-del-id="${id}">
-            <i class="fa-solid fa-trash"></i>
-        </button>`;
-    item.querySelector(".history-title").addEventListener("click", () => openConversation(id));
-    item.querySelector(".delete-chat").addEventListener("click", e => {
-        e.stopPropagation(); showDeleteModal(id);
-    });
-
-    todayGroup.insertAdjacentElement("afterend", item);
-    DOM.historyList.querySelectorAll(".history-item").forEach(el => {
-        el.classList.toggle("active", el.getAttribute("data-id") === id);
-    });
-}
-
-async function loadHistory() {
-    const h = await getAuthHeaders();
-    if (!h.Authorization) return;
-    try {
-        const res = await fetch(`${API_BASE}/history`, { method:"POST", headers:h });
-        const d   = await safeJson(res);
-        if (!res.ok || !Array.isArray(d)) {
-            DOM.historyList.innerHTML = '<div class="empty-state">Could not load history.</div>';
-            return;
-        }
-        renderHistory(d);
-    } catch {
-        DOM.historyList.innerHTML = '<div class="empty-state">Network error.</div>';
-    }
-}
-
-function renderHistory(conversations) {
-    if (!conversations.length) {
-        DOM.historyList.innerHTML = '<div class="empty-state">No conversations yet.<br>Start by asking PHI something!</div>';
-        return;
-    }
-
-    const today     = new Date(); today.setHours(0,0,0,0);
-    const yesterday = new Date(today); yesterday.setDate(today.getDate()-1);
-
-    function _groupLabel(dateStr) {
-        if (!dateStr) return "Older";
-        const d = new Date(dateStr); d.setHours(0,0,0,0);
-        if (d.getTime() === today.getTime())     return "Today";
-        if (d.getTime() === yesterday.getTime()) return "Yesterday";
-        return d.toLocaleDateString("en-GB", { day:"numeric", month:"short", year:"numeric" });
-    }
-
-    const groups = new Map();
-    conversations.forEach(c => {
-        const label = _groupLabel(c.created_at);
-        if (!groups.has(label)) groups.set(label, []);
-        groups.get(label).push(c);
-    });
-
-    let html = "";
-    groups.forEach((convs, label) => {
-        const isTodayClass = label === "Today" ? " history-group-today" : "";
-        html += `<div class="history-group-label${isTodayClass}">${escapeHtml(label)}</div>`;
-        convs.forEach(c => {
-            const isActive = c.id === activeConvId;
-            html += `<div class="history-item${isActive?" active":""}" data-id="${escapeHtml(c.id)}">
-                <span class="history-title" data-conv-id="${escapeHtml(c.id)}">${escapeHtml(c.title||"New Chat")}</span>
-                <button class="delete-chat" title="Delete" data-del-id="${escapeHtml(c.id)}">
-                    <i class="fa-solid fa-trash"></i>
-                </button>
-            </div>`;
-        });
-    });
-
-    DOM.historyList.innerHTML = html;
-    DOM.historyList.addEventListener("click", _historyClickHandler);
-}
-
-function _historyClickHandler(e) {
-    const titleEl  = e.target.closest(".history-title[data-conv-id]");
-    const deleteEl = e.target.closest(".delete-chat[data-del-id]");
-    if (titleEl)       openConversation(titleEl.getAttribute("data-conv-id"));
-    else if (deleteEl) { e.stopPropagation(); showDeleteModal(deleteEl.getAttribute("data-del-id")); }
-}
-
-async function openConversation(id) {
-    if (isProcessing) { showToast("Please wait…","error"); return; }
-    setProcessing(true);
-    activeConvId = id;
-    uploadedFiles = [];
-    updateFilePreview();
-    _docCtx.clear();
-    showChatMode();
-    DOM.chatDisplay.innerHTML = "";
-
-    DOM.historyList.querySelectorAll(".history-item").forEach(el => {
-        el.classList.toggle("active", el.getAttribute("data-id") === id);
-    });
-
-    try {
-        const h   = await getAuthHeaders();
-        const res = await fetch(`${API_BASE}/conversation`, {
-            method:"POST", headers:h, body:JSON.stringify({conversation_id:id})
-        });
-        if (!res.ok) throw new Error("Load failed");
-        const msgs = await safeJson(res);
-        if (Array.isArray(msgs) && msgs.length) {
-            DOM.chatDisplay.innerHTML = msgs.map(m => _msgHTML(m.content, m.role==="user"?"user":"ai")).join("");
-            DOM.chatDisplay.scrollTop = DOM.chatDisplay.scrollHeight;
-        } else {
-            DOM.chatDisplay.innerHTML = '<div class="empty-state">No messages yet.</div>';
-        }
-        closeSidebar();
-    } catch {
-        showToast("Failed to load conversation.","error");
-    } finally {
-        setProcessing(false);
-    }
-}
-
-async function renameConversation(id, title) {
-    const h = await getAuthHeaders();
-    const titleEl = DOM.historyList.querySelector(`.history-title[data-conv-id="${id}"]`);
-    if (titleEl) titleEl.textContent = title.substring(0, 50);
-    fetch(`${API_BASE}/rename`, {
-        method:"POST", headers:h, body:JSON.stringify({conversation_id:id, title})
-    }).catch(()=>{});
-}
-
-/* ── Chat ────────────────────────────────────────────────────── */
-
-async function handleSend() {
-    if (isProcessing) return;
-
-    let text = DOM.userInput.value.trim();
-    if (!text && uploadedFiles.length > 0) text = "Please read my uploaded medical report and explain every finding in plain language.";
-    if (!text) return;
-
-    setProcessing(true);
-
-    if (!activeConvId) {
-        const c = await createConversation();
-        if (!c) { setProcessing(false); return; }
-    }
-
-    showChatMode();
-    DOM.userInput.value = "";
-    DOM.userInput.style.height = "auto";
-    DOM.userInput.placeholder = currentUserName
-        ? `Ask PHI about your health, ${currentUserName}…`
-        : "Ask PHI about your health…";
-
-    let documentContents = [];
-    if (uploadedFiles.length > 0) {
-        const proc = appendMessage(`Analyzing ${uploadedFiles.length} document(s)…`, "ai");
-        documentContents = (await Promise.all(uploadedFiles.map(processFile))).filter(Boolean);
-        proc.remove();
-        if (documentContents[0]) _docCtx.set(documentContents[0].document_text, documentContents[0].document_id, activeConvId);
-        uploadedFiles = [];
-        updateFilePreview();
-        _cache.del("dashboard");
-        setTimeout(loadHealthPulse, 4000);
-    }
-
-    appendMessage(text, "user");
-    const botRow = appendTyping();
-
-    try {
-        const h = await getAuthHeaders();
-        const { text:docText, id:docId } = _docCtx.getForConv(activeConvId);
-        const isFirstFollowUp = !documentContents.length && !!docText;
-        const sendDocText     = documentContents[0]?.document_text || (isFirstFollowUp ? docText : "");
-        if (isFirstFollowUp) _docCtx.clear();
-
-        const res = await fetch(`${API_BASE}/chat`, {
-            method:"POST", headers:h,
-            body: JSON.stringify({
-                conversation_id: activeConvId,
-                message:         text,
-                has_documents:   documentContents.length > 0 || !!docId,
-                document_id:     documentContents[0]?.document_id || docId || "",
-                document_text:   sendDocText,
-            }),
-        });
-        const d = await safeJson(res);
-        if (res.status === 403)       updateMessage(botRow, "Consent required. Please accept terms in Settings.");
-        else if (d.error && !d.reply) updateMessage(botRow, `Something went wrong: ${d.error}`);
-        else                          updateMessage(botRow, d.reply || "I couldn't process that. Please try again.");
-    } catch (err) {
-        updateMessage(botRow, "Connection error. Please check your network.");
-        showToast("Network error.", "error");
-    } finally {
-        setProcessing(false);
-    }
-
-    const msgCount = DOM.chatDisplay.querySelectorAll(".chat-message").length;
-    if (msgCount <= 2 && activeConvId) {
-        const newTitle = documentContents.length ? `📄 ${documentContents[0].name}` : text.substring(0, 45);
-        renameConversation(activeConvId, newTitle);
-    }
-}
-
-/* ── UI Logic for Decision Support / Markdown Post-processing ── */
+/* ── UI Logic for Decision Support ──────────────────────────── */
 
 function _postProcessBubble(bubbleEl) {
     if (!bubbleEl) return;
@@ -824,7 +256,7 @@ function _wrapFollowUp(el) {
     }
 }
 
-/* ── Message rendering ───────────────────────────────────────── */
+/* ── Chat Display ────────────────────────────────────────────── */
 
 function appendMessage(text, role) {
     const wrap = document.createElement("div");
@@ -838,6 +270,7 @@ function appendMessage(text, role) {
     bub.className = "msg-bubble";
     bub.innerHTML = role === "user" ? escapeHtml(text) : renderMarkdown(text);
 
+    // Apply the Decision UI post-processing to AI bubbles
     if (role !== "user") _postProcessBubble(bub);
 
     if (role === "user") { wrap.appendChild(bub); wrap.appendChild(av); }
@@ -902,838 +335,149 @@ function showWelcomeMode() {
     if (_healthContext) renderPulseCard(_healthContext);
 }
 
-/* ── File upload ─────────────────────────────────────────────── */
+/* ── API Integrations (Chat, History, Files) ────────────────── */
+
+async function createConversation() {
+    const h = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/conversation/create`, { method:"POST", headers:h, body:JSON.stringify({}) }).catch(()=>null);
+    if (!res) return null;
+    const d = await safeJson(res);
+    if (res.ok && d.conversation_id) {
+        activeConvId = d.conversation_id;
+        loadHistory();
+    }
+    return d.conversation_id || null;
+}
+
+async function loadHistory() {
+    const h = await getAuthHeaders();
+    if (!h.Authorization) return;
+    try {
+        const res = await fetch(`${API_BASE}/history`, { method:"POST", headers:h });
+        const d   = await safeJson(res);
+        if (!res.ok || !Array.isArray(d)) { DOM.historyList.innerHTML = '<div class="empty-state">Could not load history.</div>'; return; }
+        DOM.historyList.innerHTML = d.map(c => `<div class="history-item" data-id="${c.id}"><span class="history-title" onclick="openConversation('${c.id}')">${escapeHtml(c.title||"New Chat")}</span></div>`).join("");
+    } catch {
+        DOM.historyList.innerHTML = '<div class="empty-state">Network error.</div>';
+    }
+}
+
+async function openConversation(id) {
+    if (isProcessing) return;
+    setProcessing(true);
+    activeConvId = id; uploadedFiles = []; showChatMode(); DOM.chatDisplay.innerHTML = "";
+    
+    try {
+        const h = await getAuthHeaders();
+        const res = await fetch(`${API_BASE}/conversation`, { method:"POST", headers:h, body:JSON.stringify({conversation_id:id}) });
+        const msgs = await safeJson(res);
+        if (Array.isArray(msgs) && msgs.length) {
+            DOM.chatDisplay.innerHTML = msgs.map(m => _msgHTML(m.content, m.role==="user"?"user":"ai")).join("");
+            DOM.chatDisplay.scrollTop = DOM.chatDisplay.scrollHeight;
+        } else {
+            DOM.chatDisplay.innerHTML = '<div class="empty-state">No messages yet.</div>';
+        }
+        DOM.sidebar.classList.remove("open"); DOM.overlay.classList.remove("active");
+    } catch { showToast("Failed to load conversation.","error"); }
+    finally { setProcessing(false); }
+}
 
 async function processFile(file) {
-    const form = new FormData();
-    form.append("file", file);
+    const form = new FormData(); form.append("file", file);
     const s = await getSession();
-    if (!s) return null;
     try {
-        const res = await fetch(`${API_BASE}/analyze`, {
-            method:"POST",
-            headers:{"Authorization":"Bearer " + s.access_token},
-            body: form
-        });
+        const res = await fetch(`${API_BASE}/analyze`, { method:"POST", headers:{"Authorization":"Bearer " + s.access_token}, body: form });
         const d = await safeJson(res);
         if (!res.ok || !d.success) { showToast(d.error || `Could not process ${file.name}`, "error"); return null; }
-        showToast(`✓ ${file.name} analyzed (${d.abnormal_count||0} findings)`);
-        return {
-            name:          file.name,
-            summary:       d.summary_text || "",
-            document_id:   d.document_id  || "",
-            document_text: d.document_text|| "",
-            markers:       d.markers      || [],
-            abnormal:      d.abnormal_count || 0
-        };
-    } catch {
-        showToast(`Upload failed for ${file.name}`, "error");
-        return null;
-    }
+        showToast(`✓ ${file.name} analyzed`);
+        return { document_id: d.document_id, document_text: d.document_text, name: file.name };
+    } catch { return null; }
 }
 
-function updateFilePreview() {
-    if (!DOM.filePreview) return;
-    DOM.filePreview.innerHTML = "";
-    if (!uploadedFiles.length) { DOM.filePreview.classList.remove("visible"); return; }
-    DOM.filePreview.classList.add("visible");
-    DOM.filePreview.innerHTML = uploadedFiles.map((f,i) => {
-        const icon = f.name.toLowerCase().endsWith(".pdf") ? "fa-file-pdf" : "fa-file-lines";
-        return `<div class="file-chip"><i class="fa-solid ${icon}"></i><span>${escapeHtml(f.name)}</span><button class="remove-file" data-idx="${i}"><i class="fa-solid fa-xmark"></i></button></div>`;
-    }).join("");
-    DOM.filePreview.querySelectorAll(".remove-file").forEach(btn => {
-        btn.addEventListener("click", () => {
-            uploadedFiles.splice(parseInt(btn.getAttribute("data-idx"),10), 1);
-            updateFilePreview();
-        });
-    });
-    DOM.userInput.placeholder = `${uploadedFiles.length} file(s) attached — press Send or ask a question…`;
-}
+async function handleSend() {
+    if (isProcessing) return;
 
-/* ── Behavioral logging ─────────────────────────────────────── */
+    let text = DOM.userInput.value.trim();
+    if (!text && uploadedFiles.length > 0) text = "Please read my uploaded medical report and explain the findings.";
+    if (!text) return;
 
-const _METRIC_CONFIG = {
-    steps:  { label:"Steps",           unit:"steps",   placeholder:"e.g. 8500",   hint:"Total steps for the day. PHI correlates with glucose and HbA1c readings." },
-    food:   { label:"Calories (kcal)", unit:"kcal",    placeholder:"e.g. 1800",   hint:"Approximate daily caloric intake. Used to correlate diet with cholesterol and blood sugar." },
-    sleep:  { label:"Sleep (hours)",   unit:"hours",   placeholder:"e.g. 7.5",    hint:"Hours of sleep last night. Poor sleep is correlated with elevated cortisol and glucose." },
-    stress: { label:"Stress (1–10)",   unit:"1-10",    placeholder:"e.g. 6",      hint:"Subjective stress level from 1 (calm) to 10 (extremely stressed). Linked to blood pressure." },
-    weight: { label:"Weight",          unit:"lbs",     placeholder:"e.g. 172",    hint:"Morning body weight. PHI tracks trend over time and correlates with BMI and metabolic markers." },
-};
+    setProcessing(true);
 
-function openLogActivity() {
-    window.closeModals();
-    DOM.logActivityModal?.classList.remove("hidden");
-
-    const dateEl = document.getElementById("log-date");
-    if (dateEl) dateEl.value = new Date().toISOString().slice(0,10);
-
-    const successEl = document.getElementById("log-success-msg");
-    if (successEl) successEl.style.display = "none";
-
-    document.querySelectorAll(".metric-tab").forEach(tab => {
-        tab.addEventListener("click", () => {
-            document.querySelectorAll(".metric-tab").forEach(t => t.classList.remove("active"));
-            tab.classList.add("active");
-            _updateLogFormForMetric(tab.getAttribute("data-metric"));
-        });
-    });
-
-    const submitBtn = document.getElementById("submitLogBtn");
-    if (submitBtn) {
-        submitBtn.replaceWith(submitBtn.cloneNode(true));
-        document.getElementById("submitLogBtn").addEventListener("click", submitBehavioralLog);
+    if (!activeConvId) {
+        const c = await createConversation();
+        if (!c) { setProcessing(false); return; }
     }
 
-    _updateLogFormForMetric("steps");
-    _loadRecentLogs();
-}
+    showChatMode();
+    DOM.userInput.value = ""; autoGrow(DOM.userInput);
 
-function _updateLogFormForMetric(metric) {
-    const cfg = _METRIC_CONFIG[metric] || _METRIC_CONFIG.steps;
-    const labelEl = document.getElementById("log-value-label");
-    const unitEl  = document.getElementById("log-unit");
-    const valEl   = document.getElementById("log-value");
-    const hintEl  = document.getElementById("metric-hint");
+    let documentContents = [];
+    if (uploadedFiles.length > 0) {
+        const proc = appendMessage(`Analyzing ${uploadedFiles.length} document(s)…`, "ai");
+        documentContents = (await Promise.all(uploadedFiles.map(processFile))).filter(Boolean);
+        proc.remove();
+        uploadedFiles = [];
+        DOM.filePreview.innerHTML = ""; DOM.filePreview.classList.remove("visible");
+    }
 
-    if (labelEl) labelEl.textContent = cfg.label;
-    if (unitEl)  unitEl.value        = cfg.unit;
-    if (valEl)   valEl.placeholder   = cfg.placeholder;
-    if (hintEl)  hintEl.innerHTML    = `<i class="fa-solid fa-lightbulb" style="color:var(--brand)"></i>&nbsp; ${escapeHtml(cfg.hint)}`;
-}
-
-async function submitBehavioralLog() {
-    const btn     = document.getElementById("submitLogBtn");
-    const date    = document.getElementById("log-date")?.value?.trim();
-    const value   = document.getElementById("log-value")?.value?.trim();
-    const unit    = document.getElementById("log-unit")?.value?.trim();
-    const notes   = document.getElementById("log-notes")?.value?.trim() || "";
-    const activeTab = document.querySelector(".metric-tab.active");
-    const metric  = activeTab?.getAttribute("data-metric") || "steps";
-
-    if (!date)            { showToast("Please select a date.", "error"); return; }
-    if (!value || isNaN(parseFloat(value))) { showToast("Please enter a valid number.", "error"); return; }
-
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving…';
+    appendMessage(text, "user");
+    const botRow = appendTyping();
 
     try {
         const h = await getAuthHeaders();
-        const res = await fetch(`${API_BASE}/api/behavioral-logs`, {
-            method: "POST",
-            headers: h,
+        const res = await fetch(`${API_BASE}/chat`, {
+            method:"POST", headers:h,
             body: JSON.stringify({
-                date,
-                metric_name: metric,
-                value: parseFloat(value),
-                unit: unit || _METRIC_CONFIG[metric]?.unit || "units",
-                notes,
+                conversation_id: activeConvId,
+                message:         text,
+                has_documents:   documentContents.length > 0,
+                document_id:     documentContents[0]?.document_id || "",
+                document_text:   documentContents[0]?.document_text || "",
             }),
         });
         const d = await safeJson(res);
-
-        if (!res.ok || d.error) {
-            showToast(d.error || "Could not save. Try again.", "error");
-        } else {
-            const successEl  = document.getElementById("log-success-msg");
-            const successText = document.getElementById("log-success-text");
-            if (successEl && successText) {
-                successText.textContent = `${_METRIC_CONFIG[metric]?.label || metric} logged for ${date} ✓`;
-                successEl.style.display = "flex";
-            }
-            const valEl   = document.getElementById("log-value");
-            const notesEl = document.getElementById("log-notes");
-            if (valEl)   valEl.value   = "";
-            if (notesEl) notesEl.value = "";
-            showToast(`✓ ${_METRIC_CONFIG[metric]?.label || metric} logged`);
-            _loadRecentLogs();
-        }
-    } catch {
-        showToast("Network error. Please try again.", "error");
-    }
-
-    btn.disabled = false;
-    btn.innerHTML = '<i class="fa-solid fa-check"></i> Save Entry';
-}
-
-async function _loadRecentLogs() {
-    const preview = document.getElementById("recent-logs-preview");
-    const list    = document.getElementById("recent-logs-list");
-    if (!preview || !list) return;
-
-    try {
-        const h   = await getAuthHeaders();
-        const res = await fetch(`${API_BASE}/api/behavioral-logs?days=7`, { headers:h });
-        const d   = await safeJson(res);
-        if (!res.ok || !Array.isArray(d) || !d.length) { preview.style.display = "none"; return; }
-
-        preview.style.display = "";
-        list.innerHTML = d.slice(0,6).map(r =>
-            `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:12.5px">
-                <span style="color:var(--text-muted)">${escapeHtml(r.date||"")} · ${escapeHtml(r.metric_name||"")}</span>
-                <span style="font-weight:600">${r.value} <span style="font-weight:400;opacity:.7">${escapeHtml(r.unit||"")}</span></span>
-            </div>`
-        ).join("");
-    } catch {
-        preview.style.display = "none";
+        if (d.error && !d.reply) updateMessage(botRow, `Something went wrong: ${d.error}`);
+        else updateMessage(botRow, d.reply || "I couldn't process that.");
+    } catch (err) {
+        updateMessage(botRow, "Connection error. Please check your network.");
+    } finally {
+        setProcessing(false);
     }
 }
 
-/* ── Advocacy guide ──────────────────────────────────────────── */
-
-function openAdvocacyGuide() {
-    window.closeModals();
-    DOM.advocacyGuideModal?.classList.remove("hidden");
-
-    document.getElementById("startAdvocacyBtn")?.addEventListener("click", () => {
-        window.closeModals();
-        if (!activeConvId) {
-            createConversation().then(() => {
-                showChatMode();
-                DOM.userInput.value = "Generate a GLP-1 prior authorization support brief based on my full health record.";
-                handleSend();
-            });
-        } else {
-            showChatMode();
-            DOM.userInput.value = "Generate a GLP-1 prior authorization support brief based on my full health record.";
-            handleSend();
-        }
-    }, { once: true });
+function sendChip(text) {
+    if (isProcessing) return;
+    DOM.userInput.value = text;
+    handleSend();
 }
+window.sendChip = sendChip;
 
-/* ── Sidebar & modals ────────────────────────────────────────── */
-
-function openSidebar()  { DOM.sidebar.classList.add("open");    DOM.overlay.classList.add("active"); }
-function closeSidebar() { DOM.sidebar.classList.remove("open"); DOM.overlay.classList.remove("active"); }
-
-window.closeModals = () => {
-  [
-    DOM.profileModal, DOM.settingsModal, DOM.deleteModal,
-    DOM.pulseModal, DOM.logActivityModal, DOM.advocacyGuideModal,
-    DOM.advocacyModal
-  ].forEach(m => m?.classList.add('hidden'));
-};
-
-function showDeleteModal(id) { conversationToDelete = id; DOM.deleteModal?.classList.remove("hidden"); }
-window.showDeleteModal = showDeleteModal;
-
-/* ── Profile ─────────────────────────────────────────────────── */
-
-async function loadProfileStats(user) {
-    if (DOM.accountCreated && user?.created_at) {
-        DOM.accountCreated.textContent = new Date(user.created_at).toLocaleDateString("en-GB", {day:"numeric",month:"short",year:"numeric"});
-    }
-    const h = await getAuthHeaders();
-    const [histRes, dashRes, profileRes] = await Promise.all([
-        fetch(`${API_BASE}/history`,      {method:"POST",headers:h}).catch(()=>null),
-        fetch(`${API_BASE}/api/dashboard`,{headers:h}).catch(()=>null),
-        fetch(`${API_BASE}/api/profile`,  {headers:h}).catch(()=>null),
-    ]);
-    if (histRes) { const convs = await safeJson(histRes); if (DOM.totalConvs) DOM.totalConvs.textContent = Array.isArray(convs) ? convs.length : 0; }
-    if (dashRes?.ok) { const dash = await safeJson(dashRes); if (DOM.docsAnalyzed && !dash.error) DOM.docsAnalyzed.textContent = dash.document_count || 0; }
-    if (profileRes?.ok) { const profile = await safeJson(profileRes); if (!profile.error) _renderProfileDemographics(profile); }
-}
-
-function _renderProfileDemographics(profile) {
-    let demoSection = document.getElementById("profile-demographics");
-    if (!demoSection) {
-        const hr = document.querySelector("#profile-modal hr");
-        if (!hr) return;
-        demoSection = document.createElement("div");
-        demoSection.id = "profile-demographics";
-        hr.parentNode.insertBefore(demoSection, hr.nextSibling);
-    }
-    const rows = [];
-    if (profile.first_name || profile.last_name) {
-        const name = [profile.first_name, profile.last_name].filter(Boolean).join(" ");
-        rows.push(`<div class="setting-item"><div class="setting-info"><h4><i class="fa-solid fa-user"></i> Name</h4><p>${escapeHtml(name)}</p></div></div>`);
-    }
-    if (profile.age)    rows.push(`<div class="setting-item"><div class="setting-info"><h4><i class="fa-solid fa-cake-candles"></i> Age</h4><p>${escapeHtml(String(profile.age))} years old</p></div></div>`);
-    if (profile.gender) rows.push(`<div class="setting-item"><div class="setting-info"><h4><i class="fa-solid fa-person"></i> Gender</h4><p>${escapeHtml(String(profile.gender).charAt(0).toUpperCase()+String(profile.gender).slice(1))}</p></div></div>`);
-    if (profile.plan)   rows.push(`<div class="setting-item"><div class="setting-info"><h4><i class="fa-solid fa-star"></i> Plan</h4><p>${profile.plan==="pro"?"✦ PHI Pro":"PHI Free"}</p></div></div>`);
-    if (rows.length) {
-        demoSection.innerHTML = `
-            <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.8px;padding:14px 0 8px">
-                <i class="fa-solid fa-brain" style="color:var(--brand)"></i> What PHI knows about you
-            </div>${rows.join("")}
-            <p style="font-size:11.5px;color:var(--text-muted);margin-top:6px;margin-bottom:4px">PHI uses your age and gender to apply clinically appropriate reference ranges.</p>
-            <hr>`;
-    }
-}
-
-async function loadHealthDashboard() {
-    if (!DOM.healthDash) return;
-    DOM.healthDash.innerHTML = '<div class="loading-text"><i class="fa-solid fa-spinner fa-spin"></i> Loading…</div>';
-
-    try {
-        const h = await getAuthHeaders();
-        const mr = await fetch(`${API_BASE}/api/health-markers`, {headers: h});
-        const markers = mr.ok ? await safeJson(mr) : [];
-
-        if (!Array.isArray(markers) || !markers.length) {
-            DOM.healthDash.innerHTML = _emptyHealthState(
-                "No lab reports yet",
-                "Upload a PDF lab report using the paperclip button. PHI will extract all your markers, explain what they mean, and track changes over time.",
-                "Upload My First Report"
-            );
-            DOM.healthDash.querySelector(".empty-cta-btn")?.addEventListener("click", () => {
-                window.closeModals();
-                DOM.fileInput?.click();
-            });
-            return;
-        }
-
-        renderHealthDashboard(markers, []);
-
-        fetch(`${API_BASE}/api/health-insights`, {headers: h})
-            .then(r => r.ok ? safeJson(r) : [])
-            .then(insights => {
-                if (Array.isArray(insights) && insights.length) renderHealthDashboard(markers, insights);
-            }).catch(() => {});
-
-    } catch (e) {
-        DOM.healthDash.innerHTML = '<div class="loading-text" style="color:var(--accent-warn)">Could not load health data.</div>';
-    }
-}
-
-function renderHealthDashboard(markers, insights) {
-    const color = s => s==="HIGH"||s==="LOW" ? "var(--accent-warn)" : s==="NORMAL" ? "var(--accent-ok)" : "var(--text-muted)";
-    const cards = markers.map(m =>
-        `<div style="background:var(--bg-hover);border-radius:8px;padding:9px;min-width:100px;flex:1">
-            <div style="font-size:10.5px;color:var(--text-muted)">${escapeHtml(m.marker_name)}</div>
-            <div style="font-size:1rem;font-weight:700;color:${color(m.status)}">${m.value} <span style="font-size:10px;font-weight:400">${escapeHtml(m.unit||"")}</span></div>
-            <div style="font-size:9.5px;color:var(--text-muted)">${escapeHtml(m.date||"")}</div>
-        </div>`
-    ).join("");
-    const insH = insights.map(ins =>
-        `<div style="border-left:3px solid ${ins.severity==="high"?"var(--accent-warn)":ins.severity==="medium"?"var(--accent-amber)":"var(--accent-ok)"};padding:6px 10px;margin-bottom:5px;background:var(--bg-hover);border-radius:0 6px 6px 0">
-            <div style="font-weight:600;font-size:12px">${escapeHtml(ins.headline||"")}</div>
-            <div style="font-size:11px;color:var(--text-muted)">${escapeHtml(ins.detail||"")}</div>
-        </div>`
-    ).join("");
-    DOM.healthDash.innerHTML =
-        (cards ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:11px">${cards}</div>` : "") +
-        (insH  ? `<div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:5px"><i class="fa-solid fa-lightbulb" style="color:var(--accent-amber)"></i> PHI Insights</div>${insH}` : "");
-    DOM.doctorBriefBtn?.addEventListener("click", showDoctorBriefModal, {once:true});
-}
-
-function showDoctorBriefModal() {
-    document.getElementById("doctor-brief-modal")?.remove();
-    const m = document.createElement("div");
-    m.id = "doctor-brief-modal"; m.className = "modal"; m.style.zIndex = "10001";
-    m.innerHTML = `<div class="modal-box">
-        <div class="modal-header">
-            <h3><i class="fa-solid fa-stethoscope"></i> Doctor Visit Prep</h3>
-            <button class="close-btn" id="briefCloseBtn"><i class="fa-solid fa-xmark"></i></button>
-        </div>
-        <div style="padding:4px 0 16px">
-            <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px">Personalised brief based on your health memory.</p>
-            <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:4px">Symptoms</label>
-            <input type="text" id="brief-symptoms" placeholder="fatigue, dizziness" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:13px;box-sizing:border-box;margin-bottom:10px;background:var(--bg-input);color:var(--text-main);font-family:var(--font)">
-            <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:4px">Medications</label>
-            <input type="text" id="brief-meds" placeholder="Metformin 500mg, Vitamin D" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:13px;box-sizing:border-box;margin-bottom:10px;background:var(--bg-input);color:var(--text-main);font-family:var(--font)">
-            <div id="brief-output" style="display:none;margin-top:12px;background:var(--bg-hover);border-radius:8px;padding:13px;font-size:13px;line-height:1.65;max-height:260px;overflow-y:auto"></div>
-        </div>
-        <div class="modal-actions">
-            <button class="btn-cancel" id="briefCancelBtn">Cancel</button>
-            <button id="genBriefBtn" style="padding:8px 16px;background:var(--brand);border:none;border-radius:8px;color:white;font-size:13.5px;font-weight:600;font-family:var(--font);cursor:pointer">
-                <i class="fa-solid fa-wand-magic-sparkles"></i> Generate
-            </button>
-        </div>
-    </div>`;
-    document.body.appendChild(m);
-    document.getElementById("briefCloseBtn").addEventListener("click",  () => m.remove());
-    document.getElementById("briefCancelBtn").addEventListener("click", () => m.remove());
-    document.getElementById("genBriefBtn").addEventListener("click", async () => {
-        const btn = document.getElementById("genBriefBtn");
-        btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
-        try {
-            const h = await getAuthHeaders();
-            const symptoms    = (document.getElementById("brief-symptoms")?.value||"").split(",").map(s=>s.trim()).filter(Boolean);
-            const medications = (document.getElementById("brief-meds")?.value||"").split(",").map(s=>s.trim()).filter(Boolean);
-            const res = await fetch(`${API_BASE}/api/doctor-brief`, {
-                method:"POST", headers:h, body:JSON.stringify({symptoms, medications})
-            });
-            const d = await safeJson(res);
-            const out = document.getElementById("brief-output");
-            if (out) { out.style.display = "block"; out.innerHTML = renderMarkdown(d.brief||"Could not generate. Try again."); }
-        } catch { showToast("Failed to generate brief.","error"); }
-        btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> Generate';
-    });
-}
-
-async function loadPlanStatus() {
-    const h = await getAuthHeaders();
-    if (!h.Authorization) return;
-    const res = await fetch(`${API_BASE}/api/payment/status`, {headers:h}).catch(()=>null);
-    if (!res?.ok) return;
-    const d = await safeJson(res);
-    if (DOM.dropdownPlan) {
-        DOM.dropdownPlan.textContent = d.is_pro ? "✦ PHI Pro" : "PHI Free";
-        if (d.is_pro) DOM.dropdownPlan.style.color = "var(--brand)";
-    }
-}
-
-function initVoiceInput() {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) { if (DOM.micBtn) { DOM.micBtn.disabled = true; DOM.micBtn.style.opacity = "0.3"; } return; }
-    let listening = false, rec = null;
-    DOM.micBtn?.addEventListener("click", () => {
-        if (listening) { rec?.stop(); return; }
-        rec = new SR(); rec.lang="en-US"; rec.interimResults=false; rec.maxAlternatives=1;
-        rec.onstart  = () => { listening=true; DOM.micBtn.classList.add("listening"); showToast("Listening…"); };
-        rec.onresult = e => { DOM.userInput.value=e.results[0][0].transcript; autoGrow(DOM.userInput); DOM.userInput.focus(); };
-        rec.onerror  = e => { const msgs={"no-speech":"No speech.","not-allowed":"Mic blocked.","network":"Network error."}; showToast(msgs[e.error]||`Error: ${e.error}`,"error"); };
-        rec.onend    = () => { listening=false; DOM.micBtn.classList.remove("listening"); };
-        try { rec.start(); } catch { showToast("Voice failed.","error"); }
-    });
-}
-
-function loadUserPreferences() {
-    const p = JSON.parse(localStorage.getItem("phi_prefs")||"{}");
-    const dark = p.theme === "dark";
-    if (dark) document.body.classList.add("dark-mode");
-    if (DOM.themeToggle) DOM.themeToggle.checked = dark;
-    const fs = p.fontSize || 15;
-    document.documentElement.style.setProperty("--chat-font-size", fs+"px");
-    if (DOM.fontSizeInput) DOM.fontSizeInput.value = fs;
-    if (DOM.fontSizeValue) DOM.fontSizeValue.textContent = fs+"px";
-}
-function savePref(k, v) {
-    const p = JSON.parse(localStorage.getItem("phi_prefs")||"{}");
-    p[k] = v;
-    localStorage.setItem("phi_prefs", JSON.stringify(p));
-}
-
-function initSettings() {
-    DOM.themeToggle?.addEventListener("change", e => {
-        document.body.classList.toggle("dark-mode", e.target.checked);
-        savePref("theme", e.target.checked ? "dark" : "light");
-        showToast(e.target.checked ? "Dark mode on" : "Light mode on");
-    });
-    DOM.fontSizeInput?.addEventListener("input", e => {
-        document.documentElement.style.setProperty("--chat-font-size", e.target.value+"px");
-        if (DOM.fontSizeValue) DOM.fontSizeValue.textContent = e.target.value+"px";
-        savePref("fontSize", +e.target.value);
-    });
-    DOM.exportChatBtn?.addEventListener("click", async () => {
-        if (!activeConvId) { showToast("No active conversation.","error"); return; }
-        const h = await getAuthHeaders();
-        const res = await fetch(`${API_BASE}/conversation`, {method:"POST",headers:h,body:JSON.stringify({conversation_id:activeConvId})});
-        const d = await safeJson(res);
-        if (!Array.isArray(d)) { showToast("Could not export.","error"); return; }
-        let out = "Curabook PHI Chat Export\n" + "=".repeat(40) + "\n\n";
-        d.forEach(m => { out += `${m.role.toUpperCase()}:\n${m.content}\n\n`; });
-        Object.assign(document.createElement("a"), {
-            href: URL.createObjectURL(new Blob([out],{type:"text/plain"})),
-            download: `phi-chat-${Date.now()}.txt`
-        }).click();
-        showToast("Chat exported");
-    });
-    DOM.clearHistBtn?.addEventListener("click", async () => {
-        if (!confirm("Delete ALL conversations?")) return;
-        const h = await getAuthHeaders();
-        const res = await fetch(`${API_BASE}/history`, {method:"POST",headers:h});
-        const convs = await safeJson(res);
-        if (Array.isArray(convs)) await Promise.all(convs.map(c => fetch(`${API_BASE}/delete`,{method:"POST",headers:h,body:JSON.stringify({conversation_id:c.id})}).catch(()=>{})));
-        DOM.chatDisplay.innerHTML = "";
-        activeConvId = null; uploadedFiles = []; _docCtx.clear(); _cache.clear();
-        updateFilePreview(); showWelcomeMode(); loadHistory(); window.closeModals();
-        showToast("All conversations deleted");
-    });
-    DOM.exportDataBtn?.addEventListener("click", async () => {
-        const h = await getAuthHeaders();
-        try {
-            const res = await fetch(`${API_BASE}/export-data`, {method:"POST",headers:h});
-            const d = await safeJson(res);
-            Object.assign(document.createElement("a"), {
-                href: URL.createObjectURL(new Blob([JSON.stringify(d,null,2)],{type:"application/json"})),
-                download: `phi-data-${Date.now()}.json`
-            }).click();
-            showToast("Data exported");
-        } catch { showToast("Export failed.","error"); }
-    });
-    DOM.deleteAccBtn?.addEventListener("click", async () => {
-        if (!confirm("PERMANENTLY DELETE YOUR ACCOUNT?\n\nAll health data will be erased. Cannot be undone.")) return;
-        if (prompt('Type "DELETE" to confirm:') !== "DELETE") return;
-        const h = await getAuthHeaders();
-        try { await supabaseClient.auth.signOut(); } catch {}
-        try {
-            const res = await fetch(`${API_BASE}/delete-account`, {method:"POST",headers:h});
-            const d = await safeJson(res);
-            showToast(d.success ? "Account deleted." : "Signed out. Contact support if data persists.", d.success?"success":"error");
-        } catch { showToast("Error. Contact support@curabook.com.","error"); }
-        setTimeout(() => window.location.href="/login", 1500);
-    });
-}
+/* ── DOM & Events ────────────────────────────────────────────── */
 
 function wireEvents() {
-    DOM.mobileMenu?.addEventListener("click", openSidebar);
-    DOM.closeSidebar?.addEventListener("click", closeSidebar);
-    DOM.overlay?.addEventListener("click", closeSidebar);
-    DOM.newChatBtn?.addEventListener("click", () => {
-        if (hasChatMessages() && !confirm("Start a new chat?")) return;
-        activeConvId = null; uploadedFiles = []; _docCtx.clear();
-        DOM.chatDisplay.innerHTML = "";
-        updateFilePreview(); showWelcomeMode();
-        DOM.historyList.querySelectorAll(".history-item").forEach(el => el.classList.remove("active"));
-        DOM.userInput.focus();
-    });
-    DOM.sendBtn?.addEventListener("click",    e => { e.preventDefault(); handleSend(); });
+    DOM.mobileMenu?.addEventListener("click", () => { DOM.sidebar.classList.add("open"); DOM.overlay.classList.add("active"); });
+    DOM.overlay?.addEventListener("click", () => { DOM.sidebar.classList.remove("open"); DOM.overlay.classList.remove("active"); });
+    DOM.newChatBtn?.addEventListener("click", () => { activeConvId=null; showWelcomeMode(); DOM.chatDisplay.innerHTML=""; DOM.userInput.focus(); });
+    DOM.sendBtn?.addEventListener("click", e => { e.preventDefault(); handleSend(); });
     DOM.userInput?.addEventListener("keydown", e => { if (e.key==="Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } });
-    DOM.userInput?.addEventListener("input",   () => autoGrow(DOM.userInput));
-    DOM.attachBtn?.addEventListener("click",   () => DOM.fileInput?.click());
-    DOM.btnUploadNav?.addEventListener("click",  () => { closeSidebar(); DOM.fileInput?.click(); });
-    DOM.uploadNudgeBtn?.addEventListener("click",() => { closeSidebar(); DOM.fileInput?.click(); });
-    DOM.btnHealthPulse?.addEventListener("click",() => { closeSidebar(); openPulseModal(); });
-    DOM.btnLogActivity?.addEventListener("click", () => { closeSidebar(); openLogActivity(); });
-    DOM.advocacyInfoBtn?.addEventListener("click", openAdvocacyGuide);
-    DOM.btnAdvocacy?.addEventListener('click', () => { closeSidebar(); openAdvocacyModal(); });
-    DOM.advocacyInfoBtn?.addEventListener('click', openAdvocacyModal); 
-
+    DOM.userInput?.addEventListener("input", () => autoGrow(DOM.userInput));
+    DOM.attachBtn?.addEventListener("click", () => DOM.fileInput?.click());
     DOM.fileInput?.addEventListener("change", e => {
-        Array.from(e.target.files||[]).forEach(f => {
-            if (f.size > 10*1024*1024) { showToast(`${f.name} too large. Max 10MB.`,"error"); return; }
-            if (!/\.(pdf|txt)$/i.test(f.name)) { showToast(`${f.name}: PDF or TXT only.`,"error"); return; }
-            uploadedFiles.push(f);
-        });
-        updateFilePreview();
+        Array.from(e.target.files||[]).forEach(f => uploadedFiles.push(f));
+        DOM.filePreview.classList.add("visible");
+        DOM.filePreview.innerHTML = uploadedFiles.map((f,i) => `<div class="file-chip"><span>${escapeHtml(f.name)}</span></div>`).join("");
         DOM.fileInput.value = "";
-        if (uploadedFiles.length) { showToast(`${uploadedFiles.length} file(s) ready`); DOM.userInput.focus(); }
     });
-
     DOM.profileBtn?.addEventListener("click", e => { e.stopPropagation(); DOM.profileDrop?.classList.toggle("hidden"); });
     document.addEventListener("click", e => { if (!DOM.profileDrop?.contains(e.target) && e.target !== DOM.profileBtn) DOM.profileDrop?.classList.add("hidden"); });
-
-    DOM.btnProfile?.addEventListener("click",  () => { window.closeModals(); DOM.profileModal?.classList.remove("hidden"); loadProfileStats(currentUser).catch(()=>{}); loadHealthDashboard(); });
-    DOM.btnSettings?.addEventListener("click", () => { window.closeModals(); DOM.settingsModal?.classList.remove("hidden"); });
-    DOM.logoutBtn?.addEventListener("click",   handleLogout);
-    DOM.modalLogout?.addEventListener("click", handleLogout);
-
-    document.addEventListener("keydown", e => {
-        if ((e.ctrlKey||e.metaKey) && e.key==="k") { e.preventDefault(); DOM.newChatBtn?.click(); }
-        if (e.key === "Escape") window.closeModals();
-    });
-
-    [DOM.profileModal, DOM.settingsModal, DOM.deleteModal,
-     DOM.pulseModal, DOM.logActivityModal, DOM.advocacyGuideModal].forEach(m => {
-        m?.addEventListener("click", e => { if (e.target === m) window.closeModals(); });
-    });
-
-    DOM.confirmDeleteBtn?.addEventListener("click", async () => {
-        if (!conversationToDelete) return;
-        const isActive = activeConvId === conversationToDelete;
-        const itemEl = DOM.historyList.querySelector(`.history-item[data-id="${conversationToDelete}"]`);
-        if (itemEl) itemEl.remove();
-        if (isActive) {
-            DOM.chatDisplay.innerHTML = "";
-            activeConvId = null; uploadedFiles = []; _docCtx.clear();
-            updateFilePreview(); showWelcomeMode();
-        }
-        window.closeModals();
-        const idToDelete = conversationToDelete; conversationToDelete = null;
-        showToast("Conversation deleted");
-        const h = await getAuthHeaders();
-        fetch(`${API_BASE}/delete`, {method:"POST",headers:h,body:JSON.stringify({conversation_id:idToDelete})}).catch(()=>{});
-        DOM.historyList.querySelectorAll(".history-group-label").forEach(label => {
-            const next = label.nextElementSibling;
-            if (!next || next.classList.contains("history-group-label")) label.remove();
-        });
-    });
+    DOM.logoutBtn?.addEventListener("click", async () => { await supabaseClient.auth.signOut(); window.location.href="/login"; });
 }
 
-/* ── Boot ─────────────────────────────────────────────────────── */
 document.addEventListener("DOMContentLoaded", async () => {
     buildDOM();
-    try { await initSupabase(); } catch { showToast("Cannot connect to backend.","error"); return; }
+    try { await initSupabase(); } catch { return; }
     const session = await getSession();
     if (!session?.user) { window.location.href = "/login"; return; }
-    const user = session.user;
-    if (user.app_metadata?.provider==="google" && !localStorage.getItem(`phi_terms_${user.id}`)) {
-        window.location.href = "/login"; return;
-    }
-
     wireEvents();
-    initSettings();
-    initVoiceInput();
-    loadUserPreferences();
-    await handleLoginSuccess(user);
-    
-    // TODO: Init Stripe Test Mode logic here when ready for $29.99 upgrades
+    await handleLoginSuccess(session.user);
 });
-
-/* ── Advocacy modal state ───────────────────────────────────── */
-let _advStep = 0;
-let _advBriefText = '';
-let _advData = null;
-
-function openAdvocacyModal() {
-  window.closeModals();
-  const modal = document.getElementById('advocacy-modal');
-  if (!modal) return;
-  modal.classList.remove('hidden');
-  _advStep = 0;
-  _advBriefText = '';
-  _advData = null;
-  _advRenderStep(0);
-  _advLoadEligibility();
-}
-
-async function advGoStep(n) {
-  _advStep = n;
-  _advRenderStep(n);
-  if (n === 1 && !_advData) await _advLoadEvidence();
-  if (n === 2) advGenerateBrief(false);
-}
-
-function _advRenderStep(n) {
-  for (let i = 0; i < 3; i++) {
-    const panel = document.getElementById('advPanel' + i);
-    const tab   = document.querySelector(`.adv-step[data-step="${i}"]`);
-    if (!panel || !tab) continue;
-    panel.classList.toggle('active', i === n);
-    panel.classList.toggle('hidden', i !== n);
-    tab.classList.remove('active', 'done');
-    if (i < n)      { tab.classList.add('done'); tab.querySelector('.adv-step-num').textContent = '✓'; }
-    else if (i === n) { tab.classList.add('active'); tab.querySelector('.adv-step-num').textContent = i + 1; }
-    else              { tab.querySelector('.adv-step-num').textContent = i + 1; }
-  }
-  const connectors = document.querySelectorAll('.adv-connector');
-  connectors.forEach((c, i) => {
-    c.style.background = i < n ? '#22c55e' : 'var(--border)';
-  });
-}
-
-async function _advLoadEligibility() {
-  const el = document.getElementById('advCriteriaList');
-  if (!el) return;
-
-  try {
-    const h   = await getAuthHeaders();
-    const res = await fetch(`${API_BASE}/api/advocacy?medication=GLP-1&raw=false`, { headers: h });
-    const d   = await safeJson(res);
-    if (!res.ok || d.error) throw new Error(d.error || 'API error');
-
-    _advData = d;
-    const facts    = d.clinical_facts    || [];
-    const missing  = d.missing_data      || [];
-    const strength = d.evidence_strength || 'limited';
-
-    const criteriaMap = _buildCriteriaFromFacts(facts, missing);
-    el.innerHTML = criteriaMap.map(c => `
-      <div class="adv-criterion ${c.status}">
-        <div class="adv-crit-icon">${c.status === 'met' ? '✓' : c.status === 'partial' ? '!' : '?'}</div>
-        <div style="flex:1">
-          <div class="adv-crit-title">${escapeHtml(c.title)}</div>
-          <div class="adv-crit-detail">${escapeHtml(c.detail)}</div>
-          <span class="adv-crit-tag">${escapeHtml(c.tag)}</span>
-        </div>
-      </div>`).join('');
-
-  } catch (e) {
-    el.innerHTML = _advFallbackCriteria();
-  }
-}
-
-async function _advLoadEvidence() {
-  const el = document.getElementById('advEvidenceContent');
-  if (!el) return;
-
-  if (!_advData) {
-    try {
-      const h   = await getAuthHeaders();
-      const res = await fetch(`${API_BASE}/api/advocacy?medication=GLP-1&raw=true`, { headers: h });
-      const d   = await safeJson(res);
-      if (!res.ok || d.error) throw new Error(d.error);
-      _advData = d;
-    } catch (e) {
-      el.innerHTML = '<div class="loading-text" style="color:var(--accent-warn)">Could not load evidence. Check connection.</div>';
-      return;
-    }
-  }
-
-  const facts    = _advData.clinical_facts    || [];
-  const missing  = _advData.missing_data      || [];
-  const strength = _advData.evidence_strength || 'limited';
-  const fillPct  = strength === 'strong' ? 85 : strength === 'moderate' ? 55 : 25;
-  const met      = facts.filter(f => f.pa_relevant).length;
-
-  el.innerHTML = `
-    <div style="margin-bottom:12px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
-        <span style="font-size:12.5px;color:var(--text-muted)">PA evidence strength</span>
-        <strong style="font-size:13px;text-transform:capitalize">${strength}</strong>
-      </div>
-      <div class="adv-strength-track">
-        <div class="adv-strength-fill ${strength}" id="advStrengthFill" style="width:0%"></div>
-      </div>
-      <div style="display:flex;gap:10px">
-        <div style="flex:1;background:var(--bg);border-radius:6px;padding:8px;text-align:center;border:1px solid var(--border)">
-          <div style="font-size:1.2rem;font-weight:700;color:var(--brand)">${met}</div>
-          <div style="font-size:11px;color:var(--text-muted)">facts in record</div>
-        </div>
-        <div style="flex:1;background:var(--bg);border-radius:6px;padding:8px;text-align:center;border:1px solid var(--border)">
-          <div style="font-size:1.2rem;font-weight:700;color:#f59e0b">${missing.length}</div>
-          <div style="font-size:11px;color:var(--text-muted)">data gaps</div>
-        </div>
-      </div>
-    </div>
-
-    ${facts.filter(f => f.pa_relevant).length ? `
-    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--text-muted);margin-bottom:8px">Clinical facts</div>
-    <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:12px">
-      ${facts.filter(f => f.pa_relevant).slice(0, 6).map(f => `
-        <div style="padding:9px 11px;background:var(--bg);border-radius:6px;border:1px solid var(--border)">
-          <div style="font-size:12.5px;font-weight:500;margin-bottom:2px">${escapeHtml(f.label || '')}</div>
-          <div style="font-size:12px;color:var(--text-muted)">${escapeHtml(String(f.value || '').slice(0, 120))}</div>
-        </div>`).join('')}
-    </div>` : ''}
-
-    ${missing.length ? `
-    <div style="background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.25);border-radius:8px;padding:11px 13px">
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:#f59e0b;margin-bottom:7px">Data gaps to address</div>
-      ${missing.slice(0, 4).map(m => `
-        <div style="display:flex;align-items:flex-start;gap:7px;font-size:12px;color:var(--text-muted);padding:4px 0;line-height:1.55">
-          <span style="width:5px;height:5px;border-radius:50%;background:#f59e0b;flex-shrink:0;margin-top:4px"></span>
-          ${escapeHtml(m)}
-        </div>`).join('')}
-    </div>` : ''}`;
-
-  setTimeout(() => {
-    const fill = document.getElementById('advStrengthFill');
-    if (fill) fill.style.width = fillPct + '%';
-  }, 80);
-}
-
-async function advGenerateBrief(forceRegen) {
-  const el = document.getElementById('advBriefContent');
-  if (!el) return;
-  if (_advBriefText && !forceRegen) {
-    el.innerHTML = `<div class="adv-brief-box">${escapeHtml(_advBriefText)}</div>`;
-    return;
-  }
-
-  const btn = document.getElementById('advRegenerateBtn');
-  if (btn) btn.disabled = true;
-  el.innerHTML = '<div class="loading-text" style="text-align:center;padding:1.5rem"><i class="fa-solid fa-spinner fa-spin" style="font-size:1.2rem;color:var(--brand);display:block;margin-bottom:10px"></i>Generating PA support packet…</div>';
-
-  if (!_advData) {
-    try {
-      const h   = await getAuthHeaders();
-      const res = await fetch(`${API_BASE}/api/advocacy?medication=GLP-1&raw=true`, { headers: h });
-      const d   = await safeJson(res);
-      if (res.ok && !d.error) _advData = d;
-    } catch {}
-  }
-
-  const packetText = _advData?.pa_packet || '';
-
-  if (packetText && packetText.length > 100) {
-    _advBriefText = packetText.replace(/─+/g, '').replace(/⚕️.*?$/ms, '').trim();
-    el.innerHTML = `<div class="adv-brief-box">${escapeHtml(_advBriefText)}</div>`;
-    _advRenderNextSteps(_advData.next_steps || []);
-  } else {
-    try {
-      const h = await getAuthHeaders();
-      if (!activeConvId) await createConversation();
-      const res = await fetch(`${API_BASE}/chat`, {
-        method: 'POST', headers: h,
-        body: JSON.stringify({
-          conversation_id: activeConvId,
-          message: 'Generate a structured GLP-1 prior authorization medical necessity support packet from my full health record. Format it with clear section headers: Patient Data Summary, Clinical Facts Supporting Medical Necessity, Cardiovascular Risk Documentation, Metabolic History, Lifestyle Intervention History, Data Gaps, and Recommended Provider Actions. Use specific dates and values from my record.',
-          has_documents: false,
-        }),
-      });
-      const d = await safeJson(res);
-      _advBriefText = (d.reply || '').replace(/^---[\s\S]*$/m, '').trim();
-      el.innerHTML = `<div class="adv-brief-box">${renderMarkdown(_advBriefText)}</div>`;
-      _advRenderNextSteps([
-        'Share this document with your healthcare provider — they make all clinical and authorization decisions',
-        'Ask your provider to document BMI and any prior medication history at your next visit',
-        'Bring your LDL trajectory data (specific dates and values) to the cardiology appointment',
-        'Upload any prior prescriptions or insurance correspondence to PHI to build a stronger record',
-      ]);
-    } catch {
-      el.innerHTML = '<div class="loading-text" style="color:var(--accent-warn)">Could not generate. Please try again.</div>';
-    }
-  }
-
-  if (btn) btn.disabled = false;
-}
-
-function _advRenderNextSteps(steps) {
-  const card = document.getElementById('advNextSteps');
-  const list = document.getElementById('advNextStepsList');
-  if (!card || !list || !steps.length) return;
-  list.innerHTML = steps.map((s, i) => `
-    <div class="adv-next-step-item">
-      <div class="adv-next-step-num">${i + 1}</div>
-      <span>${escapeHtml(s)}</span>
-    </div>`).join('');
-  card.style.display = 'block';
-}
-
-function advCopyBrief() {
-  if (!_advBriefText) return;
-  navigator.clipboard.writeText(_advBriefText).then(() => {
-    const btn = document.getElementById('advCopyBtn');
-    if (btn) { btn.innerHTML = '<i class="fa-solid fa-check"></i> Copied!'; setTimeout(() => btn.innerHTML = '<i class="fa-regular fa-copy"></i> Copy', 2000); }
-  });
-}
-
-function _buildCriteriaFromFacts(facts, missing) {
-  const hasBMI      = facts.some(f => f.category === 'bmi' || f.category === 'weight');
-  const hasHba1c    = facts.some(f => f.category === 'hba1c');
-  const hasMeds     = facts.some(f => f.category === 'medication_history');
-  const hasLifestyle= facts.some(f => f.category === 'lifestyle_attempt');
-  const hasComorbid = facts.some(f => f.category === 'comorbidity');
-
-  const bmiMissing     = missing.some(m => m.toLowerCase().includes('bmi'));
-  const medsMissing    = missing.some(m => m.toLowerCase().includes('medication'));
-  const styleMissing   = missing.some(m => m.toLowerCase().includes('diet') || m.toLowerCase().includes('lifestyle'));
-
-  return [
-    {
-      status: hasBMI ? 'met' : (bmiMissing ? 'missing' : 'partial'),
-      title:  'BMI ≥ 30 (obesity) or ≥ 27 with comorbidity',
-      detail: hasBMI ? 'BMI data found in your health record.' : hasComorbid ? 'BMI not directly recorded but cardiovascular comorbidities are documented — satisfies the ≥27 + comorbidity path.' : 'BMI not recorded. Your provider can measure this at the next visit.',
-      tag:    hasBMI ? 'Met — BMI documented' : hasComorbid ? 'Partial — comorbidity present, BMI needed' : 'Data gap — provider to document',
-    },
-    {
-      status: hasHba1c ? 'met' : 'missing',
-      title:  'Metabolic dysregulation (HbA1c / prediabetes)',
-      detail: hasHba1c ? 'HbA1c history found. Prediabetes-range values documented, supporting metabolic risk.' : 'No HbA1c in record. Upload a lab report containing this value.',
-      tag:    hasHba1c ? 'Met — HbA1c history in record' : 'Data gap — upload recent lab report',
-    },
-    {
-      status: hasLifestyle ? 'partial' : (styleMissing ? 'missing' : 'partial'),
-      title:  'Failed diet / exercise program',
-      detail: hasLifestyle ? 'Lifestyle attempts documented from conversation history. A formal structured program (dietitian referral, Weight Watchers) would further strengthen this criterion.' : 'No lifestyle program documented. Tell PHI about any diet or exercise changes you\'ve made.',
-      tag:    hasLifestyle ? 'Partial — informal record, formal documentation strengthens this' : 'Data gap — document lifestyle history',
-    },
-    {
-      status: hasComorbid ? 'met' : 'partial',
-      title:  'Cardiovascular / metabolic comorbidities',
-      detail: hasComorbid ? 'Relevant comorbidity markers (elevated LDL, CRP, or other cardiovascular indicators) are present in your record.' : 'Some markers suggest cardiovascular risk. Upload a full lipid panel to confirm.',
-      tag:    hasComorbid ? 'Met — comorbidity markers documented' : 'Partial — upload lipid panel',
-    },
-    {
-      status: hasMeds ? 'met' : (medsMissing ? 'missing' : 'missing'),
-      title:  'Prior medication history (Metformin / first-line agents)',
-      detail: hasMeds ? 'Prior medication history found in your conversation record.' : 'No medication history documented. Tell PHI: "I have/haven\'t tried Metformin or other treatments" and your provider should document this.',
-      tag:    hasMeds ? 'Met — medication history recorded' : 'Data gap — discuss with provider',
-    },
-  ];
-}
-
-function _advFallbackCriteria() {
-  return ['BMI ≥ 30 or ≥ 27 with comorbidity','Prediabetes or Type 2 Diabetes (HbA1c ≥ 5.7%)','Failed diet/exercise program','Cardiovascular or metabolic comorbidity','Prior first-line medication history'].map((t, i) =>
-    `<div class="adv-criterion partial">
-       <div class="adv-crit-icon">?</div>
-       <div style="flex:1">
-         <div class="adv-crit-title">${escapeHtml(t)}</div>
-         <div class="adv-crit-detail">Upload lab reports and chat with PHI to populate this criterion from your health record.</div>
-         <span class="adv-crit-tag">Upload a report to check</span>
-       </div>
-     </div>`
-  ).join('');
-}
