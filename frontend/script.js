@@ -1,23 +1,8 @@
 /**
- * script.js — Curabook PHI v3.6 — Bug-Fixed Edition
+ * script.js — Curabook PHI v3.7 — Market Ready Edition
  *
- * FIXES IN THIS VERSION:
- *
- * #B-05  Removed injectGroupLabelStyle() — .history-group-label is now
- * defined in style.css. JS-injected styles were overriding the
- * CSS file and causing double-definition warnings.
- *
- * #B-06  DOM object wrapped in a factory function called after
- * DOMContentLoaded to prevent null refs at parse time.
- * All DOM.$id() calls are now safe.
- *
- * #B-07  Consent save uses only valid types: data_processing,
- * ai_processing, document_processing. Removed terms_accepted.
- *
- * #B-08  Decoupled Promise.all fetching in loadHealthDashboard and 
- * renderPulseModalContent to prevent infinite loading.
- *
- * All other original functionality preserved.
+ * Includes GLP-1 Advocacy Workflow, Behavioral Logging, 
+ * Decision Support (Next Steps & Follow-ups), and Single Legal Footer logic.
  */
 
 "use strict";
@@ -52,7 +37,6 @@ const _cache = {
     clear() { this._s={}; },
 };
 
-/* ── FIX B-06: DOM is built after DOMContentLoaded, not at parse time ─── */
 let DOM = {};
 
 function buildDOM() {
@@ -217,17 +201,11 @@ async function handleLoginSuccess(user) {
     loadHealthPulse().catch(()=>{});
     showToast(currentUserName ? `Welcome back, ${currentUserName}` : "Welcome back");
     _carryOverDemoDoc();
-
-    if (new URLSearchParams(location.search).get("upload") === "1") {
-        history.replaceState({}, "", location.pathname);
-        setTimeout(() => DOM.fileInput?.click(), 600);
-    }
 }
 
 async function saveUserConsents() {
     const h = await getAuthHeaders();
     if (!h.Authorization) return;
-    // FIX B-07: only valid consent types — no 'terms_accepted'
     await fetch(`${API_BASE}/api/consent`, {
         method:"POST", headers:h,
         body: JSON.stringify({ consents: ["data_processing","ai_processing","document_processing"] }),
@@ -278,7 +256,6 @@ async function loadHealthPulse() {
         renderPulseCard(d);
         generateContextualChips(d);
     } catch (e) {
-        console.warn("[PULSE]", e);
         showNoDataState();
     }
 }
@@ -375,17 +352,6 @@ function generateContextualChips(d) {
         text: abnormal>0 ? "What lifestyle changes will help most?" : "How do I maintain these healthy levels?"
     });
     setChips(chips);
-
-    if (abnormal > 0 && markers[0]) {
-        const markerName = markers[0].marker_name || "results";
-        DOM.userInput.placeholder = currentUserName
-            ? `Ask about your ${markerName} trend, ${currentUserName}…`
-            : `Ask about your ${markerName} trend…`;
-    } else {
-        DOM.userInput.placeholder = currentUserName
-            ? `Ask PHI about your health, ${currentUserName}…`
-            : "Ask PHI about your health…";
-    }
 }
 
 /* ── Chip registry ────────────────────────────────────────────── */
@@ -433,15 +399,12 @@ async function openPulseModal() {
     renderPulseModalContent();
 }
 
-/* ── FIX B-08: Progressive Loading for Pulse Modal ───────────── */
 async function renderPulseModalContent() {
     if (!DOM.pulseModalBody) return;
     DOM.pulseModalBody.innerHTML = '<div class="temporal-loading"><div class="pulse-spinner"></div><span>Loading health intelligence…</span></div>';
 
     try {
         const h = await getAuthHeaders();
-
-        // 1. Fetch markers first (FAST)
         const mr = await fetch(`${API_BASE}/api/health-markers`, { headers: h });
         const markers = mr.ok ? await safeJson(mr) : [];
         const mArr = Array.isArray(markers) ? markers : [];
@@ -459,7 +422,6 @@ async function renderPulseModalContent() {
             return;
         }
 
-        // Helper function to render the modal HTML
         const renderModal = (iArr) => {
             const rows = mArr.map(m => {
                 const color = m.status==="HIGH"||m.status==="LOW"?"var(--accent-warn)":m.status==="NORMAL"?"var(--accent-ok)":"var(--text-muted)";
@@ -505,18 +467,13 @@ async function renderPulseModalContent() {
             });
         };
 
-        // 2. Render instantly without insights
         renderModal([]);
-
-        // 3. Fetch AI insights in background (SLOW)
         fetch(`${API_BASE}/api/health-insights`, { headers: h })
             .then(r => r.ok ? safeJson(r) : [])
             .then(insights => {
                 const iArr = Array.isArray(insights) ? insights : [];
-                if (iArr.length) {
-                    renderModal(iArr);
-                } else {
-                     // remove the spinner if no insights
+                if (iArr.length) renderModal(iArr);
+                else {
                      const spinner = DOM.pulseModalBody.querySelector('.fa-spinner')?.parentNode;
                      if (spinner) spinner.remove();
                 }
@@ -531,7 +488,6 @@ async function renderPulseModalContent() {
 }
 window.openPulseModal = openPulseModal;
 
-/* ── Empty state helper ─────────────────────────────────────── */
 function _emptyHealthState(title, desc, btnLabel) {
     return `<div class="empty-health-state">
         <i class="fa-solid fa-file-medical"></i>
@@ -568,7 +524,6 @@ function _prependConvToHistory(id, title) {
     let todayGroup = DOM.historyList.querySelector(".history-group-today");
     if (!todayGroup) {
         todayGroup = document.createElement("div");
-        // FIX B-05: class defined in CSS — no inline styles needed
         todayGroup.className = "history-group-label history-group-today";
         todayGroup.textContent = "Today";
         DOM.historyList.prepend(todayGroup);
@@ -636,7 +591,6 @@ function renderHistory(conversations) {
     let html = "";
     groups.forEach((convs, label) => {
         const isTodayClass = label === "Today" ? " history-group-today" : "";
-        // FIX B-05: class defined in CSS
         html += `<div class="history-group-label${isTodayClass}">${escapeHtml(label)}</div>`;
         convs.forEach(c => {
             const isActive = c.id === activeConvId;
@@ -777,28 +731,118 @@ async function handleSend() {
     }
 }
 
-/* ── Message rendering ───────────────────────────────────────── */
+/* ── UI Logic for Decision Support / Markdown Post-processing ── */
 
-function _msgHTML(text, role) {
-    const initial = role==="user" ? (currentUser?.email?.[0]?.toUpperCase()||"U") : "φ";
-    const avClass = role==="user" ? "user-av" : "ai-av";
-    const content = role==="user" ? escapeHtml(text) : renderMarkdown(text);
-    return role==="user"
-        ? `<div class="chat-message user-msg"><div class="msg-bubble">${content}</div><div class="msg-avatar ${avClass}">${initial}</div></div>`
-        : `<div class="chat-message bot-msg"><div class="msg-avatar ${avClass}">${initial}</div><div class="msg-bubble">${content}</div></div>`;
+function _postProcessBubble(bubbleEl) {
+    if (!bubbleEl) return;
+    _wrapLegalFooter(bubbleEl);
+    _wrapNextSteps(bubbleEl);
+    _wrapFollowUp(bubbleEl);
 }
+
+function _wrapLegalFooter(el) {
+    const allNodes = Array.from(el.childNodes);
+    for (let i = 0; i < allNodes.length; i++) {
+        const node = allNodes[i];
+        if (!node || node.nodeType !== Node.ELEMENT_NODE) continue;
+        const text = node.textContent || "";
+        if (text.includes("⚕️")) {
+            const prev = node.previousElementSibling;
+            const wrapper = document.createElement("div");
+            wrapper.className = "phi-legal-footer";
+            if (prev && prev.tagName === "HR") {
+                el.insertBefore(wrapper, prev);
+                wrapper.appendChild(prev);
+            } else {
+                el.insertBefore(wrapper, node);
+            }
+            wrapper.appendChild(node);
+            wrapper.innerHTML = wrapper.innerHTML.replace(/⚕️/g, '<span class="phi-legal-icon">⚕️</span>');
+            break;
+        }
+    }
+}
+
+function _wrapNextSteps(el) {
+    const headingPattern = /recommended\s+next\s+steps/i;
+    const children = Array.from(el.children);
+    for (let i = 0; i < children.length; i++) {
+        const child = children[i];
+        const tag   = child.tagName.toLowerCase();
+        const text  = child.textContent || "";
+        if (!headingPattern.test(text)) continue;
+        if (!["h1","h2","h3","h4","p","strong"].includes(tag)) continue;
+        
+        const wrapper = document.createElement("div");
+        wrapper.className = "phi-next-steps";
+        el.insertBefore(wrapper, child);
+        wrapper.appendChild(child);
+        
+        let next = wrapper.nextElementSibling;
+        while (next && (next.tagName === "OL" || next.tagName === "UL" || (next.tagName === "P" && next.textContent.trim() === ""))) {
+            const toMove = next;
+            next = next.nextElementSibling;
+            wrapper.appendChild(toMove);
+        }
+        break;
+    }
+}
+
+function _wrapFollowUp(el) {
+    const followUpPattern = /you\s+might\s+ask\s+phi/i;
+    const children = Array.from(el.children);
+    for (let i = 0; i < children.length; i++) {
+        const child = children[i];
+        const text  = child.textContent || "";
+        if (!followUpPattern.test(text)) continue;
+
+        const wrapper = document.createElement("div");
+        wrapper.className = "phi-follow-up";
+        el.insertBefore(wrapper, child);
+        child.remove();
+
+        let next = wrapper.nextElementSibling;
+        if (next && (next.tagName === "OL" || next.tagName === "UL")) {
+            const chipContainer = document.createElement("div");
+            chipContainer.style.cssText = "display:flex;flex-wrap:wrap;gap:5px;margin-top:2px";
+            Array.from(next.querySelectorAll("li")).forEach(li => {
+                const chipText = li.textContent.trim();
+                if (!chipText) return;
+                const chip = document.createElement("button");
+                chip.className = "phi-follow-up-chip";
+                chip.textContent = chipText;
+                chip.setAttribute("title", "Ask PHI this question");
+                chip.addEventListener("click", () => {
+                    if (typeof sendChip === "function") sendChip(chipText);
+                });
+                chipContainer.appendChild(chip);
+            });
+            wrapper.appendChild(chipContainer);
+            next.remove();
+        }
+        break;
+    }
+}
+
+/* ── Message rendering ───────────────────────────────────────── */
 
 function appendMessage(text, role) {
     const wrap = document.createElement("div");
-    wrap.className = `chat-message ${role==="user"?"user-msg":"bot-msg"}`;
+    wrap.className = `chat-message ${role === "user" ? "user-msg" : "bot-msg"}`;
+
     const av = document.createElement("div");
-    av.className = `msg-avatar ${role==="user"?"user-av":"ai-av"}`;
-    av.textContent = role==="user" ? (currentUser?.email?.[0]?.toUpperCase()||"U") : "φ";
+    av.className = `msg-avatar ${role === "user" ? "user-av" : "ai-av"}`;
+    av.textContent = role === "user" ? (currentUser?.email?.[0]?.toUpperCase() || "U") : "φ";
+
     const bub = document.createElement("div");
     bub.className = "msg-bubble";
-    bub.innerHTML = role==="user" ? escapeHtml(text) : renderMarkdown(text);
-    if (role==="user") { wrap.appendChild(bub); wrap.appendChild(av); }
-    else               { wrap.appendChild(av);  wrap.appendChild(bub); }
+    bub.innerHTML = role === "user" ? escapeHtml(text) : renderMarkdown(text);
+
+    if (role !== "user") _postProcessBubble(bub);
+
+    if (role === "user") { wrap.appendChild(bub); wrap.appendChild(av); }
+    else                 { wrap.appendChild(av);  wrap.appendChild(bub); }
+
     DOM.chatDisplay.appendChild(wrap);
     DOM.chatDisplay.scrollTop = DOM.chatDisplay.scrollHeight;
     return wrap;
@@ -815,8 +859,33 @@ function appendTyping() {
 
 function updateMessage(wrap, text) {
     const b = wrap.querySelector(".msg-bubble");
-    if (b) b.innerHTML = renderMarkdown(text);
+    if (b) {
+        b.innerHTML = renderMarkdown(text);
+        _postProcessBubble(b);
+    }
     DOM.chatDisplay.scrollTop = DOM.chatDisplay.scrollHeight;
+}
+
+function _msgHTML(text, role) {
+    const initial = role === "user" ? (currentUser?.email?.[0]?.toUpperCase() || "U") : "φ";
+    const avClass = role === "user" ? "user-av" : "ai-av";
+
+    if (role === "user") {
+        return `<div class="chat-message user-msg">
+            <div class="msg-bubble">${escapeHtml(text)}</div>
+            <div class="msg-avatar ${avClass}">${initial}</div>
+        </div>`;
+    }
+
+    const temp = document.createElement("div");
+    temp.className = "msg-bubble";
+    temp.innerHTML = renderMarkdown(text);
+    _postProcessBubble(temp);
+
+    return `<div class="chat-message bot-msg">
+        <div class="msg-avatar ${avClass}">${initial}</div>
+        ${temp.outerHTML}
+    </div>`;
 }
 
 function showChatMode() {
@@ -1040,14 +1109,9 @@ window.closeModals = () => {
   [
     DOM.profileModal, DOM.settingsModal, DOM.deleteModal,
     DOM.pulseModal, DOM.logActivityModal, DOM.advocacyGuideModal,
-    DOM.advocacyModal,   // ← add this
+    DOM.advocacyModal
   ].forEach(m => m?.classList.add('hidden'));
 };
-
-[DOM.profileModal, DOM.settingsModal, DOM.deleteModal,
- DOM.pulseModal, DOM.logActivityModal, DOM.advocacyGuideModal].forEach(m => {
-    m?.addEventListener("click", e => { if (e.target === m) window.closeModals(); });
-});
 
 function showDeleteModal(id) { conversationToDelete = id; DOM.deleteModal?.classList.remove("hidden"); }
 window.showDeleteModal = showDeleteModal;
@@ -1096,15 +1160,12 @@ function _renderProfileDemographics(profile) {
     }
 }
 
-/* ── FIX B-08: Progressive Loading for Health Dashboard ──────── */
 async function loadHealthDashboard() {
     if (!DOM.healthDash) return;
     DOM.healthDash.innerHTML = '<div class="loading-text"><i class="fa-solid fa-spinner fa-spin"></i> Loading…</div>';
 
     try {
         const h = await getAuthHeaders();
-
-        // 1. Fetch markers first (FAST)
         const mr = await fetch(`${API_BASE}/api/health-markers`, {headers: h});
         const markers = mr.ok ? await safeJson(mr) : [];
 
@@ -1121,16 +1182,12 @@ async function loadHealthDashboard() {
             return;
         }
 
-        // 2. Render instantly without insights
         renderHealthDashboard(markers, []);
 
-        // 3. Fetch insights in background (SLOW)
         fetch(`${API_BASE}/api/health-insights`, {headers: h})
             .then(r => r.ok ? safeJson(r) : [])
             .then(insights => {
-                if (Array.isArray(insights) && insights.length) {
-                    renderHealthDashboard(markers, insights);
-                }
+                if (Array.isArray(insights) && insights.length) renderHealthDashboard(markers, insights);
             }).catch(() => {});
 
     } catch (e) {
@@ -1331,7 +1388,7 @@ function wireEvents() {
     DOM.btnLogActivity?.addEventListener("click", () => { closeSidebar(); openLogActivity(); });
     DOM.advocacyInfoBtn?.addEventListener("click", openAdvocacyGuide);
     DOM.btnAdvocacy?.addEventListener('click', () => { closeSidebar(); openAdvocacyModal(); });
-    DOM.advocacyInfoBtn?.addEventListener('click', openAdvocacyModal); // replaces old handler
+    DOM.advocacyInfoBtn?.addEventListener('click', openAdvocacyModal); 
 
     DOM.fileInput?.addEventListener("change", e => {
         Array.from(e.target.files||[]).forEach(f => {
@@ -1357,13 +1414,11 @@ function wireEvents() {
         if (e.key === "Escape") window.closeModals();
     });
 
-    // Wire modal close on backdrop click (after DOM is built)
     [DOM.profileModal, DOM.settingsModal, DOM.deleteModal,
      DOM.pulseModal, DOM.logActivityModal, DOM.advocacyGuideModal].forEach(m => {
         m?.addEventListener("click", e => { if (e.target === m) window.closeModals(); });
     });
 
-    // Confirm delete
     DOM.confirmDeleteBtn?.addEventListener("click", async () => {
         if (!conversationToDelete) return;
         const isActive = activeConvId === conversationToDelete;
@@ -1388,9 +1443,7 @@ function wireEvents() {
 
 /* ── Boot ─────────────────────────────────────────────────────── */
 document.addEventListener("DOMContentLoaded", async () => {
-    // FIX B-06: build DOM map after DOMContentLoaded
     buildDOM();
-
     try { await initSupabase(); } catch { showToast("Cannot connect to backend.","error"); return; }
     const session = await getSession();
     if (!session?.user) { window.location.href = "/login"; return; }
@@ -1399,18 +1452,19 @@ document.addEventListener("DOMContentLoaded", async () => {
         window.location.href = "/login"; return;
     }
 
-    // FIX B-05: initSettings and wireEvents called after DOM is built
     wireEvents();
     initSettings();
     initVoiceInput();
     loadUserPreferences();
     await handleLoginSuccess(user);
+    
+    // TODO: Init Stripe Test Mode logic here when ready for $29.99 upgrades
 });
 
 /* ── Advocacy modal state ───────────────────────────────────── */
 let _advStep = 0;
 let _advBriefText = '';
-let _advData = null;   // cached from /api/advocacy
+let _advData = null;
 
 function openAdvocacyModal() {
   window.closeModals();
@@ -1464,7 +1518,6 @@ async function _advLoadEligibility() {
     const missing  = d.missing_data      || [];
     const strength = d.evidence_strength || 'limited';
 
-    // Build criteria display from clinical facts
     const criteriaMap = _buildCriteriaFromFacts(facts, missing);
     el.innerHTML = criteriaMap.map(c => `
       <div class="adv-criterion ${c.status}">
@@ -1563,7 +1616,6 @@ async function advGenerateBrief(forceRegen) {
   if (btn) btn.disabled = true;
   el.innerHTML = '<div class="loading-text" style="text-align:center;padding:1.5rem"><i class="fa-solid fa-spinner fa-spin" style="font-size:1.2rem;color:var(--brand);display:block;margin-bottom:10px"></i>Generating PA support packet…</div>';
 
-  // Ensure we have advocacy data
   if (!_advData) {
     try {
       const h   = await getAuthHeaders();
@@ -1576,12 +1628,10 @@ async function advGenerateBrief(forceRegen) {
   const packetText = _advData?.pa_packet || '';
 
   if (packetText && packetText.length > 100) {
-    // Backend already generated it — clean up and display
     _advBriefText = packetText.replace(/─+/g, '').replace(/⚕️.*?$/ms, '').trim();
     el.innerHTML = `<div class="adv-brief-box">${escapeHtml(_advBriefText)}</div>`;
     _advRenderNextSteps(_advData.next_steps || []);
   } else {
-    // Fall back: ask PHI via /chat
     try {
       const h = await getAuthHeaders();
       if (!activeConvId) await createConversation();
