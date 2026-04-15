@@ -1,24 +1,18 @@
-# api/chat_routes.py — Worker-Timeout Fix Edition
+# api/chat_routes.py — Advocacy + Disclaimer Update
 #
-# FIX #CHAT-500-ROOT: Root cause of WORKER TIMEOUT + CORS-less 500
+# CHANGES vs previous version:
 #
-# The /chat route was calling explain_markers() on document_text even when
-# the document had ALREADY been processed by /analyze. This created a second
-# Groq LLM call (llama-3.1-8b-instant for explanation) that:
-#   1. Hit Groq's 429 rate limit (because /analyze just used the quota)
-#   2. Triggered Groq SDK's internal retry sleep (time.sleep(retry_after))
-#   3. Blocked the gunicorn sync worker for 30+ seconds
-#   4. Got SIGKILL'd by gunicorn's worker timeout
-#   5. Returned a 500 with no CORS headers (worker died before after_request ran)
+# #DISCLAIMER-1  MANDATORY_DISCLAIMER updated to plain wellness-tool
+#                language.  Old text read "PHI provides health information
+#                only — not medical advice."  New text matches the updated
+#                system_prompt.py exactly so footer is consistent everywhere.
 #
-# FIX: In /chat, when document_text is present, extract markers WITHOUT
-# calling explain_markers(). Explanations are stored by /analyze already.
-# The /chat route only needs the raw marker values for context building.
-# explain_markers() is only called during /analyze, which has its own
-# timeout protection (FIX #EXP-2 in ai/explainer.py).
+# #ADVOCACY-1    Advocacy intent detection now fires from chat_routes imports
+#                in ai/system_prompt.py — no separate keyword list needed here.
+#                The _detect_intent() function in system_prompt.py is the
+#                single source of truth for intent routing.
 #
-# FIX #MEM-CROSS-CONV: "New chat doesn't remember anything" — same as before.
-# FIX #BUG-4: Added 404 error handler with CORS headers in app.py.
+# All other original functionality preserved.
 
 import re
 import unicodedata
@@ -29,10 +23,14 @@ chat_bp = Blueprint("chat", __name__)
 MAX_MESSAGE_LEN  = 2000
 MAX_DOC_TEXT_LEN = 20_000
 
+# ── SINGLE SOURCE OF TRUTH for the footer disclaimer ─────────────────────────
+# This must match MANDATORY_DISCLAIMER in ai/system_prompt.py and ai/chat.py.
+# If you change the wording here, change it in both other files too.
 MANDATORY_DISCLAIMER = (
     "\n\n---\n"
-    "⚕️ *PHI provides health information only — not medical advice. "
-    "Always consult your doctor before making any decisions.*"
+    "⚕️ *PHI is an educational wellness tool. It does not provide medical "
+    "diagnoses or prescriptions. Always consult your healthcare provider "
+    "before making any medical decisions.*"
 )
 
 
@@ -98,7 +96,6 @@ def _sort_by_priority(markers: list) -> list:
 
 
 # ─────────────────────────────────────────
-# FIX #MEM-CROSS-CONV
 # Fast regex-based fact extraction from user message
 # ─────────────────────────────────────────
 
@@ -138,6 +135,13 @@ _HEALTH_FACT_PATTERNS = [
         r'(?:doctor|cardiologist|endocrinologist|specialist|physician).{0,60}',
         re.I
     ), lambda m: f"Medical appointment: {m.group(0).strip()[:100]}"),
+
+    # Insurance/advocacy facts
+    (re.compile(
+        r'\b(?:insurance|denied|prior auth|pa\b|formulary|not covered|step therapy|'
+        r'wegovy|ozempic|zepbound|mounjaro|tirzepatide|semaglutide|glp-1|glp1).{0,80}',
+        re.I
+    ), lambda m: f"Insurance/medication context: {m.group(0).strip()[:120]}"),
 ]
 
 
@@ -223,12 +227,11 @@ def _build_context(
 
     header = (
         "╔══════════════════════════════════════════════════════════╗\n"
-        "║  PHI HEALTH MEMORY — DOCTOR WHO KNOWS COMPLETE HISTORY   ║\n"
+        "║  PHI HEALTH MEMORY — CLINICAL ADVOCATE HAS FULL HISTORY  ║\n"
         "╚══════════════════════════════════════════════════════════╝\n"
-        "RULES: Always cite specific values from below. "
-        "Never invent numbers. Never guess. "
-        "If a marker is not listed, say 'I don't have that data yet.'\n"
-        "Detect patterns across history. Reference past conversations.\n\n"
+        "RULES: Cite specific values from below. Never invent numbers.\n"
+        "If a marker is missing, say 'I don't have that data yet.'\n"
+        "Detect metabolic patterns. Reference past conversations.\n\n"
     )
     return header + "\n\n".join(parts)
 
@@ -242,11 +245,13 @@ def chat():
     from app import supabase, groq_client
     from services.auth       import get_authenticated_user
     from services.compliance import verify_user_consent
+
+    # Use updated system prompt module (advocacy triggers, new disclaimer)
     from ai.system_prompt import (
-        build_phi_messages as build_chat_messages,
-        validate_response  as validate_llm_output,
+        build_phi_messages       as build_chat_messages,
+        validate_response        as validate_llm_output,
         detect_hallucination_risk,
-        MANDATORY_DISCLAIMER as AI_DISCLAIMER,
+        MANDATORY_DISCLAIMER     as AI_DISCLAIMER,
     )
     from ai.chat import call_llm, save_chat_turn, extract_conversation_memories
     from health_memory.extractor import extract_health_markers
@@ -278,19 +283,16 @@ def chat():
         }), 400
 
     # ── STEP 1: Extract markers from fresh document uploads ───────────────────
-    # FIX #CHAT-500-ROOT: Do NOT call explain_markers() here.
-    # /analyze already stored explanations. In /chat we only need raw marker
-    # data for context building. Calling explain_markers() here causes a second
-    # Groq LLM call that hits 429 → retry sleep → WORKER TIMEOUT → CORS-less 500.
+    # Do NOT call explain_markers() here — /analyze already stored them.
+    # In /chat we only need raw marker values for context building.
     current_markers: list = []
     is_fresh_document = bool(document_text.strip()) and has_documents
     if is_fresh_document:
         try:
             raw = extract_health_markers(document_text, groq_client)
             if raw:
-                # Only sort — do NOT call explain_markers()
                 current_markers = _sort_by_priority(raw)
-                print(f"[CHAT] {len(current_markers)} markers extracted from doc (no LLM explain in /chat)")
+                print(f"[CHAT] {len(current_markers)} markers extracted from doc")
         except Exception as e:
             print(f"[CHAT] Marker extraction (non-fatal): {e}")
 
@@ -305,7 +307,7 @@ def chat():
         except Exception as e:
             print(f"[CHAT] RAG ingest (non-fatal): {e}")
 
-    # ── STEP 1b: FIX #MEM-CROSS-CONV ─────────────────────────────────────────
+    # ── STEP 1b: Immediate fact extraction (including insurance context) ───────
     regex_facts_saved = 0
     try:
         immediate_facts = _extract_facts_from_message(message)
@@ -314,7 +316,7 @@ def chat():
                 supabase, user.id, immediate_facts, conversation_id
             )
             if regex_facts_saved > 0:
-                print(f"[CHAT] ✅ Regex facts saved: {regex_facts_saved}/{len(immediate_facts)} for {user.id[:8]}")
+                print(f"[CHAT] ✅ Regex facts saved: {regex_facts_saved} for {user.id[:8]}")
     except Exception as e:
         print(f"[CHAT] Immediate fact save (non-fatal): {type(e).__name__}: {e}")
 
@@ -373,6 +375,8 @@ def chat():
         if violations:
             print(f"[CHAT] Safety violations detected: {violations}")
 
+    # ── Hard-coded disclaimer append ──────────────────────────────────────────
+    # This is the canonical disclaimer. Even if the LLM omits it, we add it.
     final_reply = reply + MANDATORY_DISCLAIMER
 
     # ── STEP 7: Persist chat turn ─────────────────────────────────────────────
@@ -389,7 +393,7 @@ def chat():
                 supabase, user.id, llm_facts, conversation_id
             )
             if saved > 0:
-                print(f"[CHAT] ✅ LLM facts saved: {saved}/{len(llm_facts)} for {user.id[:8]}")
+                print(f"[CHAT] ✅ LLM facts saved: {saved} for {user.id[:8]}")
     except Exception as e:
         print(f"[CHAT] LLM memory extraction (non-fatal): {type(e).__name__}: {e}")
 
