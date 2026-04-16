@@ -247,12 +247,12 @@ def chat():
     from services.compliance import verify_user_consent
 
     # Use updated system prompt module (advocacy triggers, new disclaimer)
-    from ai.system_prompt import (
-        build_phi_messages       as build_chat_messages,
-        validate_response        as validate_llm_output,
-        detect_hallucination_risk,
-        MANDATORY_DISCLAIMER     as AI_DISCLAIMER,
-    )
+    from ai.system_prompt_v2 import (
+    build_phi_messages       as build_chat_messages,
+    validate_response        as validate_llm_output,
+    detect_hallucination_risk,
+    MANDATORY_DISCLAIMER     as AI_DISCLAIMER,
+)
     from ai.chat import call_llm, save_chat_turn, extract_conversation_memories
     from health_memory.extractor import extract_health_markers
     from health_memory.memory    import save_conversation_memory

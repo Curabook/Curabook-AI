@@ -259,6 +259,24 @@ async function loadHealthPulse() {
         showNoDataState();
     }
 }
+// Check for milestone alerts (after health pulse loads)
+checkMilestones().catch(() => {});
+
+async function checkMilestones() {
+    const h = await getAuthHeaders();
+    const res = await fetch(`${API_BASE}/api/milestone-check`, { headers: h });
+    const data = await safeJson(res);
+    
+    if (!data.milestones?.length) return;
+    
+    // Show the first high-priority milestone as a toast
+    const first = data.milestones[0];
+    if (first.type === 'warning') {
+        showToast(`⚠ ${first.title}`, 'error');
+    } else if (first.type === 'positive') {
+        showToast(`✓ ${first.title}`);
+    }
+}
 
 function showNoDataState() {
     if (DOM.pulseCard)   DOM.pulseCard.style.display = "none";
@@ -1736,4 +1754,151 @@ function _advFallbackCriteria() {
        </div>
      </div>`
   ).join('');
+}
+// ── Weekly Brief ────────────────────────────────────────────────────
+document.getElementById('btn-weekly-brief')?.addEventListener('click', async () => {
+    closeSidebar();
+    const h = await getAuthHeaders();
+    
+    // Try to load latest brief first
+    const res = await fetch(`${API_BASE}/api/weekly-brief/latest`, { headers: h });
+    const data = await safeJson(res);
+    
+    if (!data.available) {
+        // Generate one
+        const genRes = await fetch(`${API_BASE}/api/weekly-brief`, {
+            method: 'POST', headers: h, body: JSON.stringify({})
+        });
+        const genData = await safeJson(genRes);
+        if (genData.brief) showWeeklyBriefModal(genData.brief);
+        else showToast('No health data yet — upload a report first', 'error');
+        return;
+    }
+    showWeeklyBriefModal(data.brief);
+});
+
+function showWeeklyBriefModal(brief) {
+    const existing = document.getElementById('weekly-brief-modal');
+    if (existing) existing.remove();
+    
+    const m = document.createElement('div');
+    m.id = 'weekly-brief-modal';
+    m.className = 'modal';
+    m.innerHTML = `
+        <div class="modal-box" style="max-width:540px">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-newspaper" style="color:var(--brand)"></i> Weekly Health Brief</h3>
+                <button class="close-btn" onclick="document.getElementById('weekly-brief-modal').remove()">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div style="padding:4px 0 8px">
+                <p style="font-size:14px;line-height:1.7;margin-bottom:14px">${escapeHtml(brief.headline || '')}</p>
+                
+                <div style="display:flex;flex-direction:column;gap:12px">
+                    ${briefSection('fa-magnifying-glass', 'What PHI noticed', brief.pattern)}
+                    ${briefSection('fa-check', 'One thing for this week', brief.action)}
+                    ${briefSection('fa-stethoscope', 'Question for your doctor', brief.doctor_q)}
+                    ${briefSection('fa-star', 'One good thing', brief.win)}
+                </div>
+                
+                <div style="margin-top:18px;padding-top:14px;border-top:0.5px solid var(--border)">
+                    <button onclick="window.closeModals();sendChip('Based on my weekly brief, what should I focus on most this week?')"
+                        style="width:100%;padding:10px;background:var(--brand);border:none;border-radius:8px;color:white;font-size:13.5px;font-weight:600;font-family:var(--font);cursor:pointer">
+                        Ask PHI about this week ↗
+                    </button>
+                </div>
+            </div>
+        </div>`;
+    document.body.appendChild(m);
+}
+
+function briefSection(icon, label, text) {
+    if (!text) return '';
+    return `<div style="padding:12px 14px;background:var(--bg-body);border-radius:10px;border-left:3px solid var(--brand)">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text-muted);margin-bottom:6px">
+            <i class="fa-solid ${icon}" style="color:var(--brand);margin-right:5px"></i>${label}
+        </div>
+        <div style="font-size:13.5px;line-height:1.65">${escapeHtml(text)}</div>
+    </div>`;
+}
+document.getElementById('btn-appointment-prep')?.addEventListener('click', () => {
+    closeSidebar();
+    showAppointmentPrepModal();
+});
+
+function showAppointmentPrepModal() {
+    const existing = document.getElementById('appt-prep-modal');
+    if (existing) existing.remove();
+    
+    const today = new Date().toISOString().slice(0,10);
+    const m = document.createElement('div');
+    m.id = 'appt-prep-modal';
+    m.className = 'modal';
+    m.innerHTML = `
+        <div class="modal-box" style="max-width:500px">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-calendar-check" style="color:var(--brand)"></i> Appointment Prep</h3>
+                <button class="close-btn" onclick="document.getElementById('appt-prep-modal').remove()">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;line-height:1.6">
+                PHI generates a one-page clinical brief for your doctor visit — 
+                your key findings, trend summary, and 3 specific questions to ask.
+            </p>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+                <div>
+                    <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px;color:var(--text-muted)">Appointment date</label>
+                    <input type="date" id="appt-date" value="${today}" 
+                        style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:13px;font-family:var(--font);background:var(--bg-input);color:var(--text-main)">
+                </div>
+                <div>
+                    <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px;color:var(--text-muted)">Specialist type</label>
+                    <select id="appt-type" 
+                        style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:13px;font-family:var(--font);background:var(--bg-input);color:var(--text-main)">
+                        <option>primary care</option>
+                        <option>cardiologist</option>
+                        <option>endocrinologist</option>
+                        <option>nephrologist</option>
+                        <option>weight management</option>
+                        <option>other</option>
+                    </select>
+                </div>
+            </div>
+            <div id="appt-output" style="display:none;background:var(--bg-body);border-radius:8px;padding:14px;font-size:12.5px;line-height:1.75;max-height:300px;overflow-y:auto;white-space:pre-wrap;font-family:var(--font);margin-bottom:12px"></div>
+            <div class="modal-actions">
+                <button class="btn-cancel" onclick="document.getElementById('appt-prep-modal').remove()">Cancel</button>
+                <button id="gen-prep-btn" 
+                    style="padding:9px 18px;background:var(--brand);border:none;border-radius:8px;color:white;font-size:13.5px;font-weight:600;font-family:var(--font);cursor:pointer;display:flex;align-items:center;gap:6px">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> Generate brief
+                </button>
+            </div>
+        </div>`;
+    document.body.appendChild(m);
+    
+    document.getElementById('gen-prep-btn').addEventListener('click', async () => {
+        const btn = document.getElementById('gen-prep-btn');
+        const date = document.getElementById('appt-date')?.value;
+        const type = document.getElementById('appt-type')?.value;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Generating...';
+        
+        const h = await getAuthHeaders();
+        const res = await fetch(`${API_BASE}/api/appointment-prep`, {
+            method: 'POST', headers: h,
+            body: JSON.stringify({ appointment_date: date, specialist_type: type })
+        });
+        const data = await safeJson(res);
+        
+        if (data.prep?.formatted) {
+            const out = document.getElementById('appt-output');
+            out.style.display = 'block';
+            out.textContent = data.prep.formatted;
+        } else {
+            showToast('Upload lab reports first to generate appointment prep', 'error');
+        }
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> Regenerate';
+    });
 }

@@ -267,6 +267,10 @@ try:
 except ImportError:
     print("ℹ️  Payment routes not active")
 
+# After existing blueprint registrations — around line 130
+from api.retention_routes import retention_bp
+app.register_blueprint(retention_bp)
+print("✅  Retention routes ready")
 
 # ── Error handlers ────────────────────────────────────────────────────────────
 @app.errorhandler(429)
