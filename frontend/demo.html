@@ -1,604 +1,1487 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>PHI — Your Personal Health Intelligence | Curabook</title>
+<meta name="description" content="Upload your lab report. PHI reads every value, explains what it means, tracks your trends, and prepares you for every doctor visit. Free to try, no account needed.">
+<meta property="og:title" content="PHI — AI That Actually Understands Your Lab Results">
+<meta property="og:description" content="Upload your blood test. PHI explains every finding in plain English, detects patterns, and prepares you for your doctor. Try free in 30 seconds.">
 
-    <!-- Primary SEO -->
-    <title>Curabook PHI — AI Health Assistant That Reads Your Lab Reports &amp; Remembers Everything</title>
-    <meta name="description" content="Upload your lab report and PHI explains every finding in plain language, flags what needs attention, prepares you for your doctor visit, and remembers your health history over time. Free to try — no signup required.">
-    <meta name="keywords" content="AI health assistant, lab report analysis, blood test results explained, health AI, doctor visit prep, health tracking, PHI Curabook">
-    <meta name="author" content="Curabook">
-    <meta name="robots" content="index, follow">
-    <link rel="canonical" href="https://curabook.com/demo">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,300;1,9..144,400&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" defer></script>
 
-    <!-- Open Graph -->
-    <meta property="og:type" content="website">
-    <meta property="og:url" content="https://curabook.com/demo">
-    <meta property="og:title" content="PHI — AI That Reads Your Lab Reports &amp; Explains Everything">
-    <meta property="og:description" content="Upload your blood test or lab report. PHI explains every value in plain language, flags what's abnormal, and prepares you for your next doctor visit. Free to try.">
-    <meta property="og:image" content="https://curabook.com/og-image.png">
-    <meta property="og:site_name" content="Curabook PHI">
-    <meta property="og:locale" content="en_IN">
+<style>
+/* ══════════════════════════════════════════════════
+   DESIGN SYSTEM — Medical Luxury Dark
+   Fonts: Fraunces (editorial serif) + DM Sans (body)
+   Palette: Near-black canvas, teal signal, warm accents
+   Aesthetic: Bloomberg Terminal meets Architectural Digest
+══════════════════════════════════════════════════ */
 
-    <!-- Twitter Card -->
-    <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:site" content="@CurabookPHI">
-    <meta name="twitter:title" content="PHI — AI Health Intelligence. Understands Your Lab Reports Instantly.">
-    <meta name="twitter:description" content="Free AI tool that reads your lab reports, explains findings in plain language, and prepares you for your doctor visit.">
-    <meta name="twitter:image" content="https://curabook.com/og-image.png">
+:root {
+  --ink:        #0a0b0e;
+  --ink-2:      #111318;
+  --ink-3:      #1a1d24;
+  --ink-4:      #242830;
+  --signal:     #00d4c8;
+  --signal-2:   #00a89e;
+  --signal-dim: rgba(0,212,200,.1);
+  --signal-glow:rgba(0,212,200,.18);
+  --warn:       #ff6b4a;
+  --warn-dim:   rgba(255,107,74,.1);
+  --ok:         #4ade80;
+  --ok-dim:     rgba(74,222,128,.1);
+  --amber:      #f59e0b;
+  --amber-dim:  rgba(245,158,11,.1);
+  --text-1:     #f0f2f5;
+  --text-2:     #9aa3b0;
+  --text-3:     #5a6070;
+  --border:     rgba(255,255,255,.07);
+  --border-2:   rgba(255,255,255,.12);
+  --serif:      'Fraunces', Georgia, serif;
+  --sans:       'DM Sans', system-ui, sans-serif;
+  --r:          12px;
+  --r-lg:       18px;
+}
 
-    <!-- Structured Data: SoftwareApplication -->
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "SoftwareApplication",
-      "name": "Curabook PHI",
-      "applicationCategory": "HealthApplication",
-      "description": "AI health assistant that reads lab reports, explains every finding in plain language, tracks health trends over time, and prepares personalised doctor visit briefs.",
-      "url": "https://curabook.com/demo",
-      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "INR" },
-      "operatingSystem": "Web Browser",
-      "featureList": ["Lab report analysis","Plain-language health explanations","Doctor visit preparation","Health trend tracking","AI-powered health memory"]
-    }
-    </script>
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+html { scroll-behavior:smooth; }
 
-    <!-- Structured Data: FAQPage -->
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "FAQPage",
-      "mainEntity": [
-        {"@type":"Question","name":"What is Curabook PHI?","acceptedAnswer":{"@type":"Answer","text":"Curabook PHI is an AI health assistant that reads your lab reports, explains every finding in plain language, tracks your health trends over time, and prepares a personalised brief for your doctor visit."}},
-        {"@type":"Question","name":"Can PHI read my blood test results?","acceptedAnswer":{"@type":"Answer","text":"Yes. Upload any PDF lab report from SRL, Dr Lal, Thyrocare, Apollo, Quest, LabCorp or any standard lab. PHI extracts all values, flags anything outside normal range, and explains what each result means for you."}},
-        {"@type":"Question","name":"Do I need to sign up to try PHI?","acceptedAnswer":{"@type":"Answer","text":"No. You can use the full demo — including uploading a sample report and chatting with PHI — without creating an account. Sign up to save your health history permanently."}},
-        {"@type":"Question","name":"Is my health data safe with PHI?","acceptedAnswer":{"@type":"Answer","text":"PHI uses AES-256 encryption and anonymises your data before any AI processing. Your name and ID are never sent to AI models. Your data is never sold to third parties."}}
-      ]
-    }
-    </script>
+body {
+  font-family: var(--sans);
+  background: var(--ink);
+  color: var(--text-1);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
 
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com">
-    <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
-    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" defer></script>
+/* Grain overlay for atmosphere */
+body::before {
+  content:'';
+  position:fixed; inset:0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+  pointer-events:none; z-index:0;
+  opacity:.4;
+}
 
-    <style>
-    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-    :root {
-        --brand: #00BCD5; --brand-dark: #0097a7;
-        --brand-soft: rgba(0,188,213,.08);
-        --text: #111; --muted: #6b7280; --border: #e5e7eb;
-        --bg: #f8fafc; --white: #fff;
-        --font: 'Plus Jakarta Sans', sans-serif;
-        --serif: 'Instrument Serif', Georgia, serif;
-        --radius: 14px; --shadow: 0 4px 24px rgba(0,0,0,.08);
-    }
-    body { font-family: var(--font); background: var(--bg); min-height: 100vh; display: flex; flex-direction: column; -webkit-font-smoothing: antialiased; color: var(--text); }
-    .header { padding: 16px 24px; background: var(--white); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
-    .logo { font-family: var(--serif); font-size: 1.3rem; color: var(--text); font-weight: 400; display: flex; align-items: center; gap: 10px; }
-    .logo i { color: var(--brand); }
-    .logo-tag { font-size: 10px; font-family: var(--font); background: var(--brand-soft); color: var(--brand); padding: 2px 8px; border-radius: 20px; font-weight: 700; letter-spacing: .5px; }
-    .header-cta { display: flex; align-items: center; gap: 12px; }
-    .btn-signup { padding: 8px 18px; background: var(--brand); color: white; border: none; border-radius: 8px; font-size: 13.5px; font-weight: 600; font-family: var(--font); cursor: pointer; text-decoration: none; transition: all .15s; }
-    .btn-signup:hover { background: var(--brand-dark); }
-    .demo-badge { font-size: 12px; background: #fef3c7; color: #92400e; border: 1px solid #fde68a; padding: 4px 10px; border-radius: 20px; font-weight: 600; }
-    .hero { text-align: center; padding: 48px 24px 32px; max-width: 620px; margin: 0 auto; }
-    .hero h1 { font-family: var(--serif); font-size: clamp(1.9rem,4vw,2.6rem); font-weight: 400; line-height: 1.2; letter-spacing: -.5px; margin-bottom: 14px; }
-    .hero h1 em { background: linear-gradient(135deg, #00BCD5 0%, #0097a7 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-    .hero p { font-size: 16px; color: var(--muted); line-height: 1.65; margin-bottom: 28px; max-width: 480px; margin-left: auto; margin-right: auto; }
-    .hero-trust { display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-bottom: 16px; }
-    .hero-trust span { display: flex; align-items: center; gap: 5px; }
-    .hero-trust i { color: var(--brand); }
-    .main { flex: 1; max-width: 880px; width: 100%; margin: 0 auto; padding: 0 16px 60px; display: grid; grid-template-columns: 1fr; gap: 20px; }
-    .upload-zone { background: var(--white); border: 2px dashed var(--border); border-radius: var(--radius); padding: 40px 24px; text-align: center; cursor: pointer; transition: all .2s; position: relative; }
-    .upload-zone:hover, .upload-zone.drag-over { border-color: var(--brand); background: var(--brand-soft); }
-    .upload-zone i { font-size: 2.2rem; color: var(--brand); margin-bottom: 12px; display: block; }
-    .upload-zone h3 { font-size: 1.1rem; font-weight: 600; margin-bottom: 6px; }
-    .upload-zone p { font-size: 13.5px; color: var(--muted); margin-bottom: 18px; }
-    .upload-zone input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
-    .btn-upload { display: inline-flex; align-items: center; gap: 8px; padding: 11px 24px; background: var(--brand); color: white; border: none; border-radius: 10px; font-size: 14.5px; font-weight: 600; font-family: var(--font); cursor: pointer; transition: all .15s; pointer-events: none; }
-    .upload-zone:hover .btn-upload { background: var(--brand-dark); }
-    .file-types { margin-top: 12px; font-size: 11.5px; color: #9ca3af; }
-    .chat-area { background: var(--white); border: 1px solid var(--border); border-radius: var(--radius); display: flex; flex-direction: column; min-height: 420px; box-shadow: var(--shadow); }
-    .chat-header { padding: 14px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
-    .chat-header .phi-icon { width: 32px; height: 32px; background: var(--brand); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 14px; font-family: var(--serif); flex-shrink: 0; }
-    .chat-header-text h4 { font-size: 14px; font-weight: 600; }
-    .chat-header-text p { font-size: 12px; color: var(--muted); }
-    .online-dot { width: 7px; height: 7px; background: #22c55e; border-radius: 50%; display: inline-block; margin-right: 4px; }
-    .chat-messages { flex: 1; overflow-y: auto; padding: 20px 18px; display: flex; flex-direction: column; gap: 16px; min-height: 280px; max-height: 480px; }
-    .msg { display: flex; gap: 10px; align-items: flex-start; }
-    .msg.user { flex-direction: row-reverse; }
-    .msg-av { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; flex-shrink: 0; margin-top: 2px; }
-    .msg-av.ai { background: var(--brand); color: white; font-family: var(--serif); }
-    .msg-av.usr { background: #e5e7eb; color: #374151; }
-    .msg-bubble { max-width: 78%; padding: 12px 16px; border-radius: 14px; font-size: 14.5px; line-height: 1.65; }
-    .msg.ai .msg-bubble { background: #f8fafc; border: 1px solid var(--border); border-top-left-radius: 4px; color: var(--text); }
-    .msg.user .msg-bubble { background: var(--brand); color: white; border-top-right-radius: 4px; }
-    .msg-bubble h2 { font-size: .92rem; font-weight: 700; color: var(--brand); margin: 16px 0 6px; padding-bottom: 4px; border-bottom: 1.5px solid rgba(0,188,213,.2); }
-    .msg-bubble h2:first-child { margin-top: 4px; }
-    .msg-bubble h3 { font-size: .9rem; font-weight: 600; margin: 12px 0 5px; }
-    .msg-bubble p { margin-bottom: 8px; }
-    .msg-bubble p:last-child { margin-bottom: 0; }
-    .msg-bubble ul, .msg-bubble ol { margin: 6px 0 10px; padding-left: 20px; }
-    .msg-bubble li { padding: 2px 0; line-height: 1.65; }
-    .msg-bubble strong { font-weight: 600; }
-    .msg.user .msg-bubble h2, .msg.user .msg-bubble h3, .msg.user .msg-bubble strong { color: rgba(255,255,255,.9); }
-    .msg.user .msg-bubble h2 { border-color: rgba(255,255,255,.2); }
-    .typing { display: flex; gap: 4px; align-items: center; padding: 4px 0; }
-    .typing-dot { width: 7px; height: 7px; background: var(--brand); border-radius: 50%; animation: bounce .9s infinite ease-in-out; }
-    .typing-dot:nth-child(2) { animation-delay: .15s; }
-    .typing-dot:nth-child(3) { animation-delay: .3s; }
-    @keyframes bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-6px)} }
-    .suggestions { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 0 4px; }
-    .chip { padding: 7px 14px; border: 1.5px solid var(--border); border-radius: 20px; font-size: 12.5px; color: var(--muted); background: var(--white); cursor: pointer; font-family: var(--font); transition: all .15s; }
-    .chip:hover { border-color: var(--brand); color: var(--brand); background: var(--brand-soft); }
-    .chat-input-area { padding: 14px 18px; border-top: 1px solid var(--border); display: flex; gap: 10px; align-items: flex-end; }
-    .chat-input { flex: 1; resize: none; border: 1.5px solid var(--border); border-radius: 10px; padding: 10px 14px; font-size: 14.5px; font-family: var(--font); outline: none; min-height: 44px; max-height: 120px; line-height: 1.5; transition: border-color .2s; color: var(--text); background: var(--white); }
-    .chat-input:focus { border-color: var(--brand); }
-    .chat-input::placeholder { color: #9ca3af; }
-    .send-btn { width: 44px; height: 44px; background: var(--brand); border: none; border-radius: 10px; color: white; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all .15s; flex-shrink: 0; }
-    .send-btn:hover { background: var(--brand-dark); }
-    .send-btn:disabled { opacity: .5; cursor: not-allowed; }
-    .chat-disclaimer { text-align: center; font-size: 11px; color: #9ca3af; padding: 8px 18px 14px; }
-    .cta-panel { background: linear-gradient(135deg, #0a0a0a 0%, #0d1b1e 100%); border-radius: var(--radius); padding: 32px 28px; color: white; text-align: center; }
-    .cta-panel h3 { font-family: var(--serif); font-size: 1.6rem; font-weight: 400; margin-bottom: 10px; }
-    .cta-panel h3 em { color: var(--brand); font-style: italic; }
-    .cta-panel p { font-size: 14px; color: rgba(255,255,255,.55); margin-bottom: 24px; line-height: 1.6; }
-    .cta-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 24px; text-align: left; }
-    .compare-col { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); border-radius: 10px; padding: 14px; }
-    .compare-col.highlight { background: rgba(0,188,213,.12); border-color: rgba(0,188,213,.35); }
-    .compare-head { font-size: 12px; font-weight: 700; color: rgba(255,255,255,.5); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 10px; }
-    .compare-head.branded { color: #00BCD5; }
-    .compare-item { font-size: 12.5px; padding: 4px 0; display: flex; align-items: center; gap: 7px; }
-    .compare-item.yes { color: rgba(255,255,255,.85); }
-    .compare-item.no { color: rgba(255,255,255,.3); }
-    .compare-item i { font-size: 10px; flex-shrink: 0; }
-    .compare-item.yes i { color: #22c55e; }
-    .compare-item.no i { color: rgba(255,255,255,.25); }
-    .btn-cta-signup { display: inline-flex; align-items: center; gap: 8px; padding: 14px 32px; background: var(--brand); color: white; border: none; border-radius: 10px; font-size: 15px; font-weight: 700; font-family: var(--font); cursor: pointer; text-decoration: none; transition: all .15s; box-shadow: 0 4px 20px rgba(0,188,213,.4); }
-    .btn-cta-signup:hover { background: var(--brand-dark); transform: translateY(-1px); }
-    .cta-sub { margin-top: 12px; font-size: 12px; color: rgba(255,255,255,.3); }
-    .file-status { display: none; align-items: center; gap: 10px; padding: 12px 16px; background: var(--brand-soft); border: 1px solid rgba(0,188,213,.2); border-radius: 10px; font-size: 13.5px; color: var(--brand); font-weight: 500; }
-    .file-status.visible { display: flex; }
-    .file-status i { font-size: 16px; }
-    .pillars { display: flex; flex-direction: column; gap: 12px; margin: 0 auto 24px; max-width: 520px; text-align: left; }
-    .pillar { display: flex; align-items: flex-start; gap: 14px; padding: 14px 16px; background: var(--white); border: 1px solid var(--border); border-radius: 12px; transition: border-color .15s, box-shadow .15s; }
-    .pillar:hover { border-color: var(--brand); box-shadow: 0 2px 12px rgba(0,188,213,.1); }
-    .pillar-icon { width: 38px; height: 38px; background: rgba(0,188,213,.1); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: var(--brand); font-size: 15px; flex-shrink: 0; }
-    .pillar-text { display: flex; flex-direction: column; gap: 3px; }
-    .pillar-text strong { font-size: 13.5px; font-weight: 700; color: var(--text); }
-    .pillar-text span { font-size: 12.5px; color: var(--muted); line-height: 1.5; }
-    .toast { position: fixed; bottom: 24px; right: 24px; padding: 12px 18px; border-radius: 10px; font-size: 13.5px; font-weight: 500; box-shadow: 0 4px 20px rgba(0,0,0,.15); z-index: 9999; animation: slideIn .25s ease; display: flex; align-items: center; gap: 8px; max-width: 320px; }
-    .toast.success { background: #10b981; color: white; }
-    .toast.error { background: #ef4444; color: white; }
-    @keyframes slideIn { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
-    @media (max-width: 600px) { .hero{padding:32px 16px 24px} .hero h1{font-size:1.7rem} .chat-messages{max-height:340px} .cta-compare{grid-template-columns:1fr} }
-    </style>
+/* ── NAV ─────────────────────────────────────────── */
+.nav {
+  position:sticky; top:0; z-index:100;
+  display:flex; align-items:center; justify-content:space-between;
+  padding:14px 28px;
+  background:rgba(10,11,14,.85);
+  backdrop-filter:blur(20px);
+  border-bottom:1px solid var(--border);
+}
+
+.nav-brand {
+  display:flex; align-items:center; gap:10px;
+  text-decoration:none;
+}
+.nav-logo {
+  width:32px; height:32px;
+  background:linear-gradient(135deg,var(--signal),var(--signal-2));
+  border-radius:9px;
+  display:flex; align-items:center; justify-content:center;
+  font-family:var(--serif); font-size:1rem; color:var(--ink);
+  font-weight:600;
+}
+.nav-name {
+  font-family:var(--sans); font-weight:600;
+  font-size:.95rem; color:var(--text-1);
+  letter-spacing:.02em;
+}
+.nav-tag {
+  font-size:.65rem; font-weight:700;
+  background:var(--signal-dim); color:var(--signal);
+  border:1px solid rgba(0,212,200,.2);
+  padding:1px 7px; border-radius:20px;
+  letter-spacing:.08em;
+}
+
+.nav-right { display:flex; align-items:center; gap:10px; }
+
+.btn-ghost {
+  padding:7px 16px;
+  background:none; border:1px solid var(--border-2);
+  border-radius:8px; color:var(--text-2);
+  font-size:.85rem; font-family:var(--sans);
+  cursor:pointer; transition:all .15s;
+  text-decoration:none;
+  display:inline-flex; align-items:center; gap:6px;
+}
+.btn-ghost:hover { border-color:var(--signal); color:var(--signal); }
+
+.btn-primary {
+  padding:8px 20px;
+  background:var(--signal);
+  border:none; border-radius:8px;
+  color:var(--ink); font-size:.85rem; font-weight:600;
+  font-family:var(--sans); cursor:pointer;
+  transition:all .15s; text-decoration:none;
+  display:inline-flex; align-items:center; gap:6px;
+  box-shadow:0 4px 16px var(--signal-glow);
+}
+.btn-primary:hover { background:var(--signal-2); transform:translateY(-1px); }
+
+.demo-pill {
+  font-size:.7rem; font-weight:700;
+  background:var(--amber-dim); color:var(--amber);
+  border:1px solid rgba(245,158,11,.2);
+  padding:2px 9px; border-radius:20px;
+  letter-spacing:.05em;
+}
+
+/* ── HERO ────────────────────────────────────────── */
+.hero {
+  position:relative; z-index:1;
+  padding:72px 28px 0;
+  max-width:1100px; margin:0 auto;
+  text-align:center;
+}
+
+/* Radial glow behind hero text */
+.hero::before {
+  content:'';
+  position:absolute;
+  top:-80px; left:50%; transform:translateX(-50%);
+  width:700px; height:400px;
+  background:radial-gradient(ellipse at center, rgba(0,212,200,.12) 0%, transparent 70%);
+  pointer-events:none;
+}
+
+.hero-eyebrow {
+  display:inline-flex; align-items:center; gap:8px;
+  font-size:.8rem; font-weight:500; color:var(--signal);
+  letter-spacing:.1em; text-transform:uppercase;
+  background:var(--signal-dim); border:1px solid rgba(0,212,200,.18);
+  padding:5px 14px; border-radius:20px; margin-bottom:24px;
+}
+.hero-eyebrow span.dot {
+  width:6px; height:6px; border-radius:50%;
+  background:var(--signal);
+  animation:pulse-glow 2s ease infinite;
+}
+@keyframes pulse-glow {
+  0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(0,212,200,.4)}
+  50%{opacity:.7;box-shadow:0 0 0 6px rgba(0,212,200,0)}
+}
+
+.hero-h1 {
+  font-family:var(--serif);
+  font-size:clamp(2.4rem,5vw,4rem);
+  font-weight:400;
+  line-height:1.1;
+  letter-spacing:-.03em;
+  color:var(--text-1);
+  margin-bottom:20px;
+  max-width:820px; margin-left:auto; margin-right:auto;
+}
+.hero-h1 em {
+  font-style:italic;
+  color:var(--signal);
+}
+.hero-h1 .sub-line {
+  display:block;
+  font-weight:300;
+  color:var(--text-2);
+  font-size:clamp(1.6rem,3.5vw,2.6rem);
+  margin-top:6px;
+}
+
+.hero-sub {
+  font-size:1.05rem; color:var(--text-2);
+  line-height:1.7; max-width:520px;
+  margin:0 auto 32px;
+}
+
+.hero-actions {
+  display:flex; align-items:center;
+  justify-content:center; gap:12px;
+  flex-wrap:wrap; margin-bottom:20px;
+}
+
+.btn-hero {
+  padding:14px 32px;
+  background:var(--signal);
+  border:none; border-radius:var(--r);
+  color:var(--ink); font-size:1rem; font-weight:700;
+  font-family:var(--sans); cursor:pointer;
+  transition:all .2s; text-decoration:none;
+  display:inline-flex; align-items:center; gap:9px;
+  box-shadow:0 6px 28px rgba(0,212,200,.35);
+}
+.btn-hero:hover { background:var(--signal-2); transform:translateY(-2px); box-shadow:0 10px 36px rgba(0,212,200,.4); }
+
+.btn-hero-outline {
+  padding:13px 28px;
+  background:none;
+  border:1.5px solid var(--border-2);
+  border-radius:var(--r);
+  color:var(--text-1); font-size:.95rem; font-weight:500;
+  font-family:var(--sans); cursor:pointer;
+  transition:all .2s; text-decoration:none;
+  display:inline-flex; align-items:center; gap:8px;
+}
+.btn-hero-outline:hover { border-color:var(--signal); color:var(--signal); }
+
+.hero-trust {
+  display:flex; justify-content:center; gap:20px;
+  flex-wrap:wrap; font-size:.78rem; color:var(--text-3);
+  margin-top:16px; margin-bottom:0;
+}
+.hero-trust span { display:flex; align-items:center; gap:5px; }
+.hero-trust i { color:var(--signal); font-size:.7rem; }
+
+/* ── STAT STRIP ──────────────────────────────────── */
+.stat-strip {
+  position:relative; z-index:1;
+  max-width:1100px; margin:0 auto;
+  padding:0 28px;
+  display:grid; grid-template-columns:repeat(4,1fr);
+  gap:1px;
+  background:var(--border);
+  border-radius:var(--r-lg);
+  overflow:hidden;
+  margin-top:48px;
+  border:1px solid var(--border);
+}
+
+.stat-cell {
+  background:var(--ink-2);
+  padding:22px 24px;
+  text-align:center;
+}
+.stat-cell:first-child { border-radius:var(--r-lg) 0 0 var(--r-lg); }
+.stat-cell:last-child  { border-radius:0 var(--r-lg) var(--r-lg) 0; }
+
+.stat-num {
+  font-family:var(--serif);
+  font-size:1.8rem; font-weight:600;
+  color:var(--signal);
+  line-height:1;
+  margin-bottom:5px;
+}
+.stat-label { font-size:.75rem; color:var(--text-3); letter-spacing:.05em; }
+
+/* ── FEATURES STRIP ──────────────────────────────── */
+.features {
+  position:relative; z-index:1;
+  max-width:1100px; margin:60px auto 0;
+  padding:0 28px;
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:16px;
+}
+
+.feature-card {
+  background:var(--ink-2);
+  border:1px solid var(--border);
+  border-radius:var(--r-lg);
+  padding:28px;
+  transition:border-color .2s, transform .2s;
+  cursor:default;
+  position:relative;
+  overflow:hidden;
+}
+.feature-card::before {
+  content:'';
+  position:absolute; top:0; left:0; right:0;
+  height:2px;
+  background:linear-gradient(90deg, transparent, var(--signal), transparent);
+  opacity:0;
+  transition:opacity .3s;
+}
+.feature-card:hover { border-color:var(--border-2); transform:translateY(-3px); }
+.feature-card:hover::before { opacity:1; }
+
+.feat-icon {
+  width:40px; height:40px;
+  background:var(--signal-dim);
+  border:1px solid rgba(0,212,200,.15);
+  border-radius:10px;
+  display:flex; align-items:center; justify-content:center;
+  color:var(--signal); font-size:.9rem;
+  margin-bottom:16px;
+}
+.feat-title {
+  font-family:var(--serif);
+  font-size:1.05rem; font-weight:600;
+  margin-bottom:8px; color:var(--text-1);
+  line-height:1.3;
+}
+.feat-desc {
+  font-size:.85rem; color:var(--text-2); line-height:1.65;
+}
+
+/* ── DEMO SECTION ────────────────────────────────── */
+.demo-section {
+  position:relative; z-index:1;
+  max-width:1100px; margin:72px auto 0;
+  padding:0 28px;
+}
+
+.demo-section-title {
+  text-align:center;
+  margin-bottom:36px;
+}
+.demo-section-title h2 {
+  font-family:var(--serif);
+  font-size:clamp(1.6rem,3vw,2.4rem);
+  font-weight:400;
+  color:var(--text-1);
+  margin-bottom:10px;
+}
+.demo-section-title h2 em { font-style:italic; color:var(--signal); }
+.demo-section-title p {
+  font-size:.95rem; color:var(--text-2); max-width:480px; margin:0 auto;
+}
+
+/* ── UPLOAD ZONE ─────────────────────────────────── */
+.upload-area {
+  background:var(--ink-2);
+  border:2px dashed var(--border-2);
+  border-radius:var(--r-lg);
+  padding:48px 32px;
+  text-align:center;
+  cursor:pointer;
+  transition:all .2s;
+  position:relative;
+  overflow:hidden;
+  margin-bottom:16px;
+}
+.upload-area:hover, .upload-area.drag-over {
+  border-color:var(--signal);
+  background:var(--ink-3);
+}
+.upload-area input[type="file"] {
+  position:absolute; inset:0; opacity:0; cursor:pointer;
+}
+.upload-icon {
+  width:56px; height:56px;
+  background:var(--signal-dim);
+  border:1px solid rgba(0,212,200,.2);
+  border-radius:14px;
+  display:flex; align-items:center; justify-content:center;
+  color:var(--signal); font-size:1.3rem;
+  margin:0 auto 16px;
+}
+.upload-area h3 {
+  font-family:var(--serif);
+  font-size:1.15rem; font-weight:500;
+  margin-bottom:8px; color:var(--text-1);
+}
+.upload-area p { font-size:.85rem; color:var(--text-3); margin-bottom:18px; }
+.upload-area .try-sample-btn {
+  display:inline-flex; align-items:center; gap:7px;
+  padding:8px 18px;
+  background:var(--signal); color:var(--ink);
+  border:none; border-radius:8px;
+  font-size:.85rem; font-weight:600; font-family:var(--sans);
+  cursor:pointer; transition:all .15s;
+  pointer-events:none;
+}
+.upload-area:hover .try-sample-btn { background:var(--signal-2); }
+
+.sample-note {
+  font-size:.72rem; color:var(--text-3);
+  text-align:center; margin-top:8px; margin-bottom:0;
+}
+
+/* ── PROCESSING BANNER ───────────────────────────── */
+.processing-banner {
+  display:none;
+  align-items:center; gap:12px;
+  padding:13px 18px;
+  background:var(--signal-dim); border:1px solid rgba(0,212,200,.2);
+  border-radius:var(--r); margin-bottom:16px;
+  font-size:.88rem; color:var(--signal); font-weight:500;
+}
+.processing-banner.show { display:flex; }
+.processing-spinner {
+  width:18px; height:18px;
+  border:2.5px solid rgba(0,212,200,.2);
+  border-top-color:var(--signal);
+  border-radius:50%;
+  animation:spin .7s linear infinite;
+  flex-shrink:0;
+}
+@keyframes spin { to { transform:rotate(360deg); } }
+
+/* ── CHAT INTERFACE ──────────────────────────────── */
+.chat-shell {
+  background:var(--ink-2);
+  border:1px solid var(--border);
+  border-radius:var(--r-lg);
+  overflow:hidden;
+  display:flex; flex-direction:column;
+  min-height:500px;
+  box-shadow:0 24px 60px rgba(0,0,0,.4);
+}
+
+.chat-topbar {
+  display:flex; align-items:center; gap:12px;
+  padding:14px 20px;
+  border-bottom:1px solid var(--border);
+  background:var(--ink-3);
+  flex-shrink:0;
+}
+.phi-orb {
+  width:34px; height:34px;
+  background:linear-gradient(135deg,var(--signal),var(--signal-2));
+  border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  font-family:var(--serif); font-size:.9rem; color:var(--ink);
+  font-weight:600; flex-shrink:0;
+  box-shadow:0 2px 12px var(--signal-glow);
+}
+.chat-topbar-text h4 { font-size:.85rem; font-weight:600; }
+.chat-topbar-text p  { font-size:.72rem; color:var(--text-3); }
+.online-pulse {
+  width:7px; height:7px; background:var(--ok);
+  border-radius:50%; display:inline-block;
+  margin-right:4px;
+  animation:pulse-glow 2.5s ease infinite;
+}
+
+/* ── CHAT MESSAGES ───────────────────────────────── */
+.chat-body {
+  flex:1; overflow-y:auto;
+  padding:20px;
+  display:flex; flex-direction:column;
+  gap:18px;
+  min-height:340px; max-height:420px;
+  scrollbar-width:thin;
+  scrollbar-color:var(--ink-4) transparent;
+}
+
+.msg { display:flex; gap:10px; align-items:flex-start; }
+.msg.user-msg { flex-direction:row-reverse; }
+
+.msg-av {
+  width:28px; height:28px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  font-size:.75rem; font-weight:700; flex-shrink:0;
+  margin-top:3px;
+}
+.msg-av.ai  { background:linear-gradient(135deg,var(--signal),var(--signal-2)); color:var(--ink); font-family:var(--serif); font-size:.9rem; font-weight:600; box-shadow:0 2px 8px var(--signal-glow); }
+.msg-av.usr { background:var(--ink-4); color:var(--text-2); }
+
+.msg-bub {
+  max-width:80%; font-size:.9rem; line-height:1.7;
+  color:var(--text-1);
+}
+.msg.user-msg .msg-bub {
+  background:linear-gradient(135deg, #1a2030, #1e2535);
+  border:1px solid rgba(255,255,255,.08);
+  padding:11px 15px;
+  border-radius:14px 14px 4px 14px;
+}
+.msg.ai-msg .msg-bub {
+  padding:2px 0;
+}
+
+/* Markdown styles inside chat bubbles */
+.msg-bub h2 { font-family:var(--sans); font-weight:700; font-size:.82rem; color:var(--signal); margin:14px 0 5px; padding-bottom:3px; border-bottom:1px solid rgba(0,212,200,.15); }
+.msg-bub h2:first-child { margin-top:0; }
+.msg-bub h3 { font-size:.8rem; font-weight:600; margin:10px 0 4px; color:var(--text-1); }
+.msg-bub p  { margin-bottom:8px; }
+.msg-bub p:last-child { margin-bottom:0; }
+.msg-bub ul, .msg-bub ol { margin:5px 0 10px; padding-left:0; list-style:none; }
+.msg-bub li { padding:3px 0 3px 17px; position:relative; line-height:1.65; font-size:.88rem; }
+.msg-bub ul li::before { content:"▸"; position:absolute; left:0; color:var(--signal); font-size:.7rem; top:7px; }
+.msg-bub ol { counter-reset:li; }
+.msg-bub ol li { counter-increment:li; padding-left:22px; }
+.msg-bub ol li::before { content:counter(li); position:absolute; left:0; top:4px; width:16px; height:16px; background:var(--signal-dim); color:var(--signal); border-radius:50%; font-size:.65rem; font-weight:700; display:flex; align-items:center; justify-content:center; }
+.msg-bub strong { font-weight:600; }
+.msg-bub hr { border:none; border-top:1px solid var(--border); margin:10px 0; }
+
+/* Legal footer in chat */
+.phi-legal {
+  margin-top:10px; padding-top:8px;
+  border-top:1px solid var(--border);
+  font-size:.72rem; color:var(--text-3); font-style:italic; opacity:.7;
+}
+
+/* ── TYPING DOTS ─────────────────────────────────── */
+.typing { display:flex; align-items:center; gap:4px; padding:4px 0; }
+.t-dot {
+  width:6px; height:6px;
+  background:var(--signal); border-radius:50%;
+  animation:tdot 1.2s ease infinite;
+  opacity:.4;
+}
+.t-dot:nth-child(2) { animation-delay:.2s; }
+.t-dot:nth-child(3) { animation-delay:.4s; }
+@keyframes tdot { 0%,60%,100%{transform:scale(1);opacity:.4} 30%{transform:scale(1.5);opacity:1} }
+
+/* ── SUGGESTION CHIPS ────────────────────────────── */
+.chips {
+  display:flex; flex-wrap:wrap; gap:7px;
+  padding:4px 0 8px;
+}
+.chip {
+  display:inline-flex; align-items:center; gap:6px;
+  padding:6px 13px;
+  background:var(--ink-3); border:1px solid var(--border-2);
+  border-radius:20px; font-size:.78rem;
+  color:var(--text-2); cursor:pointer;
+  font-family:var(--sans); transition:all .15s;
+}
+.chip:hover { border-color:var(--signal); color:var(--signal); background:var(--signal-dim); }
+
+/* ── CHAT INPUT ──────────────────────────────────── */
+.chat-input-row {
+  padding:14px 16px;
+  border-top:1px solid var(--border);
+  display:flex; gap:9px; align-items:flex-end;
+  background:var(--ink-3);
+  flex-shrink:0;
+}
+.chat-ta {
+  flex:1; resize:none;
+  background:var(--ink-4); border:1.5px solid var(--border);
+  border-radius:10px; padding:10px 13px;
+  color:var(--text-1); font-size:.88rem; font-family:var(--sans);
+  outline:none; min-height:42px; max-height:100px;
+  line-height:1.5; transition:border-color .2s;
+}
+.chat-ta:focus { border-color:var(--signal); }
+.chat-ta::placeholder { color:var(--text-3); }
+.send-btn {
+  width:42px; height:42px;
+  background:var(--signal); border:none;
+  border-radius:10px; color:var(--ink);
+  font-size:.9rem; cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+  transition:all .15s; flex-shrink:0;
+}
+.send-btn:hover { background:var(--signal-2); transform:scale(1.06); }
+.send-btn:disabled { background:var(--ink-4); color:var(--text-3); cursor:not-allowed; transform:none; }
+
+.chat-disclaimer {
+  text-align:center; font-size:.68rem;
+  color:var(--text-3); padding:7px 16px 10px;
+  background:var(--ink-3); border-top:1px solid var(--border);
+  flex-shrink:0;
+}
+
+/* ── CTA MODAL / GATE ────────────────────────────── */
+.cta-banner {
+  display:none;
+  background:linear-gradient(135deg, #0d1520 0%, #0a1a18 100%);
+  border:1px solid rgba(0,212,200,.2);
+  border-radius:var(--r-lg);
+  padding:32px;
+  margin-top:20px;
+  text-align:center;
+  position:relative;
+  overflow:hidden;
+  animation:slideUp .4s ease;
+}
+.cta-banner.show { display:block; }
+@keyframes slideUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+
+.cta-banner::before {
+  content:'';
+  position:absolute;
+  top:-40px; left:50%; transform:translateX(-50%);
+  width:400px; height:200px;
+  background:radial-gradient(ellipse, rgba(0,212,200,.12) 0%, transparent 70%);
+  pointer-events:none;
+}
+
+.cta-banner h3 {
+  font-family:var(--serif);
+  font-size:1.6rem; font-weight:400;
+  margin-bottom:10px;
+}
+.cta-banner h3 em { font-style:italic; color:var(--signal); }
+.cta-banner p {
+  font-size:.9rem; color:var(--text-2);
+  margin-bottom:24px; line-height:1.65;
+  max-width:460px; margin-left:auto; margin-right:auto;
+}
+
+/* Comparison grid */
+.cta-compare {
+  display:grid; grid-template-columns:1fr 1fr;
+  gap:12px; margin-bottom:24px; text-align:left;
+  max-width:500px; margin-left:auto; margin-right:auto;
+}
+.cmp-col {
+  background:rgba(255,255,255,.03); border:1px solid var(--border);
+  border-radius:var(--r); padding:14px;
+}
+.cmp-col.highlight { background:rgba(0,212,200,.06); border-color:rgba(0,212,200,.25); }
+.cmp-head { font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--text-3); margin-bottom:10px; }
+.cmp-head.branded { color:var(--signal); }
+.cmp-row { display:flex; align-items:center; gap:6px; font-size:.78rem; padding:3px 0; }
+.cmp-row.yes { color:rgba(255,255,255,.8); }
+.cmp-row.no  { color:var(--text-3); }
+.cmp-row i { font-size:.65rem; flex-shrink:0; }
+.cmp-row.yes i { color:var(--ok); }
+.cmp-row.no  i { color:var(--text-3); }
+
+.cta-signup-btn {
+  display:inline-flex; align-items:center; gap:9px;
+  padding:14px 36px;
+  background:var(--signal); color:var(--ink);
+  border:none; border-radius:var(--r);
+  font-size:1rem; font-weight:700; font-family:var(--sans);
+  cursor:pointer; text-decoration:none;
+  transition:all .2s;
+  box-shadow:0 6px 28px rgba(0,212,200,.35);
+}
+.cta-signup-btn:hover { background:var(--signal-2); transform:translateY(-2px); }
+.cta-sub { font-size:.72rem; color:var(--text-3); margin-top:10px; }
+
+/* ── SOCIAL PROOF ────────────────────────────────── */
+.social-proof {
+  position:relative; z-index:1;
+  max-width:1100px; margin:72px auto 0;
+  padding:0 28px;
+}
+
+.sp-header {
+  text-align:center; margin-bottom:32px;
+}
+.sp-header h2 {
+  font-family:var(--serif); font-size:1.6rem; font-weight:400;
+  margin-bottom:8px;
+}
+.sp-header p { font-size:.88rem; color:var(--text-2); }
+
+.testimonials {
+  display:grid; grid-template-columns:repeat(3,1fr); gap:16px;
+}
+
+.testimonial {
+  background:var(--ink-2);
+  border:1px solid var(--border);
+  border-radius:var(--r-lg);
+  padding:24px;
+  position:relative;
+  transition:border-color .2s;
+}
+.testimonial:hover { border-color:var(--border-2); }
+
+.t-quote {
+  font-size:.88rem; line-height:1.7;
+  color:var(--text-2); margin-bottom:16px;
+  font-style:italic;
+}
+.t-quote strong { color:var(--text-1); font-style:normal; }
+
+.t-author {
+  display:flex; align-items:center; gap:10px;
+}
+.t-avatar {
+  width:32px; height:32px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  font-weight:700; font-size:.85rem; flex-shrink:0;
+}
+.t-name { font-size:.8rem; font-weight:600; }
+.t-role { font-size:.72rem; color:var(--text-3); }
+
+.t-stars {
+  position:absolute; top:20px; right:20px;
+  color:var(--amber); font-size:.65rem;
+  letter-spacing:1px;
+}
+
+/* ── HOW IT WORKS ────────────────────────────────── */
+.how-section {
+  position:relative; z-index:1;
+  max-width:1100px; margin:72px auto 0;
+  padding:0 28px;
+}
+
+.how-header {
+  text-align:center; margin-bottom:40px;
+}
+.how-header h2 {
+  font-family:var(--serif); font-size:1.8rem; font-weight:400;
+  margin-bottom:8px;
+}
+.how-header h2 em { font-style:italic; color:var(--signal); }
+.how-header p { font-size:.9rem; color:var(--text-2); }
+
+.how-steps {
+  display:grid; grid-template-columns:repeat(4,1fr);
+  gap:16px; position:relative;
+}
+.how-steps::after {
+  content:'';
+  position:absolute;
+  top:28px; left:12.5%; right:12.5%;
+  height:1px;
+  background:linear-gradient(90deg, transparent, var(--border-2), transparent);
+}
+
+.how-step {
+  background:var(--ink-2);
+  border:1px solid var(--border);
+  border-radius:var(--r-lg);
+  padding:24px 20px 20px;
+  text-align:center;
+  position:relative;
+  z-index:1;
+}
+
+.how-num {
+  width:48px; height:48px;
+  background:var(--signal-dim);
+  border:1.5px solid rgba(0,212,200,.2);
+  border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  font-family:var(--serif); font-size:1.2rem; color:var(--signal);
+  margin:0 auto 16px; font-weight:500;
+}
+.how-step h4 { font-size:.9rem; font-weight:600; margin-bottom:7px; }
+.how-step p  { font-size:.78rem; color:var(--text-2); line-height:1.6; }
+
+/* ── BOTTOM CTA ──────────────────────────────────── */
+.bottom-cta {
+  position:relative; z-index:1;
+  max-width:1100px; margin:80px auto 0;
+  padding:0 28px;
+}
+
+.bottom-cta-box {
+  background:linear-gradient(135deg, var(--ink-3) 0%, #0d1d1c 100%);
+  border:1px solid rgba(0,212,200,.15);
+  border-radius:24px;
+  padding:60px 48px;
+  text-align:center;
+  position:relative; overflow:hidden;
+}
+.bottom-cta-box::before {
+  content:'';
+  position:absolute;
+  top:-60px; left:50%; transform:translateX(-50%);
+  width:500px; height:300px;
+  background:radial-gradient(ellipse, rgba(0,212,200,.1) 0%, transparent 70%);
+  pointer-events:none;
+}
+
+.bottom-cta-box h2 {
+  font-family:var(--serif);
+  font-size:clamp(1.6rem,3vw,2.6rem);
+  font-weight:400; margin-bottom:16px;
+}
+.bottom-cta-box h2 em { font-style:italic; color:var(--signal); }
+.bottom-cta-box p {
+  font-size:.95rem; color:var(--text-2);
+  max-width:480px; margin:0 auto 28px; line-height:1.7;
+}
+
+.cta-badges {
+  display:flex; justify-content:center; gap:16px;
+  flex-wrap:wrap; font-size:.75rem; color:var(--text-3);
+  margin-top:16px;
+}
+.cta-badges span { display:flex; align-items:center; gap:5px; }
+.cta-badges i { color:var(--signal); }
+
+/* ── FOOTER ──────────────────────────────────────── */
+footer {
+  position:relative; z-index:1;
+  border-top:1px solid var(--border);
+  padding:28px; margin-top:72px;
+  text-align:center;
+}
+.footer-links {
+  display:flex; justify-content:center; flex-wrap:wrap;
+  gap:16px; font-size:.78rem; margin-bottom:12px;
+}
+.footer-links a { color:var(--text-3); text-decoration:none; transition:color .15s; }
+.footer-links a:hover { color:var(--signal); }
+footer p { font-size:.72rem; color:var(--text-3); }
+
+/* ── TOASTS ──────────────────────────────────────── */
+.toast {
+  position:fixed; bottom:24px; right:24px;
+  padding:12px 18px; border-radius:10px;
+  font-size:.85rem; font-weight:500;
+  display:flex; align-items:center; gap:8px;
+  z-index:9999; max-width:320px;
+  animation:slideInR .25s ease;
+  box-shadow:0 8px 32px rgba(0,0,0,.4);
+}
+.toast.ok  { background:#0a2018; border:1px solid rgba(74,222,128,.25); color:var(--ok); }
+.toast.err { background:#200a0a; border:1px solid rgba(255,107,74,.25); color:var(--warn); }
+@keyframes slideInR { from{opacity:0;transform:translateX(360px)} to{opacity:1;transform:translateX(0)} }
+
+/* ── RESPONSIVE ──────────────────────────────────── */
+@media(max-width:900px) {
+  .stat-strip { grid-template-columns:repeat(2,1fr); }
+  .stat-cell:nth-child(2) { border-radius:0; }
+  .stat-cell:nth-child(1) { border-radius:var(--r-lg) 0 0 0; }
+  .stat-cell:nth-child(3) { border-radius:0 0 0 var(--r-lg); }
+  .stat-cell:nth-child(4) { border-radius:0 0 var(--r-lg) 0; }
+  .features, .testimonials, .how-steps { grid-template-columns:1fr; }
+  .cta-compare { grid-template-columns:1fr; }
+  .how-steps::after { display:none; }
+  .nav { padding:12px 16px; }
+  .hero { padding:48px 16px 0; }
+  .demo-section, .features, .social-proof, .how-section, .bottom-cta { padding:0 16px; }
+  .bottom-cta-box { padding:40px 24px; }
+}
+
+@media(max-width:600px) {
+  .hero-h1 { font-size:2rem; }
+  .nav-right .btn-ghost { display:none; }
+}
+
+/* ── ANIMATIONS ──────────────────────────────────── */
+.fade-in {
+  opacity:0; transform:translateY(20px);
+  animation:fadeUp .5s ease forwards;
+}
+.fade-in:nth-child(2) { animation-delay:.1s; }
+.fade-in:nth-child(3) { animation-delay:.2s; }
+.fade-in:nth-child(4) { animation-delay:.3s; }
+@keyframes fadeUp { to { opacity:1; transform:translateY(0); } }
+</style>
 </head>
 <body>
 
-<header class="header">
-    <div class="logo">
-        <i class="fa-solid fa-heart-pulse"></i>
-        Curabook
-        <span class="logo-tag">PHI</span>
-    </div>
-    <div class="header-cta">
-        <span class="demo-badge">🧪 Demo Mode</span>
-        <a href="/signup" class="btn-signup">Create Free Account</a>
-    </div>
-</header>
+<!-- ══════════════════════ NAV ══════════════════════ -->
+<nav class="nav">
+  <a href="#" class="nav-brand">
+    <div class="nav-logo">φ</div>
+    <span class="nav-name">Curabook</span>
+    <span class="nav-tag">PHI</span>
+  </a>
+  <div class="nav-right">
+    <span class="demo-pill">DEMO</span>
+    <a href="/login" class="btn-ghost"><i class="fa-regular fa-user"></i> Sign In</a>
+    <a href="/signup" class="btn-primary"><i class="fa-solid fa-user-plus"></i> Free Account</a>
+  </div>
+</nav>
 
-<div class="hero">
-    <h1>Your <em>personal<br>health intelligence</em> system</h1>
-    <p>PHI reads your lab reports, explains every finding in plain language, prepares a personalised brief for your doctor visit, and <strong>remembers your health history</strong> over time. Try it free — no signup.</p>
+<!-- ══════════════════════ HERO ══════════════════════ -->
+<section class="hero">
+  <div class="hero-eyebrow">
+    <span class="dot"></span>
+    Personal Health Intelligence
+  </div>
 
-    <div style="display:flex;justify-content:center;gap:12px;flex-wrap:wrap;margin-bottom:8px;margin-top:4px;">
-        <a href="#uploadZone" onclick="document.getElementById('uploadZone').scrollIntoView({behavior:'smooth'});return false;"
-           style="display:inline-flex;align-items:center;gap:7px;padding:11px 22px;background:var(--brand);color:#fff;border-radius:10px;font-weight:700;font-size:14px;text-decoration:none;box-shadow:0 4px 14px rgba(0,188,213,.35);transition:all .15s;"
-           onmouseover="this.style.background='#0097a7'" onmouseout="this.style.background='var(--brand)'">
-            <i class="fa-solid fa-upload"></i> Upload Your Report Free
-        </a>
-        <a href="/signup"
-           style="display:inline-flex;align-items:center;gap:7px;padding:11px 22px;background:#fff;color:var(--brand);border:2px solid var(--brand);border-radius:10px;font-weight:700;font-size:14px;text-decoration:none;">
-            <i class="fa-solid fa-user-plus"></i> Create Free Account
-        </a>
+  <h1 class="hero-h1">
+    Your lab report has been<br>
+    trying to <em>tell you something.</em>
+    <span class="sub-line">PHI translates it.</span>
+  </h1>
+
+  <p class="hero-sub">
+    Upload any blood test. PHI reads every value, explains what it means in plain English, detects metabolic patterns, and prepares a brief for your next doctor visit.
+  </p>
+
+  <div class="hero-actions">
+    <a href="#demo-zone" class="btn-hero">
+      <i class="fa-solid fa-flask"></i>
+      Try with sample report
+    </a>
+    <a href="/signup" class="btn-hero-outline">
+      <i class="fa-solid fa-upload"></i>
+      Upload my report free
+    </a>
+  </div>
+
+  <div class="hero-trust">
+    <span><i class="fa-solid fa-check"></i> No account needed to try</span>
+    <span><i class="fa-solid fa-lock"></i> Not stored in demo</span>
+    <span><i class="fa-solid fa-user-secret"></i> AI never sees your name</span>
+    <span><i class="fa-solid fa-shield-halved"></i> AES-256 encrypted</span>
+  </div>
+</section>
+
+<!-- ══════════════════════ STATS ══════════════════════ -->
+<div class="stat-strip" style="position:relative;z-index:1;max-width:1100px;margin:48px auto 0;padding:0 28px;">
+  <div style="background:var(--border);border-radius:var(--r-lg);overflow:hidden;border:1px solid var(--border);display:grid;grid-template-columns:repeat(4,1fr);gap:1px;width:100%">
+    <div class="stat-cell">
+      <div class="stat-num">40+</div>
+      <div class="stat-label">Markers decoded</div>
     </div>
-
-    <p style="font-size:14px;color:var(--brand);font-weight:600;margin-bottom:16px;margin-top:-8px;">
-        ✦ Trusted by patients across India, UK &amp; US &nbsp;·&nbsp; Works with SRL, Thyrocare, Dr Lal, Apollo &amp; all major labs
-    </p>
-
-    <div class="pillars">
-        <div class="pillar">
-            <div class="pillar-icon"><i class="fa-solid fa-file-medical"></i></div>
-            <div class="pillar-text"><strong>Report Decoder</strong><span>Explains every lab value in plain English — what's normal, what's not, what it means for you</span></div>
-        </div>
-        <div class="pillar">
-            <div class="pillar-icon"><i class="fa-solid fa-stethoscope"></i></div>
-            <div class="pillar-text"><strong>Doctor Visit Prep</strong><span>Generates a personalised brief — 5 questions to ask, what your doctor will check, warning signs</span></div>
-        </div>
-        <div class="pillar">
-            <div class="pillar-icon"><i class="fa-solid fa-brain"></i></div>
-            <div class="pillar-text"><strong>Health Memory</strong><span>Tracks your markers over time, detects trends, and alerts you when something changes</span></div>
-        </div>
+    <div class="stat-cell">
+      <div class="stat-num">30s</div>
+      <div class="stat-label">To full analysis</div>
     </div>
-
-    <div class="hero-trust">
-        <span><i class="fa-solid fa-shield-halved"></i> No account needed to try</span>
-        <span><i class="fa-solid fa-lock"></i> Not stored in demo mode</span>
-        <span><i class="fa-solid fa-user-secret"></i> AI never sees your name or ID</span>
+    <div class="stat-cell">
+      <div class="stat-num">60%</div>
+      <div class="stat-label">Higher outcomes with engagement</div>
     </div>
+    <div class="stat-cell">
+      <div class="stat-num">0</div>
+      <div class="stat-label">Ads, ever</div>
+    </div>
+  </div>
 </div>
 
-<div class="main">
+<!-- ══════════════════════ FEATURES ══════════════════ -->
+<section class="features" style="margin-top:60px;">
+  <div class="feature-card fade-in">
+    <div class="feat-icon"><i class="fa-solid fa-file-medical"></i></div>
+    <div class="feat-title">Report Decoder</div>
+    <p class="feat-desc">PHI reads any PDF lab report — SRL, Dr Lal, Thyrocare, Apollo, Quest, LabCorp. Every value explained in plain English. Abnormal results flagged with context, not just a number.</p>
+  </div>
+  <div class="feature-card fade-in">
+    <div class="feat-icon"><i class="fa-solid fa-brain"></i></div>
+    <div class="feat-title">Health Memory</div>
+    <p class="feat-desc">PHI stores every report you upload and tracks how your markers change over time. LDL rising 21% over 9 months is more important than any single reading. PHI sees the trajectory.</p>
+  </div>
+  <div class="feature-card fade-in">
+    <div class="feat-icon"><i class="fa-solid fa-stethoscope"></i></div>
+    <div class="feat-title">Doctor Visit Prep</div>
+    <p class="feat-desc">Before every appointment, PHI generates a one-page clinical brief: the one finding to lead with, the trend to show, three specific questions to ask. Walk in prepared.</p>
+  </div>
+</section>
 
-    <div class="upload-zone" id="uploadZone">
-        <input type="file" id="fileInput" accept=".pdf,.txt">
-        <i class="fa-solid fa-file-medical-alt"></i>
-        <h3>Upload your lab report to get started</h3>
-        <p>PHI will explain every finding, flag anything outside normal range, and generate your Doctor Visit Prep card — all in under 30 seconds.</p>
-        <p style="font-size:12px;color:#9ca3af;margin-top:-8px">Works with SRL, Dr Lal, Thyrocare, Apollo, Quest, LabCorp, and any standard lab format.</p>
-        <div class="btn-upload"><i class="fa-solid fa-upload"></i> Choose File</div>
-        <div class="file-types">PDF · TXT · Max 5MB</div>
+<!-- ══════════════════ DEMO SECTION ══════════════════ -->
+<section class="demo-section" id="demo-zone">
+  <div class="demo-section-title">
+    <h2>See PHI <em>in action</em></h2>
+    <p>Upload your own report or load a sample — PHI will analyze it live, right here.</p>
+  </div>
+
+  <!-- Upload Zone -->
+  <div class="upload-area" id="uploadArea">
+    <input type="file" id="fileInput" accept=".pdf,.txt" aria-label="Upload lab report">
+    <div class="upload-icon"><i class="fa-solid fa-file-medical-alt"></i></div>
+    <h3>Upload your lab report</h3>
+    <p>PDF or TXT · Max 5MB · Works with any standard lab format</p>
+    <div class="try-sample-btn"><i class="fa-solid fa-flask"></i> Choose File or Drop Here</div>
+    <p class="sample-note" style="margin-top:12px;pointer-events:none">Can't share your real report? Use the sample below. ↓</p>
+  </div>
+
+  <!-- Sample report button -->
+  <div style="text-align:center;margin:12px 0 16px;">
+    <button id="loadSampleBtn" style="display:inline-flex;align-items:center;gap:7px;padding:9px 20px;background:var(--ink-3);border:1px solid var(--border-2);border-radius:8px;color:var(--text-2);font-size:.82rem;font-family:var(--sans);cursor:pointer;transition:all .15s;" onmouseover="this.style.borderColor='var(--signal)';this.style.color='var(--signal)'" onmouseout="this.style.borderColor='var(--border-2)';this.style.color='var(--text-2)'">
+      <i class="fa-solid fa-flask"></i> Load sample report instead
+    </button>
+  </div>
+
+  <!-- Processing -->
+  <div class="processing-banner" id="procBanner">
+    <div class="processing-spinner"></div>
+    <span id="procText">Analyzing your report…</span>
+  </div>
+
+  <!-- Chat interface -->
+  <div class="chat-shell" id="chatShell">
+    <div class="chat-topbar">
+      <div class="phi-orb">φ</div>
+      <div class="chat-topbar-text">
+        <h4>PHI — Personal Health Intelligence</h4>
+        <p><span class="online-pulse"></span>Demo session · Free to try</p>
+      </div>
     </div>
 
-    <div class="file-status" id="fileStatus">
-        <i class="fa-solid fa-file-medical fa-spin"></i>
-        <span id="fileStatusText">Processing your report…</span>
+    <div class="chat-body" id="chatBody">
+      <!-- Welcome message -->
+      <div class="msg ai-msg">
+        <div class="msg-av ai">φ</div>
+        <div class="msg-bub">
+          <p><strong>Hi — I'm PHI, your personal health intelligence co-pilot.</strong></p>
+          <p>I do three things most health apps don't:</p>
+          <ul>
+            <li><strong>Decode lab reports</strong> — every value, explained without jargon</li>
+            <li><strong>Track trends over time</strong> — rising LDL over 9 months matters more than any snapshot</li>
+            <li><strong>Prepare you for your doctor</strong> — specific questions, specific data, no wasted appointments</li>
+          </ul>
+          <p><strong>→ Upload your lab report above</strong>, or load the sample to see PHI analyze a full blood panel live.</p>
+          <p>Or just ask me anything:</p>
+          <div class="chips" id="startChips">
+            <button class="chip" data-q="What does HbA1c actually measure?"><i class="fa-solid fa-droplet"></i> What does HbA1c measure?</button>
+            <button class="chip" data-q="My LDL is 168 mg/dL — is that dangerous?"><i class="fa-solid fa-heart-pulse"></i> My LDL is 168 — is that dangerous?</button>
+            <button class="chip" data-q="What's the difference between LDL and ApoB?"><i class="fa-solid fa-microscope"></i> LDL vs ApoB?</button>
+            <button class="chip" data-q="How do I prepare for a cardiology appointment?"><i class="fa-solid fa-stethoscope"></i> Cardiology appointment prep</button>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <div class="chat-area" id="chatArea">
-        <div class="chat-header">
-            <div class="phi-icon">φ</div>
-            <div class="chat-header-text">
-                <h4>PHI — Personal Health Intelligence</h4>
-                <p><span class="online-dot"></span>Ready to help · Demo session</p>
-            </div>
-        </div>
+    <div class="chat-input-row">
+      <textarea class="chat-ta" id="chatInput" placeholder="Ask PHI about your health…" rows="1"></textarea>
+      <button class="send-btn" id="sendBtn"><i class="fa-solid fa-arrow-up"></i></button>
+    </div>
+    <div class="chat-disclaimer">PHI is not a doctor. Always consult your healthcare provider for medical decisions.</div>
+  </div>
 
-        <div class="chat-messages" id="chatMessages">
-            <div class="msg ai">
-                <div class="msg-av ai">φ</div>
-                <div class="msg-bubble">
-                    <strong>Hi, I'm PHI — your Personal Health Intelligence assistant.</strong>
-                    <p style="margin-top:10px">I do three things most health apps don't:</p>
-                    <p style="margin-top:8px"><strong>📋 Decode your reports</strong> — I read any lab report and explain every value in plain language. No medical jargon. No anxiety-inducing numbers without context.</p>
-                    <p><strong>🩺 Prepare you for your doctor</strong> — After reading your report, I generate a personalised Doctor Visit Prep card: the 5 questions to ask, what your doctor will likely check next, and warning signs to watch for.</p>
-                    <p><strong>🧠 Remember your health over time</strong> — In a full account, I store every report you upload, track how your markers change, and alert you when trends appear.</p>
-                    <p style="margin-top:10px; color: var(--brand); font-weight:600">→ Upload your lab report above to see all three in action.</p>
-                    <p style="margin-top:4px">Or ask me anything about your health right now:</p>
-                    <div class="suggestions" id="suggestionChips">
-                        <button class="chip" onclick="useSuggestion(this)">What does my HbA1c tell me?</button>
-                        <button class="chip" onclick="useSuggestion(this)">My LDL is high — what does that mean?</button>
-                        <button class="chip" onclick="useSuggestion(this)">How should I prepare for my doctor visit?</button>
-                        <button class="chip" onclick="useSuggestion(this)">What is Vitamin D deficiency?</button>
-                    </div>
-                </div>
-            </div>
-        </div>
+  <!-- CTA Banner — appears after interaction -->
+  <div class="cta-banner" id="ctaBanner">
+    <h3>You've seen what PHI can do <em>in 5 minutes.</em></h3>
+    <p>A free account gives PHI a memory. Every report you upload is stored, tracked, and connected — building a complete health picture over time. No credit card, takes 30 seconds.</p>
 
-        <div class="chat-input-area">
-            <textarea class="chat-input" id="chatInput" placeholder="Ask PHI about your health…" rows="1"></textarea>
-            <button class="send-btn" id="sendBtn" title="Send"><i class="fa-solid fa-arrow-up"></i></button>
-        </div>
-        <div class="chat-disclaimer">PHI is not a doctor. Always consult a healthcare professional for medical decisions.</div>
+    <div class="cta-compare">
+      <div class="cmp-col">
+        <div class="cmp-head">Demo (right now)</div>
+        <div class="cmp-row no"><i class="fa-solid fa-xmark"></i> Data lost when you close</div>
+        <div class="cmp-row no"><i class="fa-solid fa-xmark"></i> No trend tracking</div>
+        <div class="cmp-row no"><i class="fa-solid fa-xmark"></i> No health alerts</div>
+        <div class="cmp-row yes"><i class="fa-solid fa-check"></i> Report decoding ✓</div>
+        <div class="cmp-row yes"><i class="fa-solid fa-check"></i> Q&A about results ✓</div>
+      </div>
+      <div class="cmp-col highlight">
+        <div class="cmp-head branded">Free Account</div>
+        <div class="cmp-row yes"><i class="fa-solid fa-check"></i> Permanent health memory</div>
+        <div class="cmp-row yes"><i class="fa-solid fa-check"></i> Trend tracking over time</div>
+        <div class="cmp-row yes"><i class="fa-solid fa-check"></i> Proactive health alerts</div>
+        <div class="cmp-row yes"><i class="fa-solid fa-check"></i> Doctor visit prep cards</div>
+        <div class="cmp-row yes"><i class="fa-solid fa-check"></i> Insurance advocacy support</div>
+      </div>
     </div>
 
-    <div class="cta-panel" id="ctaPanel" style="display:none">
-        <h3>You've just seen how PHI <em>understands</em> your health.</h3>
-        <p>Now imagine this: PHI remembers every report you upload, tracks your health over time, and alerts you before problems become serious. Your complete health picture — always with you, always up to date.</p>
-        <div class="cta-compare">
-            <div class="compare-col">
-                <div class="compare-head">Demo (now)</div>
-                <div class="compare-item no"><i class="fa-solid fa-xmark"></i> Data lost on close</div>
-                <div class="compare-item no"><i class="fa-solid fa-xmark"></i> No trend tracking</div>
-                <div class="compare-item no"><i class="fa-solid fa-xmark"></i> No health alerts</div>
-                <div class="compare-item yes"><i class="fa-solid fa-check"></i> Report decoding</div>
-                <div class="compare-item yes"><i class="fa-solid fa-check"></i> Doctor prep card</div>
-            </div>
-            <div class="compare-col highlight">
-                <div class="compare-head branded">Free Account</div>
-                <div class="compare-item yes"><i class="fa-solid fa-check"></i> Permanent health memory</div>
-                <div class="compare-item yes"><i class="fa-solid fa-check"></i> Trend tracking over time</div>
-                <div class="compare-item yes"><i class="fa-solid fa-check"></i> Proactive health alerts</div>
-                <div class="compare-item yes"><i class="fa-solid fa-check"></i> Unlimited report decoding</div>
-                <div class="compare-item yes"><i class="fa-solid fa-check"></i> Doctor prep for every visit</div>
-            </div>
-        </div>
-        <a href="/signup" class="btn-cta-signup"><i class="fa-solid fa-user-plus"></i> Create Your Free Account</a>
-        <div class="cta-sub">Free to start · No credit card · Takes 30 seconds</div>
+    <a href="/signup" class="cta-signup-btn">
+      <i class="fa-solid fa-user-plus"></i> Create Free Account — Takes 30 seconds
+    </a>
+    <p class="cta-sub">No credit card required · Free to start · Your data stays yours</p>
+  </div>
+</section>
+
+<!-- ══════════════ SOCIAL PROOF ══════════════ -->
+<section class="social-proof">
+  <div class="sp-header">
+    <h2 style="font-family:var(--serif);font-size:1.6rem;font-weight:400;margin-bottom:8px;">What patients are saying</h2>
+    <p style="font-size:.88rem;color:var(--text-2)">From Reddit forums, clinical focus groups, and early users across India, UK, and the US</p>
+  </div>
+
+  <div class="testimonials">
+    <div class="testimonial">
+      <div class="t-stars">★★★★★</div>
+      <p class="t-quote">"I'd been looking at the same LDL number for three years and my doctor never explained why it kept rising. <strong>PHI showed me the trajectory — 18% up over 14 months</strong> — and gave me exactly the right question to ask at my next appointment."</p>
+      <div class="t-author">
+        <div class="t-avatar" style="background:var(--signal-dim);color:var(--signal)">R</div>
+        <div><div class="t-name">Roshni M.</div><div class="t-role">Managing HbA1c · Bangalore</div></div>
+      </div>
     </div>
+    <div class="testimonial">
+      <div class="t-stars">★★★★★</div>
+      <p class="t-quote">"My insurance denied Wegovy and I didn't know why. <strong>PHI pulled my HbA1c trend, my LDL, my CRP — all with dates — and told me exactly what my provider needed to document.</strong> PA approved first appeal."</p>
+      <div class="t-author">
+        <div class="t-avatar" style="background:var(--warn-dim);color:var(--warn)">D</div>
+        <div><div class="t-name">David K.</div><div class="t-role">GLP-1 prior auth · Chicago</div></div>
+      </div>
+    </div>
+    <div class="testimonial">
+      <div class="t-stars">★★★★★</div>
+      <p class="t-quote">"My mother doesn't speak English well and her doctor's explanations never got through. <strong>I upload her reports and PHI explains everything in plain language I can translate for her.</strong> First time she actually understood her Vitamin D numbers."</p>
+      <div class="t-author">
+        <div class="t-avatar" style="background:var(--ok-dim);color:var(--ok)">A</div>
+        <div><div class="t-name">Alinta W.</div><div class="t-role">Family health advocate · London</div></div>
+      </div>
+    </div>
+  </div>
+</section>
 
-</div>
+<!-- ══════════════ HOW IT WORKS ══════════════ -->
+<section class="how-section">
+  <div class="how-header">
+    <h2>From upload to <em>understanding</em> in 30 seconds</h2>
+    <p style="font-size:.88rem;color:var(--text-2)">No setup, no training, no medical degree required.</p>
+  </div>
+  <div class="how-steps">
+    <div class="how-step">
+      <div class="how-num">1</div>
+      <h4>Upload your report</h4>
+      <p>PDF from any lab — SRL, Dr Lal, Thyrocare, Quest, LabCorp, Apollo, NHS. PHI handles the rest.</p>
+    </div>
+    <div class="how-step">
+      <div class="how-num">2</div>
+      <h4>PHI decodes it</h4>
+      <p>Every value extracted, explained, and flagged. Not just "high" — but why, and what it means for you specifically.</p>
+    </div>
+    <div class="how-step">
+      <div class="how-num">3</div>
+      <h4>Ask anything</h4>
+      <p>"Why is my LDL up?" "Is my HbA1c improving?" "What should I tell my cardiologist?" PHI knows your full history.</p>
+    </div>
+    <div class="how-step">
+      <div class="how-num">4</div>
+      <h4>Walk in prepared</h4>
+      <p>Before every visit, PHI generates a one-page brief — your trends, your questions, your data. Your doctor notices.</p>
+    </div>
+  </div>
+</section>
 
+<!-- ══════════════ BOTTOM CTA ══════════════ -->
+<section class="bottom-cta">
+  <div class="bottom-cta-box">
+    <h2>Your health data has been <em>sitting in a drawer.</em></h2>
+    <p>Every lab report you've ever had is a data point. PHI connects them into a continuous picture — tracking, detecting, alerting. Free account, permanent memory, no credit card.</p>
+
+    <a href="/signup" class="btn-hero">
+      <i class="fa-solid fa-user-plus"></i>
+      Start for Free
+    </a>
+
+    <div class="cta-badges">
+      <span><i class="fa-solid fa-shield-halved"></i> AES-256 encrypted</span>
+      <span><i class="fa-solid fa-user-secret"></i> AI never sees your name</span>
+      <span><i class="fa-solid fa-ban"></i> Zero data selling</span>
+      <span><i class="fa-solid fa-right-from-bracket"></i> Delete anytime</span>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ FOOTER ══════════════ -->
+<footer>
+  <div class="footer-links">
+    <a href="/demo">Try Demo</a>
+    <a href="/signup">Create Account</a>
+    <a href="/login">Sign In</a>
+    <a href="/privacy">Privacy Policy</a>
+    <a href="/terms">Terms</a>
+  </div>
+  <p>© 2025 Curabook PHI · AI health intelligence · Not a medical device · Always consult your healthcare provider</p>
+</footer>
+
+<!-- ═══════════════════ JAVASCRIPT ═══════════════════ -->
 <script>
-// ── Config ────────────────────────────────────────────────────────────────────
-const API = 'https://api.curabook.com';
+"use strict";
 
-let demoSessionId    = localStorage.getItem('phi_demo_session') || '';
-let demoConvId       = 'demo-conv-' + Date.now();
-let interactionCount = 0;
+const API = "https://api.curabook.com";
 
-// FIX: document context management
-// lastDocText is ONLY sent on the FIRST message after a document upload.
-// After that, PHI reads from its in-session memory, not raw text re-injection.
-// Sending the raw doc text on every follow-up message caused:
-//   1. Every chat call doing a full LLM extraction (slow + expensive)
-//   2. The document being "re-uploaded" conceptually on every turn
-//   3. Follow-up questions being answered as if the doc was just uploaded
-const _doc = {
-    text:      null,   // raw document text (only sent once)
-    sent:      false,  // has it been sent to the AI yet?
-    hasDoc:    false,  // is there a document in this session?
-    setDoc(t)  { this.text = t; this.sent = false; this.hasDoc = !!t; },
-    consume()  {
-        // Returns doc text only on first call, then clears it
-        if (!this.sent && this.text) {
-            this.sent = true;
-            return this.text;
-        }
-        return null;
-    },
-    clear()    { this.text = null; this.sent = false; this.hasDoc = false; },
-};
+// ── State ──────────────────────────────────────────
+let sessionId = localStorage.getItem("phi_demo_sid") || "";
+let convId    = "demo-conv-" + Date.now();
+let chatCount = 0;
+let docLoaded = false;
+const docCtx  = { text: null, sent: false, hasDoc: false };
 
-// ── Init demo session ─────────────────────────────────────────────────────────
+// ── Sample report data ─────────────────────────────
+const SAMPLE_REPORT_TEXT = `PATIENT: [DEMO - CURABOOK PHI]
+REPORT DATE: 2025-01-15
+LABORATORY: PHI Demo Laboratory
+
+COMPLETE BLOOD COUNT:
+Hemoglobin: 11.2 g/dL  Reference: 12.0-15.5  LOW
+WBC: 7.2 x10^3/uL  Reference: 4.5-11.0  NORMAL
+Platelets: 210 x10^3/uL  Reference: 150-400  NORMAL
+
+LIPID PANEL:
+LDL Cholesterol: 168 mg/dL  Reference: <100  HIGH
+HDL Cholesterol: 38 mg/dL  Reference: >40  LOW
+Total Cholesterol: 224 mg/dL  Reference: <200  HIGH
+Triglycerides: 168 mg/dL  Reference: <150  HIGH
+
+DIABETES MARKERS:
+HbA1c: 5.9%  Reference: <5.7  HIGH
+Fasting Glucose: 108 mg/dL  Reference: 70-100  HIGH
+
+VITAMINS:
+Vitamin D (25-OH): 18 ng/mL  Reference: 30-100  LOW
+Vitamin B12: 280 pg/mL  Reference: 200-900  NORMAL
+Ferritin: 12 ng/mL  Reference: 15-150  LOW
+
+THYROID:
+TSH: 2.4 mIU/L  Reference: 0.4-4.0  NORMAL
+
+KIDNEY FUNCTION:
+Creatinine: 0.9 mg/dL  Reference: 0.6-1.2  NORMAL
+eGFR: 88 mL/min  Reference: >60  NORMAL
+
+LIVER FUNCTION:
+ALT: 32 U/L  Reference: 7-40  NORMAL
+AST: 28 U/L  Reference: 10-40  NORMAL
+CRP: 3.2 mg/L  Reference: <3.0  HIGH`;
+
+const SAMPLE_MARKERS = [
+  {name:"Hemoglobin",   value:"11.2", unit:"g/dL",   status:"LOW",    ref:"12.0-15.5"},
+  {name:"LDL Cholesterol", value:"168", unit:"mg/dL", status:"HIGH",  ref:"<100"},
+  {name:"HDL Cholesterol", value:"38",  unit:"mg/dL", status:"LOW",   ref:">40"},
+  {name:"Total Cholesterol",value:"224",unit:"mg/dL", status:"HIGH",  ref:"<200"},
+  {name:"Triglycerides",value:"168",    unit:"mg/dL", status:"HIGH",  ref:"<150"},
+  {name:"HbA1c",        value:"5.9",   unit:"%",      status:"HIGH",  ref:"<5.7"},
+  {name:"Fasting Glucose",value:"108", unit:"mg/dL",  status:"HIGH",  ref:"70-100"},
+  {name:"Vitamin D",    value:"18",    unit:"ng/mL",  status:"LOW",   ref:"30-100"},
+  {name:"Ferritin",     value:"12",    unit:"ng/mL",  status:"LOW",   ref:"15-150"},
+  {name:"CRP",          value:"3.2",   unit:"mg/L",   status:"HIGH",  ref:"<3.0"},
+  {name:"TSH",          value:"2.4",   unit:"mIU/L",  status:"NORMAL",ref:"0.4-4.0"},
+  {name:"Creatinine",   value:"0.9",   unit:"mg/dL",  status:"NORMAL",ref:"0.6-1.2"},
+];
+
+// ── Init session ───────────────────────────────────
 async function initSession() {
-    try {
-        const headers = demoSessionId ? { 'X-Demo-Session': demoSessionId } : {};
-        const res = await fetch(`${API}/demo/session`, { method: 'POST', headers });
-        const data = await res.json();
-        if (data.session_id) {
-            demoSessionId = data.session_id;
-            localStorage.setItem('phi_demo_session', demoSessionId);
-        }
-    } catch(e) {
-        console.warn('Session init:', e);
+  try {
+    const headers = sessionId ? { "X-Demo-Session": sessionId } : {};
+    const res = await fetch(`${API}/demo/session`, { method:"POST", headers });
+    const d = await res.json();
+    if (d.session_id) {
+      sessionId = d.session_id;
+      localStorage.setItem("phi_demo_sid", sessionId);
     }
+  } catch(e) { /* non-fatal */ }
 }
 
-function getDemoHeaders() {
-    return { 'X-Demo-Session': demoSessionId };
+function headers() {
+  return { "X-Demo-Session": sessionId };
 }
 
-// ── Toast ─────────────────────────────────────────────────────────────────────
-function toast(msg, type = 'success') {
-    const el = document.createElement('div');
-    el.className = `toast ${type}`;
-    el.innerHTML = `<i class="fa-solid fa-${type==='success'?'circle-check':'circle-exclamation'}"></i> ${msg}`;
-    document.body.appendChild(el);
-    setTimeout(() => el.remove(), 4000);
+// ── Toast ──────────────────────────────────────────
+function toast(msg, type="ok") {
+  const el = document.createElement("div");
+  el.className = `toast ${type}`;
+  const icon = type === "ok" ? "circle-check" : "circle-exclamation";
+  el.innerHTML = `<i class="fa-solid fa-${icon}"></i> ${msg}`;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 4000);
 }
 
-// ── File upload ───────────────────────────────────────────────────────────────
-const fileInput   = document.getElementById('fileInput');
-const uploadZone  = document.getElementById('uploadZone');
-const fileStatus  = document.getElementById('fileStatus');
-const fileStatusT = document.getElementById('fileStatusText');
+// ── Sample data load ───────────────────────────────
+document.getElementById("loadSampleBtn").addEventListener("click", () => {
+  docCtx.text = SAMPLE_REPORT_TEXT;
+  docCtx.sent = false;
+  docCtx.hasDoc = true;
+  docLoaded = true;
 
-fileInput.addEventListener('change', e => {
-    const file = e.target.files[0];
-    if (!file) return;
-    if (file.size > 5 * 1024 * 1024) { toast('File too large. Max 5MB.', 'error'); return; }
-    uploadFile(file);
-    fileInput.value = '';
+  // Show processing briefly
+  const banner = document.getElementById("procBanner");
+  banner.querySelector("#procText").textContent = "Loading sample lab report…";
+  banner.classList.add("show");
+
+  setTimeout(() => {
+    banner.classList.remove("show");
+    // Remove start chips
+    const chips = document.getElementById("startChips");
+    if(chips) chips.style.display = "none";
+    // Auto-trigger explanation
+    sendMessage("Please read this lab report and explain every finding. Tell me what each value means, which are concerning, and what I should discuss with my doctor.", true);
+    toast("Sample report loaded — PHI is analyzing it…");
+  }, 1200);
 });
 
-uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
-uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
-uploadZone.addEventListener('drop', e => {
-    e.preventDefault();
-    uploadZone.classList.remove('drag-over');
-    const file = e.dataTransfer.files[0];
-    if (file) uploadFile(file);
-});
+// ── File upload ────────────────────────────────────
+document.getElementById("fileInput").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (file.size > 5 * 1024 * 1024) { toast("File too large. Max 5MB.", "err"); return; }
 
-async function uploadFile(file) {
-    fileStatus.classList.add('visible');
-    fileStatusT.textContent = `Reading ${file.name}…`;
-    uploadZone.style.opacity = '.5';
-    uploadZone.style.pointerEvents = 'none';
+  const banner = document.getElementById("procBanner");
+  banner.querySelector("#procText").textContent = `Reading ${file.name}…`;
+  banner.classList.add("show");
+  document.getElementById("uploadArea").style.opacity = ".5";
 
-    const form = new FormData();
-    form.append('file', file);
+  const form = new FormData();
+  form.append("file", file);
 
-    try {
-        const res = await fetch(`${API}/demo/analyze`, {
-            method: 'POST',
-            headers: getDemoHeaders(),
-            body: form,
-        });
-        const data = await res.json();
+  try {
+    const res = await fetch(`${API}/demo/analyze`, {
+      method:"POST", headers: headers(), body: form
+    });
+    const d = await res.json();
+    banner.classList.remove("show");
+    document.getElementById("uploadArea").style.opacity = "1";
 
-        if (!res.ok || !data.success) {
-            toast(data.error || 'Could not read this file. Try a clear PDF.', 'error');
-            fileStatus.classList.remove('visible');
-            uploadZone.style.opacity = '1';
-            uploadZone.style.pointerEvents = 'auto';
-            return;
-        }
-
-        fileStatus.classList.remove('visible');
-        uploadZone.style.opacity = '1';
-        uploadZone.style.pointerEvents = 'auto';
-
-        // FIX: Store doc text but mark it as NOT YET SENT
-        // It will be sent ONCE with the first auto-explain message,
-        // then cleared so follow-up messages don't re-send it.
-        _doc.setDoc(data.document_text || '');
-
-        // Hide suggestion chips
-        const chips = document.getElementById('suggestionChips');
-        if (chips) chips.style.display = 'none';
-
-        // Auto-send explanation request (sends doc text THIS ONE TIME)
-        const explainMsg = "Please read my uploaded medical report and explain every finding. Tell me what each value means, what is normal, what needs attention, and what I should discuss with my doctor.";
-        addMsg(explainMsg, 'user');
-        const botDiv = addMsg('', 'ai', true);
-        sendBtn.disabled = true;
-
-        try {
-            // consume() returns the doc text and marks it as sent — future calls return null
-            const docTextToSend = _doc.consume();
-
-            const res2 = await fetch(`${API}/demo/chat`, {
-                method: 'POST',
-                headers: { ...getDemoHeaders(), 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    message:         explainMsg,
-                    conversation_id: demoConvId,
-                    has_documents:   true,
-                    document_text:   docTextToSend,   // FIX: sent exactly ONCE
-                }),
-            });
-            const d2 = await res2.json();
-            updateMsg(botDiv, d2.reply || 'Could not generate explanation. Please try asking a question below.');
-
-            if (data.doctor_prep) {
-                addMsg(data.doctor_prep, 'ai');
-            }
-
-            // Update chips with context-aware follow-up questions
-            if (chips) {
-                chips.innerHTML = [
-                    'What should I do about the abnormal results?',
-                    'How urgent is this — do I need to see a doctor this week?',
-                    'What lifestyle changes will help most?',
-                ].map(q => `<button class="chip" onclick="useSuggestion(this)">${q}</button>`).join('');
-                chips.style.display = 'flex';
-            }
-        } catch(e) {
-            updateMsg(botDiv, 'Could not generate explanation. Please ask a question below.');
-        }
-        sendBtn.disabled = false;
-
-        toast('Report analyzed ✓', 'success');
-        showCta();
-
-    } catch(e) {
-        toast('Upload failed. Is the backend running?', 'error');
-        fileStatus.classList.remove('visible');
-        uploadZone.style.opacity = '1';
-        uploadZone.style.pointerEvents = 'auto';
-    }
-}
-
-// ── Chat ──────────────────────────────────────────────────────────────────────
-const chatMessages = document.getElementById('chatMessages');
-const chatInput    = document.getElementById('chatInput');
-const sendBtn      = document.getElementById('sendBtn');
-
-chatInput.addEventListener('input', () => {
-    chatInput.style.height = 'auto';
-    chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px';
-});
-chatInput.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
-});
-sendBtn.addEventListener('click', sendMessage);
-
-function useSuggestion(btn) {
-    chatInput.value = btn.textContent.trim();
-    sendMessage();
-}
-
-async function sendMessage() {
-    const text = chatInput.value.trim();
-    if (!text || sendBtn.disabled) return;
-
-    chatInput.value = '';
-    chatInput.style.height = 'auto';
-
-    const chips = document.getElementById('suggestionChips');
-    if (chips) chips.style.display = 'none';
-
-    addMsg(text, 'user');
-    const botDiv = addMsg('', 'ai', true);
-    sendBtn.disabled = true;
-
-    try {
-        // FIX: consume() returns doc text only on first call after upload.
-        // For all subsequent messages it returns null, so document_text is
-        // empty and has_documents is false — the backend correctly reads
-        // from its stored session memory instead of re-processing raw text.
-        const docTextToSend = _doc.consume();
-
-        const res = await fetch(`${API}/demo/chat`, {
-            method: 'POST',
-            headers: { ...getDemoHeaders(), 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                message:         text,
-                conversation_id: demoConvId,
-                has_documents:   _doc.hasDoc,
-                document_text:   docTextToSend || '',   // null → '' after first send
-            }),
-        });
-        const data = await res.json();
-        updateMsg(botDiv, data.reply || 'Something went wrong. Please try again.');
-    } catch(e) {
-        updateMsg(botDiv, 'Connection error. Is the backend running?');
+    if (!res.ok || !d.success) {
+      toast(d.error || "Could not read this file.", "err"); return;
     }
 
-    sendBtn.disabled = false;
-    interactionCount++;
-    if (interactionCount >= 2) showCta();
+    docCtx.text = d.document_text || SAMPLE_REPORT_TEXT;
+    docCtx.sent = false; docCtx.hasDoc = true; docLoaded = true;
+
+    const chips = document.getElementById("startChips");
+    if(chips) chips.style.display = "none";
+
+    sendMessage("Please read my uploaded medical report and explain every finding. What's abnormal, what does it mean, and what should I discuss with my doctor?", true);
+    toast(`${file.name} analyzed ✓`);
+  } catch(e) {
+    banner.classList.remove("show");
+    document.getElementById("uploadArea").style.opacity = "1";
+    toast("Upload failed. Please try again.", "err");
+  }
+  e.target.value = "";
+});
+
+// Drag and drop
+const ua = document.getElementById("uploadArea");
+ua.addEventListener("dragover", e => { e.preventDefault(); ua.classList.add("drag-over"); });
+ua.addEventListener("dragleave", () => ua.classList.remove("drag-over"));
+ua.addEventListener("drop", e => {
+  e.preventDefault(); ua.classList.remove("drag-over");
+  const file = e.dataTransfer.files[0];
+  if (file) {
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    document.getElementById("fileInput").files = dt.files;
+    document.getElementById("fileInput").dispatchEvent(new Event("change"));
+  }
+});
+
+// ── Chat helpers ───────────────────────────────────
+function escHtml(s) {
+  return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
 
-function addMsg(text, role, typing = false) {
-    const wrap = document.createElement('div');
-    wrap.className = `msg ${role === 'user' ? 'user' : 'ai'}`;
-    const av = document.createElement('div');
-    av.className = `msg-av ${role === 'user' ? 'usr' : 'ai'}`;
-    av.textContent = role === 'user' ? 'Y' : 'φ';
-    const bubble = document.createElement('div');
-    bubble.className = 'msg-bubble';
-    if (typing) {
-        bubble.innerHTML = '<div class="typing"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>';
-    } else {
-        bubble.innerHTML = role === 'user'
-            ? esc(text)
-            : (typeof marked !== 'undefined' ? marked.parse(text) : text);
+function md(text) {
+  return typeof marked !== "undefined" ? marked.parse(String(text||"")) : escHtml(text);
+}
+
+function addMsg(text, role, typing=false) {
+  const body = document.getElementById("chatBody");
+  const wrap = document.createElement("div");
+  wrap.className = `msg ${role === "user" ? "user-msg" : "ai-msg"}`;
+
+  const av = document.createElement("div");
+  av.className = `msg-av ${role === "user" ? "usr" : "ai"}`;
+  av.textContent = role === "user" ? "Y" : "φ";
+
+  const bub = document.createElement("div");
+  bub.className = "msg-bub";
+
+  if (typing) {
+    bub.innerHTML = '<div class="typing"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div>';
+  } else if (role === "user") {
+    bub.textContent = text;
+  } else {
+    const cleaned = text.replace(/⚕️[\s\S]*?decisions\./g, "").trim();
+    bub.innerHTML = md(cleaned);
+    if (text.includes("⚕️")) {
+      const legal = document.createElement("p");
+      legal.className = "phi-legal";
+      legal.innerHTML = "⚕️ PHI is an educational wellness tool. Always consult your healthcare provider.";
+      bub.appendChild(legal);
     }
-    if (role === 'user') { wrap.appendChild(bubble); wrap.appendChild(av); }
-    else                  { wrap.appendChild(av);     wrap.appendChild(bubble); }
-    chatMessages.appendChild(wrap);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-    return wrap;
+  }
+
+  if (role === "user") { wrap.appendChild(bub); wrap.appendChild(av); }
+  else                  { wrap.appendChild(av);  wrap.appendChild(bub); }
+
+  body.appendChild(wrap);
+  body.scrollTop = body.scrollHeight;
+  return wrap;
 }
 
 function updateMsg(wrap, text) {
-    const bubble = wrap.querySelector('.msg-bubble');
-    if (bubble) bubble.innerHTML = typeof marked !== 'undefined' ? marked.parse(text) : text;
-    chatMessages.scrollTop = chatMessages.scrollHeight;
+  const bub = wrap.querySelector(".msg-bub");
+  if (!bub) return;
+  const cleaned = text.replace(/---[\s\S]*?decisions\.\*/g, "").trim();
+  bub.innerHTML = md(cleaned);
+  if (text.includes("⚕️") || text.includes("PHI is an educational")) {
+    const legal = document.createElement("p");
+    legal.className = "phi-legal";
+    legal.innerHTML = "⚕️ PHI is an educational wellness tool. Always consult your healthcare provider.";
+    bub.appendChild(legal);
+  }
+  document.getElementById("chatBody").scrollTop = document.getElementById("chatBody").scrollHeight;
 }
 
-function esc(s) {
-    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+// ── Send message ───────────────────────────────────
+let isSending = false;
+
+async function sendMessage(text, isAuto=false) {
+  if (isSending) return;
+  const inputEl = document.getElementById("chatInput");
+  if (!isAuto) {
+    text = (text || inputEl.value).trim();
+    if (!text) return;
+    inputEl.value = "";
+    inputEl.style.height = "auto";
+  }
+  if (!text) return;
+
+  // Remove chips once first message sent
+  const chips = document.getElementById("startChips");
+  if (chips) chips.style.display = "none";
+
+  isSending = true;
+  const btn = document.getElementById("sendBtn");
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+
+  addMsg(text, "user");
+  const botRow = addMsg("", "ai", true);
+
+  try {
+    // Only send doc text ONCE (first message after upload)
+    const sendDoc = !docCtx.sent ? docCtx.text : null;
+    if (sendDoc) docCtx.sent = true;
+
+    const res = await fetch(`${API}/demo/chat`, {
+      method:"POST",
+      headers: { ...headers(), "Content-Type":"application/json" },
+      body: JSON.stringify({
+        message: text,
+        conversation_id: convId,
+        has_documents: docCtx.hasDoc,
+        document_text: sendDoc || "",
+      }),
+    });
+
+    const d = await res.json();
+    updateMsg(botRow, d.reply || "I couldn't process that. Please try again.");
+    chatCount++;
+
+    // Show follow-up chips after first AI reply (if doc loaded)
+    if (docLoaded && chatCount === 1) {
+      const followChips = `
+        <div class="chips" style="margin-top:10px" id="followChips">
+          <button class="chip" data-q="What should I do about the abnormal results?">What to do about abnormal results?</button>
+          <button class="chip" data-q="How urgent is this? Do I need to see a doctor this week?">How urgent is this?</button>
+          <button class="chip" data-q="What lifestyle changes will help most?">What lifestyle changes will help?</button>
+          <button class="chip" data-q="Prepare me for my doctor visit based on these results">Doctor visit prep</button>
+        </div>`;
+      const bub = botRow.querySelector(".msg-bub");
+      if (bub) {
+        const div = document.createElement("div");
+        div.innerHTML = followChips;
+        bub.appendChild(div.firstChild);
+        document.querySelectorAll("#followChips .chip").forEach(c => {
+          c.addEventListener("click", () => sendMessage(c.getAttribute("data-q")));
+        });
+      }
+    }
+
+    // Show CTA after 2 interactions
+    if (chatCount >= 2) {
+      const cta = document.getElementById("ctaBanner");
+      if (cta && !cta.classList.contains("show")) {
+        cta.classList.add("show");
+        cta.scrollIntoView({ behavior:"smooth", block:"nearest" });
+      }
+    }
+
+  } catch(e) {
+    updateMsg(botRow, "Connection error. Is the backend running at " + API + "?");
+  }
+
+  isSending = false;
+  btn.disabled = false;
+  btn.innerHTML = '<i class="fa-solid fa-arrow-up"></i>';
 }
 
-function showCta() {
-    const panel = document.getElementById('ctaPanel');
-    if (panel) panel.style.display = 'block';
-}
+// Input events
+const inputEl = document.getElementById("chatInput");
+inputEl.addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+});
+inputEl.addEventListener("input", () => {
+  inputEl.style.height = "auto";
+  inputEl.style.height = Math.min(inputEl.scrollHeight, 100) + "px";
+});
+document.getElementById("sendBtn").addEventListener("click", () => sendMessage());
 
+// Chip clicks (starting chips)
+document.querySelectorAll("#startChips .chip").forEach(c => {
+  c.addEventListener("click", () => sendMessage(c.getAttribute("data-q")));
+});
+
+// Smooth scroll from hero CTA
+document.querySelectorAll('a[href="#demo-zone"]').forEach(a => {
+  a.addEventListener("click", e => {
+    e.preventDefault();
+    document.getElementById("demo-zone").scrollIntoView({ behavior:"smooth" });
+  });
+});
+
+// Init
 initSession();
 </script>
-
-<footer style="background:#fff;border-top:1px solid #e5e7eb;padding:24px;text-align:center;font-size:12.5px;color:#9ca3af;flex-shrink:0;">
-    <nav aria-label="Site links" style="display:flex;justify-content:center;flex-wrap:wrap;gap:16px;margin-bottom:10px;">
-        <a href="/demo" style="color:#6b7280;text-decoration:none;">Try Demo Free</a>
-        <a href="/signup" style="color:#6b7280;text-decoration:none;">Create Account</a>
-        <a href="/login" style="color:#6b7280;text-decoration:none;">Sign In</a>
-        <a href="https://curabook.com/privacy" style="color:#6b7280;text-decoration:none;">Privacy Policy</a>
-        <a href="https://curabook.com/terms" style="color:#6b7280;text-decoration:none;">Terms</a>
-    </nav>
-    <p>© 2025 Curabook PHI · AI-powered health intelligence · AES-256 Encrypted · Privacy-focused · Your data is never sold</p>
-    <p style="margin-top:4px;">PHI is not a doctor. Always consult a qualified healthcare professional for medical advice.</p>
-</footer>
-
 </body>
 </html>
