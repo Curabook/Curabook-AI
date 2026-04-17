@@ -107,11 +107,14 @@ function buildDOM() {
 /* ── Utilities ──────────────────────────────────────────────── */
 
 async function safeJson(res) {
-    if (!res) return { error: "No response" };
-    const text = await res.text().catch(() => "");
-    if (!text || !text.trim()) return { error: `Empty response (HTTP ${res.status})` };
-    try { return JSON.parse(text); }
-    catch { return { error: `Server error (HTTP ${res.status})` }; }
+    if (!res) return { error: "No response from server" };
+    try {
+        const text = await res.text();
+        if (!text || !text.trim()) return { error: `Empty response (HTTP ${res.status || 0})` };
+        return JSON.parse(text);
+    } catch {
+        return { error: `Server error (HTTP ${res.status || 0})` };
+    }
 }
 
 function showToast(msg, type = "success") {
@@ -520,18 +523,41 @@ function _emptyHealthState(title, desc, btnLabel) {
 /* ── Conversations ───────────────────────────────────────────── */
 
 async function createConversation() {
-    const h = await getAuthHeaders();
-    const res = await fetch(`${API_BASE}/conversation/create`, {
-        method:"POST", headers:h, body:JSON.stringify({})
-    }).catch(()=>null);
-    if (!res) return null;
-    const d = await safeJson(res);
-    if (res.status===403) { showToast("Consent required. Accept terms in Settings.","error"); return null; }
-    if (res.ok && d.conversation_id) {
+    try {
+        const h = await getAuthHeaders();
+        const res = await safeFetch(`${API_BASE}/conversation/create`, {
+            method: "POST",
+            headers: h,
+            body: JSON.stringify({}),
+        }, 10000);
+ 
+        const d = await safeJson(res);
+ 
+        if (res.status === 403) {
+            showToast("Consent required. Accept terms in Settings.", "error");
+            return null;
+        }
+        if (!res.ok || !d.conversation_id) {
+            // FIX-3: Don't crash — use a local UUID as fallback
+            console.warn("[CONV] Could not create conversation from API, using local ID");
+            const localId = "local-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8);
+            activeConvId = localId;
+            _prependConvToHistory(localId, "New Chat");
+            showToast("Working in offline mode — conversation won't be saved.", "error");
+            return localId;
+        }
+ 
         activeConvId = d.conversation_id;
         _prependConvToHistory(d.conversation_id, "New Chat");
+        return d.conversation_id;
+ 
+    } catch (err) {
+        console.error("[CONV] Create failed:", err);
+        const localId = "local-" + Date.now();
+        activeConvId = localId;
+        showToast("Server unreachable — working in local mode.", "error");
+        return localId;
     }
-    return d.conversation_id || null;
 }
 
 function _prependConvToHistory(id, title) {
@@ -680,71 +706,109 @@ async function renameConversation(id, title) {
 
 async function handleSend() {
     if (isProcessing) return;
-
+ 
     let text = DOM.userInput.value.trim();
-    if (!text && uploadedFiles.length > 0) text = "Please read my uploaded medical report and explain every finding in plain language.";
+    if (!text && uploadedFiles.length > 0) {
+        text = "Please read my uploaded medical report and explain every finding in plain language.";
+    }
     if (!text) return;
-
+ 
     setProcessing(true);
-
+ 
     if (!activeConvId) {
         const c = await createConversation();
-        if (!c) { setProcessing(false); return; }
+        if (!c) {
+            setProcessing(false);
+            return;
+        }
     }
-
+ 
     showChatMode();
     DOM.userInput.value = "";
     DOM.userInput.style.height = "auto";
     DOM.userInput.placeholder = currentUserName
         ? `Ask PHI about your health, ${currentUserName}…`
         : "Ask PHI about your health…";
-
+ 
+    // Process files if any
     let documentContents = [];
     if (uploadedFiles.length > 0) {
         const proc = appendMessage(`Analyzing ${uploadedFiles.length} document(s)…`, "ai");
         documentContents = (await Promise.all(uploadedFiles.map(processFile))).filter(Boolean);
         proc.remove();
-        if (documentContents[0]) _docCtx.set(documentContents[0].document_text, documentContents[0].document_id, activeConvId);
+        if (documentContents[0]) {
+            _docCtx.set(documentContents[0].document_text, documentContents[0].document_id, activeConvId);
+        }
         uploadedFiles = [];
         updateFilePreview();
         _cache.del("dashboard");
         setTimeout(loadHealthPulse, 4000);
     }
-
+ 
     appendMessage(text, "user");
     const botRow = appendTyping();
-
+ 
     try {
         const h = await getAuthHeaders();
-        const { text:docText, id:docId } = _docCtx.getForConv(activeConvId);
+        const { text: docText, id: docId } = _docCtx.getForConv(activeConvId);
         const isFirstFollowUp = !documentContents.length && !!docText;
-        const sendDocText     = documentContents[0]?.document_text || (isFirstFollowUp ? docText : "");
+        const sendDocText = documentContents[0]?.document_text || (isFirstFollowUp ? docText : "");
         if (isFirstFollowUp) _docCtx.clear();
-
-        const res = await fetch(`${API_BASE}/chat`, {
-            method:"POST", headers:h,
+ 
+        // FIX-1: Use safeFetch with timeout + error handling
+        const res = await safeFetch(`${API_BASE}/chat`, {
+            method: "POST",
+            headers: h,
             body: JSON.stringify({
                 conversation_id: activeConvId,
-                message:         text,
-                has_documents:   documentContents.length > 0 || !!docId,
-                document_id:     documentContents[0]?.document_id || docId || "",
-                document_text:   sendDocText,
+                message: text,
+                has_documents: documentContents.length > 0 || !!docId,
+                document_id: documentContents[0]?.document_id || docId || "",
+                document_text: sendDocText,
             }),
         });
+ 
         const d = await safeJson(res);
-        if (res.status === 403)       updateMessage(botRow, "Consent required. Please accept terms in Settings.");
-        else if (d.error && !d.reply) updateMessage(botRow, `Something went wrong: ${d.error}`);
-        else                          updateMessage(botRow, d.reply || "I couldn't process that. Please try again.");
+ 
+        if (res.status === 401) {
+            updateMessage(botRow, "Your session has expired. Please sign in again.");
+            setTimeout(() => window.location.href = "/login", 2000);
+        } else if (res.status === 403) {
+            updateMessage(botRow, "Consent required. Please accept terms in Settings → Privacy.");
+        } else if (res.status === 500) {
+            // FIX-1: 500 shows friendly message, not raw error
+            updateMessage(botRow,
+                "I ran into a technical issue. This is usually temporary — " +
+                "the server may be restarting or an AI service is unavailable.\n\n" +
+                "**Please try again in 30 seconds.** If it keeps happening, " +
+                "check that OPENAI_API_KEY or GROQ_API_KEY is set in your .env file.\n\n" +
+                "⚕️ *PHI is an educational wellness tool. Always consult your healthcare provider.*"
+            );
+        } else if (d.error && !d.reply) {
+            updateMessage(botRow, `Something went wrong: ${d.error}\n\n⚕️ *PHI is an educational wellness tool. Always consult your healthcare provider.*`);
+        } else {
+            updateMessage(botRow, d.reply || "I couldn't process that. Please try again.");
+        }
+ 
     } catch (err) {
-        updateMessage(botRow, "Connection error. Please check your network.");
-        showToast("Network error.", "error");
+        console.error("[CHAT] Unexpected error:", err);
+        updateMessage(botRow,
+            "Connection error — can't reach the PHI server.\n\n" +
+            "Check your internet connection. If the problem persists, " +
+            "the server at api.curabook.com may be temporarily down.\n\n" +
+            "⚕️ *PHI is an educational wellness tool. Always consult your healthcare provider.*"
+        );
+        showToast("Connection error. Please try again.", "error");
     } finally {
         setProcessing(false);
     }
-
+ 
+    // Rename conversation after first message
     const msgCount = DOM.chatDisplay.querySelectorAll(".chat-message").length;
     if (msgCount <= 2 && activeConvId) {
-        const newTitle = documentContents.length ? `📄 ${documentContents[0].name}` : text.substring(0, 45);
+        const newTitle = documentContents.length
+            ? `📄 ${documentContents[0].name}`
+            : text.substring(0, 45);
         renameConversation(activeConvId, newTitle);
     }
 }
@@ -926,26 +990,65 @@ async function processFile(file) {
     const form = new FormData();
     form.append("file", file);
     const s = await getSession();
-    if (!s) return null;
+    if (!s) {
+        showToast("Session expired. Please sign in again.", "error");
+        return null;
+    }
+ 
     try {
-        const res = await fetch(`${API_BASE}/analyze`, {
-            method:"POST",
-            headers:{"Authorization":"Bearer " + s.access_token},
-            body: form
-        });
+        // FIX-2: safeFetch with timeout for file uploads (longer — 60s)
+        const res = await safeFetch(`${API_BASE}/analyze`, {
+            method: "POST",
+            headers: { "Authorization": "Bearer " + s.access_token },
+            body: form,
+        }, 60000);
+ 
         const d = await safeJson(res);
-        if (!res.ok || !d.success) { showToast(d.error || `Could not process ${file.name}`, "error"); return null; }
-        showToast(`✓ ${file.name} analyzed (${d.abnormal_count||0} findings)`);
+ 
+        if (res.status === 400) {
+            // Bad file — show specific error
+            showToast(d.error || `Could not read ${file.name}. Try a different PDF.`, "error");
+            return null;
+        }
+ 
+        if (res.status === 413) {
+            showToast(`${file.name} is too large. Maximum 5MB.`, "error");
+            return null;
+        }
+ 
+        if (res.status === 500) {
+            // FIX-2: 500 on analyze — don't crash, show helpful message
+            console.error("[ANALYZE] 500 error:", d);
+            showToast(
+                `Could not process ${file.name}. The AI service may be temporarily unavailable. ` +
+                "You can still ask PHI questions — just paste your values as text.",
+                "error"
+            );
+            return null;
+        }
+ 
+        if (!res.ok || !d.success) {
+            showToast(d.error || `Could not process ${file.name}`, "error");
+            return null;
+        }
+ 
+        showToast(`✓ ${file.name} analyzed (${d.abnormal_count || 0} findings needing attention)`);
         return {
             name:          file.name,
             summary:       d.summary_text || "",
-            document_id:   d.document_id  || "",
-            document_text: d.document_text|| "",
-            markers:       d.markers      || [],
-            abnormal:      d.abnormal_count || 0
+            document_id:   d.document_id || "",
+            document_text: d.document_text || "",
+            markers:       d.markers || [],
+            abnormal:      d.abnormal_count || 0,
         };
-    } catch {
-        showToast(`Upload failed for ${file.name}`, "error");
+ 
+    } catch (err) {
+        console.error("[ANALYZE] Unexpected error:", err);
+        showToast(
+            `Upload failed for ${file.name}. ` +
+            "You can still describe your lab values in the chat and PHI will help.",
+            "error"
+        );
         return null;
     }
 }
