@@ -106,6 +106,29 @@ function buildDOM() {
 
 /* ── Utilities ──────────────────────────────────────────────── */
 
+async function safeFetch(url, options = {}, timeoutMs = 10000) {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        const response = await fetch(url, {
+            ...options,
+            signal: controller.signal
+        });
+        clearTimeout(id);
+        return response;
+    } catch (error) {
+        clearTimeout(id);
+        if (error.name === 'AbortError') {
+            return { 
+                ok: false, 
+                status: 408, 
+                text: () => Promise.resolve(JSON.stringify({ error: "Request timed out due to slow network or server load." })) 
+            };
+        }
+        throw error;
+    }
+}
+
 async function safeJson(res) {
     if (!res) return { error: "No response from server" };
     try {
