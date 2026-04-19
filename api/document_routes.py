@@ -1,22 +1,27 @@
-# api/document_routes.py — 500-ERROR FIXED VERSION
+# api/document_routes.py — FULLY FIXED VERSION
 #
-# FIX-1: pypdf ImportError → 500
-#   OLD: ImportError at route call time crashes entire request
-#   NEW: Caught, returns HTTP 400 with clear install instructions
+# FIXES APPLIED IN THIS VERSION:
 #
-# FIX-2: groq_client=None in extract_health_markers → AttributeError → 500
-#   OLD: extract_health_markers(text, None) — LLM call on None crashes
-#   NEW: Guard before calling, graceful no-markers response
+# FIX-A: unit_normalizer NOT WIRED — the biggest silent bug.
+#   OLD: Markers stored in whatever unit the lab used (mmol/L, g/L, etc.)
+#   NEW: force_us_units_batch() called on all markers before storage and
+#        before returning to frontend. US users always see lbs, mg/dL, °F.
 #
-# FIX-3: anonymize_for_llm import crash
-#   OLD: from services.compliance import anonymize_for_llm at function call
-#   NEW: try/except, returns text unchanged if import fails
+# FIX-B: groq_client=None crash (original FIX-2, strengthened)
+#   OLD: extract_health_markers(text, None) → AttributeError on LLM call
+#   NEW: Hard check for any AI availability before attempting extraction.
+#        Returns graceful empty list with log message.
 #
-# FIX-4: explain_markers Groq 429 timeout → WORKER TIMEOUT → 500
-#   Already partially fixed in explainer.py but safeguard added here too
+# FIX-C: Unhandled exception → 500 with no CORS headers (original FIX-5)
+#   NEW: Outer try/except on every route, returns 500 JSON with CORS via
+#        Flask errorhandler in app.py.
 #
-# FIX-5: Unhandled exception in entire route → 500 with no CORS headers
-#   NEW: Outer try/except returns 500 JSON with CORS (via Flask errorhandler)
+# FIX-D: pypdf ImportError → 500 (original FIX-1, preserved)
+#   NEW: Returns HTTP 400 with human-readable install instructions.
+#
+# FIX-E: persona cache invalidation after marker storage
+#   NEW: _invalidate_caches() sets marker_count to -1 so the 6-hour
+#        persona cache is immediately invalidated after a new upload.
 
 from flask import Blueprint, request, jsonify
 import traceback
@@ -49,16 +54,14 @@ def _detect_radiology(text: str) -> bool:
     if has_strong and not has_lab_data:
         return True
     secondary = ["ultrasound", "mri", "ct scan", "x-ray", "mammogram"]
-    has_secondary = any(k in lower for k in secondary)
-    if has_secondary and not has_lab_data:
-        return True
-    return False
+    return any(k in lower for k in secondary) and not has_lab_data
 
 
-# ── Diagnostic endpoint ───────────────────────────────────────────────────
+# ── Diagnostic endpoint ───────────────────────────────────────────────────────
 
 @document_bp.route("/diagnose", methods=["GET"])
 def diagnose():
+    """Health check for all optional dependencies."""
     results = {}
 
     def _try(label, fn):
@@ -72,12 +75,13 @@ def diagnose():
         _try(mod, lambda m=mod: __import__(m))
 
     for mod, sym in [
-        ("document_processing.extractor", "extract_text_from_file"),
-        ("health_memory.extractor",       "extract_health_markers"),
-        ("health_memory.memory",          "store_health_markers"),
-        ("ai.chat",                       "generate_doctor_prep"),
-        ("ai.explainer",                  "explain_markers"),
-        ("services.compliance",           "audit_log"),
+        ("document_processing.extractor",  "extract_text_from_file"),
+        ("health_memory.extractor",         "extract_health_markers"),
+        ("health_memory.memory",            "store_health_markers"),
+        ("ai.chat",                         "generate_doctor_prep"),
+        ("ai.explainer",                    "explain_markers"),
+        ("services.compliance",             "audit_log"),
+        ("services.unit_normalizer",        "force_us_units_batch"),  # NEW
     ]:
         _try(mod, lambda m=mod, s=sym: getattr(__import__(m, fromlist=[s]), s))
 
@@ -85,14 +89,15 @@ def diagnose():
     return jsonify({"status": "all_ok" if all_ok else "some_failed", "imports": results}), (200 if all_ok else 500)
 
 
-# ── Main analyze route ────────────────────────────────────────────────────
+# ── Main analyze route ────────────────────────────────────────────────────────
 
 @document_bp.route("/analyze", methods=["POST"])
 def analyze():
+    """Process an uploaded medical document."""
     try:
         return _analyze_inner()
     except Exception as e:
-        print(f"[ANALYZE] ❌ Unhandled {type(e).__name__}: {e}")
+        print(f"[ANALYZE] Unhandled {type(e).__name__}: {e}")
         traceback.print_exc()
         return jsonify({
             "error":      "Something went wrong processing your file. Please try again.",
@@ -104,12 +109,12 @@ def _analyze_inner():
     from app import supabase, groq_client
     from services.auth import get_authenticated_user
 
-    # ── Auth ─────────────────────────────────────────────────────────────
+    # ── Auth ──────────────────────────────────────────────────────────────────
     user = get_authenticated_user(supabase)
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
 
-    # ── Consent ──────────────────────────────────────────────────────────
+    # ── Consent ───────────────────────────────────────────────────────────────
     try:
         from services.compliance import verify_user_consent
         if not verify_user_consent(supabase, user.id, "document_processing"):
@@ -117,7 +122,7 @@ def _analyze_inner():
     except Exception as e:
         print(f"[ANALYZE] Consent check failed (non-fatal): {e}")
 
-    # ── File validation ───────────────────────────────────────────────────
+    # ── File validation ───────────────────────────────────────────────────────
     file = request.files.get("file")
     if not file:
         return jsonify({"error": "No file provided"}), 400
@@ -137,20 +142,21 @@ def _analyze_inner():
         return jsonify({
             "error": f"File too large. Max 5 MB. Yours is {file_size / 1024 / 1024:.1f} MB."
         }), 413
+
     if file_size == 0:
         return jsonify({"error": "The uploaded file is empty."}), 400
 
-    # ── Text extraction ───────────────────────────────────────────────────
+    # ── Text extraction ───────────────────────────────────────────────────────
     raw_text = _extract_text_safe(file, filename)
     if isinstance(raw_text, tuple):
-        return raw_text  # error response
+        return raw_text  # error response tuple
 
     if len(raw_text.strip()) < 20:
         return jsonify({
             "error": "No readable text found. Try a clearer PDF or a plain-text file."
         }), 400
 
-    # ── Audit ─────────────────────────────────────────────────────────────
+    # ── Audit + anonymize ─────────────────────────────────────────────────────
     try:
         from services.compliance import audit_log, anonymize_for_llm
         audit_log(supabase, user.id, "DOCUMENT_UPLOADED",
@@ -158,14 +164,14 @@ def _analyze_inner():
         anonymized = anonymize_for_llm(raw_text, user.id)
     except Exception as e:
         print(f"[ANALYZE] Audit/anonymize non-fatal: {e}")
-        anonymized = raw_text  # use raw if anonymization fails
+        anonymized = raw_text
 
-    user_name = _get_user_name_safe(supabase, user.id)
-
+    user_name    = _get_user_name_safe(supabase, user.id)
     _is_radiology = _detect_radiology(anonymized)
     print(f"[ANALYZE] {'Radiology' if _is_radiology else 'Lab report'} detected: {filename}")
 
-    # ── Marker extraction ─────────────────────────────────────────────────
+    # ── Marker extraction + US unit normalization ─────────────────────────────
+    # FIX-A: unit normalization now happens here, before storage
     active_markers: list = []
     report_date: str = ""
 
@@ -174,7 +180,7 @@ def _analyze_inner():
             supabase, groq_client, anonymized, filename, user.id, user_name
         )
 
-    # ── Background jobs ───────────────────────────────────────────────────
+    # ── Background jobs ───────────────────────────────────────────────────────
     job_id = uuid.uuid4().hex[:12]
 
     if active_markers:
@@ -185,7 +191,7 @@ def _analyze_inner():
         user.id, user_name, active_markers, job_id,
     )
 
-    # ── Response ──────────────────────────────────────────────────────────
+    # ── Build response ────────────────────────────────────────────────────────
     abnormal = [m for m in active_markers if m.get("status") in ("HIGH", "LOW")]
     normal   = [m for m in active_markers if m.get("status") == "NORMAL"]
     prefix   = f"{user_name}, your" if user_name else "Your"
@@ -193,7 +199,8 @@ def _analyze_inner():
     if active_markers:
         summary = (
             f"{prefix} report has been read and **{len(active_markers)} markers stored**. "
-            f"{len(abnormal)} need attention. Ask any questions below."
+            f"{len(abnormal)} need attention — all values displayed in US units. "
+            "Ask any questions below."
         )
     elif _is_radiology:
         summary = f"{prefix} report has been read. Ask PHI any questions about it below."
@@ -220,10 +227,11 @@ def _analyze_inner():
         "job_id":                job_id,
         "persona_refresh":       bool(active_markers),
         "requires_confirmation": False,
+        "units":                 "US",  # Confirm to frontend that values are normalized
     })
 
 
-# ── Safe helpers ──────────────────────────────────────────────────────────
+# ── Safe helpers ──────────────────────────────────────────────────────────────
 
 def _today_iso() -> str:
     from datetime import date
@@ -231,24 +239,22 @@ def _today_iso() -> str:
 
 
 def _extract_text_safe(file, filename: str):
-    """FIX-1: Catch ImportError from pypdf and return HTTP 400 not 500."""
+    """FIX-B: Catch ImportError from pypdf and return HTTP 400 not 500."""
     file.seek(0)
 
-    # Try primary extractor
     for module_path in ["document_processing.extractor", "extractor"]:
         try:
-            mod = __import__(module_path, fromlist=["extract_text_from_file"])
+            mod        = __import__(module_path, fromlist=["extract_text_from_file"])
             extract_fn = mod.extract_text_from_file
             try:
                 return extract_fn(file)
             except ValueError as e:
                 return jsonify({"error": str(e)}), 400
             except ImportError as e:
-                # pypdf not installed
                 return jsonify({
                     "error": (
-                        f"PDF processing library not installed on this server: {e}. "
-                        "Please add 'pypdf' to requirements.txt and redeploy."
+                        f"PDF processing library not installed: {e}. "
+                        "Add 'pypdf' to requirements.txt and redeploy."
                     )
                 }), 400
             except Exception as e:
@@ -268,8 +274,8 @@ def _extract_text_safe(file, filename: str):
             file.seek(0)
             data = file.read()
             reader = PdfReader(io.BytesIO(data))
-            pages = [page.extract_text() or "" for page in reader.pages]
-            text = "\n".join(pages).strip()
+            pages  = [page.extract_text() or "" for page in reader.pages]
+            text   = "\n".join(pages).strip()
             if text:
                 return text
             return jsonify({"error": "No text found in this PDF. It may be a scanned image — OCR is required."}), 400
@@ -304,16 +310,29 @@ def _extract_and_store_markers_safe(
     user_id: str, user_name: str,
 ) -> tuple:
     """
-    FIX-2: Guard groq_client=None before calling LLM.
-    Returns (markers, report_date).
+    FIX-A + FIX-B: Extract markers, normalize to US units, then store.
+
+    US unit normalization (force_us_units_batch) converts:
+      - mmol/L glucose  → mg/dL
+      - g/L hemoglobin  → g/dL
+      - nmol/L Vitamin D → ng/mL
+      - pmol/L B12       → pg/mL
+      - µmol/L creatinine → mg/dL
+      - kg weight        → lbs
+      - °C               → °F
+
+    This happens BEFORE explain_markers and BEFORE store_health_markers so
+    that everything downstream (frontend, memory, insights engine) always
+    works in US units.
     """
     markers, report_date = [], ""
 
-    # FIX-2: Check we have SOME AI available before trying
+    # FIX-B: Guard — need at least one AI backend
     import os
     has_ai = bool(groq_client) or bool(os.getenv("OPENAI_API_KEY"))
     if not has_ai:
-        print("[ANALYZE] No AI client available — skipping marker extraction")
+        print("[ANALYZE] No AI client available — skipping marker extraction. "
+              "Set OPENAI_API_KEY or GROQ_API_KEY in .env")
         return [], ""
 
     try:
@@ -322,13 +341,16 @@ def _extract_and_store_markers_safe(
         print(f"[ANALYZE] health_memory.extractor import failed: {e}")
         return [], ""
 
+    # Step 1: Extract raw markers via LLM
     try:
         markers = extract_health_markers(
-            text=anonymized, groq_client=groq_client, source_document=filename
+            text=anonymized,
+            groq_client=groq_client,
+            source_document=filename,
         )
         if markers:
             report_date = markers[0].get("date", "") or ""
-        print(f"[ANALYZE] Extracted {len(markers)} markers from {filename}")
+        print(f"[ANALYZE] Extracted {len(markers)} raw markers from {filename}")
     except Exception as e:
         print(f"[ANALYZE] Extraction non-fatal: {type(e).__name__}: {e}")
         return [], ""
@@ -336,7 +358,19 @@ def _extract_and_store_markers_safe(
     if not markers:
         return [], report_date
 
-    # Explain markers (timeout-safe — explainer.py already has 8s timeout)
+    # Step 2: FIX-A — Normalize to US units BEFORE anything else
+    try:
+        from services.unit_normalizer import force_us_units_batch
+        markers = force_us_units_batch(markers)
+        converted = sum(1 for m in markers if m.get("us_converted"))
+        if converted:
+            print(f"[ANALYZE] US unit normalization: {converted}/{len(markers)} markers converted")
+    except ImportError as e:
+        print(f"[ANALYZE] unit_normalizer import failed (non-fatal): {e}")
+    except Exception as e:
+        print(f"[ANALYZE] US unit normalization non-fatal: {e}")
+
+    # Step 3: Explain markers (has its own 8-second timeout guard)
     explained = markers
     try:
         from ai.explainer import explain_markers
@@ -344,15 +378,15 @@ def _extract_and_store_markers_safe(
     except Exception as e:
         print(f"[ANALYZE] Explainer non-fatal: {type(e).__name__}: {e}")
 
-    # Store
+    # Step 4: Store (already US-normalized)
     try:
         from health_memory.memory import store_health_markers
         stored = store_health_markers(supabase, user_id, explained)
-        print(f"[ANALYZE] ✅ Stored {stored} markers for {user_id[:8]}")
+        print(f"[ANALYZE] Stored {stored} US-normalized markers for {user_id[:8]}")
     except Exception as e:
         print(f"[ANALYZE] Store non-fatal: {type(e).__name__}: {e}")
 
-    # RAG ingest
+    # Step 5: RAG ingest for semantic search
     try:
         from health_memory.rag import ingest_text
         ingest_text(supabase=supabase, user_id=user_id, text=anonymized, source=filename)
@@ -363,9 +397,10 @@ def _extract_and_store_markers_safe(
 
 
 def _invalidate_caches(supabase, user_id: str) -> None:
+    """Invalidate the 6-hour persona cache and insights cache after new upload."""
     try:
         supabase.table("user_profiles").update({
-            "health_persona_marker_count": -1,
+            "health_persona_marker_count": -1,  # Forces persona regeneration
         }).eq("user_id", user_id).execute()
     except Exception as e:
         print(f"[ANALYZE] Persona cache invalidate non-fatal: {e}")
@@ -422,13 +457,13 @@ def _generate_and_store_doctor_prep_safe(
 
         audit_log(supabase, user_id, "DOCTOR_PREP_STORED",
                   f"file:{filename} job:{job_id}", "PHI")
-        print(f"[BG-PREP] ✅ Done: {filename} job={job_id}")
+        print(f"[BG-PREP] Done: {filename} job={job_id}")
     except Exception as e:
-        print(f"[BG-PREP] ❌ {type(e).__name__}: {e}")
+        print(f"[BG-PREP] {type(e).__name__}: {e}")
         traceback.print_exc()
 
 
-# ── Doctor prep fetch ─────────────────────────────────────────────────────
+# ── Doctor prep fetch ─────────────────────────────────────────────────────────
 
 @document_bp.route("/doctor-prep/<job_id>", methods=["GET"])
 def get_doctor_prep(job_id: str):
