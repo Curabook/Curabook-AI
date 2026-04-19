@@ -235,6 +235,7 @@ from api.health_routes       import health_bp
 from api.compliance_routes   import compliance_bp
 from api.profile_routes      import profile_bp
 from api.intelligence_routes import intelligence_bp
+from api.cron_routes import cron_bp
 
 app.register_blueprint(auth_bp)
 app.register_blueprint(chat_bp)
@@ -243,6 +244,7 @@ app.register_blueprint(health_bp)
 app.register_blueprint(compliance_bp)
 app.register_blueprint(profile_bp)
 app.register_blueprint(intelligence_bp)
+app.register_blueprint(cron_bp)
 
 app.register_blueprint(auth_bp,       url_prefix="/api/v1", name="auth_v1")
 app.register_blueprint(chat_bp,       url_prefix="/api/v1", name="chat_v1")
