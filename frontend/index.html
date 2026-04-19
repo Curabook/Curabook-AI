@@ -3,1067 +3,2056 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PHI Performance Cockpit — GLP-1 Maintenance | Curabook</title>
-<meta name="description" content="Your GLP-1 maintenance command center. Track Muscle Defense, detect metabolic rebound, and stay ahead of the GLP-1 Cliff.">
-<link rel="canonical" href="https://curabook.com/health-ai">
+<title>Curabook PHI — Metabolic Command Center</title>
+<meta name="description" content="Your GLP-1 Metabolic Command Center. Track, analyze, and prevent metabolic rebound.">
 
-<!-- Fonts -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
 <style>
 /* ═══════════════════════════════════════════════════════════
-   PERFORMANCE COCKPIT — Medical Dark + Industrial Precision
-   Palette: near-black obsidian, electric teal signal, warm amber warning
-   Typography: Space Grotesk (functional) + Playfair Display (editorial)
-   Aesthetic: F1 telemetry meets clinical dashboard
+   CURABOOK PHI — METABOLIC COMMAND CENTER
+   Aesthetic: Clinical Obsidian × Teal Signal × Editorial Serif
+   Font Stack: Sora (clean utility) + Instrument Serif (editorial)
+               + JetBrains Mono (data/numbers)
 ═══════════════════════════════════════════════════════════ */
 
 :root {
-  --obsidian:    #080c0f;
-  --ink-1:       #0e1318;
-  --ink-2:       #141c22;
-  --ink-3:       #1c2830;
-  --ink-4:       #243040;
-  --signal:      #00e5cc;
-  --signal-2:    #00b5a0;
-  --signal-dim:  rgba(0,229,204,.08);
-  --signal-glow: rgba(0,229,204,.22);
-  --danger:      #ff4d6d;
-  --danger-dim:  rgba(255,77,109,.10);
-  --amber:       #ffa726;
-  --amber-dim:   rgba(255,167,38,.10);
-  --ok:          #4cddaa;
-  --ok-dim:      rgba(76,221,170,.10);
-  --text-1:      #edf0f4;
-  --text-2:      #8a9ab0;
-  --text-3:      #4a5a6a;
-  --border:      rgba(255,255,255,.07);
-  --border-2:    rgba(255,255,255,.13);
-  --mono:        'DM Mono', monospace;
-  --sans:        'Space Grotesk', system-ui, sans-serif;
-  --serif:       'Playfair Display', Georgia, serif;
-  --r:           10px;
-  --r-lg:        16px;
+  --obsidian:     #080b0f;
+  --surface-1:    #0e1318;
+  --surface-2:    #141c24;
+  --surface-3:    #1c2830;
+  --surface-4:    #243242;
+  --signal:       #00d4c8;
+  --signal-2:     #00a89e;
+  --signal-dim:   rgba(0,212,200,.09);
+  --signal-glow:  rgba(0,212,200,.22);
+  --danger:       #ff5757;
+  --danger-dim:   rgba(255,87,87,.1);
+  --amber:        #ffb347;
+  --amber-dim:    rgba(255,179,71,.1);
+  --ok:           #4ade80;
+  --ok-dim:       rgba(74,222,128,.1);
+  --text-1:       #eef1f6;
+  --text-2:       #8a9bb0;
+  --text-3:       #4a5c70;
+  --border:       rgba(255,255,255,.065);
+  --border-2:     rgba(255,255,255,.13);
+  --sans:         'Sora', system-ui, sans-serif;
+  --serif:        'Instrument Serif', Georgia, serif;
+  --mono:         'JetBrains Mono', monospace;
+  --sidebar-w:    260px;
+  --topbar-h:     56px;
+  --r:            10px;
+  --r-lg:         16px;
 }
 
-*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-html { scroll-behavior: smooth; }
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+html { scroll-behavior:smooth; height:100%; }
 
 body {
   font-family: var(--sans);
   background: var(--obsidian);
   color: var(--text-1);
-  min-height: 100vh;
+  height: 100vh;
+  display: flex;
+  overflow: hidden;
   -webkit-font-smoothing: antialiased;
-  overflow-x: hidden;
 }
 
-/* Scanline texture overlay */
+/* Scanline atmosphere */
 body::before {
-  content: '';
-  position: fixed; inset: 0;
-  background: repeating-linear-gradient(
-    0deg,
-    transparent,
-    transparent 2px,
-    rgba(0,229,204,.012) 2px,
-    rgba(0,229,204,.012) 4px
-  );
-  pointer-events: none; z-index: 0;
+  content:'';
+  position:fixed; inset:0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,212,200,.008) 3px, rgba(0,212,200,.008) 4px);
+  pointer-events:none; z-index:0;
 }
 
-/* ── TOPBAR ──────────────────────────────────────────── */
+/* ── SCROLLBARS ─────────────────────── */
+::-webkit-scrollbar { width:5px; height:5px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:var(--surface-4); border-radius:3px; }
+::-webkit-scrollbar-thumb:hover { background:var(--text-3); }
+
+/* ════════════════════════════════════
+   AUTH WALL
+════════════════════════════════════ */
+#authWall {
+  position:fixed; inset:0;
+  background: var(--obsidian);
+  z-index:9000;
+  display:flex; align-items:center; justify-content:center;
+  padding:20px;
+}
+#authWall.hidden { display:none; }
+
+.auth-box {
+  width:100%; max-width:420px;
+  background: var(--surface-1);
+  border:1px solid var(--border-2);
+  border-radius:20px;
+  padding:40px;
+  box-shadow:0 32px 80px rgba(0,0,0,.6);
+  animation: authIn .4s cubic-bezier(.4,0,.2,1);
+}
+@keyframes authIn {
+  from { opacity:0; transform:translateY(20px); }
+  to   { opacity:1; transform:translateY(0); }
+}
+
+.auth-logo {
+  display:flex; align-items:center; gap:10px; margin-bottom:28px;
+}
+.auth-logo-mark {
+  width:36px; height:36px;
+  background: linear-gradient(135deg,var(--signal),var(--signal-2));
+  border-radius:10px;
+  display:flex; align-items:center; justify-content:center;
+  font-family:var(--serif); font-size:1.1rem; color:var(--obsidian); font-weight:700;
+  box-shadow: 0 4px 16px var(--signal-glow);
+}
+.auth-logo-text {
+  font-family:var(--serif); font-size:1.2rem; color:var(--text-1); font-weight:400;
+}
+.auth-logo-badge {
+  font-size:.6rem; font-weight:700; letter-spacing:.1em;
+  background:var(--signal-dim); color:var(--signal);
+  border:1px solid rgba(0,212,200,.2);
+  padding:2px 8px; border-radius:20px; text-transform:uppercase;
+  margin-left:4px;
+}
+
+.auth-title {
+  font-family:var(--serif); font-size:1.6rem; font-weight:400;
+  margin-bottom:6px; line-height:1.2;
+}
+.auth-subtitle {
+  font-size:.82rem; color:var(--text-2); margin-bottom:24px; line-height:1.5;
+}
+.auth-subtitle a { color:var(--signal); text-decoration:none; }
+
+.auth-tabs {
+  display:flex; gap:0; margin-bottom:22px;
+  background:var(--surface-2); border-radius:var(--r); padding:3px;
+}
+.auth-tab {
+  flex:1; padding:7px; border:none; background:none;
+  color:var(--text-3); font-family:var(--sans); font-size:.8rem; font-weight:600;
+  cursor:pointer; border-radius:7px; transition:all .15s;
+}
+.auth-tab.active { background:var(--surface-3); color:var(--text-1); }
+
+.auth-field { margin-bottom:14px; }
+.auth-label { display:block; font-size:.72rem; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--text-3); margin-bottom:6px; }
+.auth-input {
+  width:100%; padding:11px 13px;
+  background:var(--surface-2); border:1.5px solid var(--border);
+  border-radius:var(--r); color:var(--text-1);
+  font-family:var(--sans); font-size:.88rem; outline:none;
+  transition:border-color .2s, box-shadow .2s;
+}
+.auth-input:focus { border-color:var(--signal); box-shadow:0 0 0 3px var(--signal-dim); }
+.auth-input::placeholder { color:var(--text-3); }
+
+.auth-btn {
+  width:100%; padding:13px;
+  background:var(--signal); color:var(--obsidian);
+  border:none; border-radius:var(--r);
+  font-family:var(--sans); font-size:.9rem; font-weight:700;
+  cursor:pointer; transition:all .15s; margin-top:4px;
+  display:flex; align-items:center; justify-content:center; gap:8px;
+}
+.auth-btn:hover { background:var(--signal-2); transform:translateY(-1px); }
+.auth-btn:disabled { opacity:.6; cursor:not-allowed; transform:none; }
+
+.auth-divider {
+  display:flex; align-items:center; gap:10px;
+  font-size:.72rem; color:var(--text-3); margin:14px 0;
+}
+.auth-divider::before, .auth-divider::after {
+  content:''; flex:1; height:1px; background:var(--border);
+}
+
+.auth-google {
+  width:100%; padding:11px;
+  background:var(--surface-2); border:1.5px solid var(--border);
+  border-radius:var(--r); color:var(--text-1);
+  font-family:var(--sans); font-size:.86rem; font-weight:500;
+  cursor:pointer; transition:all .15s;
+  display:flex; align-items:center; justify-content:center; gap:9px;
+}
+.auth-google:hover { border-color:var(--border-2); background:var(--surface-3); }
+.auth-google img { width:17px; height:17px; }
+
+.auth-msg { font-size:.8rem; text-align:center; min-height:18px; margin-top:10px; }
+.auth-msg.error { color:var(--danger); }
+.auth-msg.success { color:var(--signal); }
+
+/* ════════════════════════════════════
+   APP SHELL
+════════════════════════════════════ */
+#appShell {
+  display:flex; width:100%; height:100vh;
+  position:relative; z-index:1;
+}
+#appShell.hidden { display:none; }
+
+/* ── SIDEBAR ──────────────────────── */
+.sidebar {
+  width:var(--sidebar-w); height:100vh;
+  background:var(--surface-1);
+  border-right:1px solid var(--border);
+  display:flex; flex-direction:column;
+  flex-shrink:0; overflow:hidden;
+  transition:transform .3s cubic-bezier(.4,0,.2,1);
+  z-index:50;
+}
+
+.sidebar-brand {
+  display:flex; align-items:center; gap:10px;
+  padding:18px 16px 8px;
+  border-bottom:1px solid var(--border);
+  flex-shrink:0;
+}
+.brand-mark {
+  width:30px; height:30px;
+  background:linear-gradient(135deg,var(--signal),var(--signal-2));
+  border-radius:8px;
+  display:flex; align-items:center; justify-content:center;
+  font-family:var(--serif); font-size:.95rem; color:var(--obsidian); font-weight:700;
+  box-shadow:0 2px 10px var(--signal-glow); flex-shrink:0;
+}
+.brand-name { font-family:var(--serif); font-size:1rem; color:var(--text-2); font-weight:400; }
+.brand-tag {
+  font-size:.58rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase;
+  background:var(--signal-dim); color:var(--signal);
+  border:1px solid rgba(0,212,200,.2);
+  padding:2px 7px; border-radius:20px; margin-left:2px;
+}
+
+.sidebar-user {
+  padding:12px 14px;
+  border-bottom:1px solid var(--border);
+  display:flex; align-items:center; gap:10px;
+  flex-shrink:0; cursor:pointer;
+  transition:background .15s;
+}
+.sidebar-user:hover { background:var(--surface-2); }
+.user-avatar {
+  width:34px; height:34px; border-radius:50%;
+  background:linear-gradient(135deg,var(--signal-2),var(--surface-4));
+  display:flex; align-items:center; justify-content:center;
+  font-weight:700; font-size:.85rem; color:white; flex-shrink:0;
+  border:2px solid var(--signal-dim);
+}
+.user-avatar img { width:100%; height:100%; border-radius:50%; object-fit:cover; }
+.user-info { flex:1; min-width:0; }
+.user-name { font-size:.82rem; font-weight:600; color:var(--text-1); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.user-plan { font-size:.68rem; color:var(--signal); font-weight:600; }
+.user-status {
+  width:8px; height:8px; border-radius:50%; background:var(--ok);
+  flex-shrink:0; box-shadow:0 0 6px rgba(74,222,128,.4);
+  animation:blink 2.5s ease infinite;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+.sidebar-nav { padding:10px 8px; flex-shrink:0; }
+.nav-label { font-size:.6rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--text-3); padding:8px 8px 4px; }
+
+.nav-btn {
+  width:100%; padding:8px 10px;
+  background:none; border:none;
+  color:var(--text-2); font-family:var(--sans); font-size:.8rem; font-weight:500;
+  display:flex; align-items:center; gap:9px;
+  cursor:pointer; border-radius:var(--r); transition:all .15s;
+  text-align:left;
+}
+.nav-btn:hover { background:var(--surface-2); color:var(--text-1); }
+.nav-btn.active { background:var(--signal-dim); color:var(--signal); }
+.nav-btn i { width:15px; text-align:center; font-size:.8rem; }
+.nav-btn .nav-badge {
+  margin-left:auto; font-size:.6rem; background:var(--danger);
+  color:white; padding:1px 6px; border-radius:20px; font-weight:700;
+}
+
+.new-chat-btn {
+  margin:8px; padding:9px 12px;
+  background:none; border:1px solid var(--border-2);
+  border-radius:var(--r); color:var(--text-2);
+  font-family:var(--sans); font-size:.8rem; font-weight:500;
+  cursor:pointer; transition:all .15s;
+  display:flex; align-items:center; gap:8px;
+}
+.new-chat-btn:hover { border-color:var(--signal); color:var(--signal); background:var(--signal-dim); }
+
+/* History */
+.sidebar-history { flex:1; overflow-y:auto; padding:4px 8px; }
+.history-date-label {
+  font-size:.6rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--text-3); padding:10px 8px 4px;
+}
+.history-item {
+  padding:7px 10px; border-radius:var(--r);
+  display:flex; align-items:center; gap:8px;
+  cursor:pointer; transition:background .15s; position:relative;
+  color:var(--text-2); font-size:.78rem;
+}
+.history-item:hover { background:var(--surface-2); color:var(--text-1); }
+.history-item.active { background:var(--signal-dim); color:var(--signal); }
+.history-title { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.history-del {
+  display:none; background:none; border:none; color:var(--text-3);
+  cursor:pointer; padding:2px 4px; font-size:.72rem;
+}
+.history-item:hover .history-del { display:block; }
+.history-del:hover { color:var(--danger); }
+
+/* Sidebar footer */
+.sidebar-footer {
+  padding:10px 8px;
+  border-top:1px solid var(--border);
+  flex-shrink:0;
+}
+.sidebar-footer-btn {
+  width:100%; padding:7px 10px;
+  background:none; border:none; color:var(--text-3);
+  font-family:var(--sans); font-size:.75rem;
+  display:flex; align-items:center; gap:8px;
+  cursor:pointer; border-radius:var(--r); transition:all .15s;
+}
+.sidebar-footer-btn:hover { background:var(--surface-2); color:var(--danger); }
+
+/* ── MAIN CONTENT ─────────────────── */
+.main {
+  flex:1; display:flex; flex-direction:column;
+  overflow:hidden; min-width:0;
+}
+
+/* TOPBAR */
 .topbar {
-  position: sticky; top: 0; z-index: 100;
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 12px 28px;
-  background: rgba(8,12,15,.92);
-  border-bottom: 1px solid var(--border);
-  backdrop-filter: blur(24px);
+  height:var(--topbar-h);
+  display:flex; align-items:center; justify-content:space-between;
+  padding:0 20px;
+  border-bottom:1px solid var(--border);
+  background:rgba(8,11,15,.85);
+  backdrop-filter:blur(20px);
+  flex-shrink:0; z-index:10;
+}
+.topbar-left { display:flex; align-items:center; gap:12px; }
+.topbar-right { display:flex; align-items:center; gap:10px; }
+
+.mobile-menu {
+  display:none; background:none; border:none;
+  color:var(--text-2); font-size:1.1rem; cursor:pointer; padding:6px;
+  border-radius:var(--r);
+}
+.mobile-menu:hover { background:var(--surface-2); }
+
+.topbar-title {
+  font-family:var(--serif); font-size:.95rem; color:var(--text-2); font-weight:400;
 }
 
-.logo {
-  display: flex; align-items: center; gap: 10px;
-  text-decoration: none;
+.online-indicator {
+  display:flex; align-items:center; gap:6px;
+  font-size:.72rem; color:var(--text-3);
+  padding:3px 10px; border-radius:20px;
+  border:1px solid var(--border);
 }
-.logo-mark {
-  width: 34px; height: 34px;
-  background: linear-gradient(135deg, var(--signal), var(--signal-2));
-  border-radius: 9px;
-  display: flex; align-items: center; justify-content: center;
-  font-family: var(--serif); font-size: 1.1rem; color: var(--obsidian); font-weight: 700;
-  box-shadow: 0 2px 16px var(--signal-glow);
+.online-dot { width:6px; height:6px; background:var(--ok); border-radius:50%; animation:blink 2.5s ease infinite; }
+
+.topbar-user-btn {
+  display:flex; align-items:center; gap:8px;
+  background:var(--surface-2); border:1px solid var(--border);
+  border-radius:24px; padding:5px 12px 5px 5px;
+  cursor:pointer; transition:all .15s;
 }
-.logo-name {
-  font-family: var(--sans); font-weight: 600; font-size: .95rem;
-  color: var(--text-2); letter-spacing: .04em;
+.topbar-user-btn:hover { border-color:var(--border-2); }
+.topbar-avatar {
+  width:26px; height:26px; border-radius:50%;
+  background:linear-gradient(135deg,var(--signal-2),var(--surface-4));
+  display:flex; align-items:center; justify-content:center;
+  font-size:.72rem; font-weight:700; color:white;
 }
-.cockpit-badge {
-  font-size: .62rem; font-weight: 700; letter-spacing: .12em;
-  background: var(--signal-dim); color: var(--signal);
-  border: 1px solid rgba(0,229,204,.2);
-  padding: 3px 9px; border-radius: 20px; text-transform: uppercase;
+.topbar-avatar img { width:100%; height:100%; border-radius:50%; object-fit:cover; }
+.topbar-username { font-size:.78rem; font-weight:600; color:var(--text-1); }
+
+/* User dropdown */
+.user-dropdown {
+  position:absolute; top:calc(var(--topbar-h) + 6px); right:16px;
+  background:var(--surface-2);
+  border:1px solid var(--border-2);
+  border-radius:var(--r-lg);
+  min-width:200px;
+  box-shadow:0 16px 48px rgba(0,0,0,.5);
+  z-index:200;
+  overflow:hidden;
+  animation:dropIn .15s ease;
+}
+@keyframes dropIn { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:translateY(0)} }
+
+.user-dropdown.hidden { display:none; }
+.dropdown-header { padding:12px 14px; border-bottom:1px solid var(--border); }
+.dropdown-email { font-size:.78rem; color:var(--text-2); overflow:hidden; text-overflow:ellipsis; }
+.dropdown-plan { font-size:.68rem; color:var(--signal); font-weight:700; margin-top:2px; }
+.dropdown-item {
+  padding:10px 14px; display:flex; align-items:center; gap:9px;
+  font-size:.8rem; color:var(--text-1); cursor:pointer;
+  transition:background .15s;
+}
+.dropdown-item:hover { background:var(--surface-3); }
+.dropdown-item i { width:14px; color:var(--text-3); }
+.dropdown-item.danger:hover { background:var(--danger-dim); }
+.dropdown-item.danger { color:var(--danger); }
+.dropdown-item.danger i { color:var(--danger); }
+
+/* ── VIEWS ──────────────────────────── */
+.view { flex:1; display:none; flex-direction:column; overflow:hidden; }
+.view.active { display:flex; }
+
+/* ─── CHAT VIEW ─────────────────── */
+#chatView {
+  flex:1; display:flex; flex-direction:column; overflow:hidden;
 }
 
-.topbar-right { display: flex; align-items: center; gap: 12px; }
-.btn-cta {
-  padding: 8px 20px;
-  background: var(--signal); color: var(--obsidian);
-  border: none; border-radius: var(--r);
-  font-family: var(--sans); font-size: .85rem; font-weight: 700;
-  cursor: pointer; transition: all .15s; text-decoration: none;
-  display: inline-flex; align-items: center; gap: 6px;
+/* Welcome state */
+.chat-welcome {
+  flex:1; display:flex; flex-direction:column;
+  align-items:center; padding:32px 20px 0;
+  overflow-y:auto;
 }
-.btn-cta:hover { background: var(--signal-2); transform: translateY(-1px); }
-.btn-outline {
-  padding: 7px 16px;
-  background: none; border: 1px solid var(--border-2);
-  border-radius: var(--r); color: var(--text-2);
-  font-family: var(--sans); font-size: .82rem;
-  cursor: pointer; transition: all .15s; text-decoration: none;
-}
-.btn-outline:hover { border-color: var(--signal); color: var(--signal); }
+.chat-welcome.hidden { display:none; }
 
-/* ── HERO ────────────────────────────────────────────── */
-.hero {
-  position: relative; z-index: 1;
-  padding: 64px 28px 48px;
-  max-width: 1200px; margin: 0 auto; text-align: center;
+.welcome-orb {
+  width:56px; height:56px; border-radius:50%;
+  background:linear-gradient(135deg,var(--signal),var(--signal-2));
+  display:flex; align-items:center; justify-content:center;
+  font-family:var(--serif); font-size:1.5rem; color:var(--obsidian); font-weight:700;
+  margin-bottom:16px;
+  box-shadow:0 8px 32px var(--signal-glow);
+  animation:orbPulse 3s ease infinite;
 }
-.hero::before {
-  content: '';
-  position: absolute; top: -40px; left: 50%; transform: translateX(-50%);
-  width: 800px; height: 350px;
-  background: radial-gradient(ellipse, rgba(0,229,204,.10) 0%, transparent 70%);
-  pointer-events: none;
+@keyframes orbPulse { 0%,100%{box-shadow:0 8px 32px var(--signal-glow)} 50%{box-shadow:0 12px 48px rgba(0,212,200,.35)} }
+
+.welcome-headline {
+  font-family:var(--serif); font-size:clamp(1.6rem,3vw,2.4rem);
+  text-align:center; font-weight:400; line-height:1.2; margin-bottom:10px;
 }
-.hero-chip {
-  display: inline-flex; align-items: center; gap: 8px;
-  background: var(--danger-dim); border: 1px solid rgba(255,77,109,.2);
-  color: var(--danger); font-size: .78rem; font-weight: 600;
-  letter-spacing: .1em; padding: 5px 14px; border-radius: 20px;
-  text-transform: uppercase; margin-bottom: 22px;
-}
-.hero-chip .pulse {
-  width: 7px; height: 7px; border-radius: 50%; background: var(--danger);
-  animation: pulse-red 1.8s ease infinite;
-}
-@keyframes pulse-red {
-  0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(255,77,109,.4)}
-  50%{opacity:.7;box-shadow:0 0 0 8px rgba(255,77,109,0)}
+.welcome-headline em { font-style:italic; color:var(--signal); }
+.welcome-subline {
+  font-size:.9rem; color:var(--text-2); text-align:center;
+  max-width:460px; line-height:1.65; margin-bottom:24px;
 }
 
-.hero-h1 {
-  font-family: var(--serif); font-size: clamp(2.2rem,5vw,3.8rem);
-  font-weight: 700; line-height: 1.08; letter-spacing: -.04em;
-  margin-bottom: 18px; color: var(--text-1);
+/* Pulse card */
+.pulse-card {
+  width:100%; max-width:640px;
+  background:var(--surface-1);
+  border:1px solid var(--border);
+  border-radius:var(--r-lg);
+  overflow:hidden; margin-bottom:16px;
 }
-.hero-h1 em { font-style: italic; color: var(--signal); }
+.pulse-card-loading {
+  display:flex; align-items:center; gap:12px; padding:18px 20px;
+  font-size:.82rem; color:var(--text-2);
+}
+.pulse-spinner {
+  width:16px; height:16px;
+  border:2px solid var(--border);
+  border-top-color:var(--signal);
+  border-radius:50%;
+  animation:spin .7s linear infinite;
+  flex-shrink:0;
+}
+@keyframes spin { to{transform:rotate(360deg)} }
+.pulse-card-content { padding:18px 20px; }
+.pulse-status-row { display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+.pulse-pill {
+  display:inline-flex; align-items:center; gap:6px;
+  padding:4px 12px; border-radius:20px;
+  font-size:.7rem; font-weight:700; letter-spacing:.04em;
+}
+.pulse-pill.ok     { background:var(--ok-dim);     color:var(--ok);     border:1px solid rgba(74,222,128,.2); }
+.pulse-pill.warn   { background:var(--amber-dim);  color:var(--amber);  border:1px solid rgba(255,179,71,.2); }
+.pulse-pill.danger { background:var(--danger-dim); color:var(--danger); border:1px solid rgba(255,87,87,.2); }
+.pulse-pill.neutral{ background:var(--signal-dim); color:var(--signal); border:1px solid rgba(0,212,200,.2); }
+.pulse-headline { font-family:var(--serif); font-size:1.05rem; flex:1; }
+.pulse-alerts { display:flex; flex-direction:column; gap:7px; }
+.pulse-alert {
+  display:flex; align-items:flex-start; gap:10px; padding:10px 12px;
+  background:var(--surface-2); border-radius:var(--r);
+  border-left:3px solid var(--border-2);
+  cursor:pointer; transition:background .15s;
+}
+.pulse-alert:hover { background:var(--surface-3); }
+.pulse-alert.danger { border-left-color:var(--danger); }
+.pulse-alert.warn   { border-left-color:var(--amber); }
+.pulse-alert.ok     { border-left-color:var(--ok); }
+.pulse-alert-title  { font-size:.8rem; font-weight:600; color:var(--text-1); margin-bottom:2px; }
+.pulse-alert-desc   { font-size:.72rem; color:var(--text-2); line-height:1.45; }
 
-.hero-sub {
-  font-size: 1.05rem; color: var(--text-2); line-height: 1.7;
-  max-width: 560px; margin: 0 auto 28px;
+/* Suggestion chips */
+.suggestion-chips {
+  display:flex; flex-wrap:wrap; gap:8px;
+  justify-content:center; padding:4px 0 12px;
+  max-width:640px; width:100%;
 }
+.chip {
+  display:inline-flex; align-items:center; gap:6px;
+  padding:7px 14px;
+  background:var(--surface-1); border:1px solid var(--border-2);
+  border-radius:24px; font-size:.76rem; font-family:var(--sans);
+  color:var(--text-2); cursor:pointer; transition:all .15s; white-space:nowrap;
+}
+.chip:hover { border-color:var(--signal); color:var(--signal); background:var(--signal-dim); transform:translateY(-1px); }
+.chip i { font-size:.68rem; }
 
-.cliff-stat-strip {
-  display: flex; justify-content: center; gap: 0;
-  margin: 0 auto 40px; max-width: 700px;
+/* Chat messages */
+.chat-messages {
+  flex:1; overflow-y:auto; padding:12px 0 6px;
+  display:flex; flex-direction:column; gap:0;
 }
-.cliff-stat {
-  flex: 1; padding: 18px 20px; text-align: center;
-  border: 1px solid var(--border);
-  background: var(--ink-1);
-}
-.cliff-stat:first-child { border-radius: var(--r-lg) 0 0 var(--r-lg); }
-.cliff-stat:last-child  { border-radius: 0 var(--r-lg) var(--r-lg) 0; }
-.cliff-stat:not(:last-child) { border-right: none; }
-.cliff-stat-num {
-  font-family: var(--mono); font-size: 1.9rem; font-weight: 500;
-  color: var(--danger); line-height: 1; margin-bottom: 4px;
-}
-.cliff-stat-label { font-size: .72rem; color: var(--text-3); letter-spacing: .06em; }
+.chat-messages.hidden { display:none; }
 
-/* ── MAIN GRID ───────────────────────────────────────── */
-.cockpit-grid {
-  position: relative; z-index: 1;
-  max-width: 1200px; margin: 0 auto;
-  padding: 0 28px 80px;
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  grid-template-rows: auto auto auto;
-  gap: 16px;
+.chat-msg {
+  display:flex; align-items:flex-start; gap:10px;
+  padding:8px 20px; max-width:860px; width:100%; margin:0 auto;
+  animation:msgIn .2s ease;
 }
+@keyframes msgIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
+.chat-msg.user { flex-direction:row-reverse; }
 
-/* ── PANEL BASE ──────────────────────────────────────── */
-.panel {
-  background: var(--ink-1);
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  padding: 24px;
-  position: relative; overflow: hidden;
-  transition: border-color .2s;
+.msg-avatar {
+  width:28px; height:28px; border-radius:50%; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center;
+  font-size:.72rem; font-weight:700; margin-top:3px;
 }
-.panel:hover { border-color: var(--border-2); }
-.panel::after {
-  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
-  background: linear-gradient(90deg, transparent, var(--signal), transparent);
-  opacity: 0; transition: opacity .3s;
-}
-.panel:hover::after { opacity: 1; }
+.msg-avatar.ai-av { background:linear-gradient(135deg,var(--signal),var(--signal-2)); color:var(--obsidian); font-family:var(--serif); font-size:.95rem; box-shadow:0 2px 8px var(--signal-glow); }
+.msg-avatar.user-av { background:var(--surface-4); color:var(--text-2); }
 
-.panel-header {
-  display: flex; align-items: flex-start; justify-content: space-between;
-  margin-bottom: 20px;
+.msg-bubble {
+  max-width:76%; font-size:.875rem; line-height:1.75; color:var(--text-1);
 }
-.panel-label {
-  font-size: .68rem; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .12em; color: var(--text-3); margin-bottom: 5px;
+.chat-msg.user .msg-bubble {
+  background:var(--surface-3);
+  border:1px solid var(--border-2);
+  padding:10px 14px;
+  border-radius:14px 14px 4px 14px;
 }
-.panel-title {
-  font-family: var(--serif); font-size: 1.15rem; font-weight: 400;
-  color: var(--text-1); line-height: 1.3;
-}
-.panel-icon {
-  width: 38px; height: 38px;
-  background: var(--signal-dim); border-radius: var(--r);
-  display: flex; align-items: center; justify-content: center;
-  color: var(--signal); font-size: 1rem; flex-shrink: 0;
-}
+.chat-msg.bot .msg-bubble { padding:2px 0; }
 
-/* Span classes */
-.span-2 { grid-column: span 2; }
-.span-3 { grid-column: span 3; }
+/* Markdown styles */
+.msg-bubble h2 { font-family:var(--sans); font-weight:700; font-size:.82rem; color:var(--signal); margin:12px 0 4px; border-bottom:1px solid rgba(0,212,200,.12); padding-bottom:3px; }
+.msg-bubble h2:first-child { margin-top:0; }
+.msg-bubble h3 { font-size:.8rem; font-weight:600; margin:8px 0 3px; }
+.msg-bubble p { margin-bottom:7px; }
+.msg-bubble p:last-child { margin-bottom:0; }
+.msg-bubble ul,
+.msg-bubble ol { margin:4px 0 8px; padding-left:0; list-style:none; }
+.msg-bubble li { padding:2px 0 2px 16px; position:relative; line-height:1.65; font-size:.85rem; }
+.msg-bubble ul li::before { content:"▸"; position:absolute; left:0; color:var(--signal); font-size:.65rem; top:6px; }
+.msg-bubble ol { counter-reset:li; }
+.msg-bubble ol li { counter-increment:li; padding-left:22px; }
+.msg-bubble ol li::before { content:counter(li); position:absolute; left:0; top:3px; width:16px; height:16px; background:var(--signal-dim); color:var(--signal); border-radius:50%; font-size:.62rem; font-weight:700; display:flex; align-items:center; justify-content:center; }
+.msg-bubble strong { font-weight:600; color:var(--text-1); }
+.msg-bubble code { font-family:var(--mono); background:var(--surface-3); color:var(--signal); padding:2px 5px; border-radius:4px; font-size:.8em; }
+.msg-bubble hr { border:none; border-top:1px solid var(--border); margin:8px 0; }
 
-/* ── METABOLIC SHIELD — 3-ring SVG ──────────────────── */
-.shield-wrap {
-  display: flex; align-items: center; gap: 32px; flex-wrap: wrap;
-}
-.shield-svg-container {
-  position: relative; flex-shrink: 0;
-  width: 200px; height: 200px;
-}
-.shield-score-center {
-  position: absolute; inset: 0;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-}
-.shield-score-num {
-  font-family: var(--mono); font-size: 2.6rem; font-weight: 500; line-height: 1;
-  color: var(--signal);
-}
-.shield-score-label {
-  font-size: .68rem; color: var(--text-3); letter-spacing: .1em;
-  text-transform: uppercase; margin-top: 3px;
-}
-
-.shield-rings { flex: 1; min-width: 200px; }
-.ring-row {
-  display: flex; align-items: center; gap: 10px; margin-bottom: 16px;
-}
-.ring-row:last-child { margin-bottom: 0; }
-.ring-dot {
-  width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
-}
-.ring-info { flex: 1; }
-.ring-name { font-size: .82rem; font-weight: 500; color: var(--text-1); margin-bottom: 2px; }
-.ring-pct  { font-family: var(--mono); font-size: .72rem; color: var(--text-3); }
-.ring-bar-track {
-  width: 100%; height: 5px; background: var(--ink-3);
-  border-radius: 3px; margin-top: 4px; overflow: hidden;
-}
-.ring-bar-fill {
-  height: 100%; border-radius: 3px;
-  transition: width 1.2s cubic-bezier(.4,0,.2,1);
-}
-
-/* ── MUSCLE VS FAT CHART ─────────────────────────────── */
-.chart-container { position: relative; height: 200px; }
-
-/* ── PROTEIN CALCULATOR ──────────────────────────────── */
-.protein-calc { display: flex; flex-direction: column; gap: 14px; }
-.protein-input-row { display: flex; gap: 10px; align-items: center; }
-.protein-input {
-  flex: 1; padding: 9px 12px;
-  background: var(--ink-3); border: 1px solid var(--border);
-  border-radius: var(--r); color: var(--text-1);
-  font-family: var(--mono); font-size: 1rem; outline: none;
-  transition: border-color .2s;
-}
-.protein-input:focus { border-color: var(--signal); }
-.protein-btn {
-  padding: 9px 16px; background: var(--signal); color: var(--obsidian);
-  border: none; border-radius: var(--r); font-family: var(--sans);
-  font-size: .85rem; font-weight: 700; cursor: pointer; transition: all .15s;
-  white-space: nowrap;
-}
-.protein-btn:hover { background: var(--signal-2); }
-.protein-result {
-  display: none; background: var(--ink-2);
-  border: 1px solid rgba(0,229,204,.2); border-radius: var(--r);
-  padding: 14px;
-}
-.protein-result.show { display: block; }
-.protein-big {
-  font-family: var(--mono); font-size: 2.4rem; font-weight: 500;
-  color: var(--signal); line-height: 1;
-}
-.protein-big span { font-size: 1rem; color: var(--text-3); }
-.protein-breakdown { margin-top: 10px; font-size: .78rem; color: var(--text-2); line-height: 1.6; }
-.protein-foods { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 5px; }
-.protein-food-tag {
-  background: var(--ink-3); border: 1px solid var(--border);
-  padding: 3px 10px; border-radius: 20px; font-size: .72rem; color: var(--text-2);
+/* Legal footer styling */
+.phi-legal {
+  margin-top:10px; padding-top:8px;
+  border-top:1px solid var(--border);
+  font-size:.7rem; color:var(--text-3); font-style:italic; opacity:.7;
 }
 
-/* ── CLIFF ALERT PANEL ───────────────────────────────── */
-.alert-panel { border-color: rgba(255,77,109,.25); }
-.alert-panel::after { background: linear-gradient(90deg, transparent, var(--danger), transparent) !important; opacity: 1 !important; }
+/* Typing indicator */
+.typing-row { display:flex; align-items:center; gap:5px; padding:6px 0; }
+.typing-dot { width:6px; height:6px; background:var(--signal); border-radius:50%; animation:tdot 1.2s ease infinite; opacity:.4; }
+.typing-dot:nth-child(2){animation-delay:.2s}
+.typing-dot:nth-child(3){animation-delay:.4s}
+@keyframes tdot { 0%,60%,100%{transform:scale(1);opacity:.4} 30%{transform:scale(1.5);opacity:1} }
 
-.cliff-alert-item {
-  display: flex; gap: 12px; align-items: flex-start;
-  padding: 12px 14px; border-radius: var(--r);
-  border-left: 3px solid transparent; margin-bottom: 10px;
-  background: var(--ink-2);
-  transition: background .15s;
+/* File preview */
+.file-chips {
+  display:none; flex-wrap:wrap; gap:6px;
+  padding:0 20px 6px; max-width:860px; width:100%; margin:0 auto;
 }
-.cliff-alert-item:last-child { margin-bottom: 0; }
-.cliff-alert-item.high   { border-left-color: var(--danger);  background: rgba(255,77,109,.05); }
-.cliff-alert-item.medium { border-left-color: var(--amber);   background: rgba(255,167,38,.05); }
-.cliff-alert-item.ok     { border-left-color: var(--ok);      background: rgba(76,221,170,.05); }
-.cliff-alert-icon  { font-size: 1.2rem; flex-shrink: 0; margin-top: 1px; }
-.cliff-alert-body  { flex: 1; }
-.cliff-alert-title { font-weight: 600; font-size: .85rem; margin-bottom: 3px; }
-.cliff-alert-desc  { font-size: .76rem; color: var(--text-2); line-height: 1.55; }
+.file-chips.show { display:flex; }
+.file-chip {
+  display:inline-flex; align-items:center; gap:6px;
+  padding:5px 10px; background:var(--signal-dim);
+  border:1px solid rgba(0,212,200,.2); border-radius:20px;
+  font-size:.72rem; color:var(--signal); font-weight:500;
+}
+.file-chip-remove { background:none; border:none; color:var(--signal); cursor:pointer; font-size:.68rem; padding:0 2px; }
 
-/* ── TAPER EDUCATION ─────────────────────────────────── */
-.taper-options { display: flex; flex-direction: column; gap: 10px; }
-.taper-option {
-  display: flex; gap: 12px; align-items: flex-start;
-  padding: 12px 14px; background: var(--ink-2);
-  border: 1px solid var(--border); border-radius: var(--r);
-  cursor: pointer; transition: border-color .15s;
+/* Input bar */
+.input-zone {
+  flex-shrink:0; padding:6px 20px 16px;
+  max-width:860px; width:100%; margin:0 auto;
 }
-.taper-option:hover { border-color: var(--signal); }
-.taper-option-badge {
-  width: 28px; height: 28px; border-radius: 50%;
-  background: var(--signal-dim); color: var(--signal);
-  font-family: var(--mono); font-size: .7rem; font-weight: 500;
-  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+.input-bar {
+  display:flex; align-items:flex-end; gap:6px;
+  background:var(--surface-1); border:1.5px solid var(--border);
+  border-radius:var(--r-lg); padding:9px 9px 9px 14px;
+  transition:border-color .2s, box-shadow .2s;
+  box-shadow:0 2px 8px rgba(0,0,0,.2);
 }
-.taper-option-title { font-weight: 600; font-size: .83rem; margin-bottom: 3px; }
-.taper-option-desc  { font-size: .75rem; color: var(--text-2); line-height: 1.5; }
-.taper-evidence {
-  font-size: .68rem; font-family: var(--mono); color: var(--signal);
-  margin-top: 4px;
+.input-bar:focus-within { border-color:var(--signal); box-shadow:0 0 0 3px var(--signal-dim); }
+.chat-ta {
+  flex:1; border:none; background:none;
+  font-family:var(--sans); font-size:.875rem; color:var(--text-1);
+  resize:none; outline:none; min-height:24px; max-height:140px;
+  overflow-y:auto; line-height:1.5;
 }
+.chat-ta::placeholder { color:var(--text-3); }
+.input-action {
+  width:32px; height:32px; background:none; border:none;
+  color:var(--text-3); cursor:pointer; border-radius:var(--r);
+  font-size:.85rem; display:flex; align-items:center; justify-content:center;
+  transition:all .15s; flex-shrink:0;
+}
+.input-action:hover { background:var(--surface-3); color:var(--text-1); }
+.input-action:disabled { opacity:.3; cursor:not-allowed; }
+.send-btn {
+  width:32px; height:32px;
+  background:var(--signal); border:none;
+  border-radius:9px; color:var(--obsidian);
+  font-size:.85rem; cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+  transition:all .15s; flex-shrink:0;
+}
+.send-btn:hover { background:var(--signal-2); transform:scale(1.06); }
+.send-btn:disabled { background:var(--surface-4); color:var(--text-3); cursor:not-allowed; transform:none; }
+.input-disclaimer { text-align:center; font-size:.68rem; color:var(--text-3); margin-top:5px; }
 
-/* ── FOOD NOISE TRACKER ──────────────────────────────── */
-.noise-meter-wrap { display: flex; flex-direction: column; gap: 12px; }
-.noise-slider-row { display: flex; align-items: center; gap: 12px; }
-.noise-label-left  { font-size: .75rem; color: var(--text-3); width: 80px; text-align: right; }
-.noise-label-right { font-size: .75rem; color: var(--text-3); width: 80px; }
-input[type="range"].noise-slider {
-  flex: 1; accent-color: var(--signal); height: 6px; cursor: pointer;
-}
-.noise-readout {
-  text-align: center; padding: 10px;
-  background: var(--ink-2); border-radius: var(--r);
-  font-size: .82rem; color: var(--text-2); line-height: 1.55;
-}
-.noise-readout strong { color: var(--text-1); }
-
-/* ── METRICS ROW ─────────────────────────────────────── */
-.metric-card {
-  background: var(--ink-2); border: 1px solid var(--border);
-  border-radius: var(--r); padding: 14px 16px;
-  display: flex; flex-direction: column; gap: 4px;
-}
-.metric-label { font-size: .68rem; color: var(--text-3); text-transform: uppercase; letter-spacing: .08em; }
-.metric-val   { font-family: var(--mono); font-size: 1.5rem; font-weight: 500; color: var(--text-1); }
-.metric-val.ok     { color: var(--ok); }
-.metric-val.warn   { color: var(--amber); }
-.metric-val.danger { color: var(--danger); }
-.metric-delta { font-size: .72rem; color: var(--text-3); }
-.metric-grid  { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
-
-/* ── CTA FOOTER ──────────────────────────────────────── */
-.cta-footer {
-  position: relative; z-index: 1;
-  max-width: 1200px; margin: 0 auto 80px; padding: 0 28px;
-}
-.cta-box {
-  background: linear-gradient(135deg, var(--ink-2) 0%, #0a1d1c 100%);
-  border: 1px solid rgba(0,229,204,.18);
-  border-radius: 20px; padding: 48px 40px; text-align: center;
-  position: relative; overflow: hidden;
-}
-.cta-box::before {
-  content: ''; position: absolute;
-  top: -60px; left: 50%; transform: translateX(-50%);
-  width: 600px; height: 300px;
-  background: radial-gradient(ellipse, rgba(0,229,204,.10) 0%, transparent 70%);
-  pointer-events: none;
-}
-.cta-box h2 {
-  font-family: var(--serif); font-size: clamp(1.6rem, 3vw, 2.4rem);
-  font-weight: 700; margin-bottom: 12px;
-}
-.cta-box h2 em { font-style: italic; color: var(--signal); }
-.cta-box p { font-size: .95rem; color: var(--text-2); line-height: 1.7; max-width: 500px; margin: 0 auto 24px; }
-.cta-trust {
-  display: flex; justify-content: center; gap: 20px;
-  flex-wrap: wrap; font-size: .74rem; color: var(--text-3); margin-top: 16px;
-}
-.cta-trust span { display: flex; align-items: center; gap: 5px; }
-.cta-trust i { color: var(--signal); }
-
-/* ── SVG RING ANIMATION ──────────────────────────────── */
-.ring-path { transition: stroke-dashoffset 1.4s cubic-bezier(.4,0,.2,1); }
-
-/* ── RESPONSIVE ──────────────────────────────────────── */
-@media (max-width: 900px) {
-  .cockpit-grid { grid-template-columns: 1fr; }
-  .span-2, .span-3 { grid-column: span 1; }
-  .cliff-stat-strip { max-width: 100%; }
-  .shield-wrap { flex-direction: column; align-items: center; }
-  .metric-grid { grid-template-columns: repeat(2, 1fr); }
-  .cta-box { padding: 32px 20px; }
+/* ─── DASHBOARD VIEW ─────────────── */
+#dashView {
+  flex:1; overflow-y:auto; padding:20px;
 }
 
-@media (max-width: 600px) {
-  .topbar { padding: 10px 14px; }
-  .hero { padding: 40px 14px 32px; }
-  .cockpit-grid, .cta-footer { padding: 0 14px 60px; }
-  .cliff-stat-strip { flex-wrap: wrap; }
-  .cliff-stat { min-width: 40%; }
-  .cliff-stat:first-child { border-radius: var(--r); }
-  .cliff-stat:last-child  { border-radius: var(--r); }
+.dash-header {
+  display:flex; align-items:center; justify-content:space-between;
+  margin-bottom:20px;
 }
+.dash-greeting {
+  font-family:var(--serif); font-size:1.3rem; font-weight:400;
+}
+.dash-greeting em { font-style:italic; color:var(--signal); }
+.dash-date { font-size:.75rem; color:var(--text-3); margin-top:3px; }
+
+.dash-grid {
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:14px; margin-bottom:20px;
+}
+
+.dash-stat {
+  background:var(--surface-1); border:1px solid var(--border);
+  border-radius:var(--r-lg); padding:18px;
+}
+.dash-stat-label { font-size:.65rem; font-weight:700; text-transform:uppercase; letter-spacing:.1em; color:var(--text-3); margin-bottom:8px; }
+.dash-stat-val { font-family:var(--mono); font-size:1.7rem; font-weight:500; color:var(--text-1); line-height:1; margin-bottom:5px; }
+.dash-stat-val.ok { color:var(--ok); }
+.dash-stat-val.warn { color:var(--amber); }
+.dash-stat-val.danger { color:var(--danger); }
+.dash-stat-sub { font-size:.72rem; color:var(--text-3); }
+
+.dash-section-title {
+  font-family:var(--serif); font-size:1rem; color:var(--text-2);
+  margin-bottom:12px; font-weight:400;
+}
+
+.markers-grid {
+  display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr));
+  gap:10px; margin-bottom:20px;
+}
+.marker-card {
+  background:var(--surface-1); border:1px solid var(--border);
+  border-radius:var(--r-lg); padding:14px;
+  transition:border-color .2s, transform .15s; cursor:pointer;
+}
+.marker-card:hover { border-color:var(--border-2); transform:translateY(-2px); }
+.marker-card.danger { border-left:3px solid var(--danger); }
+.marker-card.warn   { border-left:3px solid var(--amber); }
+.marker-card.ok     { border-left:3px solid var(--ok); }
+.marker-name  { font-size:.72rem; color:var(--text-3); margin-bottom:6px; }
+.marker-val   { font-family:var(--mono); font-size:1.3rem; font-weight:500; color:var(--text-1); }
+.marker-unit  { font-size:.68rem; color:var(--text-3); margin-left:3px; }
+.marker-ref   { font-size:.65rem; color:var(--text-3); margin-top:4px; }
+.marker-status {
+  display:inline-block; font-size:.6rem; font-weight:700; letter-spacing:.06em;
+  padding:2px 7px; border-radius:20px; margin-top:5px;
+}
+.marker-status.HIGH { background:var(--danger-dim); color:var(--danger); }
+.marker-status.LOW  { background:var(--amber-dim);  color:var(--amber); }
+.marker-status.NORMAL { background:var(--ok-dim); color:var(--ok); }
+.marker-status.UNKNOWN { background:var(--signal-dim); color:var(--signal); }
+
+/* Empty state */
+.empty-state {
+  text-align:center; padding:40px 20px;
+  color:var(--text-3); font-size:.85rem; line-height:1.6;
+}
+.empty-state i { font-size:2rem; color:var(--signal); opacity:.4; display:block; margin-bottom:12px; }
+.empty-state h4 { font-size:.95rem; font-weight:600; color:var(--text-2); margin-bottom:8px; }
+
+/* Upload btn */
+.upload-trigger {
+  display:inline-flex; align-items:center; gap:7px;
+  padding:10px 20px;
+  background:var(--signal); color:var(--obsidian);
+  border:none; border-radius:var(--r);
+  font-family:var(--sans); font-size:.82rem; font-weight:700;
+  cursor:pointer; transition:all .15s; margin-top:12px;
+}
+.upload-trigger:hover { background:var(--signal-2); transform:translateY(-1px); }
+
+/* ─── TOASTS ─────────────────────── */
+.toast-container { position:fixed; bottom:24px; right:24px; z-index:9999; display:flex; flex-direction:column; gap:8px; }
+.toast {
+  padding:11px 16px; border-radius:var(--r);
+  display:flex; align-items:center; gap:8px;
+  font-size:.82rem; font-weight:500; box-shadow:0 8px 28px rgba(0,0,0,.4);
+  animation:toastIn .25s ease; max-width:320px;
+}
+@keyframes toastIn { from{opacity:0;transform:translateX(300px)} to{opacity:1;transform:translateX(0)} }
+.toast.ok  { background:var(--surface-2); border:1px solid rgba(74,222,128,.25); color:var(--ok); }
+.toast.err { background:var(--surface-2); border:1px solid rgba(255,87,87,.25);  color:var(--danger); }
+.toast.info { background:var(--surface-2); border:1px solid rgba(0,212,200,.2); color:var(--signal); }
+
+/* ─── MODALS ─────────────────────── */
+.modal-overlay {
+  position:fixed; inset:0; background:rgba(0,0,0,.7);
+  z-index:5000; display:flex; align-items:center; justify-content:center;
+  padding:16px;
+}
+.modal-overlay.hidden { display:none; }
+.modal {
+  background:var(--surface-1); border:1px solid var(--border-2);
+  border-radius:var(--r-lg); padding:24px;
+  width:100%; max-width:480px; max-height:85vh;
+  overflow-y:auto; box-shadow:0 24px 64px rgba(0,0,0,.6);
+  animation:modalIn .2s ease;
+}
+@keyframes modalIn { from{opacity:0;transform:scale(.96)} to{opacity:1;transform:scale(1)} }
+.modal-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; }
+.modal-title { font-family:var(--serif); font-size:1.1rem; font-weight:400; }
+.modal-close { background:none; border:none; color:var(--text-3); font-size:1rem; cursor:pointer; padding:4px; border-radius:var(--r); }
+.modal-close:hover { color:var(--text-1); background:var(--surface-3); }
+
+.modal-field { margin-bottom:14px; }
+.modal-label { display:block; font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--text-3); margin-bottom:6px; }
+.modal-input {
+  width:100%; padding:10px 12px;
+  background:var(--surface-2); border:1.5px solid var(--border);
+  border-radius:var(--r); color:var(--text-1);
+  font-family:var(--sans); font-size:.85rem; outline:none;
+  transition:border-color .2s;
+}
+.modal-input:focus { border-color:var(--signal); }
+.modal-btn {
+  padding:10px 18px; border:none; border-radius:var(--r);
+  font-family:var(--sans); font-size:.85rem; font-weight:600;
+  cursor:pointer; transition:all .15s;
+}
+.modal-btn.primary { background:var(--signal); color:var(--obsidian); }
+.modal-btn.primary:hover { background:var(--signal-2); }
+.modal-btn.secondary { background:var(--surface-3); color:var(--text-2); }
+.modal-btn.secondary:hover { background:var(--surface-4); color:var(--text-1); }
+.modal-btn.danger { background:var(--danger-dim); color:var(--danger); }
+.modal-btn.danger:hover { background:rgba(255,87,87,.2); }
+.modal-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:6px; }
+
+/* Profile modal specifics */
+.profile-row {
+  display:flex; align-items:center; gap:12px; margin-bottom:18px;
+}
+.profile-large-av {
+  width:50px; height:50px; border-radius:50%;
+  background:linear-gradient(135deg,var(--signal-2),var(--surface-4));
+  display:flex; align-items:center; justify-content:center;
+  font-size:1.2rem; font-weight:700; color:white; flex-shrink:0;
+}
+.profile-large-av img { width:100%; height:100%; border-radius:50%; object-fit:cover; }
+.profile-stat { font-size:.75rem; color:var(--text-3); }
+.profile-stat span { color:var(--signal); font-weight:700; }
+
+/* Setting row */
+.setting-row { display:flex; align-items:center; justify-content:space-between; padding:11px 0; border-top:1px solid var(--border); }
+.setting-info h4 { font-size:.82rem; font-weight:500; color:var(--text-1); }
+.setting-info p { font-size:.72rem; color:var(--text-3); margin-top:2px; }
+.toggle { position:relative; display:inline-block; width:40px; height:22px; flex-shrink:0; }
+.toggle input { opacity:0; width:0; height:0; }
+.toggle-slider { position:absolute; inset:0; background:var(--surface-4); transition:.2s; border-radius:22px; cursor:pointer; }
+.toggle-slider:before { position:absolute; content:""; height:16px; width:16px; left:3px; bottom:3px; background:white; border-radius:50%; transition:.2s; box-shadow:0 1px 3px rgba(0,0,0,.3); }
+input:checked + .toggle-slider { background:var(--signal); }
+input:checked + .toggle-slider:before { transform:translateX(18px); }
+
+/* ─── RESPONSIVE ─────────────────── */
+@media(max-width:768px) {
+  .sidebar {
+    position:fixed; left:0; top:0; bottom:0;
+    transform:translateX(-100%);
+    z-index:100; box-shadow:0 0 40px rgba(0,0,0,.6);
+  }
+  .sidebar.open { transform:translateX(0); }
+  .mobile-menu { display:flex; }
+  .dash-grid { grid-template-columns:repeat(2,1fr); }
+  .chat-msg { padding:6px 12px; }
+  .input-zone { padding:6px 12px 14px; }
+  .online-indicator { display:none; }
+  .topbar-title { display:none; }
+}
+
+@media(max-width:480px) {
+  .dash-grid { grid-template-columns:1fr; }
+  .auth-box { padding:28px 20px; }
+}
+
+/* ─── OVERLAY ────────────────────── */
+#sidebarOverlay {
+  display:none; position:fixed; inset:0;
+  background:rgba(0,0,0,.6); z-index:99;
+}
+#sidebarOverlay.show { display:block; }
+
+/* Helpers */
+.hidden { display:none !important; }
+.spinner-sm { width:14px; height:14px; border:2px solid rgba(255,255,255,.3); border-top-color:var(--obsidian); border-radius:50%; animation:spin .6s linear infinite; display:inline-block; }
 </style>
 </head>
 <body>
 
-<!-- ── TOPBAR ── -->
-<nav class="topbar">
-  <a href="/" class="logo">
-    <div class="logo-mark">φ</div>
-    <span class="logo-name">Curabook</span>
-    <span class="cockpit-badge">Performance Cockpit</span>
-  </a>
-  <div class="topbar-right">
-    <a href="/login" class="btn-outline">Sign In</a>
-    <a href="/signup" class="btn-cta"><i class="fa-solid fa-rocket"></i> Launch Cockpit</a>
-  </div>
-</nav>
-
-<!-- ── HERO ── -->
-<section class="hero">
-  <div class="hero-chip">
-    <span class="pulse"></span>
-    GLP-1 Cliff Prevention System
-  </div>
-  <h1 class="hero-h1">Your metabolic<br><em>command center.</em></h1>
-  <p class="hero-sub">
-    Stop the rebound before it starts. Track Muscle Defense in real time,
-    catch early cliff signals in your labs, and stay metabolically resilient
-    long after your last injection.
-  </p>
-
-  <!-- Cliff stats -->
-  <div class="cliff-stat-strip">
-    <div class="cliff-stat">
-      <div class="cliff-stat-num">70%</div>
-      <div class="cliff-stat-label">Quit GLP-1s in Year 1</div>
+<!-- ════════════════════════════════════
+     AUTH WALL
+════════════════════════════════════ -->
+<div id="authWall">
+  <div class="auth-box">
+    <div class="auth-logo">
+      <div class="auth-logo-mark">φ</div>
+      <span class="auth-logo-text">Curabook</span>
+      <span class="auth-logo-badge">PHI</span>
     </div>
-    <div class="cliff-stat">
-      <div class="cliff-stat-num">39%</div>
-      <div class="cliff-stat-label">Weight lost is lean mass</div>
-    </div>
-    <div class="cliff-stat">
-      <div class="cliff-stat-num">0.8%</div>
-      <div class="cliff-stat-label">Regain with behavioral support</div>
-    </div>
-    <div class="cliff-stat">
-      <div class="cliff-stat-num">60%</div>
-      <div class="cliff-stat-label">Higher reversal with ≥25 interactions/mo</div>
-    </div>
-  </div>
-</section>
 
-<!-- ══════════════════════════════════════════════════════
-     PERFORMANCE COCKPIT GRID
-══════════════════════════════════════════════════════ -->
-<div class="cockpit-grid">
-
-  <!-- 1. METABOLIC SHIELD — 3-ring SVG ─────────────────── -->
-  <div class="panel span-2" id="shieldPanel">
-    <div class="panel-header">
-      <div>
-        <div class="panel-label">Metabolic Shield</div>
-        <div class="panel-title">Three-Pillar Resilience Score</div>
+    <div id="loginPanel">
+      <div class="auth-tabs">
+        <button class="auth-tab active" onclick="switchAuthTab('login')">Sign In</button>
+        <button class="auth-tab" onclick="switchAuthTab('signup')">Create Account</button>
       </div>
-      <div class="panel-icon"><i class="fa-solid fa-shield-halved"></i></div>
-    </div>
 
-    <div class="shield-wrap">
-      <!-- SVG 3-ring visualization -->
-      <div class="shield-svg-container">
-        <svg width="200" height="200" viewBox="0 0 200 200" id="shieldSvg">
-          <!-- Ring 1: Protein (outermost) -->
-          <circle cx="100" cy="100" r="88" fill="none" stroke="rgba(255,255,255,.05)" stroke-width="14"/>
-          <circle cx="100" cy="100" r="88" fill="none"
-            stroke="#00e5cc" stroke-width="14"
-            stroke-linecap="round"
-            stroke-dasharray="553" stroke-dashoffset="553"
-            transform="rotate(-90 100 100)"
-            class="ring-path" id="ringProtein"/>
-
-          <!-- Ring 2: Movement (middle) -->
-          <circle cx="100" cy="100" r="70" fill="none" stroke="rgba(255,255,255,.05)" stroke-width="13"/>
-          <circle cx="100" cy="100" r="70" fill="none"
-            stroke="#ffa726" stroke-width="13"
-            stroke-linecap="round"
-            stroke-dasharray="440" stroke-dashoffset="440"
-            transform="rotate(-90 100 100)"
-            class="ring-path" id="ringMovement"/>
-
-          <!-- Ring 3: Recovery (innermost) -->
-          <circle cx="100" cy="100" r="53" fill="none" stroke="rgba(255,255,255,.05)" stroke-width="12"/>
-          <circle cx="100" cy="100" r="53" fill="none"
-            stroke="#4cddaa" stroke-width="12"
-            stroke-linecap="round"
-            stroke-dasharray="333" stroke-dashoffset="333"
-            transform="rotate(-90 100 100)"
-            class="ring-path" id="ringRecovery"/>
-        </svg>
-
-        <div class="shield-score-center">
-          <div class="shield-score-num" id="shieldScore">--</div>
-          <div class="shield-score-label">Shield %</div>
+      <div id="loginFields">
+        <div class="auth-field">
+          <label class="auth-label" for="authEmail">Email</label>
+          <input type="email" id="authEmail" class="auth-input" placeholder="you@example.com" autocomplete="email">
         </div>
-      </div>
-
-      <!-- Ring legend -->
-      <div class="shield-rings">
-        <div class="ring-row">
-          <div class="ring-dot" style="background:#00e5cc"></div>
-          <div class="ring-info">
-            <div class="ring-name">Protein Titration</div>
-            <div class="ring-pct" id="proteinPct">Enter goal weight below</div>
-            <div class="ring-bar-track">
-              <div class="ring-bar-fill" id="proteinBar" style="background:#00e5cc;width:0%"></div>
-            </div>
-          </div>
+        <div class="auth-field" id="authPasswordField">
+          <label class="auth-label" for="authPassword">Password</label>
+          <input type="password" id="authPassword" class="auth-input" placeholder="••••••••" autocomplete="current-password">
         </div>
-        <div class="ring-row">
-          <div class="ring-dot" style="background:#ffa726"></div>
-          <div class="ring-info">
-            <div class="ring-name">Daily Movement</div>
-            <div class="ring-pct" id="movementPct">Log steps to track</div>
-            <div class="ring-bar-track">
-              <div class="ring-bar-fill" id="movementBar" style="background:#ffa726;width:0%"></div>
-            </div>
-          </div>
+        <div class="auth-field hidden" id="authConfirmField">
+          <label class="auth-label" for="authConfirm">Confirm Password</label>
+          <input type="password" id="authConfirm" class="auth-input" placeholder="••••••••">
         </div>
-        <div class="ring-row">
-          <div class="ring-dot" style="background:#4cddaa"></div>
-          <div class="ring-info">
-            <div class="ring-name">Biological Recovery</div>
-            <div class="ring-pct" id="recoveryPct">Log sleep to track</div>
-            <div class="ring-bar-track">
-              <div class="ring-bar-fill" id="recoveryBar" style="background:#4cddaa;width:0%"></div>
-            </div>
-          </div>
-        </div>
-
-        <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
-          <div style="font-size:.72rem;color:var(--text-3);margin-bottom:8px">QUICK UPDATE</div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <div style="display:flex;flex-direction:column;gap:4px">
-              <label style="font-size:.68rem;color:var(--text-3)">Protein today (g)</label>
-              <input type="number" id="proteinInput" placeholder="90" min="0" max="400" class="protein-input" style="width:90px;font-size:.9rem;padding:6px 8px">
-            </div>
-            <div style="display:flex;flex-direction:column;gap:4px">
-              <label style="font-size:.68rem;color:var(--text-3)">Steps today</label>
-              <input type="number" id="stepsInput" placeholder="8000" min="0" max="50000" class="protein-input" style="width:90px;font-size:.9rem;padding:6px 8px">
-            </div>
-            <div style="display:flex;flex-direction:column;gap:4px">
-              <label style="font-size:.68rem;color:var(--text-3)">Sleep (hrs)</label>
-              <input type="number" id="sleepInput" placeholder="7.5" min="0" max="14" step=".5" class="protein-input" style="width:90px;font-size:.9rem;padding:6px 8px">
-            </div>
-            <div style="display:flex;align-items:flex-end">
-              <button class="protein-btn" onclick="updateShield()">Update Shield</button>
-            </div>
-          </div>
-        </div>
+        <button class="auth-btn" id="authSubmitBtn" onclick="handleAuthSubmit()">
+          <span id="authBtnText">Sign In</span>
+        </button>
+        <div class="auth-divider">or</div>
+        <button class="auth-google" onclick="handleGoogleAuth()">
+          <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="G">
+          Continue with Google
+        </button>
+        <p class="auth-msg" id="authMsg"></p>
       </div>
-    </div>
-  </div>
-
-  <!-- 2. CLIFF ALERTS ──────────────────────────────────── -->
-  <div class="panel alert-panel">
-    <div class="panel-header">
-      <div>
-        <div class="panel-label">Rebound Detection</div>
-        <div class="panel-title">Cliff Alert System</div>
-      </div>
-      <div class="panel-icon" style="background:var(--danger-dim);color:var(--danger)">
-        <i class="fa-solid fa-triangle-exclamation"></i>
-      </div>
-    </div>
-
-    <div id="cliffAlerts">
-      <!-- OK state (default) -->
-      <div class="cliff-alert-item ok">
-        <div class="cliff-alert-icon">✅</div>
-        <div class="cliff-alert-body">
-          <div class="cliff-alert-title">No rebound signals detected</div>
-          <div class="cliff-alert-desc">Upload your lab reports to enable automatic monitoring of glucose, weight, and HbA1c for early cliff signals.</div>
-        </div>
-      </div>
-
-      <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
-        <div style="font-size:.68rem;color:var(--text-3);margin-bottom:8px;text-transform:uppercase;letter-spacing:.08em">What triggers an alert</div>
-        <div style="display:flex;flex-direction:column;gap:6px;font-size:.75rem;color:var(--text-2)">
-          <div>🔴 Fasting glucose rises <strong style="color:var(--text-1)">&gt;15%</strong> from your baseline</div>
-          <div>🔴 Weight rises <strong style="color:var(--text-1)">&gt;3%</strong> in any 14-day window</div>
-          <div>🔴 HbA1c increases by <strong style="color:var(--text-1)">≥0.25%</strong> between readings</div>
-        </div>
-      </div>
-
-      <div style="margin-top:14px">
-        <a href="/signup" class="btn-cta" style="width:100%;justify-content:center;font-size:.82rem;padding:10px">
-          <i class="fa-solid fa-upload"></i> Upload labs to activate alerts
-        </a>
-      </div>
-    </div>
-  </div>
-
-  <!-- 3. MUSCLE VS FAT CHART ─────────────────────────── -->
-  <div class="panel span-2">
-    <div class="panel-header">
-      <div>
-        <div class="panel-label">Body Composition Intelligence</div>
-        <div class="panel-title">Muscle vs. Fat — Quality of Maintenance</div>
-      </div>
-      <div class="panel-icon"><i class="fa-solid fa-chart-area"></i></div>
-    </div>
-
-    <p style="font-size:.78rem;color:var(--text-2);margin-bottom:16px;line-height:1.5">
-      Scale weight alone is misleading. This chart tracks <em style="color:var(--signal)">lean mass preservation</em>
-      (the gap between total weight and fat) — the true measure of GLP-1 success.
-      A flat scale reading while fat decreases = <strong style="color:var(--ok)">optimal recomposition</strong>.
-    </p>
-
-    <div class="chart-container">
-      <canvas id="bodyCompChart"></canvas>
-    </div>
-
-    <div style="display:flex;gap:16px;margin-top:12px;flex-wrap:wrap">
-      <div style="display:flex;align-items:center;gap:6px;font-size:.72rem;color:var(--text-2)">
-        <div style="width:12px;height:3px;background:var(--signal);border-radius:2px"></div> Total Weight
-      </div>
-      <div style="display:flex;align-items:center;gap:6px;font-size:.72rem;color:var(--text-2)">
-        <div style="width:12px;height:3px;background:var(--ok);border-radius:2px"></div> Lean Mass (estimated)
-      </div>
-      <div style="display:flex;align-items:center;gap:6px;font-size:.72rem;color:var(--text-2)">
-        <div style="width:12px;height:8px;background:rgba(255,77,109,.25);border-radius:2px"></div> Fat Mass (shaded)
-      </div>
-      <div style="margin-left:auto;font-size:.68rem;color:var(--text-3)">Sample data — upload yours to personalize</div>
-    </div>
-  </div>
-
-  <!-- 4. MUSCLE DEFENSE CALCULATOR ───────────────────── -->
-  <div class="panel">
-    <div class="panel-header">
-      <div>
-        <div class="panel-label">Muscle Defense Protocol</div>
-        <div class="panel-title">Protein Target Calculator</div>
-      </div>
-      <div class="panel-icon"><i class="fa-solid fa-dumbbell"></i></div>
-    </div>
-
-    <div class="protein-calc">
-      <p style="font-size:.78rem;color:var(--text-2);line-height:1.5">
-        39% of GLP-1 weight loss is lean mass without intervention.
-        Your daily protein target is your primary metabolic shield.
-      </p>
-      <div class="protein-input-row">
-        <input type="number" class="protein-input" id="goalWeightInput"
-          placeholder="Goal weight (lbs)" min="80" max="400" step="1">
-        <button class="protein-btn" onclick="calculateProtein()">Calculate</button>
-      </div>
-
-      <div class="protein-result" id="proteinResult">
-        <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:8px">
-          <div class="protein-big" id="proteinGrams">--<span>g/day</span></div>
-          <div style="font-size:.78rem;color:var(--text-3)" id="proteinPerMeal">-- g/meal</div>
-        </div>
-        <div style="font-family:var(--mono);font-size:.7rem;color:var(--signal);margin-bottom:8px">
-          Goal Weight (lbs) × 0.545 = Daily Protein (g)
-        </div>
-        <div class="protein-breakdown" id="proteinBreakdown"></div>
-        <div class="protein-foods" id="proteinFoods"></div>
-      </div>
-
-      <!-- Leucine threshold note -->
-      <div style="background:var(--ink-2);border:1px solid var(--border);border-radius:var(--r);padding:10px 12px;font-size:.74rem;color:var(--text-2);line-height:1.55">
-        <strong style="color:var(--amber)">⚡ Leucine threshold:</strong>
-        30g+ protein per meal activates muscle protein synthesis.
-        Spreading protein across 3 meals is more effective than one large serving.
-      </div>
-    </div>
-  </div>
-
-  <!-- 5. TAPER EDUCATION ──────────────────────────────── -->
-  <div class="panel span-2">
-    <div class="panel-header">
-      <div>
-        <div class="panel-label">Discontinuation Strategy</div>
-        <div class="panel-title">Evidence-Based Off-Ramps — Discuss With Your Provider</div>
-      </div>
-      <div class="panel-icon"><i class="fa-solid fa-route"></i></div>
-    </div>
-
-    <div class="taper-options">
-      <div class="taper-option">
-        <div class="taper-option-badge">A</div>
-        <div>
-          <div class="taper-option-title">Reduced-Frequency Dosing</div>
-          <div class="taper-option-desc">Extend injections from weekly to every 10-14 days. Allows the hypothalamus to gradually recalibrate while the medication remains active.</div>
-          <div class="taper-evidence">📊 Case series (n=30): fat continued declining, muscle stabilized at 36-week follow-up — PubMed 41732031</div>
-        </div>
-      </div>
-      <div class="taper-option">
-        <div class="taper-option-badge">B</div>
-        <div>
-          <div class="taper-option-title">Microdosing Protocol</div>
-          <div class="taper-option-desc">Fractional doses (0.2-0.6mg range) suppress food noise while minimizing GI side effects — the #2 reason for discontinuation.</div>
-          <div class="taper-evidence">📊 Noom clinical data: 95% adherence in Month 1 vs. standard dosing; 2.2× longer persistence</div>
-        </div>
-      </div>
-      <div class="taper-option">
-        <div class="taper-option-badge">C</div>
-        <div>
-          <div class="taper-option-title">Generic AOM Transition</div>
-          <div class="taper-option-desc">After BMI &lt;30 on GLP-1s, transition to metformin / topiramate / bupropion. ~$4-10/month vs. $617-725/month for branded GLP-1s.</div>
-          <div class="taper-evidence">📊 Real-world study: 25.5% total weight loss maintained at 24 months — PMC 2026</div>
-        </div>
-      </div>
-    </div>
-
-    <div style="margin-top:14px;background:var(--danger-dim);border:1px solid rgba(255,77,109,.2);border-radius:var(--r);padding:10px 13px;font-size:.76rem;color:var(--text-2)">
-      <strong style="color:var(--danger)">⚠ Cold turkey = cliff:</strong>
-      STEP-10 trial showed 40%+ of lost weight regained within 28 weeks of abrupt semaglutide cessation. All evidence supports structured tapering.
-    </div>
-  </div>
-
-  <!-- 6. FOOD NOISE TRACKER ────────────────────────────── -->
-  <div class="panel">
-    <div class="panel-header">
-      <div>
-        <div class="panel-label">Ghrelin Surge Monitor</div>
-        <div class="panel-title">Food Noise — Biological Data</div>
-      </div>
-      <div class="panel-icon"><i class="fa-solid fa-brain"></i></div>
-    </div>
-
-    <div class="noise-meter-wrap">
-      <p style="font-size:.76rem;color:var(--text-2);line-height:1.5;margin-bottom:4px">
-        Food noise intensity is a <em style="color:var(--signal)">physiological data point</em> — your ghrelin
-        surge level after GLP-1 reduction. Not a willpower reading.
-      </p>
-
-      <div class="noise-slider-row">
-        <span class="noise-label-left">Quiet</span>
-        <input type="range" class="noise-slider" id="noiseSlider" min="1" max="10" value="5">
-        <span class="noise-label-right">Relentless</span>
-      </div>
-
-      <div class="noise-readout" id="noiseReadout">
-        Move the slider to log your food noise level.
-      </div>
-    </div>
-  </div>
-
-</div><!-- /cockpit-grid -->
-
-<!-- ── CTA FOOTER ── -->
-<div class="cta-footer">
-  <div class="cta-box">
-    <h2>Your lab data tells the story.<br><em>PHI translates it.</em></h2>
-    <p>Upload any lab report and PHI catches the early cliff signals — rising glucose, weight rebound, HbA1c drift — before they become setbacks. Free account, permanent memory, real-time alerts.</p>
-    <a href="/signup" class="btn-cta" style="font-size:1rem;padding:14px 32px">
-      <i class="fa-solid fa-user-plus"></i> Start Free — Activate Cliff Protection
-    </a>
-    <div class="cta-trust">
-      <span><i class="fa-solid fa-shield-halved"></i> HIPAA-Ready</span>
-      <span><i class="fa-solid fa-lock"></i> AES-256 Encrypted</span>
-      <span><i class="fa-solid fa-ban"></i> Zero Data Selling</span>
-      <span><i class="fa-solid fa-user-secret"></i> AI never sees your name</span>
     </div>
   </div>
 </div>
 
+<!-- ════════════════════════════════════
+     APP SHELL
+════════════════════════════════════ -->
+<div id="appShell" class="hidden">
+
+  <!-- Sidebar overlay (mobile) -->
+  <div id="sidebarOverlay" onclick="closeSidebar()"></div>
+
+  <!-- ── SIDEBAR ── -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-mark">φ</div>
+      <span class="brand-name">Curabook</span>
+      <span class="brand-tag">PHI</span>
+    </div>
+
+    <!-- User card -->
+    <div class="sidebar-user" id="sidebarUser" onclick="openProfileModal()">
+      <div class="user-avatar" id="sidebarAvatar">?</div>
+      <div class="user-info">
+        <div class="user-name" id="sidebarUserName">Loading...</div>
+        <div class="user-plan" id="sidebarPlan">PHI Free</div>
+      </div>
+      <div class="user-status"></div>
+    </div>
+
+    <!-- Nav -->
+    <div class="sidebar-nav">
+      <button class="nav-btn active" id="navChat" onclick="switchView('chat')">
+        <i class="fa-regular fa-comments"></i> Chat with PHI
+      </button>
+      <button class="nav-btn" id="navDash" onclick="switchView('dash')">
+        <i class="fa-solid fa-chart-line"></i> Health Dashboard
+      </button>
+      <button class="nav-btn" id="navUpload" onclick="document.getElementById('fileInput').click()">
+        <i class="fa-solid fa-upload"></i> Upload Report
+      </button>
+
+      <div class="nav-label">Tools</div>
+      <button class="nav-btn" onclick="openDoctorPrep()">
+        <i class="fa-solid fa-stethoscope"></i> Doctor Visit Prep
+      </button>
+      <button class="nav-btn" onclick="openProteinCalc()">
+        <i class="fa-solid fa-dumbbell"></i> Protein Calculator
+      </button>
+    </div>
+
+    <button class="new-chat-btn" onclick="startNewChat()">
+      <i class="fa-solid fa-plus"></i> New Chat
+    </button>
+
+    <!-- History -->
+    <div class="sidebar-history" id="historyList">
+      <div class="history-date-label">Today</div>
+    </div>
+
+    <!-- Footer -->
+    <div class="sidebar-footer">
+      <button class="sidebar-footer-btn" onclick="handleLogout()">
+        <i class="fa-solid fa-right-from-bracket"></i> Sign Out
+      </button>
+    </div>
+  </aside>
+
+  <!-- ── MAIN ── -->
+  <div class="main">
+    <!-- TOPBAR -->
+    <div class="topbar">
+      <div class="topbar-left">
+        <button class="mobile-menu" onclick="toggleSidebar()">
+          <i class="fa-solid fa-bars"></i>
+        </button>
+        <span class="topbar-title" id="topbarTitle">Metabolic Command Center</span>
+      </div>
+      <div class="topbar-right" style="position:relative">
+        <div class="online-indicator">
+          <div class="online-dot"></div> PHI Online
+        </div>
+        <div class="topbar-user-btn" id="topbarUserBtn" onclick="toggleUserDropdown()">
+          <div class="topbar-avatar" id="topbarAvatar">?</div>
+          <span class="topbar-username" id="topbarUsername">Loading</span>
+          <i class="fa-solid fa-chevron-down" style="font-size:.6rem;color:var(--text-3);margin-left:2px"></i>
+        </div>
+
+        <!-- Dropdown -->
+        <div class="user-dropdown hidden" id="userDropdown">
+          <div class="dropdown-header">
+            <div class="dropdown-email" id="dropdownEmail">—</div>
+            <div class="dropdown-plan" id="dropdownPlan">PHI Free</div>
+          </div>
+          <div class="dropdown-item" onclick="openProfileModal(); toggleUserDropdown()">
+            <i class="fa-solid fa-user"></i> Profile & Stats
+          </div>
+          <div class="dropdown-item" onclick="openSettingsModal(); toggleUserDropdown()">
+            <i class="fa-solid fa-gear"></i> Settings
+          </div>
+          <div class="dropdown-item" onclick="switchView('dash'); toggleUserDropdown()">
+            <i class="fa-solid fa-chart-line"></i> Health Dashboard
+          </div>
+          <div class="dropdown-item danger" onclick="handleLogout()">
+            <i class="fa-solid fa-right-from-bracket"></i> Sign Out
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── CHAT VIEW ── -->
+    <div class="view active" id="chatView">
+      <!-- Welcome state -->
+      <div class="chat-welcome" id="chatWelcome">
+        <div class="welcome-orb">φ</div>
+        <h1 class="welcome-headline" id="welcomeHeadline">Your metabolic<br><em>command center.</em></h1>
+        <p class="welcome-subline">Upload a lab report or ask PHI anything about your health. Every conversation builds your permanent health memory.</p>
+
+        <!-- Pulse card -->
+        <div class="pulse-card" id="pulseCard">
+          <div class="pulse-card-loading" id="pulseLoading">
+            <div class="pulse-spinner"></div>
+            <span>Loading your health picture…</span>
+          </div>
+          <div class="pulse-card-content hidden" id="pulseContent"></div>
+        </div>
+
+        <!-- Chips -->
+        <div class="suggestion-chips" id="chips">
+          <button class="chip" onclick="sendChip('Explain my latest lab results')">
+            <i class="fa-solid fa-flask"></i> Explain my labs
+          </button>
+          <button class="chip" onclick="sendChip('What does HbA1c measure and why does it matter?')">
+            <i class="fa-solid fa-droplet"></i> What is HbA1c?
+          </button>
+          <button class="chip" onclick="sendChip('How do I prevent the GLP-1 cliff?')">
+            <i class="fa-solid fa-shield-halved"></i> Prevent GLP-1 cliff
+          </button>
+          <button class="chip" onclick="sendChip('Prepare me for my next doctor visit based on my health data')">
+            <i class="fa-solid fa-stethoscope"></i> Doctor visit prep
+          </button>
+        </div>
+      </div>
+
+      <!-- Messages -->
+      <div class="chat-messages hidden" id="chatMessages"></div>
+
+      <!-- File chips -->
+      <div class="file-chips" id="fileChips"></div>
+
+      <!-- Input -->
+      <div class="input-zone">
+        <div class="input-bar">
+          <textarea class="chat-ta" id="chatInput" rows="1" placeholder="Ask PHI about your health…"></textarea>
+          <button class="input-action" onclick="document.getElementById('fileInput').click()" title="Upload report">
+            <i class="fa-solid fa-paperclip"></i>
+          </button>
+          <button class="send-btn" id="sendBtn" onclick="handleSend()">
+            <i class="fa-solid fa-arrow-up"></i>
+          </button>
+        </div>
+        <div class="input-disclaimer">PHI is educational — not a doctor. Always consult your healthcare provider.</div>
+      </div>
+
+      <input type="file" id="fileInput" accept=".pdf,.txt" style="display:none">
+    </div>
+
+    <!-- ── DASHBOARD VIEW ── -->
+    <div class="view" id="dashView" style="overflow-y:auto;padding:20px;">
+      <div class="dash-header">
+        <div>
+          <div class="dash-greeting" id="dashGreeting">Your <em>health picture.</em></div>
+          <div class="dash-date" id="dashDate"></div>
+        </div>
+        <button class="upload-trigger" onclick="document.getElementById('fileInput').click()">
+          <i class="fa-solid fa-upload"></i> Upload Report
+        </button>
+      </div>
+
+      <!-- Stats row -->
+      <div class="dash-grid" id="dashStats">
+        <div class="dash-stat">
+          <div class="dash-stat-label">Tracked Markers</div>
+          <div class="dash-stat-val" id="statMarkers">—</div>
+          <div class="dash-stat-sub">across all reports</div>
+        </div>
+        <div class="dash-stat">
+          <div class="dash-stat-label">Needs Attention</div>
+          <div class="dash-stat-val danger" id="statAbnormal">—</div>
+          <div class="dash-stat-sub">outside normal range</div>
+        </div>
+        <div class="dash-stat">
+          <div class="dash-stat-label">Reports Uploaded</div>
+          <div class="dash-stat-val" id="statReports">—</div>
+          <div class="dash-stat-sub">documents analyzed</div>
+        </div>
+      </div>
+
+      <!-- Markers -->
+      <div class="dash-section-title">Latest Markers</div>
+      <div class="markers-grid" id="markersGrid">
+        <div class="empty-state" style="grid-column:1/-1">
+          <i class="fa-solid fa-flask"></i>
+          <h4>No lab data yet</h4>
+          <p>Upload a PDF lab report and PHI will extract every marker automatically.</p>
+          <button class="upload-trigger" onclick="document.getElementById('fileInput').click()">
+            <i class="fa-solid fa-upload"></i> Upload My First Report
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════
+     MODALS
+════════════════════════════════════ -->
+
+<!-- Profile Modal -->
+<div class="modal-overlay hidden" id="profileModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Profile & Stats</div>
+      <button class="modal-close" onclick="closeModal('profileModal')"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="profile-row">
+      <div class="profile-large-av" id="profileAvatar">?</div>
+      <div>
+        <div style="font-size:.95rem;font-weight:600" id="profileName">—</div>
+        <div class="profile-stat" id="profileEmail">—</div>
+        <div class="profile-stat" style="margin-top:4px">Plan: <span id="profilePlan">Free</span></div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+      <div style="background:var(--surface-2);border-radius:var(--r);padding:12px;text-align:center">
+        <div style="font-family:var(--mono);font-size:1.4rem;color:var(--signal)" id="profileConvs">—</div>
+        <div style="font-size:.68rem;color:var(--text-3)">Conversations</div>
+      </div>
+      <div style="background:var(--surface-2);border-radius:var(--r);padding:12px;text-align:center">
+        <div style="font-family:var(--mono);font-size:1.4rem;color:var(--signal)" id="profileMarkers">—</div>
+        <div style="font-size:.68rem;color:var(--text-3)">Markers Tracked</div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="modal-btn secondary" onclick="closeModal('profileModal')">Close</button>
+      <button class="modal-btn danger" onclick="handleLogout()">Sign Out</button>
+    </div>
+  </div>
+</div>
+
+<!-- Settings Modal -->
+<div class="modal-overlay hidden" id="settingsModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Settings</div>
+      <button class="modal-close" onclick="closeModal('settingsModal')"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div class="setting-row">
+      <div class="setting-info"><h4>Dark Mode</h4><p>Always on — PHI is designed for dark mode</p></div>
+      <label class="toggle"><input type="checkbox" checked disabled><span class="toggle-slider"></span></label>
+    </div>
+    <div class="setting-row">
+      <div class="setting-info"><h4>Export My Data</h4><p>Download all your health data as JSON</p></div>
+      <button class="modal-btn secondary" onclick="exportData()">Export</button>
+    </div>
+    <div class="setting-row">
+      <div class="setting-info"><h4>Clear Chat History</h4><p>Delete all conversations permanently</p></div>
+      <button class="modal-btn danger" onclick="confirmClearHistory()">Clear</button>
+    </div>
+    <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
+      <div style="font-size:.72rem;color:var(--text-3);line-height:1.6">
+        <strong style="color:var(--text-2)">Privacy:</strong> Your data is encrypted at rest (AES-256) and in transit (TLS 1.3). PHI never sells your data or uses it for advertising.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Doctor Prep Modal -->
+<div class="modal-overlay hidden" id="doctorPrepModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Doctor Visit Prep</div>
+      <button class="modal-close" onclick="closeModal('doctorPrepModal')"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <p style="font-size:.8rem;color:var(--text-2);line-height:1.6;margin-bottom:16px">PHI generates a personalized brief from your health data — your key findings, trends, and specific questions to ask.</p>
+    <div class="modal-field">
+      <label class="modal-label">Symptoms to mention</label>
+      <input type="text" class="modal-input" id="prepSymptoms" placeholder="fatigue, dizziness…">
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Current medications</label>
+      <input type="text" class="modal-input" id="prepMeds" placeholder="Metformin 500mg, Wegovy 1mg…">
+    </div>
+    <div id="prepOutput" style="display:none;background:var(--surface-2);border-radius:var(--r);padding:14px;font-size:.8rem;line-height:1.7;max-height:260px;overflow-y:auto;margin-bottom:14px;white-space:pre-wrap;font-family:var(--mono)"></div>
+    <div class="modal-actions">
+      <button class="modal-btn secondary" onclick="closeModal('doctorPrepModal')">Close</button>
+      <button class="modal-btn primary" id="prepBtn" onclick="generateDocBrief()">Generate Brief</button>
+    </div>
+  </div>
+</div>
+
+<!-- Protein Calc Modal -->
+<div class="modal-overlay hidden" id="proteinModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Muscle Defense Calculator</div>
+      <button class="modal-close" onclick="closeModal('proteinModal')"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <p style="font-size:.8rem;color:var(--text-2);line-height:1.6;margin-bottom:16px">39% of GLP-1 weight loss is lean mass without intervention. Your daily protein target is your primary metabolic shield.</p>
+    <div style="display:flex;gap:10px;margin-bottom:14px">
+      <input type="number" class="modal-input" id="goalWeightInput" placeholder="Goal weight (lbs)" min="80" max="400" style="flex:1">
+      <button class="modal-btn primary" onclick="calcProtein()">Calculate</button>
+    </div>
+    <div id="proteinResult" style="display:none;background:var(--surface-2);border:1px solid rgba(0,212,200,.2);border-radius:var(--r);padding:16px"></div>
+    <div style="margin-top:12px;background:var(--surface-2);border-radius:var(--r);padding:10px;font-size:.75rem;color:var(--text-2);line-height:1.55">
+      <strong style="color:var(--amber)">⚡ Leucine threshold:</strong> 30g+ protein per meal triggers muscle protein synthesis. 3 meals/day minimum.
+    </div>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- ════════════════════════════════════
+     JAVASCRIPT
+════════════════════════════════════ -->
 <script>
-/* ──────────────────────────────────────────
-   PERFORMANCE COCKPIT — Interactive Logic
-────────────────────────────────────────── */
+"use strict";
 
-// ── Protein Calculator ─────────────────────
-const PROTEIN_FOODS = [
-  { name: "4 oz chicken breast", g: 35 },
-  { name: "1 cup Greek yogurt",  g: 17 },
-  { name: "2 large eggs",        g: 12 },
-  { name: "1 scoop whey",        g: 25 },
-  { name: "3 oz salmon",         g: 21 },
-  { name: "½ cup cottage cheese",g: 14 },
-  { name: "1 cup edamame",       g: 17 },
-  { name: "2 oz string cheese",  g: 14 },
-];
+// ── CONFIG ──────────────────────────────────────────────────────────────────
+const API = "https://api.curabook.com";
+const SUPABASE_URL = "https://pbeaawlxdcrdbvlmpqhc.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBiZWFhd2x4ZGNyZGJ2bG1wcWhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwMDk0MzksImV4cCI6MjA5MTU4NTQzOX0.6bUpYrDbe0mQjjBHX8Qscj-5R8i4-SqAtW_Z1UFzJ10";
 
-function calculateProtein() {
-  const goalWt = parseFloat(document.getElementById('goalWeightInput').value);
-  if (!goalWt || goalWt < 80 || goalWt > 400) {
-    document.getElementById('goalWeightInput').focus();
-    return;
-  }
+// ── STATE ────────────────────────────────────────────────────────────────────
+let sb = null, currentUser = null, currentUserName = "";
+let activeConvId = null, isProcessing = false;
+let uploadedFiles = [], docCtx = { text: null, convId: null };
+let authMode = "login"; // 'login' | 'signup'
 
-  const dailyProtein  = Math.round(goalWt * 0.545 * 10) / 10;
-  const perMeal       = Math.round(dailyProtein / 3 * 10) / 10;
-  const leucineOk     = perMeal >= 30;
+// ── INIT ─────────────────────────────────────────────────────────────────────
+(async function boot() {
+  try {
+    sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+      auth: { detectSessionInUrl: true, persistSession: true, flowType: "implicit" }
+    });
 
-  // Build food breakdown
-  let remaining = dailyProtein;
-  const foods   = [];
-  for (const f of PROTEIN_FOODS) {
-    if (remaining <= 0) break;
-    foods.push(`${f.name} (${f.g}g)`);
-    remaining -= f.g;
-  }
+    // Auth state listener
+    sb.auth.onAuthStateChange(async (event, session) => {
+      if (event === "SIGNED_IN" && session?.user) {
+        await onLogin(session.user);
+      } else if (event === "SIGNED_OUT") {
+        showAuthWall();
+      }
+    });
 
-  document.getElementById('proteinGrams').innerHTML  = `${dailyProtein}<span>g/day</span>`;
-  document.getElementById('proteinPerMeal').textContent = `${perMeal}g per meal`;
-  document.getElementById('proteinBreakdown').innerHTML =
-    `<strong style="color:${leucineOk ? 'var(--ok)' : 'var(--amber)'}">`+
-    `${leucineOk ? '✓' : '⚠'} ${perMeal}g/meal `+
-    `${leucineOk ? 'meets' : 'is below'} the 30g leucine threshold</strong><br>`+
-    `Formula: ${goalWt} lbs × 0.545 = ${dailyProtein}g<br>`+
-    `(1.2g protein / kg body weight — OMA 2026 Algorithm)`;
-
-  const foodContainer = document.getElementById('proteinFoods');
-  foodContainer.innerHTML = foods.slice(0,6).map(f =>
-    `<span class="protein-food-tag">${f}</span>`).join('');
-
-  document.getElementById('proteinResult').classList.add('show');
-
-  // Update shield protein ring
-  window._proteinTarget = dailyProtein;
-  const inputProtein    = parseFloat(document.getElementById('proteinInput').value) || 0;
-  if (inputProtein > 0) updateShield();
-}
-
-// ── Metabolic Shield Rings ─────────────────
-function updateShield() {
-  const proteinToday = parseFloat(document.getElementById('proteinInput').value) || 0;
-  const stepsToday   = parseFloat(document.getElementById('stepsInput').value) || 0;
-  const sleepHrs     = parseFloat(document.getElementById('sleepInput').value) || 0;
-  const proteinTarget= window._proteinTarget || 90;
-
-  const proteinPct  = Math.min(100, Math.round((proteinToday / proteinTarget) * 100));
-  const movementPct = Math.min(100, Math.round((stepsToday / 8000) * 100));
-  const recoveryPct = Math.min(100, Math.round(((sleepHrs - 4) / 5) * 100));  // 4h=0%, 9h=100%
-  const shieldScore = Math.round((proteinPct + movementPct + Math.max(0, recoveryPct)) / 3);
-
-  // Update SVG rings
-  setRing('ringProtein',  88, proteinPct);
-  setRing('ringMovement', 70, movementPct);
-  setRing('ringRecovery', 53, Math.max(0, recoveryPct));
-
-  // Update score
-  document.getElementById('shieldScore').textContent = shieldScore + '%';
-
-  // Update text labels
-  document.getElementById('proteinPct').textContent    = `${proteinToday}g / ${proteinTarget}g target (${proteinPct}%)`;
-  document.getElementById('movementPct').textContent   = `${stepsToday.toLocaleString()} / 8,000 steps (${movementPct}%)`;
-  document.getElementById('recoveryPct').textContent   = `${sleepHrs}h sleep (${Math.max(0, recoveryPct)}%)`;
-
-  // Update bar fills
-  document.getElementById('proteinBar').style.width  = proteinPct  + '%';
-  document.getElementById('movementBar').style.width = movementPct + '%';
-  document.getElementById('recoveryBar').style.width = Math.max(0, recoveryPct) + '%';
-}
-
-function setRing(id, r, pct) {
-  const el         = document.getElementById(id);
-  const circumference = 2 * Math.PI * r;
-  const offset        = circumference - (circumference * Math.max(0, Math.min(100, pct)) / 100);
-  el.style.strokeDasharray  = circumference;
-  el.style.strokeDashoffset = offset;
-}
-
-// Animate rings on load
-window.addEventListener('load', () => {
-  setTimeout(() => {
-    setRing('ringProtein',  88, 0);
-    setRing('ringMovement', 70, 0);
-    setRing('ringRecovery', 53, 0);
-  }, 200);
-});
-
-// ── Muscle vs. Fat Chart ───────────────────
-(function initBodyCompChart() {
-  const ctx = document.getElementById('bodyCompChart').getContext('2d');
-
-  // Sample data showing GLP-1 progress + recomposition phase
-  const labels = [
-    'Start', 'Wk 4', 'Wk 8', 'Wk 12', 'Wk 16', 'Wk 20',
-    'Off GLP-1', '+4wk', '+8wk', '+12wk'
-  ];
-  const totalWeight = [220, 213, 206, 200, 196, 193, 193, 194, 195, 194];
-  const leanMass    = [145, 142, 140, 139, 139, 140, 141, 141, 142, 143];
-
-  const fatMass = totalWeight.map((w, i) => w - leanMass[i]);
-
-  new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels,
-      datasets: [
-        {
-          label: 'Total Weight (lbs)',
-          data: totalWeight,
-          borderColor: '#00e5cc',
-          borderWidth: 2,
-          pointBackgroundColor: '#00e5cc',
-          pointRadius: 4,
-          tension: .35,
-          fill: false,
-        },
-        {
-          label: 'Lean Mass (lbs)',
-          data: leanMass,
-          borderColor: '#4cddaa',
-          borderWidth: 2,
-          pointBackgroundColor: '#4cddaa',
-          pointRadius: 4,
-          tension: .35,
-          fill: false,
-        },
-        {
-          label: 'Fat Mass (shaded)',
-          data: totalWeight,
-          borderColor: 'transparent',
-          backgroundColor: ctx => {
-            const chart   = ctx.chart;
-            const {top, bottom} = chart.chartArea || {top:0, bottom:300};
-            const gradient = chart.ctx.createLinearGradient(0, top, 0, bottom);
-            gradient.addColorStop(0, 'rgba(255,77,109,.22)');
-            gradient.addColorStop(1, 'rgba(255,77,109,.04)');
-            return gradient;
-          },
-          fill: '+1',   // fill between totalWeight and leanMass
-          tension: .35,
-          pointRadius: 0,
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          backgroundColor: '#141c22',
-          borderColor: 'rgba(0,229,204,.2)',
-          borderWidth: 1,
-          titleColor: '#edf0f4',
-          bodyColor: '#8a9ab0',
-          callbacks: {
-            afterLabel: (item) => {
-              if (item.datasetIndex === 0) {
-                const fat = totalWeight[item.dataIndex] - leanMass[item.dataIndex];
-                return `Fat mass: ${fat} lbs`;
-              }
-              return '';
-            }
-          }
-        }
-      },
-      scales: {
-        x: {
-          grid:   { color: 'rgba(255,255,255,.04)' },
-          ticks:  { color: '#4a5a6a', font: { family: "'DM Mono'", size: 10 } },
-          border: { color: 'rgba(255,255,255,.06)' },
-        },
-        y: {
-          grid:   { color: 'rgba(255,255,255,.04)' },
-          ticks:  { color: '#4a5a6a', font: { family: "'DM Mono'", size: 10 } },
-          border: { color: 'rgba(255,255,255,.06)' },
-          min: 130,
-        }
-      },
-      animation: { duration: 1200, easing: 'easeOutQuart' },
+    // Check existing session
+    const { data: { session } } = await sb.auth.getSession();
+    if (session?.user) {
+      await onLogin(session.user);
+    } else {
+      showAuthWall();
     }
-  });
-
-  // Add vertical divider at "Off GLP-1" point
-  Chart.register({
-    id: 'vertLine',
-    afterDraw(chart) {
-      const idx = 6; // "Off GLP-1" index
-      const meta = chart.getDatasetMeta(0);
-      if (!meta.data[idx]) return;
-      const x = meta.data[idx].x;
-      const {top, bottom} = chart.chartArea;
-      const ctx2 = chart.ctx;
-      ctx2.save();
-      ctx2.setLineDash([4, 4]);
-      ctx2.strokeStyle = 'rgba(255,77,109,.4)';
-      ctx2.lineWidth   = 1;
-      ctx2.beginPath();
-      ctx2.moveTo(x, top);
-      ctx2.lineTo(x, bottom);
-      ctx2.stroke();
-      ctx2.fillStyle = 'rgba(255,77,109,.7)';
-      ctx2.font      = '10px DM Mono';
-      ctx2.fillText('Off GLP-1', x + 4, top + 12);
-      ctx2.restore();
-    }
-  });
+  } catch (e) {
+    console.error("[BOOT]", e);
+    showAuthWall();
+    setAuthMsg("App failed to load. Please refresh.", "error");
+  }
 })();
 
-// ── Food Noise Tracker ─────────────────────
-const NOISE_MESSAGES = {
-  1:  "Nearly silent. Excellent — this is the maintenance target. Ghrelin well suppressed.",
-  2:  "Very low food noise. Behavioral strategies alone are likely sufficient at this level.",
-  3:  "Mild. Occasional intrusive thoughts. 35g+ protein at meals typically resolves this.",
-  4:  "Low-moderate. <strong>Check protein intake</strong> — aim for your daily gram target.",
-  5:  "Moderate. Classic 'late-afternoon hunger' pattern. Post-lunch walk (20 min) helps significantly.",
-  6:  "Elevated. Ghrelin likely rising. <strong>Check sleep quality</strong> — each hour under 7h raises next-day ghrelin ~15%.",
-  7:  "High. This level often indicates the GLP-1 dose was reduced too quickly. Discuss with provider.",
-  8:  "Very high. Relentless food thoughts are a classic ghrelin surge signal. Biology, not willpower.",
-  9:  "Intense rebound. <strong>This data point matters.</strong> Log it in PHI — it may indicate early metabolic rebound.",
- 10:  "🚨 Maximum. This is the physiological equivalent of a cliff signal. Urgent provider discussion recommended.",
-};
+// ── AUTH ─────────────────────────────────────────────────────────────────────
+function showAuthWall() {
+  document.getElementById("authWall").classList.remove("hidden");
+  document.getElementById("appShell").classList.add("hidden");
+}
 
-document.getElementById('noiseSlider').addEventListener('input', function() {
-  const val = parseInt(this.value);
-  const colors = {
-    low:  'var(--ok)',
-    mid:  'var(--amber)',
-    high: 'var(--danger)',
-  };
-  const color = val <= 3 ? colors.low : val <= 6 ? colors.mid : colors.high;
-  document.getElementById('noiseReadout').innerHTML =
-    `<strong style="color:${color}">Level ${val}/10</strong> — ${NOISE_MESSAGES[val]}`;
+function showApp() {
+  document.getElementById("authWall").classList.add("hidden");
+  document.getElementById("appShell").classList.remove("hidden");
+}
+
+function switchAuthTab(mode) {
+  authMode = mode;
+  document.querySelectorAll(".auth-tab").forEach((t,i) => t.classList.toggle("active", (i===0&&mode==="login")||(i===1&&mode==="signup")));
+  document.getElementById("authBtnText").textContent = mode === "login" ? "Sign In" : "Create Account";
+  document.getElementById("authConfirmField").classList.toggle("hidden", mode === "login");
+  document.getElementById("authPasswordField").querySelector("input").autocomplete = mode === "login" ? "current-password" : "new-password";
+  setAuthMsg("");
+}
+
+function setAuthMsg(msg, type = "") {
+  const el = document.getElementById("authMsg");
+  el.textContent = msg;
+  el.className = "auth-msg" + (type ? " " + type : "");
+}
+
+async function handleAuthSubmit() {
+  const email = document.getElementById("authEmail").value.trim();
+  const password = document.getElementById("authPassword").value;
+  const btn = document.getElementById("authSubmitBtn");
+  if (!email || !password) { setAuthMsg("Please fill in all fields.", "error"); return; }
+  
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-sm"></span>';
+
+  try {
+    if (authMode === "login") {
+      const { data, error } = await sb.auth.signInWithPassword({ email, password });
+      if (error) { setAuthMsg(error.message, "error"); }
+      else { setAuthMsg("Signing you in…", "success"); }
+    } else {
+      const confirm = document.getElementById("authConfirm").value;
+      if (password !== confirm) { setAuthMsg("Passwords don't match.", "error"); btn.disabled = false; btn.innerHTML = '<span id="authBtnText">Create Account</span>'; return; }
+      if (password.length < 8) { setAuthMsg("Password must be at least 8 characters.", "error"); btn.disabled = false; btn.innerHTML = '<span id="authBtnText">Create Account</span>'; return; }
+      const { data, error } = await sb.auth.signUp({ email, password });
+      if (error) { setAuthMsg(error.message, "error"); }
+      else if (data.session) { setAuthMsg("Account created!", "success"); }
+      else { setAuthMsg("Check your email to confirm your account.", "success"); }
+    }
+  } catch (e) {
+    setAuthMsg("Something went wrong. Please try again.", "error");
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = `<span id="authBtnText">${authMode === "login" ? "Sign In" : "Create Account"}</span>`;
+}
+
+async function handleGoogleAuth() {
+  try {
+    await sb.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: window.location.origin }
+    });
+  } catch (e) {
+    setAuthMsg("Google sign-in failed. Try email instead.", "error");
+  }
+}
+
+// Enter key on auth
+document.addEventListener("keydown", e => {
+  if (e.key === "Enter" && !document.getElementById("authWall").classList.contains("hidden")) {
+    handleAuthSubmit();
+  }
 });
 
-// Trigger initial state
-document.getElementById('noiseSlider').dispatchEvent(new Event('input'));
+async function handleLogout() {
+  if (!confirm("Sign out of Curabook PHI?")) return;
+  await sb.auth.signOut();
+  currentUser = null; currentUserName = "";
+  activeConvId = null; uploadedFiles = [];
+  showAuthWall();
+}
+
+// ── LOGIN SUCCESS ─────────────────────────────────────────────────────────────
+async function onLogin(user) {
+  currentUser = user;
+  currentUserName = extractFirstName(user);
+
+  showApp();
+  updateUserUI();
+  
+  // Async load
+  await saveConsents();
+  loadHistory();
+  loadHealthPulse();
+  loadDashboard();
+  
+  // Set dashboard date
+  document.getElementById("dashDate").textContent = new Date().toLocaleDateString("en-US", { weekday:"long", month:"long", day:"numeric", year:"numeric" });
+  document.getElementById("dashGreeting").innerHTML = `${currentUserName ? currentUserName + "'s" : "Your"} <em>health picture.</em>`;
+  document.getElementById("welcomeHeadline").innerHTML = `${currentUserName ? "Good to see you, " + currentUserName + "." : "Your metabolic"}<br><em>command center.</em>`;
+
+  toast(`Welcome back${currentUserName ? ", " + currentUserName : ""}!`);
+}
+
+function extractFirstName(user) {
+  const meta = user.user_metadata || {};
+  if (meta.first_name) return meta.first_name;
+  if (meta.name) return meta.name.split(" ")[0];
+  const local = (user.email || "").split("@")[0];
+  return local ? local.charAt(0).toUpperCase() + local.slice(1).replace(/[._-]/g, " ").split(" ")[0] : "";
+}
+
+function updateUserUI() {
+  if (!currentUser) return;
+  const initial = (currentUser.email || "?")[0].toUpperCase();
+  
+  // Avatar image from Google if available
+  const avatarUrl = currentUser.user_metadata?.avatar_url;
+  
+  function setAvatar(el, isImg) {
+    if (avatarUrl && isImg) {
+      el.innerHTML = `<img src="${avatarUrl}" alt="">`;
+    } else {
+      el.textContent = initial;
+    }
+  }
+  
+  // All avatars
+  ["sidebarAvatar", "topbarAvatar", "profileAvatar"].forEach((id, i) => {
+    const el = document.getElementById(id);
+    if (el) setAvatar(el, i > 0);
+  });
+  
+  const displayName = currentUserName || currentUser.email?.split("@")[0] || "User";
+  
+  if (document.getElementById("sidebarUserName")) document.getElementById("sidebarUserName").textContent = displayName;
+  if (document.getElementById("topbarUsername")) document.getElementById("topbarUsername").textContent = displayName;
+  if (document.getElementById("dropdownEmail")) document.getElementById("dropdownEmail").textContent = currentUser.email;
+  if (document.getElementById("profileName")) document.getElementById("profileName").textContent = displayName;
+  if (document.getElementById("profileEmail")) document.getElementById("profileEmail").textContent = currentUser.email;
+}
+
+async function saveConsents() {
+  const h = await authHeaders();
+  if (!h) return;
+  fetch(`${API}/api/consent`, {
+    method: "POST", headers: h,
+    body: JSON.stringify({ consents: ["data_processing","ai_processing","document_processing"] })
+  }).catch(() => {});
+}
+
+// ── AUTH HEADERS ──────────────────────────────────────────────────────────────
+async function authHeaders() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) return null;
+  return { "Content-Type": "application/json", "Authorization": "Bearer " + session.access_token };
+}
+
+// ── UI: SIDEBAR / VIEW ────────────────────────────────────────────────────────
+function toggleSidebar() {
+  const s = document.getElementById("sidebar");
+  const o = document.getElementById("sidebarOverlay");
+  const open = s.classList.toggle("open");
+  o.classList.toggle("show", open);
+}
+function closeSidebar() {
+  document.getElementById("sidebar").classList.remove("open");
+  document.getElementById("sidebarOverlay").classList.remove("show");
+}
+
+function toggleUserDropdown() {
+  document.getElementById("userDropdown").classList.toggle("hidden");
+}
+document.addEventListener("click", e => {
+  const btn = document.getElementById("topbarUserBtn");
+  const dd = document.getElementById("userDropdown");
+  if (!btn?.contains(e.target) && !dd?.contains(e.target)) {
+    dd?.classList.add("hidden");
+  }
+});
+
+function switchView(view) {
+  document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+  document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
+  
+  if (view === "chat") {
+    document.getElementById("chatView").classList.add("active");
+    document.getElementById("navChat").classList.add("active");
+    document.getElementById("topbarTitle").textContent = "Chat with PHI";
+  } else if (view === "dash") {
+    document.getElementById("dashView").classList.add("active");
+    document.getElementById("navDash").classList.add("active");
+    document.getElementById("topbarTitle").textContent = "Health Dashboard";
+    loadDashboard();
+  }
+  closeSidebar();
+}
+
+// ── HEALTH PULSE (welcome card) ───────────────────────────────────────────────
+async function loadHealthPulse() {
+  const h = await authHeaders();
+  if (!h) return;
+  
+  try {
+    const res = await fetch(`${API}/api/dashboard`, { headers: h });
+    const d = res.ok ? await res.json() : null;
+    
+    document.getElementById("pulseLoading").classList.add("hidden");
+    document.getElementById("pulseContent").classList.remove("hidden");
+    
+    if (!d || d.error || !d.total_markers) {
+      document.getElementById("pulseContent").innerHTML = `
+        <div style="text-align:center;padding:8px 0">
+          <div style="font-size:.82rem;color:var(--text-2);margin-bottom:10px">No lab data yet. Upload your first report to activate health monitoring.</div>
+          <button class="upload-trigger" onclick="document.getElementById('fileInput').click()">
+            <i class="fa-solid fa-upload"></i> Upload Report
+          </button>
+        </div>`;
+      // Set default chips
+      return;
+    }
+    
+    const abnormal = d.abnormal_count || 0;
+    const total = d.total_markers || 0;
+    const feed = (d.feed || []).slice(0, 3);
+    
+    let pillClass = "ok", pillLabel = "✓ All Looking Good";
+    let headline = `All ${total} tracked markers within normal range.`;
+    if (abnormal >= 3) { pillClass = "danger"; pillLabel = "⚠ Needs Attention"; headline = `${abnormal} markers need attention.`; }
+    else if (abnormal > 0) { pillClass = "warn"; pillLabel = "↑ Review Needed"; headline = `${abnormal} marker${abnormal>1?"s":""} outside normal range.`; }
+    
+    const alertsHtml = feed.map(item => {
+      const sc = item.severity === "high" ? "danger" : item.severity === "medium" ? "warn" : "ok";
+      return `<div class="pulse-alert ${sc}" onclick="sendChip('${esc(item.cta || 'Tell me more')}')">
+        <div style="font-size:1rem;flex-shrink:0">${item.icon || "→"}</div>
+        <div>
+          <div class="pulse-alert-title">${esc(item.title)}</div>
+          <div class="pulse-alert-desc">${esc(item.body)}</div>
+        </div>
+      </div>`;
+    }).join("");
+    
+    document.getElementById("pulseContent").innerHTML = `
+      <div class="pulse-status-row">
+        <div class="pulse-pill ${pillClass}">${pillLabel}</div>
+        <div class="pulse-headline">${esc(headline)}</div>
+      </div>
+      ${alertsHtml ? `<div class="pulse-alerts">${alertsHtml}</div>` : ""}`;
+    
+    // Update chips
+    const chips = [];
+    const abn = d.abnormal_markers || [];
+    if (abn.length) chips.push({ icon:"fa-triangle-exclamation", text:`Explain my ${abn[0].marker_name || "abnormal"} result` });
+    chips.push({ icon:"fa-shield-halved", text:"How do I prevent metabolic rebound?" });
+    chips.push({ icon:"fa-stethoscope", text:"Prepare me for my next doctor visit" });
+    chips.push({ icon:"fa-dumbbell", text:"Calculate my protein target for muscle defense" });
+    
+    document.getElementById("chips").innerHTML = chips.map(c =>
+      `<button class="chip" onclick="sendChip('${esc(c.text)}')"><i class="fa-solid ${c.icon}"></i> ${esc(c.text)}</button>`
+    ).join("");
+
+  } catch (e) {
+    document.getElementById("pulseLoading").classList.add("hidden");
+    document.getElementById("pulseContent").classList.remove("hidden");
+    document.getElementById("pulseContent").innerHTML = `<div style="font-size:.78rem;color:var(--text-3)">Could not load health data. Check your connection.</div>`;
+  }
+}
+
+// ── DASHBOARD ─────────────────────────────────────────────────────────────────
+async function loadDashboard() {
+  const h = await authHeaders();
+  if (!h) return;
+  
+  try {
+    const [dashRes, markersRes] = await Promise.all([
+      fetch(`${API}/api/dashboard`, { headers: h }),
+      fetch(`${API}/api/health-markers`, { headers: h })
+    ]);
+    
+    const dash = dashRes.ok ? await dashRes.json() : {};
+    const markers = markersRes.ok ? await markersRes.json() : [];
+    const mArr = Array.isArray(markers) ? markers : [];
+    
+    // Stats
+    document.getElementById("statMarkers").textContent = dash.total_markers || mArr.length || 0;
+    document.getElementById("statAbnormal").textContent = dash.abnormal_count || 0;
+    document.getElementById("statReports").textContent = dash.document_count || 0;
+    
+    // Markers grid
+    if (!mArr.length) return;
+    
+    const grid = document.getElementById("markersGrid");
+    grid.innerHTML = mArr.map(m => {
+      const sc = m.status === "HIGH" ? "danger" : m.status === "LOW" ? "warn" : m.status === "NORMAL" ? "ok" : "";
+      return `<div class="marker-card ${sc}" onclick="sendChip('What does my ${esc(m.marker_name)} result of ${m.value} ${esc(m.unit||'')} mean?'); switchView('chat')">
+        <div class="marker-name">${esc(m.marker_name)}</div>
+        <div style="display:flex;align-items:baseline;gap:4px">
+          <span class="marker-val">${m.value}</span>
+          <span class="marker-unit">${esc(m.unit || "")}</span>
+        </div>
+        <div class="marker-ref">Normal: ${esc(m.reference_range || "—")}</div>
+        <span class="marker-status ${m.status || 'UNKNOWN'}">${m.status || "?"}</span>
+      </div>`;
+    }).join("");
+    
+    // Profile modal stats
+    document.getElementById("profileMarkers").textContent = mArr.length;
+    
+  } catch (e) {
+    console.warn("[DASH]", e);
+  }
+}
+
+// ── CONVERSATION HISTORY ─────────────────────────────────────────────────────
+async function loadHistory() {
+  const h = await authHeaders();
+  if (!h) return;
+  
+  try {
+    const res = await fetch(`${API}/history`, { method: "POST", headers: h });
+    const convs = res.ok ? await res.json() : [];
+    if (!Array.isArray(convs) || !convs.length) return;
+    
+    const list = document.getElementById("historyList");
+    list.innerHTML = "";
+    
+    const today = new Date(); today.setHours(0,0,0,0);
+    const yday = new Date(today); yday.setDate(today.getDate()-1);
+    
+    let lastLabel = "";
+    convs.forEach(c => {
+      const d = new Date(c.created_at); d.setHours(0,0,0,0);
+      let label = d.getTime() === today.getTime() ? "Today" : d.getTime() === yday.getTime() ? "Yesterday" : d.toLocaleDateString("en-US",{month:"short",day:"numeric"});
+      if (label !== lastLabel) {
+        const lbl = document.createElement("div");
+        lbl.className = "history-date-label";
+        lbl.textContent = label;
+        list.appendChild(lbl);
+        lastLabel = label;
+      }
+      const item = document.createElement("div");
+      item.className = "history-item" + (c.id === activeConvId ? " active" : "");
+      item.setAttribute("data-id", c.id);
+      item.innerHTML = `<span class="history-title">${esc(c.title||"New Chat")}</span><button class="history-del" onclick="deleteConv(event,'${c.id}')"><i class="fa-solid fa-trash"></i></button>`;
+      item.addEventListener("click", () => openConversation(c.id));
+      list.appendChild(item);
+    });
+    
+    document.getElementById("profileConvs").textContent = convs.length;
+  } catch (e) {
+    console.warn("[HISTORY]", e);
+  }
+}
+
+async function openConversation(id) {
+  if (isProcessing) return;
+  activeConvId = id;
+  switchView("chat");
+  showChatMode();
+  document.getElementById("chatMessages").innerHTML = "";
+  
+  document.querySelectorAll(".history-item").forEach(el => el.classList.toggle("active", el.getAttribute("data-id") === id));
+  
+  try {
+    const h = await authHeaders();
+    const res = await fetch(`${API}/conversation`, { method:"POST", headers:h, body:JSON.stringify({conversation_id:id}) });
+    const msgs = res.ok ? await res.json() : [];
+    if (Array.isArray(msgs) && msgs.length) {
+      msgs.forEach(m => appendMsg(m.content, m.role === "user" ? "user" : "bot"));
+    }
+  } catch (e) {
+    toast("Failed to load conversation.", "err");
+  }
+  closeSidebar();
+}
+
+async function startNewChat() {
+  activeConvId = null;
+  uploadedFiles = [];
+  docCtx = { text: null, convId: null };
+  updateFileChips();
+  document.getElementById("chatMessages").innerHTML = "";
+  document.querySelectorAll(".history-item").forEach(el => el.classList.remove("active"));
+  
+  // Show welcome
+  document.getElementById("chatWelcome").classList.remove("hidden");
+  document.getElementById("chatMessages").classList.add("hidden");
+  
+  switchView("chat");
+  document.getElementById("chatInput").focus();
+  closeSidebar();
+}
+
+async function deleteConv(e, id) {
+  e.stopPropagation();
+  const h = await authHeaders();
+  fetch(`${API}/delete`, { method:"POST", headers:h, body:JSON.stringify({conversation_id:id}) }).catch(()=>{});
+  document.querySelector(`[data-id="${id}"]`)?.remove();
+  if (activeConvId === id) startNewChat();
+}
+
+// ── SEND MESSAGE ──────────────────────────────────────────────────────────────
+function sendChip(text) {
+  if (isProcessing) return;
+  document.getElementById("chatInput").value = text;
+  handleSend();
+}
+
+async function handleSend() {
+  if (isProcessing) return;
+  let text = document.getElementById("chatInput").value.trim();
+  
+  // If files attached without text, set default question
+  if (!text && uploadedFiles.length > 0) {
+    text = "Please read my uploaded medical report and explain every finding in plain language.";
+  }
+  if (!text) return;
+  
+  setProcessing(true);
+  
+  // Create conversation if needed
+  if (!activeConvId) {
+    const id = await createConversation();
+    if (!id) { setProcessing(false); return; }
+  }
+  
+  showChatMode();
+  document.getElementById("chatInput").value = "";
+  document.getElementById("chatInput").style.height = "auto";
+  
+  // Process file if attached
+  let docText = "", docId = "";
+  if (uploadedFiles.length > 0) {
+    const loading = appendMsg("Analyzing your document…", "bot");
+    const result = await processFile(uploadedFiles[0]);
+    loading.remove();
+    if (result) {
+      docText = result.document_text;
+      docId = result.document_id;
+      docCtx = { text: docText, convId: activeConvId };
+      uploadedFiles = [];
+      updateFileChips();
+      toast(`✓ ${result.filename || "Report"} analyzed`);
+      setTimeout(() => { loadHealthPulse(); loadDashboard(); }, 3000);
+    }
+  }
+  
+  appendMsg(text, "user");
+  const typingRow = appendTyping();
+  
+  // Use saved doc context for follow-ups
+  const sendDoc = docText || (docCtx.convId === activeConvId ? docCtx.text : "");
+  if (docText && docCtx.convId === activeConvId) docCtx.text = null; // consume once
+  
+  try {
+    const h = await authHeaders();
+    const res = await fetch(`${API}/chat`, {
+      method: "POST", headers: h,
+      body: JSON.stringify({
+        conversation_id: activeConvId,
+        message: text,
+        has_documents: !!(docText || docId),
+        document_text: sendDoc || "",
+        document_id: docId || "",
+      })
+    });
+    
+    const d = res.ok ? await res.json() : {};
+    typingRow.remove();
+    
+    if (res.status === 401) {
+      appendMsg("Your session expired. Please sign in again.", "bot");
+      setTimeout(() => sb.auth.signOut(), 2000);
+    } else if (d.reply) {
+      appendMsg(d.reply, "bot");
+      // Auto-rename conversation after first message
+      const msgs = document.querySelectorAll(".chat-msg.user").length;
+      if (msgs <= 1 && activeConvId) renameConversation(activeConvId, text.substring(0, 48));
+    } else {
+      appendMsg("I had trouble responding. Please try again.", "bot");
+    }
+  } catch (e) {
+    typingRow?.remove();
+    appendMsg("Connection error. Please check your internet and try again.", "bot");
+    toast("Connection error.", "err");
+  }
+  
+  setProcessing(false);
+}
+
+// ── CONVERSATION MANAGEMENT ──────────────────────────────────────────────────
+async function createConversation() {
+  try {
+    const h = await authHeaders();
+    const res = await fetch(`${API}/conversation/create`, { method:"POST", headers:h, body:"{}" });
+    const d = res.ok ? await res.json() : {};
+    if (!d.conversation_id) throw new Error("No ID");
+    activeConvId = d.conversation_id;
+    
+    // Add to history
+    const list = document.getElementById("historyList");
+    let todayLabel = list.querySelector(".history-date-label");
+    if (!todayLabel || todayLabel.textContent !== "Today") {
+      todayLabel = document.createElement("div");
+      todayLabel.className = "history-date-label";
+      todayLabel.textContent = "Today";
+      list.prepend(todayLabel);
+    }
+    const item = document.createElement("div");
+    item.className = "history-item active";
+    item.setAttribute("data-id", activeConvId);
+    item.innerHTML = `<span class="history-title">New Chat</span><button class="history-del" onclick="deleteConv(event,'${activeConvId}')"><i class="fa-solid fa-trash"></i></button>`;
+    item.addEventListener("click", () => openConversation(activeConvId));
+    todayLabel.insertAdjacentElement("afterend", item);
+    document.querySelectorAll(".history-item").forEach(el => el.classList.toggle("active", el === item));
+    
+    return activeConvId;
+  } catch (e) {
+    // Local fallback
+    activeConvId = "local-" + Date.now();
+    return activeConvId;
+  }
+}
+
+async function renameConversation(id, title) {
+  const h = await authHeaders();
+  if (!h) return;
+  const item = document.querySelector(`[data-id="${id}"] .history-title`);
+  if (item) item.textContent = title.substring(0, 48);
+  fetch(`${API}/rename`, { method:"POST", headers:h, body:JSON.stringify({conversation_id:id, title}) }).catch(()=>{});
+}
+
+// ── FILE UPLOAD ───────────────────────────────────────────────────────────────
+document.getElementById("fileInput").addEventListener("change", e => {
+  const files = Array.from(e.target.files || []);
+  files.forEach(f => {
+    if (f.size > 10*1024*1024) { toast(`${f.name} too large (max 10MB)`, "err"); return; }
+    if (!/\.(pdf|txt)$/i.test(f.name)) { toast(`${f.name}: PDF or TXT only`, "err"); return; }
+    uploadedFiles.push(f);
+  });
+  updateFileChips();
+  e.target.value = "";
+  if (uploadedFiles.length) {
+    document.getElementById("chatInput").focus();
+    if (!activeConvId) startNewChat();
+    switchView("chat");
+  }
+});
+
+function updateFileChips() {
+  const container = document.getElementById("fileChips");
+  if (!uploadedFiles.length) { container.classList.remove("show"); return; }
+  container.classList.add("show");
+  container.innerHTML = uploadedFiles.map((f, i) => `
+    <div class="file-chip">
+      <i class="fa-solid fa-file-medical"></i> ${esc(f.name)}
+      <button class="file-chip-remove" onclick="uploadedFiles.splice(${i},1);updateFileChips()">×</button>
+    </div>`).join("");
+}
+
+async function processFile(file) {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) return null;
+  
+  const form = new FormData();
+  form.append("file", file);
+  
+  try {
+    const res = await fetch(`${API}/analyze`, {
+      method: "POST",
+      headers: { "Authorization": "Bearer " + session.access_token },
+      body: form
+    });
+    const d = res.ok ? await res.json() : {};
+    if (!res.ok || !d.success) {
+      toast(d.error || `Could not process ${file.name}`, "err");
+      return null;
+    }
+    return d;
+  } catch (e) {
+    toast(`Upload failed for ${file.name}`, "err");
+    return null;
+  }
+}
+
+// ── CHAT RENDERING ────────────────────────────────────────────────────────────
+function showChatMode() {
+  document.getElementById("chatWelcome").classList.add("hidden");
+  document.getElementById("chatMessages").classList.remove("hidden");
+}
+
+function appendMsg(text, role) {
+  showChatMode();
+  const wrap = document.createElement("div");
+  wrap.className = `chat-msg ${role}`;
+  
+  const av = document.createElement("div");
+  av.className = `msg-avatar ${role === "user" ? "user-av" : "ai-av"}`;
+  
+  if (role === "user") {
+    const topAv = document.getElementById("topbarAvatar");
+    const hasImg = topAv?.querySelector("img");
+    if (hasImg && role !== "user") {
+      av.innerHTML = `<img src="${hasImg.src}" alt="">`;
+    } else {
+      av.textContent = role === "user" ? (currentUser?.email?.[0]?.toUpperCase() || "U") : "φ";
+    }
+  } else {
+    av.textContent = "φ";
+  }
+  
+  const bub = document.createElement("div");
+  bub.className = "msg-bubble";
+  
+  if (role === "user") {
+    bub.textContent = text;
+    wrap.appendChild(bub);
+    wrap.appendChild(av);
+  } else {
+    // Strip and separate legal footer
+    const cleaned = text.replace(/---\s*\n⚕️[\s\S]*?medical decisions\.\*\s*$/, "").trim();
+    bub.innerHTML = typeof marked !== "undefined" ? marked.parse(cleaned) : esc(cleaned);
+    
+    if (text.includes("⚕️")) {
+      const legal = document.createElement("p");
+      legal.className = "phi-legal";
+      legal.innerHTML = "⚕️ PHI is an educational wellness tool. Always consult your healthcare provider.";
+      bub.appendChild(legal);
+    }
+    wrap.appendChild(av);
+    wrap.appendChild(bub);
+  }
+  
+  document.getElementById("chatMessages").appendChild(wrap);
+  document.getElementById("chatMessages").scrollTop = 99999;
+  return wrap;
+}
+
+function appendTyping() {
+  const wrap = document.createElement("div");
+  wrap.className = "chat-msg bot";
+  wrap.innerHTML = `<div class="msg-avatar ai-av">φ</div><div class="msg-bubble"><div class="typing-row"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div></div>`;
+  document.getElementById("chatMessages").appendChild(wrap);
+  document.getElementById("chatMessages").scrollTop = 99999;
+  return wrap;
+}
+
+function setProcessing(on) {
+  isProcessing = on;
+  const btn = document.getElementById("sendBtn");
+  const input = document.getElementById("chatInput");
+  btn.disabled = on;
+  input.disabled = on;
+  btn.innerHTML = on
+    ? '<i class="fa-solid fa-spinner fa-spin" style="font-size:.8rem"></i>'
+    : '<i class="fa-solid fa-arrow-up"></i>';
+}
+
+// Auto-grow textarea
+document.getElementById("chatInput").addEventListener("input", function() {
+  this.style.height = "auto";
+  this.style.height = Math.min(this.scrollHeight, 140) + "px";
+});
+document.getElementById("chatInput").addEventListener("keydown", function(e) {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
+});
+
+// ── MODALS ────────────────────────────────────────────────────────────────────
+function openProfileModal() {
+  document.getElementById("profileModal").classList.remove("hidden");
+  toggleUserDropdown();
+}
+function openSettingsModal() {
+  document.getElementById("settingsModal").classList.remove("hidden");
+}
+function openDoctorPrep() {
+  document.getElementById("doctorPrepModal").classList.remove("hidden");
+  document.getElementById("prepOutput").style.display = "none";
+  closeSidebar();
+}
+function openProteinCalc() {
+  document.getElementById("proteinModal").classList.remove("hidden");
+  document.getElementById("proteinResult").style.display = "none";
+  closeSidebar();
+}
+function closeModal(id) { document.getElementById(id).classList.add("hidden"); }
+
+// Close on overlay click
+document.querySelectorAll(".modal-overlay").forEach(o => {
+  o.addEventListener("click", e => { if (e.target === o) o.classList.add("hidden"); });
+});
+
+// ── DOCTOR PREP ───────────────────────────────────────────────────────────────
+async function generateDocBrief() {
+  const btn = document.getElementById("prepBtn");
+  const symptoms = document.getElementById("prepSymptoms").value.split(",").map(s=>s.trim()).filter(Boolean);
+  const medications = document.getElementById("prepMeds").value.split(",").map(s=>s.trim()).filter(Boolean);
+  
+  btn.disabled = true;
+  btn.textContent = "Generating…";
+  
+  try {
+    const h = await authHeaders();
+    const res = await fetch(`${API}/api/doctor-brief`, {
+      method: "POST", headers: h,
+      body: JSON.stringify({ symptoms, medications })
+    });
+    const d = res.ok ? await res.json() : {};
+    const out = document.getElementById("prepOutput");
+    out.style.display = "block";
+    out.textContent = d.brief || "Could not generate. Please try again.";
+  } catch (e) {
+    toast("Failed to generate brief.", "err");
+  }
+  btn.disabled = false;
+  btn.textContent = "Generate Brief";
+}
+
+// ── PROTEIN CALC ──────────────────────────────────────────────────────────────
+function calcProtein() {
+  const goalWt = parseFloat(document.getElementById("goalWeightInput").value);
+  if (!goalWt || goalWt < 80 || goalWt > 500) {
+    toast("Enter a valid goal weight (80–500 lbs)", "err"); return;
+  }
+  
+  const daily = Math.round(goalWt * 0.545 * 10) / 10;
+  const perMeal = Math.round(daily / 3 * 10) / 10;
+  const leucineOk = perMeal >= 30;
+  
+  const foods = [
+    `4 oz chicken breast (35g)`, `1 cup Greek yogurt (17g)`,
+    `2 large eggs (12g)`, `1 scoop whey (25g)`,
+    `3 oz salmon (21g)`, `½ cup cottage cheese (14g)`
+  ];
+  
+  document.getElementById("proteinResult").style.display = "block";
+  document.getElementById("proteinResult").innerHTML = `
+    <div style="font-family:var(--mono);font-size:2rem;font-weight:500;color:var(--signal);margin-bottom:6px">
+      ${daily}g <span style="font-size:.9rem;color:var(--text-3)">per day</span>
+    </div>
+    <div style="font-size:.78rem;color:var(--text-2);margin-bottom:8px">
+      ${perMeal}g per meal × 3 meals<br>
+      <span style="color:${leucineOk ? 'var(--ok)' : 'var(--amber)'}">
+        ${leucineOk ? '✓' : '⚠'} ${leucineOk ? 'Meets' : 'Below'} 30g leucine threshold per meal
+      </span>
+    </div>
+    <div style="font-size:.72rem;color:var(--signal);font-family:var(--mono);margin-bottom:10px">
+      ${goalWt} lbs × 0.545 = ${daily}g/day (1.2g/kg/day)
+    </div>
+    <div style="font-size:.72rem;color:var(--text-3);margin-bottom:8px">Sample daily breakdown:</div>
+    <div style="display:flex;flex-wrap:wrap;gap:5px">
+      ${foods.map(f => `<span style="background:var(--surface-3);border-radius:20px;padding:2px 8px;font-size:.68rem;color:var(--text-2)">${f}</span>`).join("")}
+    </div>
+    <div style="margin-top:10px;font-size:.72rem;color:var(--text-2)">
+      <strong style="color:var(--text-1)">Resistance training:</strong> 2-3×/week compound movements (squat, hinge, press, pull)
+    </div>`;
+}
+
+// ── EXPORT / SETTINGS ─────────────────────────────────────────────────────────
+async function exportData() {
+  const h = await authHeaders();
+  if (!h) return;
+  try {
+    const res = await fetch(`${API}/export-data`, { method:"POST", headers:h });
+    const d = await res.json();
+    const blob = new Blob([JSON.stringify(d, null, 2)], { type:"application/json" });
+    Object.assign(document.createElement("a"), {
+      href: URL.createObjectURL(blob),
+      download: `phi-data-${Date.now()}.json`
+    }).click();
+    toast("Data exported!");
+  } catch (e) { toast("Export failed.", "err"); }
+}
+
+async function confirmClearHistory() {
+  if (!confirm("Delete ALL conversations? This cannot be undone.")) return;
+  const h = await authHeaders();
+  try {
+    const res = await fetch(`${API}/history`, { method:"POST", headers:h });
+    const convs = await res.json();
+    if (Array.isArray(convs)) {
+      await Promise.all(convs.map(c => fetch(`${API}/delete`, { method:"POST", headers:h, body:JSON.stringify({conversation_id:c.id}) }).catch(()=>{})));
+    }
+  } catch (e) {}
+  await startNewChat();
+  await loadHistory();
+  toast("All conversations deleted");
+  closeModal("settingsModal");
+}
+
+// ── TOASTS ────────────────────────────────────────────────────────────────────
+function toast(msg, type = "ok") {
+  const el = document.createElement("div");
+  el.className = `toast ${type}`;
+  const icon = type === "ok" ? "circle-check" : type === "err" ? "circle-exclamation" : "info-circle";
+  el.innerHTML = `<i class="fa-solid fa-${icon}"></i> ${esc(msg)}`;
+  document.getElementById("toastContainer").appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+
+// ── UTILITIES ──────────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
+
+// Keyboard shortcuts
+document.addEventListener("keydown", e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === "k") { e.preventDefault(); startNewChat(); }
+  if (e.key === "Escape") {
+    document.querySelectorAll(".modal-overlay:not(.hidden)").forEach(m => m.classList.add("hidden"));
+    document.getElementById("userDropdown").classList.add("hidden");
+  }
+});
+
+// Dark mode always (just for completeness)
+const prefs = JSON.parse(localStorage.getItem("phi_prefs") || "{}");
 </script>
 </body>
 </html>
