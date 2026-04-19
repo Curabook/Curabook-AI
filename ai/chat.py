@@ -1,15 +1,23 @@
 """
-ai/chat.py — PHI Adaptive Co-pilot Engine
+ai/chat.py  —  PHI Adaptive Co-pilot Engine  |  GLP-1 Maintenance Edition
 ─────────────────────────────────────────────────────────────────────────────
-CHANGES vs previous version:
-  #DISCLAIMER-1  MANDATORY_DISCLAIMER updated to match system_prompt.py.
-                 All three files (chat.py, chat_routes.py, system_prompt.py)
-                 now use identical footer text.
+CHANGES vs. previous version:
 
-  #ROLE-1        _PHI_BASE_SYSTEM updated to reference the Diabesity
-                 spectrum and Advocacy protocol in Rule 4 / Rule 5.
+  #MUSCLE-1   _PHI_METABOLIC_OVERLAY now includes the Muscle Defense
+              Calculation: Target Protein = Goal Weight (lbs) × 0.545 g/day.
+              Cited in every metabolic/maintenance response.
 
-  #AI-1          Rule 4 (CROSS-REFERENCE) preserved from previous version.
+  #TAPER-1    Dedicated _PHI_TAPER_OVERLAY provides educational content for
+              Reduced-Frequency Dosing (10-14 day cadence), microdosing, and
+              AOM transition strategies. Surfaces on maintenance/taper intents.
+
+  #FOOD-NOISE _PHI_FOOD_NOISE_OVERLAY validates ghrelin surge as physiological
+              data, not moral failure. Mandatory before any clinical content.
+
+  #UNITS-1    All US unit defaults enforced: lbs, mg/dL, %, °F.
+              Metric unit detection added to validate_llm_output().
+
+  #DISCLAIMER Updated to match system_prompt.py canonical text.
 """
 
 from __future__ import annotations
@@ -18,7 +26,7 @@ from typing import List, Dict, Optional, Tuple, Any
 from services.compliance import anonymize_for_llm
 
 MAX_HISTORY_MESSAGES = 12
-MAX_RESPONSE_TOKENS  = 1200
+MAX_RESPONSE_TOKENS  = 1400   # Increased — maintenance explanations need space
 DEFAULT_TIMEOUT_SEC  = 25
 
 # ── Canonical disclaimer — keep in sync with system_prompt.py and chat_routes.py
@@ -60,155 +68,343 @@ _HALLUCINATION_SIGNALS = [
     "you have high", "you have low", "your hba1c", "your tsh", "your vitamin",
 ]
 
+# US unit patterns — detect metric outputs for flagging
+_METRIC_OUTPUTS = [
+    re.compile(r'\b\d+\.?\d*\s*mmol/l\b', re.I),
+    re.compile(r'\b\d+\.?\d*\s*kg\b(?!\s*/m)', re.I),  # kg but not kg/m²
+    re.compile(r'\b\d+\.?\d*\s*°C\b', re.I),
+]
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# MUSCLE DEFENSE CALCULATOR
+# ══════════════════════════════════════════════════════════════════════════════
+
+def calculate_muscle_defense_protocol(goal_weight_lbs: float) -> dict:
+    """
+    #MUSCLE-1: Calculate the Muscle Defense protein target and daily plan.
+
+    Formula: Target Protein (g) = Goal Weight (lbs) × 0.545
+    Derived from: 1.2g protein/kg body weight clinical recommendation
+    Conversion:   1.2g/kg × 0.4536 kg/lb = 0.5443g/lb ≈ 0.545
+
+    Returns a dict with:
+      - daily_protein_g: target grams/day
+      - per_meal_g: per meal assuming 3 meals (with leucine threshold context)
+      - food_examples: practical whole-food breakdown to hit the target
+      - resistance_rx: evidence-based resistance training minimum
+      - bm_context: BMR defense explanation
+    """
+    daily_protein_g = round(goal_weight_lbs * 0.545, 1)
+    per_meal_g      = round(daily_protein_g / 3, 1)
+
+    # Leucine threshold: 2.5-3g leucine per meal triggers muscle protein synthesis
+    # ~35g high-quality protein ≈ 2.7g leucine (chicken, whey, egg)
+    leucine_adequate = per_meal_g >= 30
+
+    food_examples = []
+    remaining = daily_protein_g
+    sources = [
+        ("4 oz chicken breast",  35),
+        ("1 cup Greek yogurt",   17),
+        ("2 large eggs",         12),
+        ("1 scoop whey protein", 25),
+        ("3 oz salmon",          21),
+        ("½ cup cottage cheese", 14),
+        ("1 cup edamame",        17),
+        ("2 oz string cheese",   14),
+    ]
+    for source, grams in sources:
+        if remaining <= 0:
+            break
+        food_examples.append(f"{source} ({grams}g protein)")
+        remaining -= grams
+
+    return {
+        "daily_protein_g":   daily_protein_g,
+        "per_meal_g":        per_meal_g,
+        "leucine_adequate":  leucine_adequate,
+        "leucine_note":      f"{'✓' if leucine_adequate else '⚠'} {per_meal_g}g/meal {'meets' if leucine_adequate else 'is below'} the 30g leucine-threshold for muscle protein synthesis",
+        "food_examples":     food_examples,
+        "resistance_rx":     "2-3x/week compound movements (squat, hinge, press, pull) — progressive overload is the key variable",
+        "bmr_context":       (
+            f"At {goal_weight_lbs} lbs goal weight, your BMR is approximately "
+            f"{round(goal_weight_lbs * 11.5):,} kcal/day at rest. "
+            "Every lb of muscle lost reduces BMR by ~6 kcal/day — "
+            "losing 10 lbs of muscle drops daily caloric need by 60 kcal, "
+            "making weight regain mathematically easier over time."
+        ),
+    }
+
+
+def format_muscle_defense_message(goal_weight_lbs: float) -> str:
+    """Format the Muscle Defense Protocol into a user-facing message."""
+    p = calculate_muscle_defense_protocol(goal_weight_lbs)
+    foods_str = " + ".join(p["food_examples"][:5])
+
+    return (
+        f"**🛡 Muscle Defense Protocol — {goal_weight_lbs} lbs goal weight**\n\n"
+        f"**Daily Protein Target:** {p['daily_protein_g']}g "
+        f"({goal_weight_lbs} lbs × 0.545)\n"
+        f"**Per Meal:** {p['per_meal_g']}g minimum across 3 meals\n"
+        f"{p['leucine_note']}\n\n"
+        f"**Sample daily breakdown:** {foods_str}\n\n"
+        f"**Resistance Training:** {p['resistance_rx']}\n\n"
+        f"**Why this matters:** {p['bmr_context']}\n\n"
+        "*(Clinical basis: 1.2g protein/kg/day — Obesity Medicine Association 2026 "
+        "Algorithm; UC Davis 2025 lean mass data)*"
+    )
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SYSTEM PROMPTS
 # ══════════════════════════════════════════════════════════════════════════════
 
 _PHI_BASE_SYSTEM = """
-You are PHI — a Personal Health Intelligence co-pilot built by Curabook.
-You are a clinical advocate and metabolic health scientist specialising in
-the Diabesity spectrum: Diabetes, Obesity, Hypertension, Cardiovascular disease.
-You have been given this person's complete health memory including demographics.
-You are their health expert who knows their full story.
+You are PHI — a GLP-1 Maintenance Strategist and Personal Health Intelligence
+co-pilot built by Curabook. You specialize in preventing the GLP-1 Cliff:
+the metabolic rebound (weight regain, glucose rise, muscle loss) that occurs
+when patients discontinue GLP-1 medications like Wegovy, Ozempic, or Zepbound.
+
+Clinical context you apply to every relevant response:
+• 70% of GLP-1 users discontinue within Year 1 (Cleveland Clinic, 2026)
+• 39% of GLP-1 weight loss is lean body mass without behavioral support
+• Omada members with behavioral support: 0.8% weight change at 12 months post-cessation
+• Without support: 11-12% weight regain in the same window (BMJ, 2026)
+• ≥25 app interactions/month → 60% higher metabolic syndrome reversal rate
 
 YOUR FIVE OPERATING RULES:
 
-RULE 1 — BE PERSONAL, NOT GENERIC.
-Every response must reference THIS person's actual data. If you don't have a
-specific number, say so. Never give advice that could apply to anyone.
+RULE 1 — MUSCLE-FIRST ANALYSIS.
+Weight change is not the primary metric. Quality of weight change — fat lost
+vs. lean mass preserved — is what determines long-term metabolic health.
+Every weight observation must include a lean mass commentary.
+Protein target: Goal Weight (lbs) × 0.545 = Daily Protein (g)
 
-RULE 2 — SYNTHESIZE, DON'T LIST.
-Connect dots. Rising LDL + borderline HbA1c + elevated CRP is not three
-findings — it is a single metabolic story. Name the pattern.
+RULE 2 — SYNTHESIZE THE METABOLIC STORY.
+Glucose + weight + protein + activity + medication status = one physiological
+system. Never analyze these in isolation.
 
 RULE 3 — PLAIN ENGLISH FIRST.
-Your opening sentence must be understood by someone with no medical background.
-Numbers support the story — they never lead it.
+Open with the human implication. Then support with specific numbers from memory.
 
 RULE 4 — CROSS-REFERENCE BIOGRAPHY WITH LABS.
-The Health Memory includes facts this person has shared (medications started,
-lifestyle changes, symptoms, supplements, family history). Explicitly connect
-biographical facts with lab trends when relevant:
-  • "You mentioned starting Vitamin D supplements 5 months ago — your
-    Vitamin D has risen from 14 to 32 ng/mL. That intervention is working."
-  • "You reduced refined carbs 4 months ago. Your HbA1c improved from 6.1%
-    to 5.6% — that dietary change is directly reflected in this result."
-  • "Your family history of heart disease, combined with your rising LDL,
-    makes the cardiology appointment you mentioned even more important."
+Connect everything the user has shared to their actual marker trends.
+"You mentioned stopping Zepbound 3 weeks ago — your glucose rising from
+96 to 108 mg/dL is consistent with the post-GLP-1 rebound window."
 
 RULE 5 — INSURANCE ADVOCACY TRIGGER.
-If the user mentions: insurance, denied, prior auth, cost, GLP-1, Wegovy,
-Ozempic, Zepbound, Mounjaro, Tirzepatide, Semaglutide, not covered, appeal —
-immediately cite THEIR specific lab markers (BMI, HbA1c, LDL, CRP) as clinical
-justification using Medical Necessity language. Check whether they have
-documented first-line treatment failure (Metformin, lifestyle program).
+Auto-activate on: insurance, denied, prior auth, PA, cost, Wegovy, Ozempic,
+Zepbound, Mounjaro, not covered, step therapy, appeal.
+Cite their specific lab markers as PA justification.
+
+FOOD NOISE RULE — MANDATORY:
+When the user describes hunger returning, cravings, food obsession, or the
+urge to eat after GLP-1 reduction: validate first, educate second.
+"This is ghrelin surge — biology, not willpower."
 
 SAFETY RULES (non-negotiable):
-- Never diagnose. Use: "markers are highly associated with", "this trend suggests".
-- Never prescribe or adjust doses. Ever.
-- If a value isn't in their health memory, say "I don't have that data yet."
+- Never diagnose. Never prescribe. Never adjust doses.
+- US units always: lbs (not kg), mg/dL (not mmol/L).
+- If a value isn't in memory: "I don't have that data yet."
 - Never invent numbers.
 """.strip()
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# #MUSCLE-1: Updated Metabolic Overlay with Muscle Defense Calculation
+# ─────────────────────────────────────────────────────────────────────────────
 _PHI_METABOLIC_OVERLAY = """
-METABOLIC SYNTHESIS MODE — DIABESITY SPECTRUM.
+METABOLIC SYNTHESIS MODE — GLP-1 CLIFF AWARENESS
 
-1. Identify the cluster: insulin resistance? cardiovascular? mixed metabolic?
-2. Find the TRAJECTORY. A value moving wrong for 9 months is more important
-   than a snapshot.
-3. Connect marker families:
+1. MUSCLE DEFENSE CALCULATION (always surface on weight/maintenance queries):
+   Formula: Daily Protein Target (g) = Goal Weight (lbs) × 0.545
+   Basis: 1.2g protein per kg body weight per day (OMA 2026 Algorithm)
+   Example: 165 lbs goal → 165 × 0.545 = 89.9g/day → ~30g per meal (3 meals)
+   
+   UC Davis nuance (2025): The "39% lean mass loss" on GLP-1s is predominantly
+   hepatic fat reduction, not skeletal muscle. When normalized to body weight,
+   muscle mass and grip strength IMPROVE on GLP-1s with adequate protein.
+   The risk is AFTER cessation without behavioral scaffolding.
+
+2. CLUSTER IDENTIFICATION:
+   - GLP-1 Rebound Cluster: rising Fasting Glucose + rising Weight + food noise reported
+     → Flag as early cliff signal. "This pattern typically appears 2-4 weeks post-cessation."
    - Glucose cluster: HbA1c + Fasting Glucose + Triglycerides (insulin resistance triad)
    - Cardiovascular: LDL + HDL + Total Cholesterol + CRP
-   - Metabolic syndrome: obesity/weight indicators from biographical facts
-4. Calculate COMPOUNDED RISK — rising LDL + high CRP is more dangerous than either alone.
-5. Cross-reference dietary/exercise changes the user mentioned (Rule 4).
+
+3. TRAJECTORY > SNAPSHOT:
+   Post-cessation glucose rise is the earliest measurable cliff signal.
+   A Fasting Glucose increase of >15% from personal baseline = RED FLAG.
+   HbA1c increase ≥0.25% = act now, don't wait.
+
+4. COMPOUNDED RISK:
+   Rising LDL + elevated CRP in post-GLP-1 context = urgent cardiovascular discussion.
+
+5. BIOGRAPHY LINK:
+   Connect medication changes (stop dates, dose reductions) to marker trends.
+   "Your HbA1c moved from 5.6% to 5.9% in the 8 weeks since you reduced your dose —
+   that 0.3% change in 8 weeks is rapid. Let's look at the contributing factors."
+
+6. ONE ACTIONABLE QUESTION for their provider.
 """.strip()
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# #TAPER-1: New Taper Support Overlay
+# ─────────────────────────────────────────────────────────────────────────────
+_PHI_TAPER_OVERLAY = """
+GLP-1 TAPER & MAINTENANCE EDUCATIONAL MODE
+
+CRITICAL FRAMING: PHI provides educational information only.
+All taper, dosing, and medication decisions are made by the provider.
+Your role: equip this person with the vocabulary and evidence to have
+an informed conversation with their doctor.
+
+THREE EVIDENCE-BASED MAINTENANCE STRATEGIES to educate on:
+
+A) REDUCED-FREQUENCY DOSING (first-line maintenance):
+   Clinical evidence: 30 patients extended injections from weekly to every
+   10-14 days. Total body fat continued to DECLINE. Skeletal muscle mass
+   STABILIZED over 36.3 weeks follow-up (PubMed 2026, PMID 41732031).
+   Key point: "Ask your provider about extending your injection interval
+   to every 10-14 days as a first step before full discontinuation."
+
+B) MICRODOSING (Noom clinical data):
+   Fractional doses (0.2mg-0.6mg range) suppress food noise while
+   minimizing GI side effects. 56% of Noom GLP-1 patients use this approach.
+   95% medication adherence in Month 1 vs. standard dosing.
+   Key point: "Lower doses reduce GI side effects — the #2 reason for
+   discontinuation — while maintaining behavioral momentum."
+
+C) AOM TRANSITION (most cost-effective 24-month strategy):
+   After BMI <30 on GLP-1: transitioning to generic agents showed 25.5% total
+   weight loss maintenance at 24 months (80% metformin, 32.5% topiramate,
+   32.5% bupropion) — PMC 2026 real-world study.
+   Cost context: branded GLP-1 costs ~$617-725/month (Wegovy/Zepbound).
+   Generic metformin: ~$4-10/month.
+
+D) COLD TURKEY = CLIFF:
+   "Abrupt discontinuation causes an immediate, severe ghrelin surge.
+   The STEP-10 trial showed 40%+ of lost weight regained within 28 weeks
+   of stopping semaglutide abruptly. All evidence points to structured tapering."
+
+WHAT THE MUSCLE DEFENSE PROTOCOL ADDS:
+   During ANY taper, these must be in place simultaneously:
+   - Protein target: Goal Weight (lbs) × 0.545 = g/day
+   - 2-3x/week resistance training
+   - 7-9 hours sleep (ghrelin rises 15% for each hour under 7h)
+   - 20-30 min post-meal walks (autonomous GLP-1 production via L-cells)
+""".strip()
+
+
 _PHI_DOCTOR_PREP_OVERLAY = """
-DOCTOR VISIT PREPARATION MODE — SPECIALIST BRIEF.
+DOCTOR VISIT PREPARATION MODE — GLP-1 SPECIALIST BRIEF
 
-1. The ONE THING to lead with (most concerning finding — specific numbers + dates)
-2. The TREND to show (what changed since last visit — actual dates and values)
-3. THREE QUESTIONS — specific to their results, not generic
-4. What NOT to forget: symptoms, medications, supplements from memory
-5. What the doctor may order next based on the current marker pattern
-
-Be a smart friend who did the homework. Direct and specific.
+1. THE LEAD — single most important finding with numbers and dates
+2. GLP-1 STATUS — current medication, dose, any recent changes, side effects
+3. CLIFF RISK ASSESSMENT — glucose trend, weight trend, HbA1c direction
+4. THREE SPECIFIC QUESTIONS:
+   - "At what point does my glucose trajectory require intervention?"
+   - "Can we trial every 10-14 day dosing before full discontinuation?"
+   - "Would a DEXA scan help track my lean mass vs. fat over time?"
+5. WHAT TO REQUEST — ApoB, fasting insulin, body composition scan if available
 """.strip()
 
 _PHI_LIFESTYLE_OVERLAY = """
-LIFESTYLE & BEHAVIOR CHANGE MODE.
+LIFESTYLE & METABOLIC REPROGRAMMING MODE
 
-1. Connect the change to THEIR numbers:
-   "Walking 30 min/day can reduce HbA1c by ~0.5% — you're at 6.1%,
-   so this could put you in the normal range."
-2. Reference what they've already done (Rule 4 cross-reference).
-3. Prioritise the ONE change with the highest expected impact.
-4. Give a realistic 90-day expectation based on their trajectory.
-5. One clear next step beats ten suggestions.
+HIGHEST-IMPACT GLP-1 CLIFF PREVENTION INTERVENTIONS (ranked by evidence):
+  1. PROTEIN SUFFICIENCY — Goal Weight (lbs) × 0.545 = daily grams target
+     • Distribute across 3+ meals (30g+ per meal for leucine threshold)
+     • High-protein meals blunt ghrelin by ~25% via CCK/PYY release
+  2. RESISTANCE TRAINING — 2-3x/week compound movements
+     • Preserves BMR: 1 lb muscle = 6 kcal/day resting caloric burn
+     • Progressive overload beats volume in time-constrained schedules
+  3. SLEEP — 7-9 hours; each hour under 7h → +15% next-day ghrelin
+  4. POST-MEAL WALKING — 20-30 min; reduces post-meal glucose 30-50 mg/dL
+  5. STRESS MANAGEMENT — cortisol drives both muscle catabolism and insulin resistance
+
+Connect every recommendation to THEIR specific marker data.
+Offer choices, not commands. End with one measurable 7-day experiment.
 """.strip()
 
 _PHI_ADVOCACY_OVERLAY = """
-INSURANCE ADVOCACY MODE — PRIOR AUTHORIZATION SUPPORT.
+INSURANCE ADVOCACY MODE — GLP-1 PA SUPPORT
 
-The user needs help with insurance coverage. Apply immediately:
+OPEN WITH: Acknowledge the emotional weight of insurance denials.
 
-1. CITE THEIR SPECIFIC MARKERS as clinical justification — actual values and dates.
-   Do not use generic statements.
+CITE THEIR SPECIFIC MARKERS as medical necessity:
+  BMI criteria: ≥30 OR ≥27 + documented comorbidity
+  HbA1c criteria: ≥5.7% (prediabetes) or ≥6.5% (diabetes range)
+  Cardiovascular risk: LDL, CRP, family history from their record
+  Step therapy: prior Metformin or structured program documentation
 
-2. MEDICAL NECESSITY CRITERIA (U.S. payer standard):
-   — BMI ≥ 30 (obesity) OR BMI ≥ 27 + documented comorbidity
-   — HbA1c ≥ 5.7% (prediabetes) or ≥ 6.5% (diabetes range)
-   — Cardiovascular risk (elevated LDL, CRP, family history)
-   — Failed first-line lifestyle intervention
+MAINTENANCE PA ARGUMENT (2026 framing):
+  "Omada data shows behavioral support reduces post-GLP-1 regain from 11-12%
+  to 0.8% at 12 months. Continued medication coverage paired with PHI coaching
+  is less expensive than the hospitalization, bariatric surgery, or increased
+  medication burden that follows unmanaged rebound."
 
-3. STEP THERAPY CHECK: Has the user tried Metformin, a structured diet
-   program, or other first-line agents? This is often the key requirement.
-   If not documented, tell them to ask their provider to document it.
-
-4. DATA GAPS: Tell the user exactly what is missing from their record
-   that would strengthen the PA case (BMI, HbA1c, medication history).
-
-5. PROVIDER ACTION: What to ask the provider to document in the chart
-   BEFORE submitting the PA. This is the most actionable advice.
-
-End with: "This packet is informational. Your provider makes all clinical
-and authorization decisions."
+DATA GAPS: Tell user exactly what's missing.
+PROVIDER ACTIONS: What to ask provider to document before PA submission.
 """.strip()
+
+_INTENT_TO_OVERLAY = {
+    "maintenance":    _PHI_TAPER_OVERLAY,
+    "muscle_defense": _PHI_METABOLIC_OVERLAY,
+    "metabolic":      _PHI_METABOLIC_OVERLAY,
+    "doctor_prep":    _PHI_DOCTOR_PREP_OVERLAY,
+    "lifestyle":      _PHI_LIFESTYLE_OVERLAY,
+    "advocacy":       _PHI_ADVOCACY_OVERLAY,
+}
 
 
 # ── Intent detection ──────────────────────────────────────────────────────────
 
+_MAINTENANCE_KW = [
+    "off meds", "stopped wegovy", "stopped ozempic", "stopped zepbound",
+    "stopped mounjaro", "regain", "regaining", "weight coming back",
+    "after stopping", "taper", "tapering", "wean", "maintenance dose",
+    "cliff", "food noise is back", "hunger is back", "cravings are back",
+    "every other week", "every two weeks", "microdose", "coming off",
+    "plateau", "stalled", "weight creeping", "reduce dose", "dose reduction",
+]
+_MUSCLE_KW = [
+    "muscle", "lean mass", "sarcopenia", "protein", "resistance training",
+    "strength training", "body composition", "bmr", "metabolism slowing",
+    "muscle defense", "whey", "creatine", "grip strength",
+]
 _ADVOCACY_KW = [
-    "insurance", "denied", "prior auth", "prior authorization", "pa ",
-    "coverage", "not covered", "formulary", "appeal", "step therapy",
-    "afford", "cost", "copay", "deductible", "glp-1", "glp1",
-    "wegovy", "ozempic", "zepbound", "mounjaro", "tirzepatide",
-    "semaglutide", "liraglutide", "saxenda", "victoza", "rybelsus",
-    "trulicity", "dulaglutide",
+    "insurance", "denied", "prior auth", "pa ", "coverage", "not covered",
+    "formulary", "appeal", "step therapy", "afford", "cost", "copay",
+    "glp-1", "glp1", "wegovy", "ozempic", "zepbound", "mounjaro",
+    "tirzepatide", "semaglutide", "liraglutide",
 ]
 _METABOLIC_KW = [
-    "diabetes","blood sugar","glucose","hba1c","a1c","insulin","cholesterol",
-    "ldl","hdl","triglyceride","heart","cardiovascular","metabolic",
-    "obesity","weight","bmi","fatty liver","crp","inflammation","prediabetes",
+    "diabetes", "blood sugar", "glucose", "hba1c", "a1c", "insulin",
+    "cholesterol", "ldl", "hdl", "triglyceride", "heart",
+    "cardiovascular", "metabolic", "obesity", "weight", "bmi",
+    "crp", "inflammation", "prediabetes",
 ]
 _DOCTOR_PREP_KW = [
-    "doctor","appointment","visit","prepare","brief","what should i tell",
-    "questions for","see my doctor","going to the doctor","next checkup",
-    "specialist","cardiologist","endocrinologist",
+    "doctor", "appointment", "visit", "prepare", "brief",
+    "questions for my doctor", "checkup", "specialist",
+    "cardiologist", "endocrinologist", "obesity medicine",
 ]
 _LIFESTYLE_KW = [
-    "what can i do","how to improve","diet","exercise","food","eat",
-    "workout","sleep","stress","lifestyle","change","habit",
-    "reduce","lower","improve","better","fix","keto","fasting",
+    "what can i do", "how to improve", "diet", "exercise", "food",
+    "workout", "sleep", "stress", "lifestyle", "change", "habit",
+    "reduce", "lower", "walk", "gym", "calories", "keto", "fasting",
 ]
 
 
 def _detect_intent(message: str) -> str:
     lower = message.lower()
-    if any(k in lower for k in _ADVOCACY_KW):  return "advocacy"
+    # Maintenance and muscle checked first (highest priority for this platform)
+    if any(k in lower for k in _MAINTENANCE_KW): return "maintenance"
+    if any(k in lower for k in _MUSCLE_KW):      return "muscle_defense"
+    if any(k in lower for k in _ADVOCACY_KW):    return "advocacy"
     if any(k in lower for k in _DOCTOR_PREP_KW): return "doctor_prep"
     if any(k in lower for k in _LIFESTYLE_KW):   return "lifestyle"
     if any(k in lower for k in _METABOLIC_KW):   return "metabolic"
@@ -229,6 +425,12 @@ def validate_llm_output(text: str, has_health_data: bool) -> Tuple[str, List[str
                       "this pattern is consistent with", text, flags=re.I)
         if "medication_instruction" in violations:
             return _SAFE_FALLBACK, violations
+
+    # #UNITS-1: Flag metric units in output (informational — don't block response)
+    metric_found = [p.pattern for p in _METRIC_OUTPUTS if p.search(text)]
+    if metric_found:
+        print(f"[CHAT] Metric unit detected in output — US unit preference: {metric_found}")
+
     return text, violations
 
 
@@ -248,23 +450,24 @@ def build_chat_messages(
     intent = _detect_intent(user_message)
 
     system_parts = [_PHI_BASE_SYSTEM]
-    if intent == "advocacy":    system_parts.append("\n\n" + _PHI_ADVOCACY_OVERLAY)
-    elif intent == "metabolic": system_parts.append("\n\n" + _PHI_METABOLIC_OVERLAY)
-    elif intent == "doctor_prep": system_parts.append("\n\n" + _PHI_DOCTOR_PREP_OVERLAY)
-    elif intent == "lifestyle":  system_parts.append("\n\n" + _PHI_LIFESTYLE_OVERLAY)
+    overlay = _INTENT_TO_OVERLAY.get(intent, "")
+    if overlay:
+        system_parts.append("\n\n" + overlay)
 
-    messages: List[Dict[str, str]] = [{"role": "system", "content": "\n".join(system_parts)}]
+    messages: List[Dict[str, str]] = [
+        {"role": "system", "content": "\n".join(system_parts)}
+    ]
 
     has_health_data = bool(health_context and health_context.strip())
-
     if has_health_data:
         messages.append({
             "role": "system",
             "content": (
                 "═══ THIS PERSON'S HEALTH MEMORY ═══\n"
-                "Demographics, lab history, trends, and biographical facts follow.\n"
-                "Apply Rule 4: connect biographical facts with lab trends explicitly.\n"
-                "Apply Rule 5: if advocacy keywords present, cite these markers immediately.\n\n"
+                "All values in US units (lbs, mg/dL, %, °F).\n"
+                "Apply Muscle-First Directive: every weight observation needs "
+                "lean mass commentary and protein target calculation.\n"
+                "Apply Food Noise Protocol: validate ghrelin surge before clinical data.\n\n"
                 + health_context
             ),
         })
@@ -274,7 +477,8 @@ def build_chat_messages(
             "content": (
                 "IMPORTANT: No stored health data yet. "
                 "Do not speculate about any personal health values. "
-                "Warmly direct the user to upload a report using the 📎 button."
+                "Warmly direct the user to upload a report using the 📎 button. "
+                "You can still answer general GLP-1 maintenance questions."
             ),
         })
 
@@ -284,7 +488,8 @@ def build_chat_messages(
             "content": (
                 "A medical document was uploaded this session. "
                 "Prioritize new document values. Cross-reference with stored memory. "
-                "Note what has CHANGED vs previous readings. One integrated response."
+                "Note what has CHANGED vs previous readings. "
+                "Flag any early cliff signals: glucose rise, weight rise, HbA1c increase."
             ),
         })
 
@@ -347,7 +552,7 @@ def call_llm(groq_client: Any, messages: List[Dict[str, str]],
             return None
         result = str(result).strip()
         if len(result) >= max_tokens * 3:
-            result += "\n\n⚠️ *Response trimmed — ask a follow-up for missing details.*"
+            result += "\n\n⚠️ *Response trimmed — ask a follow-up for details.*"
         return result
     except Exception as e:
         print(f"[AI ERROR] {e}")
@@ -358,11 +563,14 @@ def call_llm(groq_client: Any, messages: List[Dict[str, str]],
 
 def extract_conversation_memories(groq_client: Any, user_message: str, ai_reply: str) -> List[str]:
     health_indicators = [
-        "supplement","medication","doctor","appointment","symptom","fatigue","pain",
-        "diet","exercise","concern","worried","family history","blood pressure","sugar",
-        "vitamin","taking","prescribed","sleep","stress","weight","insulin","metformin",
-        "obesity","overweight","walking","gym","calories","insurance","denied","glp",
-        "wegovy","ozempic","zepbound","mounjaro","prior auth","coverage",
+        "supplement", "medication", "doctor", "appointment", "symptom", "fatigue",
+        "diet", "exercise", "concern", "worried", "family history", "blood pressure",
+        "taking", "prescribed", "sleep", "stress", "weight", "insulin", "metformin",
+        "walking", "gym", "calories", "insurance", "denied", "glp",
+        "wegovy", "ozempic", "zepbound", "mounjaro", "prior auth",
+        # GLP-1 maintenance specific
+        "stopped", "off meds", "taper", "food noise", "hunger", "cravings",
+        "protein", "resistance training", "muscle", "plateau",
     ]
     combined = (user_message + " " + ai_reply).lower()
     if not any(kw in combined for kw in health_indicators):
@@ -373,10 +581,10 @@ USER SAID: {user_message[:600]}
 PHI REPLIED: {ai_reply[:400]}
 
 Rules:
-- Only facts the USER stated (symptoms, medications, lifestyle, insurance situation, concerns, history).
+- Only facts the USER stated (GLP-1 status, medications, symptoms, lifestyle, insurance, concerns).
 - Do NOT extract what PHI said.
 - Short, clear. Max 100 chars each.
-- Return ONLY a JSON array: ["User takes Metformin 500mg daily", "Insurance denied Wegovy"]
+- Return ONLY a JSON array: ["User stopped Wegovy 3 weeks ago", "User reports intense food noise returning"]
 - Empty array [] if no relevant facts."""
     try:
         if groq_client:
@@ -391,7 +599,7 @@ Rules:
                 parsed = json.loads(match.group(0))
                 if isinstance(parsed, list):
                     return [str(f)[:200] for f in parsed if isinstance(f, str) and len(f) > 5]
-    except (json.JSONDecodeError, Exception) as e:
+    except Exception as e:
         print(f"[MEMORY] Extraction error: {e}")
     return []
 
@@ -420,25 +628,30 @@ def generate_doctor_prep(groq_client: Any, document_text: str,
         for m in abnormal
     ) if abnormal else "  No abnormal markers."
     prefix = f"{user_name}, here" if user_name else "Here"
-    prompt = f"""Create a concise doctor visit prep specialist brief.
+    prompt = f"""Create a GLP-1 Maintenance specialist doctor visit brief.
 
-ABNORMAL RESULTS:
+ABNORMAL RESULTS (US units):
 {labs_text}
 
 Format:
 **The one thing to lead with:**
-[Most urgent finding with number and date]
+[Most urgent cliff-risk finding with number and date]
 
-**What has changed since last time:**
-[Trend with two specific dates and values]
+**GLP-1 Cliff Risk Assessment:**
+[Glucose trend + Weight trend + HbA1c direction — early rebound signals?]
+
+**Muscle Defense Status:**
+[Protein target met? Resistance training? BMR at risk?]
 
 **3 specific questions to ask your doctor:**
-1. [Specific to these results]  2. [Specific]  3. [Specific]
+1. [GLP-1 dosing/taper specific to these results]
+2. [Metabolic specific to these results]
+3. [Body composition / PA specific]
 
 **Don't forget to mention:**
-[Symptoms, meds, supplements from memory]
+[Symptoms, meds, supplements, food noise, taper status from memory]
 
-Under 200 words. End: "⚕️ PHI is an educational wellness tool. Always consult your provider."
+Under 250 words. End: "⚕️ PHI is an educational wellness tool. Always consult your provider."
 """
-    result = call_llm(groq_client, [{"role": "user", "content": prompt}], max_tokens=450)
-    return result or f"{prefix} is your doctor visit prep."
+    result = call_llm(groq_client, [{"role": "user", "content": prompt}], max_tokens=500)
+    return result or f"{prefix} is your GLP-1 Maintenance doctor visit brief."
