@@ -1,2030 +1,1168 @@
 /**
- * script.js — Curabook PHI v3.7 — Market Ready Edition
+ * app.js — Curabook PHI v1.0
+ * GLP-1 Intelligence App — Production JavaScript
  *
- * Includes GLP-1 Advocacy Workflow, Behavioral Logging, 
- * Decision Support (Next Steps & Follow-ups), and Single Legal Footer logic.
+ * Architecture:
+ *   CONFIG        → constants, Supabase init
+ *   STATE         → runtime state
+ *   BOOT          → init, auth check, session guard
+ *   API           → fetch helpers, header builder
+ *   THEME         → light/dark toggle
+ *   SIDEBAR       → mobile open/close, user menu
+ *   VIEWS         → welcome ↔ chat transition
+ *   HISTORY       → load, render, open, delete
+ *   CONVERSATIONS → create, rename
+ *   CHAT          → send, file handling, rendering
+ *   HEALTH DATA   → markers, dashboard, cliff detection
+ *   COCKPIT       → shield rings, protein calc, food noise
+ *   EVENTS        → wire all DOM events
  */
 
 "use strict";
 
-const API_BASE = "https://api.curabook.com";
+/* ═══════════════════════════════════════
+   CONFIG
+═══════════════════════════════════════ */
+const SUPABASE_URL = "https://pbeaawlxdcrdbvlmpqhc.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBiZWFhd2x4ZGNyZGJ2bG1wcWhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwMDk0MzksImV4cCI6MjA5MTU4NTQzOX0.6bUpYrDbe0mQjjBHX8Qscj-5R8i4-SqAtW_Z1UFzJ10";
+const API_BASE     = "https://api.curabook.com";
 
-/* ── State ─────────────────────────────────────────────────── */
-let supabaseClient       = null;
-let currentUser          = null;
-let currentUserName      = "";
-let activeConvId         = null;
-let uploadedFiles        = [];
-let isProcessing         = false;
-let conversationToDelete = null;
-let _healthContext       = null;
+/* ═══════════════════════════════════════
+   STATE
+═══════════════════════════════════════ */
+let _sb          = null;   // Supabase client
+let _user        = null;   // Current user object
+let _userName    = "";     // First name for display
+let _convId      = null;   // Active conversation ID
+let _isSending   = false;  // Prevent double-send
+let _uploads     = [];     // Queued files
+let _docCtx      = { text: null, sent: false };  // Document context for chat
+let _goalWt      = 165;    // Default protein calc weight
+let _proteinTarget = 90;   // Calculated protein target
 
-const _chipTexts = new Map();
-let _chipCounter = 0;
-
-const _docCtx = {
-    text: null, id: null, convId: null,
-    set(t, i, c)  { this.text = t||null; this.id = i||null; this.convId = c||null; },
-    getForConv(c) { return this.convId === c ? {text:this.text, id:this.id} : {text:null,id:null}; },
-    clear()       { this.text = null; this.id = null; this.convId = null; },
+const NOISE_MESSAGES = {
+  1:  "Nearly silent — ghrelin well suppressed. Excellent maintenance state.",
+  2:  "Very low. Behavioral strategies alone may be sufficient.",
+  3:  "Mild. 35g+ protein at each meal typically resolves this level.",
+  4:  "Low-moderate. Check your daily protein — is it hitting your target?",
+  5:  "Moderate. A 20-minute post-meal walk reduces post-meal glucose 30–50 mg/dL.",
+  6:  "Elevated. Check sleep — each hour under 7h raises next-day ghrelin ~15%.",
+  7:  "High. This level often indicates the dose reduction was too fast. Discuss with provider.",
+  8:  "Very high. Classic ghrelin surge — this is physiology, not willpower.",
+  9:  "Intense rebound. This is an important data point — discuss urgently with provider.",
+  10: "🚨 Maximum. Severe ghrelin surge. Urgent provider conversation recommended."
 };
 
-const _cache = {
-    _s: {},
-    set(k, v, ms=30000) { this._s[k]={v,e:Date.now()+ms}; },
-    get(k) { const e=this._s[k]; return (e&&e.e>Date.now())?e.v:null; },
-    del(k) { delete this._s[k]; },
-    clear() { this._s={}; },
-};
-
-let DOM = {};
-
-function buildDOM() {
-    const $id = id => document.getElementById(id);
-    DOM = {
-        sidebar:        $id("sidebar"),
-        overlay:        $id("overlay"),
-        closeSidebar:   $id("close-sidebar-btn"),
-        mobileMenu:     $id("mobile-menu-btn"),
-        avatarInitial:  $id("avatar-initial"),
-        dropdownEmail:  $id("dropdown-email"),
-        dropdownPlan:   $id("dropdown-plan-label"),
-        profileBtn:     $id("profileBtn"),
-        profileDrop:    $id("profileDropdown"),
-        logoutBtn:      $id("logoutBtn"),
-        welcomeScreen:  $id("welcomeScreen"),
-        welcomeHero:    $id("welcomeHero"),
-        welcomeChips:   $id("welcomeChips"),
-        uploadNudge:    $id("uploadNudge"),
-        uploadNudgeBtn: $id("uploadNudgeBtn"),
-        pulseCard:      $id("pulseCard"),
-        pulseLoading:   $id("pulseLoading"),
-        pulseContent:   $id("pulseContent"),
-        chatDisplay:    $id("chat-display"),
-        userInput:      $id("userInput"),
-        sendBtn:        $id("sendBtn"),
-        attachBtn:      $id("attachBtn"),
-        fileInput:      $id("fileInput"),
-        micBtn:         $id("micBtn"),
-        filePreview:    $id("file-preview-container"),
-        newChatBtn:     $id("newChatBtn"),
-        historyList:    $id("historyList"),
-        userEmailDisp:  $id("user-email-display"),
-        btnUploadNav:   $id("btn-upload-nav"),
-        btnHealthPulse: $id("btn-health-pulse"),
-        btnLogActivity: $id("btn-log-activity"),
-        logActivityModal:    $id("log-activity-modal"),
-        advocacyGuideModal:  $id("advocacy-guide-modal"),
-        advocacyInfoBtn:     $id("advocacyInfoBtn"),
-        btnAdvocacy:      $id("btn-advocacy"),
-        advocacyModal:    $id("advocacy-modal"),
-        profileModal:   $id("profile-modal"),
-        settingsModal:  $id("settings-modal"),
-        deleteModal:    $id("delete-modal"),
-        pulseModal:     $id("pulse-modal"),
-        pulseModalBody: $id("pulse-modal-body"),
-        modalAvatar:    $id("modal-avatar"),
-        modalEmail:     $id("modal-email"),
-        accountCreated: $id("account-created"),
-        totalConvs:     $id("total-conversations"),
-        docsAnalyzed:   $id("documents-analyzed"),
-        healthDash:     $id("health-dashboard"),
-        doctorBriefBtn: $id("doctorBriefBtn"),
-        btnProfile:     $id("btn-sidebar-profile"),
-        btnSettings:    $id("btn-sidebar-settings"),
-        modalLogout:    $id("modalLogout"),
-        themeToggle:    $id("themeToggle"),
-        fontSizeInput:  $id("fontSizeInput"),
-        fontSizeValue:  $id("fontSizeValue"),
-        exportChatBtn:  $id("exportChatBtn"),
-        clearHistBtn:   $id("clearHistoryBtn"),
-        exportDataBtn:  $id("exportDataBtn"),
-        deleteAccBtn:   $id("deleteAccountBtn"),
-        confirmDeleteBtn: $id("confirmDeleteBtn"),
-    };
-}
-
-/* ── Utilities ──────────────────────────────────────────────── */
-
-async function safeFetch(url, options = {}, timeoutMs = 10000) {
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-        const response = await fetch(url, {
-            ...options,
-            signal: controller.signal
-        });
-        clearTimeout(id);
-        return response;
-    } catch (error) {
-        clearTimeout(id);
-        if (error.name === 'AbortError') {
-            return { 
-                ok: false, 
-                status: 408, 
-                text: () => Promise.resolve(JSON.stringify({ error: "Request timed out due to slow network or server load." })) 
-            };
-        }
-        throw error;
-    }
-}
-
-async function safeJson(res) {
-    if (!res) return { error: "No response from server" };
-    try {
-        const text = await res.text();
-        if (!text || !text.trim()) return { error: `Empty response (HTTP ${res.status || 0})` };
-        return JSON.parse(text);
-    } catch {
-        return { error: `Server error (HTTP ${res.status || 0})` };
-    }
-}
-
-function showToast(msg, type = "success") {
-    const el = document.createElement("div");
-    el.className = type === "success" ? "success-toast" : "error-toast";
-    el.innerHTML = `<i class="fa-solid fa-${type==="success"?"circle-check":"circle-exclamation"}"></i> ${escapeHtml(msg)}`;
-    document.body.appendChild(el);
-    setTimeout(() => el.remove(), 4000);
-}
-
-function escapeHtml(s) {
-    return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
-}
-
-function renderMarkdown(text) {
-    return typeof marked !== "undefined" ? marked.parse(String(text||"")) : escapeHtml(String(text||""));
-}
-
-function autoGrow(el) { el.style.height="auto"; el.style.height=Math.min(el.scrollHeight,150)+"px"; }
-
-function setProcessing(on) {
-    isProcessing = on;
-    if (DOM.sendBtn)   DOM.sendBtn.disabled  = on;
-    if (DOM.userInput) DOM.userInput.disabled = on;
-    if (DOM.sendBtn)   DOM.sendBtn.innerHTML = on
-        ? '<i class="fa-solid fa-spinner fa-spin"></i>'
-        : '<i class="fa-solid fa-arrow-up"></i>';
-}
-
-function hasChatMessages() {
-    return DOM.chatDisplay && DOM.chatDisplay.querySelectorAll(".chat-message").length > 0;
-}
-
-function _greeting(name) {
-    const h = new Date().getHours();
-    const period = h < 12 ? "morning" : h < 17 ? "afternoon" : "evening";
-    return name ? `Good ${period}, ${name}` : `Good ${period}`;
-}
-
-/* ── Auth ────────────────────────────────────────────────────── */
-
-async function initSupabase() {
-    const URL = "https://pbeaawlxdcrdbvlmpqhc.supabase.co";
-    const KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBiZWFhd2x4ZGNyZGJ2bG1wcWhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwMDk0MzksImV4cCI6MjA5MTU4NTQzOX0.6bUpYrDbe0mQjjBHX8Qscj-5R8i4-SqAtW_Z1UFzJ10";
-    supabaseClient = supabase.createClient(URL, KEY);
-    window.supabaseClient = supabaseClient;
-}
-
-async function getSession() {
-    const { data } = await supabaseClient.auth.getSession();
-    return data.session;
-}
-
-async function getAuthHeaders() {
-    const s = await getSession();
-    if (!s) return {};
-    return { "Content-Type": "application/json", "Authorization": "Bearer " + s.access_token };
-}
-
-function _extractFirstName(user) {
-    const meta = user.user_metadata || {};
-    if (meta.first_name) return meta.first_name;
-    if (meta.name)       return meta.name.split(" ")[0];
-    const local = (user.email || "").split("@")[0];
-    return local ? local.charAt(0).toUpperCase() + local.slice(1).replace(/[._-]/g, " ").split(" ")[0] : "";
-}
-
-async function handleLoginSuccess(user) {
-    currentUser     = user;
-    currentUserName = _extractFirstName(user);
-    _docCtx.clear();
-    _cache.clear();
-
-    const initial = (user.email||"?")[0].toUpperCase();
-    if (DOM.avatarInitial) DOM.avatarInitial.textContent = initial;
-    if (DOM.dropdownEmail) DOM.dropdownEmail.textContent = user.email;
-    if (DOM.userEmailDisp) DOM.userEmailDisp.textContent = user.email;
-    if (DOM.modalEmail)    DOM.modalEmail.textContent    = user.email;
-    if (DOM.modalAvatar)   DOM.modalAvatar.textContent   = initial;
-
-    await Promise.all([
-        saveUserConsents().catch(()=>{}),
-        loadHistory(),
-        loadPlanStatus().catch(()=>{}),
-    ]);
-
-    loadHealthPulse().catch(()=>{});
-    showToast(currentUserName ? `Welcome back, ${currentUserName}` : "Welcome back");
-    _carryOverDemoDoc();
-}
-
-async function saveUserConsents() {
-    const h = await getAuthHeaders();
-    if (!h.Authorization) return;
-    await fetch(`${API_BASE}/api/consent`, {
-        method:"POST", headers:h,
-        body: JSON.stringify({ consents: ["data_processing","ai_processing","document_processing"] }),
-    }).catch(()=>{});
-}
-
-async function handleLogout() {
-    if (!confirm("Sign out of Curabook PHI?")) return;
-    DOM.profileDrop?.classList.add("hidden");
-    try { await supabaseClient.auth.signOut(); } catch {}
-    window.location.href = "/login";
-}
-
-function _carryOverDemoDoc() {
-    const docText    = sessionStorage.getItem("phi_pending_doc_text");
-    const docName    = sessionStorage.getItem("phi_pending_doc_name");
-    const docSummary = sessionStorage.getItem("phi_pending_doc_summary");
-    if (!docText || !docName) return;
-    sessionStorage.removeItem("phi_pending_doc_text");
-    sessionStorage.removeItem("phi_pending_doc_name");
-    sessionStorage.removeItem("phi_pending_doc_summary");
-    setTimeout(async () => {
-        if (!activeConvId) await createConversation();
-        _docCtx.set(docText, null, activeConvId);
-        if (docSummary) appendMessage(`📋 **${docName}** (from demo)\n\n${docSummary}`, "ai");
-        DOM.userInput.value = "Please explain my uploaded report thoroughly.";
-        handleSend();
-    }, 1200);
-}
-
-/* ── Health Pulse ────────────────────────────────────────────── */
-
-async function loadHealthPulse() {
-    if (DOM.pulseLoading) DOM.pulseLoading.classList.remove("hidden");
-    if (DOM.pulseContent) DOM.pulseContent.classList.add("hidden");
-    if (DOM.pulseCard)    DOM.pulseCard.style.display = "";
-
-    const cached = _cache.get("dashboard");
-    if (cached) { _healthContext=cached; renderPulseCard(cached); generateContextualChips(cached); return; }
-
-    try {
-        const h   = await getAuthHeaders();
-        const res = await fetch(`${API_BASE}/api/dashboard`, { headers:h });
-        const d   = await safeJson(res);
-        if (!res.ok || d.error || !d.total_markers) { showNoDataState(); return; }
-        _cache.set("dashboard", d, 30000);
-        _healthContext = d;
-        renderPulseCard(d);
-        generateContextualChips(d);
-    } catch (e) {
-        showNoDataState();
-    }
-}
-// Check for milestone alerts (after health pulse loads)
-checkMilestones().catch(() => {});
-
-async function checkMilestones() {
-    const h = await getAuthHeaders();
-    const res = await fetch(`${API_BASE}/api/milestone-check`, { headers: h });
-    const data = await safeJson(res);
-    
-    if (!data.milestones?.length) return;
-    
-    // Show the first high-priority milestone as a toast
-    const first = data.milestones[0];
-    if (first.type === 'warning') {
-        showToast(`⚠ ${first.title}`, 'error');
-    } else if (first.type === 'positive') {
-        showToast(`✓ ${first.title}`);
-    }
-}
-
-function showNoDataState() {
-    if (DOM.pulseCard)   DOM.pulseCard.style.display = "none";
-    if (DOM.welcomeHero) DOM.welcomeHero.style.display = "";
-    if (DOM.uploadNudge) DOM.uploadNudge.classList.remove("hidden");
-
-    if (DOM.welcomeHero && currentUserName) {
-        const titleEl = DOM.welcomeHero.querySelector(".welcome-title");
-        if (titleEl) titleEl.innerHTML = `${escapeHtml(currentUserName)}'s health <em>co-pilot</em>`;
-    }
-
-    setChips([
-        { icon:"fa-file-medical",    text:"Upload my first lab report" },
-        { icon:"fa-circle-question", text:"What can PHI do for me?" },
-        { icon:"fa-stethoscope",     text:"How do I prepare for a doctor visit?" },
-        { icon:"fa-chart-line",      text:"What health markers should I track?" },
-    ]);
-}
-
-function renderPulseCard(d) {
-    if (!DOM.pulseLoading || !DOM.pulseContent) return;
-    DOM.pulseLoading.classList.add("hidden");
-    DOM.pulseContent.classList.remove("hidden");
-
-    const abnormal = d.abnormal_count || 0;
-    const total    = d.total_markers  || 0;
-    const feed     = d.feed           || [];
-    const trends   = d.trends         || [];
-
-    let sc = "healthy", label = "✓ All Looking Good";
-    const greet = currentUserName ? _greeting(currentUserName) + " — " : "";
-    let headline = `${greet}all ${total} tracked markers are within normal ranges.`;
-
-    if (abnormal >= 3)     { sc="urgent";   label="⚠ Needs Attention"; headline=`${greet}${abnormal} markers need attention.`; }
-    else if (abnormal > 0) { sc="moderate"; label="↑ Some Items to Review"; headline=`${greet}${abnormal} marker${abnormal>1?"s":""} outside normal range.`; }
-
-    const worseTrends = trends.filter(t => t.concerning || t.pct_change >= 20);
-    if (worseTrends.length && abnormal === 0) {
-        sc="moderate"; label="↑ Trend to Watch";
-        headline=`${greet}${worseTrends[0].marker} has moved ${worseTrends[0].pct_change}% since ${worseTrends[0].from_date}.`;
-    }
-
-    const alerts = feed.slice(0,4).map(item => {
-        const s = item.severity==="high"?"high":item.severity==="medium"?"medium":item.severity==="none"?"positive":"low";
-        const chipId = _registerChip(item.cta || "Tell me more");
-        return `<div class="pulse-alert-item ${s}" data-chip-id="${chipId}" title="Ask PHI">
-            <span class="alert-icon">${item.icon||"→"}</span>
-            <div class="alert-body">
-                <div class="alert-title">${escapeHtml(item.title||"")}</div>
-                <div class="alert-desc">${escapeHtml(item.body||"")}</div>
-            </div>
-            <span class="alert-cta">Ask →</span>
-        </div>`;
-    }).join("");
-
-    DOM.pulseContent.innerHTML = `
-        <div class="pulse-card-header">
-            <span class="pulse-status-pill ${sc}">${label}</span>
-            <p class="pulse-headline">${escapeHtml(headline)}</p>
-        </div>
-        ${alerts ? `<div class="pulse-alerts">${alerts}</div>` : ""}
-        <button class="pulse-view-more" id="pulseViewMoreBtn">
-            <i class="fa-solid fa-chart-line"></i> View full health picture
-        </button>`;
-
-    DOM.pulseContent.querySelectorAll(".pulse-alert-item[data-chip-id]").forEach(el => {
-        el.addEventListener("click", () => {
-            const id = parseInt(el.getAttribute("data-chip-id"), 10);
-            const text = _chipTexts.get(id);
-            if (text) sendChip(text);
-        });
-    });
-    document.getElementById("pulseViewMoreBtn")?.addEventListener("click", openPulseModal);
-}
-
-function generateContextualChips(d) {
-    const trends   = d.trends           || [];
-    const abnormal = d.abnormal_count   || 0;
-    const markers  = d.abnormal_markers || [];
-    const chips    = [];
-
-    if (markers.length) {
-        const name = markers[0].marker_name || markers[0].name || "my top marker";
-        chips.push({ icon:"fa-triangle-exclamation", text:`What does my ${name} result mean?` });
-    }
-    const top = trends.find(t => t.concerning || t.pct_change >= 15);
-    if (top) chips.push({ icon:"fa-chart-line", text:`Why is my ${top.marker} ${top.direction}?` });
-    chips.push({ icon:"fa-stethoscope", text:"Prepare me for my next doctor visit" });
-    chips.push({
-        icon: abnormal>0 ? "fa-dumbbell" : "fa-heart-pulse",
-        text: abnormal>0 ? "What lifestyle changes will help most?" : "How do I maintain these healthy levels?"
-    });
-    setChips(chips);
-}
-
-/* ── Chip registry ────────────────────────────────────────────── */
-
-function _registerChip(text) {
-    const id = _chipCounter++;
-    _chipTexts.set(id, text);
-    return id;
-}
-
-function setChips(chips) {
-    if (!DOM.welcomeChips) return;
-    _chipTexts.clear();
-    _chipCounter = 0;
-
-    DOM.welcomeChips.innerHTML = chips.map(c => {
-        const id = _registerChip(c.text);
-        return `<button class="chip" data-chip-id="${id}">
-            <i class="fa-solid ${c.icon}"></i> ${escapeHtml(c.text)}
-        </button>`;
-    }).join("");
-
-    DOM.welcomeChips.querySelectorAll(".chip[data-chip-id]").forEach(btn => {
-        btn.addEventListener("click", () => {
-            const id = parseInt(btn.getAttribute("data-chip-id"), 10);
-            const text = _chipTexts.get(id);
-            if (text) sendChip(text);
-        });
-    });
-}
-
-let _sendChipDebounce = null;
-function sendChip(text) {
-    if (isProcessing) return;
-    clearTimeout(_sendChipDebounce);
-    DOM.userInput.value = text;
-    DOM.userInput.focus();
-    _sendChipDebounce = setTimeout(handleSend, 60);
-}
-window.sendChip = sendChip;
-
-async function openPulseModal() {
-    window.closeModals();
-    DOM.pulseModal?.classList.remove("hidden");
-    renderPulseModalContent();
-}
-
-async function renderPulseModalContent() {
-    if (!DOM.pulseModalBody) return;
-    DOM.pulseModalBody.innerHTML = '<div class="temporal-loading"><div class="pulse-spinner"></div><span>Loading health intelligence…</span></div>';
-
-    try {
-        const h = await getAuthHeaders();
-        const mr = await fetch(`${API_BASE}/api/health-markers`, { headers: h });
-        const markers = mr.ok ? await safeJson(mr) : [];
-        const mArr = Array.isArray(markers) ? markers : [];
-
-        if (!mArr.length) {
-            DOM.pulseModalBody.innerHTML = _emptyHealthState(
-                "No health data yet",
-                "Upload a lab report using the paperclip button and PHI will extract all your markers automatically.",
-                "Upload a Report"
-            );
-            DOM.pulseModalBody.querySelector(".empty-cta-btn")?.addEventListener("click", () => {
-                window.closeModals();
-                DOM.fileInput?.click();
-            });
-            return;
-        }
-
-        const renderModal = (iArr) => {
-            const rows = mArr.map(m => {
-                const color = m.status==="HIGH"||m.status==="LOW"?"var(--accent-warn)":m.status==="NORMAL"?"var(--accent-ok)":"var(--text-muted)";
-                const badge = m.status==="HIGH"?"⬆ HIGH":m.status==="LOW"?"⬇ LOW":"✓ NORMAL";
-                return `<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border)">
-                    <div>
-                        <div style="font-weight:500;font-size:13px">${escapeHtml(m.marker_name)}</div>
-                        <div style="font-size:11.5px;color:var(--text-muted)">Normal: ${escapeHtml(m.reference_range||"—")} · ${escapeHtml(m.date||"")}</div>
-                    </div>
-                    <div style="text-align:right">
-                        <div style="font-weight:700;font-size:14px;color:${color}">${m.value} <span style="font-size:11px;font-weight:400">${escapeHtml(m.unit||"")}</span></div>
-                        <div style="font-size:10.5px;font-weight:700;color:${color}">${badge}</div>
-                    </div>
-                </div>`;
-            }).join("");
-
-            const insH = iArr.map(ins =>
-                `<div style="border-left:3px solid ${ins.severity==="high"?"var(--accent-warn)":ins.severity==="medium"?"var(--accent-amber)":"var(--accent-ok)"};padding:8px 11px;margin-bottom:7px;background:var(--bg-hover);border-radius:0 8px 8px 0">
-                    <div style="font-weight:600;font-size:13px">${escapeHtml(ins.headline||"")}</div>
-                    <div style="font-size:12px;color:var(--text-muted);margin-top:2px">${escapeHtml(ins.detail||"")}</div>
-                </div>`
-            ).join("");
-
-            DOM.pulseModalBody.innerHTML = `
-                ${iArr.length ? `<div style="margin-bottom:18px">
-                    <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">
-                        <i class="fa-solid fa-lightbulb" style="color:var(--accent-amber)"></i> PHI Synthesis
-                    </div>${insH}</div>` : `<div style="margin-bottom:18px;font-size:12px;color:var(--text-muted);"><i class="fa-solid fa-spinner fa-spin"></i> Generating AI insights...</div>`}
-                <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px">
-                    All Markers (${mArr.length})
-                    <span style="color:var(--accent-warn);margin-left:8px">${mArr.filter(m=>m.status==="HIGH"||m.status==="LOW").length} need attention</span>
-                </div>${rows}
-                <div style="margin-top:16px;text-align:center">
-                    <button id="pulseModalDoctorBtn"
-                        style="padding:10px 20px;background:var(--brand);color:white;border:none;border-radius:8px;font-size:13.5px;font-weight:600;font-family:var(--font);cursor:pointer">
-                        <i class="fa-solid fa-stethoscope"></i> Generate Doctor Visit Prep
-                    </button>
-                </div>`;
-
-            document.getElementById("pulseModalDoctorBtn")?.addEventListener("click", () => {
-                window.closeModals();
-                sendChip("Prepare me for my next doctor visit based on my full health picture");
-            });
-        };
-
-        renderModal([]);
-        fetch(`${API_BASE}/api/health-insights`, { headers: h })
-            .then(r => r.ok ? safeJson(r) : [])
-            .then(insights => {
-                const iArr = Array.isArray(insights) ? insights : [];
-                if (iArr.length) renderModal(iArr);
-                else {
-                     const spinner = DOM.pulseModalBody.querySelector('.fa-spinner')?.parentNode;
-                     if (spinner) spinner.remove();
-                }
-            }).catch(() => {
-                const spinner = DOM.pulseModalBody.querySelector('.fa-spinner')?.parentNode;
-                if (spinner) spinner.remove();
-            });
-
-    } catch (e) {
-        DOM.pulseModalBody.innerHTML = '<div class="loading-text" style="color:var(--accent-warn)">Could not load health data.</div>';
-    }
-}
-window.openPulseModal = openPulseModal;
-
-function _emptyHealthState(title, desc, btnLabel) {
-    return `<div class="empty-health-state">
-        <i class="fa-solid fa-file-medical"></i>
-        <h4>${escapeHtml(title)}</h4>
-        <p>${escapeHtml(desc)}</p>
-        ${btnLabel ? `<button class="upload-nudge-btn empty-cta-btn" style="font-size:13px;padding:9px 18px">
-            <i class="fa-solid fa-upload"></i> ${escapeHtml(btnLabel)}
-        </button>` : ""}
-    </div>`;
-}
-
-/* ── Conversations ───────────────────────────────────────────── */
-
-async function createConversation() {
-    try {
-        const h = await getAuthHeaders();
-        const res = await safeFetch(`${API_BASE}/conversation/create`, {
-            method: "POST",
-            headers: h,
-            body: JSON.stringify({}),
-        }, 10000);
- 
-        const d = await safeJson(res);
- 
-        if (res.status === 403) {
-            showToast("Consent required. Accept terms in Settings.", "error");
-            return null;
-        }
-        if (!res.ok || !d.conversation_id) {
-            // FIX-3: Don't crash — use a local UUID as fallback
-            console.warn("[CONV] Could not create conversation from API, using local ID");
-            const localId = "local-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8);
-            activeConvId = localId;
-            _prependConvToHistory(localId, "New Chat");
-            showToast("Working in offline mode — conversation won't be saved.", "error");
-            return localId;
-        }
- 
-        activeConvId = d.conversation_id;
-        _prependConvToHistory(d.conversation_id, "New Chat");
-        return d.conversation_id;
- 
-    } catch (err) {
-        console.error("[CONV] Create failed:", err);
-        const localId = "local-" + Date.now();
-        activeConvId = localId;
-        showToast("Server unreachable — working in local mode.", "error");
-        return localId;
-    }
-}
-
-function _prependConvToHistory(id, title) {
-    if (!DOM.historyList) return;
-    const existing = DOM.historyList.querySelector(".empty-state");
-    if (existing) existing.remove();
-
-    let todayGroup = DOM.historyList.querySelector(".history-group-today");
-    if (!todayGroup) {
-        todayGroup = document.createElement("div");
-        todayGroup.className = "history-group-label history-group-today";
-        todayGroup.textContent = "Today";
-        DOM.historyList.prepend(todayGroup);
-    }
-
-    const item = document.createElement("div");
-    item.className = "history-item active";
-    item.setAttribute("data-id", id);
-    item.innerHTML = `
-        <span class="history-title" data-conv-id="${id}">${escapeHtml(title)}</span>
-        <button class="delete-chat" title="Delete" data-del-id="${id}">
-            <i class="fa-solid fa-trash"></i>
-        </button>`;
-    item.querySelector(".history-title").addEventListener("click", () => openConversation(id));
-    item.querySelector(".delete-chat").addEventListener("click", e => {
-        e.stopPropagation(); showDeleteModal(id);
+/* ═══════════════════════════════════════
+   BOOT
+═══════════════════════════════════════ */
+async function boot() {
+  try {
+    // Initialize Supabase
+    _sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+      auth: { detectSessionInUrl: true, persistSession: true }
     });
 
-    todayGroup.insertAdjacentElement("afterend", item);
-    DOM.historyList.querySelectorAll(".history-item").forEach(el => {
-        el.classList.toggle("active", el.getAttribute("data-id") === id);
-    });
-}
-
-async function loadHistory() {
-    const h = await getAuthHeaders();
-    if (!h.Authorization) return;
-    try {
-        const res = await fetch(`${API_BASE}/history`, { method:"POST", headers:h });
-        const d   = await safeJson(res);
-        if (!res.ok || !Array.isArray(d)) {
-            DOM.historyList.innerHTML = '<div class="empty-state">Could not load history.</div>';
-            return;
-        }
-        renderHistory(d);
-    } catch {
-        DOM.historyList.innerHTML = '<div class="empty-state">Network error.</div>';
-    }
-}
-
-function renderHistory(conversations) {
-    if (!conversations.length) {
-        DOM.historyList.innerHTML = '<div class="empty-state">No conversations yet.<br>Start by asking PHI something!</div>';
-        return;
-    }
-
-    const today     = new Date(); today.setHours(0,0,0,0);
-    const yesterday = new Date(today); yesterday.setDate(today.getDate()-1);
-
-    function _groupLabel(dateStr) {
-        if (!dateStr) return "Older";
-        const d = new Date(dateStr); d.setHours(0,0,0,0);
-        if (d.getTime() === today.getTime())     return "Today";
-        if (d.getTime() === yesterday.getTime()) return "Yesterday";
-        return d.toLocaleDateString("en-GB", { day:"numeric", month:"short", year:"numeric" });
-    }
-
-    const groups = new Map();
-    conversations.forEach(c => {
-        const label = _groupLabel(c.created_at);
-        if (!groups.has(label)) groups.set(label, []);
-        groups.get(label).push(c);
+    // Auth state listener
+    _sb.auth.onAuthStateChange(async (event, session) => {
+      if (event === "SIGNED_IN" && session?.user) {
+        await onSignIn(session.user);
+      } else if (event === "SIGNED_OUT") {
+        window.location.href = "/login";
+      }
     });
 
-    let html = "";
-    groups.forEach((convs, label) => {
-        const isTodayClass = label === "Today" ? " history-group-today" : "";
-        html += `<div class="history-group-label${isTodayClass}">${escapeHtml(label)}</div>`;
-        convs.forEach(c => {
-            const isActive = c.id === activeConvId;
-            html += `<div class="history-item${isActive?" active":""}" data-id="${escapeHtml(c.id)}">
-                <span class="history-title" data-conv-id="${escapeHtml(c.id)}">${escapeHtml(c.title||"New Chat")}</span>
-                <button class="delete-chat" title="Delete" data-del-id="${escapeHtml(c.id)}">
-                    <i class="fa-solid fa-trash"></i>
-                </button>
-            </div>`;
-        });
-    });
-
-    DOM.historyList.innerHTML = html;
-    DOM.historyList.addEventListener("click", _historyClickHandler);
-}
-
-function _historyClickHandler(e) {
-    const titleEl  = e.target.closest(".history-title[data-conv-id]");
-    const deleteEl = e.target.closest(".delete-chat[data-del-id]");
-    if (titleEl)       openConversation(titleEl.getAttribute("data-conv-id"));
-    else if (deleteEl) { e.stopPropagation(); showDeleteModal(deleteEl.getAttribute("data-del-id")); }
-}
-
-async function openConversation(id) {
-    if (isProcessing) { showToast("Please wait…","error"); return; }
-    setProcessing(true);
-    activeConvId = id;
-    uploadedFiles = [];
-    updateFilePreview();
-    _docCtx.clear();
-    showChatMode();
-    DOM.chatDisplay.innerHTML = "";
-
-    DOM.historyList.querySelectorAll(".history-item").forEach(el => {
-        el.classList.toggle("active", el.getAttribute("data-id") === id);
-    });
-
-    try {
-        const h   = await getAuthHeaders();
-        const res = await fetch(`${API_BASE}/conversation`, {
-            method:"POST", headers:h, body:JSON.stringify({conversation_id:id})
-        });
-        if (!res.ok) throw new Error("Load failed");
-        const msgs = await safeJson(res);
-        if (Array.isArray(msgs) && msgs.length) {
-            DOM.chatDisplay.innerHTML = msgs.map(m => _msgHTML(m.content, m.role==="user"?"user":"ai")).join("");
-            DOM.chatDisplay.scrollTop = DOM.chatDisplay.scrollHeight;
-        } else {
-            DOM.chatDisplay.innerHTML = '<div class="empty-state">No messages yet.</div>';
-        }
-        closeSidebar();
-    } catch {
-        showToast("Failed to load conversation.","error");
-    } finally {
-        setProcessing(false);
-    }
-}
-
-async function renameConversation(id, title) {
-    const h = await getAuthHeaders();
-    const titleEl = DOM.historyList.querySelector(`.history-title[data-conv-id="${id}"]`);
-    if (titleEl) titleEl.textContent = title.substring(0, 50);
-    fetch(`${API_BASE}/rename`, {
-        method:"POST", headers:h, body:JSON.stringify({conversation_id:id, title})
-    }).catch(()=>{});
-}
-
-/* ── Chat ────────────────────────────────────────────────────── */
-
-async function handleSend() {
-    if (isProcessing) return;
- 
-    let text = DOM.userInput.value.trim();
-    if (!text && uploadedFiles.length > 0) {
-        text = "Please read my uploaded medical report and explain every finding in plain language.";
-    }
-    if (!text) return;
- 
-    setProcessing(true);
- 
-    if (!activeConvId) {
-        const c = await createConversation();
-        if (!c) {
-            setProcessing(false);
-            return;
-        }
-    }
- 
-    showChatMode();
-    DOM.userInput.value = "";
-    DOM.userInput.style.height = "auto";
-    DOM.userInput.placeholder = currentUserName
-        ? `Ask PHI about your health, ${currentUserName}…`
-        : "Ask PHI about your health…";
- 
-    // Process files if any
-    let documentContents = [];
-    if (uploadedFiles.length > 0) {
-        const proc = appendMessage(`Analyzing ${uploadedFiles.length} document(s)…`, "ai");
-        documentContents = (await Promise.all(uploadedFiles.map(processFile))).filter(Boolean);
-        proc.remove();
-        if (documentContents[0]) {
-            _docCtx.set(documentContents[0].document_text, documentContents[0].document_id, activeConvId);
-        }
-        uploadedFiles = [];
-        updateFilePreview();
-        _cache.del("dashboard");
-        setTimeout(loadHealthPulse, 4000);
-    }
- 
-    appendMessage(text, "user");
-    const botRow = appendTyping();
- 
-    try {
-        const h = await getAuthHeaders();
-        const { text: docText, id: docId } = _docCtx.getForConv(activeConvId);
-        const isFirstFollowUp = !documentContents.length && !!docText;
-        const sendDocText = documentContents[0]?.document_text || (isFirstFollowUp ? docText : "");
-        if (isFirstFollowUp) _docCtx.clear();
- 
-        // FIX-1: Use safeFetch with timeout + error handling
-        const res = await safeFetch(`${API_BASE}/chat`, {
-            method: "POST",
-            headers: h,
-            body: JSON.stringify({
-                conversation_id: activeConvId,
-                message: text,
-                has_documents: documentContents.length > 0 || !!docId,
-                document_id: documentContents[0]?.document_id || docId || "",
-                document_text: sendDocText,
-            }),
-        });
- 
-        const d = await safeJson(res);
- 
-        if (res.status === 401) {
-            updateMessage(botRow, "Your session has expired. Please sign in again.");
-            setTimeout(() => window.location.href = "/login", 2000);
-        } else if (res.status === 403) {
-            updateMessage(botRow, "Consent required. Please accept terms in Settings → Privacy.");
-        } else if (res.status === 500) {
-            // FIX-1: 500 shows friendly message, not raw error
-            updateMessage(botRow,
-                "I ran into a technical issue. This is usually temporary — " +
-                "the server may be restarting or an AI service is unavailable.\n\n" +
-                "**Please try again in 30 seconds.** If it keeps happening, " +
-                "check that OPENAI_API_KEY or GROQ_API_KEY is set in your .env file.\n\n" +
-                "⚕️ *PHI is an educational wellness tool. Always consult your healthcare provider.*"
-            );
-        } else if (d.error && !d.reply) {
-            updateMessage(botRow, `Something went wrong: ${d.error}\n\n⚕️ *PHI is an educational wellness tool. Always consult your healthcare provider.*`);
-        } else {
-            updateMessage(botRow, d.reply || "I couldn't process that. Please try again.");
-        }
- 
-    } catch (err) {
-        console.error("[CHAT] Unexpected error:", err);
-        updateMessage(botRow,
-            "Connection error — can't reach the PHI server.\n\n" +
-            "Check your internet connection. If the problem persists, " +
-            "the server at api.curabook.com may be temporarily down.\n\n" +
-            "⚕️ *PHI is an educational wellness tool. Always consult your healthcare provider.*"
-        );
-        showToast("Connection error. Please try again.", "error");
-    } finally {
-        setProcessing(false);
-    }
- 
-    // Rename conversation after first message
-    const msgCount = DOM.chatDisplay.querySelectorAll(".chat-message").length;
-    if (msgCount <= 2 && activeConvId) {
-        const newTitle = documentContents.length
-            ? `📄 ${documentContents[0].name}`
-            : text.substring(0, 45);
-        renameConversation(activeConvId, newTitle);
-    }
-}
-
-/* ── UI Logic for Decision Support / Markdown Post-processing ── */
-
-function _postProcessBubble(bubbleEl) {
-    if (!bubbleEl) return;
-    _wrapLegalFooter(bubbleEl);
-    _wrapNextSteps(bubbleEl);
-    _wrapFollowUp(bubbleEl);
-}
-
-function _wrapLegalFooter(el) {
-    const allNodes = Array.from(el.childNodes);
-    for (let i = 0; i < allNodes.length; i++) {
-        const node = allNodes[i];
-        if (!node || node.nodeType !== Node.ELEMENT_NODE) continue;
-        const text = node.textContent || "";
-        if (text.includes("⚕️")) {
-            const prev = node.previousElementSibling;
-            const wrapper = document.createElement("div");
-            wrapper.className = "phi-legal-footer";
-            if (prev && prev.tagName === "HR") {
-                el.insertBefore(wrapper, prev);
-                wrapper.appendChild(prev);
-            } else {
-                el.insertBefore(wrapper, node);
-            }
-            wrapper.appendChild(node);
-            wrapper.innerHTML = wrapper.innerHTML.replace(/⚕️/g, '<span class="phi-legal-icon">⚕️</span>');
-            break;
-        }
-    }
-}
-
-function _wrapNextSteps(el) {
-    const headingPattern = /recommended\s+next\s+steps/i;
-    const children = Array.from(el.children);
-    for (let i = 0; i < children.length; i++) {
-        const child = children[i];
-        const tag   = child.tagName.toLowerCase();
-        const text  = child.textContent || "";
-        if (!headingPattern.test(text)) continue;
-        if (!["h1","h2","h3","h4","p","strong"].includes(tag)) continue;
-        
-        const wrapper = document.createElement("div");
-        wrapper.className = "phi-next-steps";
-        el.insertBefore(wrapper, child);
-        wrapper.appendChild(child);
-        
-        let next = wrapper.nextElementSibling;
-        while (next && (next.tagName === "OL" || next.tagName === "UL" || (next.tagName === "P" && next.textContent.trim() === ""))) {
-            const toMove = next;
-            next = next.nextElementSibling;
-            wrapper.appendChild(toMove);
-        }
-        break;
-    }
-}
-
-function _wrapFollowUp(el) {
-    const followUpPattern = /you\s+might\s+ask\s+phi/i;
-    const children = Array.from(el.children);
-    for (let i = 0; i < children.length; i++) {
-        const child = children[i];
-        const text  = child.textContent || "";
-        if (!followUpPattern.test(text)) continue;
-
-        const wrapper = document.createElement("div");
-        wrapper.className = "phi-follow-up";
-        el.insertBefore(wrapper, child);
-        child.remove();
-
-        let next = wrapper.nextElementSibling;
-        if (next && (next.tagName === "OL" || next.tagName === "UL")) {
-            const chipContainer = document.createElement("div");
-            chipContainer.style.cssText = "display:flex;flex-wrap:wrap;gap:5px;margin-top:2px";
-            Array.from(next.querySelectorAll("li")).forEach(li => {
-                const chipText = li.textContent.trim();
-                if (!chipText) return;
-                const chip = document.createElement("button");
-                chip.className = "phi-follow-up-chip";
-                chip.textContent = chipText;
-                chip.setAttribute("title", "Ask PHI this question");
-                chip.addEventListener("click", () => {
-                    if (typeof sendChip === "function") sendChip(chipText);
-                });
-                chipContainer.appendChild(chip);
-            });
-            wrapper.appendChild(chipContainer);
-            next.remove();
-        }
-        break;
-    }
-}
-
-/* ── Message rendering ───────────────────────────────────────── */
-
-function appendMessage(text, role) {
-    const wrap = document.createElement("div");
-    wrap.className = `chat-message ${role === "user" ? "user-msg" : "bot-msg"}`;
-
-    const av = document.createElement("div");
-    av.className = `msg-avatar ${role === "user" ? "user-av" : "ai-av"}`;
-    av.textContent = role === "user" ? (currentUser?.email?.[0]?.toUpperCase() || "U") : "φ";
-
-    const bub = document.createElement("div");
-    bub.className = "msg-bubble";
-    bub.innerHTML = role === "user" ? escapeHtml(text) : renderMarkdown(text);
-
-    if (role !== "user") _postProcessBubble(bub);
-
-    if (role === "user") { wrap.appendChild(bub); wrap.appendChild(av); }
-    else                 { wrap.appendChild(av);  wrap.appendChild(bub); }
-
-    DOM.chatDisplay.appendChild(wrap);
-    DOM.chatDisplay.scrollTop = DOM.chatDisplay.scrollHeight;
-    return wrap;
-}
-
-function appendTyping() {
-    const wrap = document.createElement("div");
-    wrap.className = "chat-message bot-msg";
-    wrap.innerHTML = `<div class="msg-avatar ai-av">φ</div><div class="msg-bubble"><div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div></div>`;
-    DOM.chatDisplay.appendChild(wrap);
-    DOM.chatDisplay.scrollTop = DOM.chatDisplay.scrollHeight;
-    return wrap;
-}
-
-function updateMessage(wrap, text) {
-    const b = wrap.querySelector(".msg-bubble");
-    if (b) {
-        b.innerHTML = renderMarkdown(text);
-        _postProcessBubble(b);
-    }
-    DOM.chatDisplay.scrollTop = DOM.chatDisplay.scrollHeight;
-}
-
-function _msgHTML(text, role) {
-    const initial = role === "user" ? (currentUser?.email?.[0]?.toUpperCase() || "U") : "φ";
-    const avClass = role === "user" ? "user-av" : "ai-av";
-
-    if (role === "user") {
-        return `<div class="chat-message user-msg">
-            <div class="msg-bubble">${escapeHtml(text)}</div>
-            <div class="msg-avatar ${avClass}">${initial}</div>
-        </div>`;
+    // Check existing session
+    const { data: { session } } = await _sb.auth.getSession();
+    if (!session?.user) {
+      // Not authenticated — redirect to login
+      window.location.href = "/login";
+      return;
     }
 
-    const temp = document.createElement("div");
-    temp.className = "msg-bubble";
-    temp.innerHTML = renderMarkdown(text);
-    _postProcessBubble(temp);
+    await onSignIn(session.user);
 
-    return `<div class="chat-message bot-msg">
-        <div class="msg-avatar ${avClass}">${initial}</div>
-        ${temp.outerHTML}
-    </div>`;
-}
-
-function showChatMode() {
-    if (DOM.welcomeScreen) {
-        DOM.welcomeScreen.style.display = "none";
-        DOM.welcomeScreen.classList.add("hidden-welcome");
-    }
-}
-function showWelcomeMode() {
-    if (DOM.welcomeScreen) {
-        DOM.welcomeScreen.style.display = "";
-        DOM.welcomeScreen.classList.remove("hidden-welcome");
-    }
-    if (_healthContext) renderPulseCard(_healthContext);
-}
-
-/* ── File upload ─────────────────────────────────────────────── */
-
-async function processFile(file) {
-    const form = new FormData();
-    form.append("file", file);
-    const s = await getSession();
-    if (!s) {
-        showToast("Session expired. Please sign in again.", "error");
-        return null;
-    }
- 
-    try {
-        // FIX-2: safeFetch with timeout for file uploads (longer — 60s)
-        const res = await safeFetch(`${API_BASE}/analyze`, {
-            method: "POST",
-            headers: { "Authorization": "Bearer " + s.access_token },
-            body: form,
-        }, 60000);
- 
-        const d = await safeJson(res);
- 
-        if (res.status === 400) {
-            // Bad file — show specific error
-            showToast(d.error || `Could not read ${file.name}. Try a different PDF.`, "error");
-            return null;
-        }
- 
-        if (res.status === 413) {
-            showToast(`${file.name} is too large. Maximum 5MB.`, "error");
-            return null;
-        }
- 
-        if (res.status === 500) {
-            // FIX-2: 500 on analyze — don't crash, show helpful message
-            console.error("[ANALYZE] 500 error:", d);
-            showToast(
-                `Could not process ${file.name}. The AI service may be temporarily unavailable. ` +
-                "You can still ask PHI questions — just paste your values as text.",
-                "error"
-            );
-            return null;
-        }
- 
-        if (!res.ok || !d.success) {
-            showToast(d.error || `Could not process ${file.name}`, "error");
-            return null;
-        }
- 
-        showToast(`✓ ${file.name} analyzed (${d.abnormal_count || 0} findings needing attention)`);
-        return {
-            name:          file.name,
-            summary:       d.summary_text || "",
-            document_id:   d.document_id || "",
-            document_text: d.document_text || "",
-            markers:       d.markers || [],
-            abnormal:      d.abnormal_count || 0,
-        };
- 
-    } catch (err) {
-        console.error("[ANALYZE] Unexpected error:", err);
-        showToast(
-            `Upload failed for ${file.name}. ` +
-            "You can still describe your lab values in the chat and PHI will help.",
-            "error"
-        );
-        return null;
-    }
-}
-
-function updateFilePreview() {
-    if (!DOM.filePreview) return;
-    DOM.filePreview.innerHTML = "";
-    if (!uploadedFiles.length) { DOM.filePreview.classList.remove("visible"); return; }
-    DOM.filePreview.classList.add("visible");
-    DOM.filePreview.innerHTML = uploadedFiles.map((f,i) => {
-        const icon = f.name.toLowerCase().endsWith(".pdf") ? "fa-file-pdf" : "fa-file-lines";
-        return `<div class="file-chip"><i class="fa-solid ${icon}"></i><span>${escapeHtml(f.name)}</span><button class="remove-file" data-idx="${i}"><i class="fa-solid fa-xmark"></i></button></div>`;
-    }).join("");
-    DOM.filePreview.querySelectorAll(".remove-file").forEach(btn => {
-        btn.addEventListener("click", () => {
-            uploadedFiles.splice(parseInt(btn.getAttribute("data-idx"),10), 1);
-            updateFilePreview();
-        });
-    });
-    DOM.userInput.placeholder = `${uploadedFiles.length} file(s) attached — press Send or ask a question…`;
-}
-
-/* ── Behavioral logging ─────────────────────────────────────── */
-
-const _METRIC_CONFIG = {
-    steps:  { label:"Steps",           unit:"steps",   placeholder:"e.g. 8500",   hint:"Total steps for the day. PHI correlates with glucose and HbA1c readings." },
-    food:   { label:"Calories (kcal)", unit:"kcal",    placeholder:"e.g. 1800",   hint:"Approximate daily caloric intake. Used to correlate diet with cholesterol and blood sugar." },
-    sleep:  { label:"Sleep (hours)",   unit:"hours",   placeholder:"e.g. 7.5",    hint:"Hours of sleep last night. Poor sleep is correlated with elevated cortisol and glucose." },
-    stress: { label:"Stress (1–10)",   unit:"1-10",    placeholder:"e.g. 6",      hint:"Subjective stress level from 1 (calm) to 10 (extremely stressed). Linked to blood pressure." },
-    weight: { label:"Weight",          unit:"lbs",     placeholder:"e.g. 172",    hint:"Morning body weight. PHI tracks trend over time and correlates with BMI and metabolic markers." },
-};
-
-function openLogActivity() {
-    window.closeModals();
-    DOM.logActivityModal?.classList.remove("hidden");
-
-    const dateEl = document.getElementById("log-date");
-    if (dateEl) dateEl.value = new Date().toISOString().slice(0,10);
-
-    const successEl = document.getElementById("log-success-msg");
-    if (successEl) successEl.style.display = "none";
-
-    document.querySelectorAll(".metric-tab").forEach(tab => {
-        tab.addEventListener("click", () => {
-            document.querySelectorAll(".metric-tab").forEach(t => t.classList.remove("active"));
-            tab.classList.add("active");
-            _updateLogFormForMetric(tab.getAttribute("data-metric"));
-        });
-    });
-
-    const submitBtn = document.getElementById("submitLogBtn");
-    if (submitBtn) {
-        submitBtn.replaceWith(submitBtn.cloneNode(true));
-        document.getElementById("submitLogBtn").addEventListener("click", submitBehavioralLog);
-    }
-
-    _updateLogFormForMetric("steps");
-    _loadRecentLogs();
-}
-
-function _updateLogFormForMetric(metric) {
-    const cfg = _METRIC_CONFIG[metric] || _METRIC_CONFIG.steps;
-    const labelEl = document.getElementById("log-value-label");
-    const unitEl  = document.getElementById("log-unit");
-    const valEl   = document.getElementById("log-value");
-    const hintEl  = document.getElementById("metric-hint");
-
-    if (labelEl) labelEl.textContent = cfg.label;
-    if (unitEl)  unitEl.value        = cfg.unit;
-    if (valEl)   valEl.placeholder   = cfg.placeholder;
-    if (hintEl)  hintEl.innerHTML    = `<i class="fa-solid fa-lightbulb" style="color:var(--brand)"></i>&nbsp; ${escapeHtml(cfg.hint)}`;
-}
-
-async function submitBehavioralLog() {
-    const btn     = document.getElementById("submitLogBtn");
-    const date    = document.getElementById("log-date")?.value?.trim();
-    const value   = document.getElementById("log-value")?.value?.trim();
-    const unit    = document.getElementById("log-unit")?.value?.trim();
-    const notes   = document.getElementById("log-notes")?.value?.trim() || "";
-    const activeTab = document.querySelector(".metric-tab.active");
-    const metric  = activeTab?.getAttribute("data-metric") || "steps";
-
-    if (!date)            { showToast("Please select a date.", "error"); return; }
-    if (!value || isNaN(parseFloat(value))) { showToast("Please enter a valid number.", "error"); return; }
-
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving…';
-
-    try {
-        const h = await getAuthHeaders();
-        const res = await fetch(`${API_BASE}/api/behavioral-logs`, {
-            method: "POST",
-            headers: h,
-            body: JSON.stringify({
-                date,
-                metric_name: metric,
-                value: parseFloat(value),
-                unit: unit || _METRIC_CONFIG[metric]?.unit || "units",
-                notes,
-            }),
-        });
-        const d = await safeJson(res);
-
-        if (!res.ok || d.error) {
-            showToast(d.error || "Could not save. Try again.", "error");
-        } else {
-            const successEl  = document.getElementById("log-success-msg");
-            const successText = document.getElementById("log-success-text");
-            if (successEl && successText) {
-                successText.textContent = `${_METRIC_CONFIG[metric]?.label || metric} logged for ${date} ✓`;
-                successEl.style.display = "flex";
-            }
-            const valEl   = document.getElementById("log-value");
-            const notesEl = document.getElementById("log-notes");
-            if (valEl)   valEl.value   = "";
-            if (notesEl) notesEl.value = "";
-            showToast(`✓ ${_METRIC_CONFIG[metric]?.label || metric} logged`);
-            _loadRecentLogs();
-        }
-    } catch {
-        showToast("Network error. Please try again.", "error");
-    }
-
-    btn.disabled = false;
-    btn.innerHTML = '<i class="fa-solid fa-check"></i> Save Entry';
-}
-
-async function _loadRecentLogs() {
-    const preview = document.getElementById("recent-logs-preview");
-    const list    = document.getElementById("recent-logs-list");
-    if (!preview || !list) return;
-
-    try {
-        const h   = await getAuthHeaders();
-        const res = await fetch(`${API_BASE}/api/behavioral-logs?days=7`, { headers:h });
-        const d   = await safeJson(res);
-        if (!res.ok || !Array.isArray(d) || !d.length) { preview.style.display = "none"; return; }
-
-        preview.style.display = "";
-        list.innerHTML = d.slice(0,6).map(r =>
-            `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:12.5px">
-                <span style="color:var(--text-muted)">${escapeHtml(r.date||"")} · ${escapeHtml(r.metric_name||"")}</span>
-                <span style="font-weight:600">${r.value} <span style="font-weight:400;opacity:.7">${escapeHtml(r.unit||"")}</span></span>
-            </div>`
-        ).join("");
-    } catch {
-        preview.style.display = "none";
-    }
-}
-
-/* ── Advocacy guide ──────────────────────────────────────────── */
-
-function openAdvocacyGuide() {
-    window.closeModals();
-    DOM.advocacyGuideModal?.classList.remove("hidden");
-
-    document.getElementById("startAdvocacyBtn")?.addEventListener("click", () => {
-        window.closeModals();
-        if (!activeConvId) {
-            createConversation().then(() => {
-                showChatMode();
-                DOM.userInput.value = "Generate a GLP-1 prior authorization support brief based on my full health record.";
-                handleSend();
-            });
-        } else {
-            showChatMode();
-            DOM.userInput.value = "Generate a GLP-1 prior authorization support brief based on my full health record.";
-            handleSend();
-        }
-    }, { once: true });
-}
-
-/* ── Sidebar & modals ────────────────────────────────────────── */
-
-function openSidebar()  { DOM.sidebar.classList.add("open");    DOM.overlay.classList.add("active"); }
-function closeSidebar() { DOM.sidebar.classList.remove("open"); DOM.overlay.classList.remove("active"); }
-
-window.closeModals = () => {
-  [
-    DOM.profileModal, DOM.settingsModal, DOM.deleteModal,
-    DOM.pulseModal, DOM.logActivityModal, DOM.advocacyGuideModal,
-    DOM.advocacyModal
-  ].forEach(m => m?.classList.add('hidden'));
-};
-
-function showDeleteModal(id) { conversationToDelete = id; DOM.deleteModal?.classList.remove("hidden"); }
-window.showDeleteModal = showDeleteModal;
-
-/* ── Profile ─────────────────────────────────────────────────── */
-
-async function loadProfileStats(user) {
-    if (DOM.accountCreated && user?.created_at) {
-        DOM.accountCreated.textContent = new Date(user.created_at).toLocaleDateString("en-GB", {day:"numeric",month:"short",year:"numeric"});
-    }
-    const h = await getAuthHeaders();
-    const [histRes, dashRes, profileRes] = await Promise.all([
-        fetch(`${API_BASE}/history`,      {method:"POST",headers:h}).catch(()=>null),
-        fetch(`${API_BASE}/api/dashboard`,{headers:h}).catch(()=>null),
-        fetch(`${API_BASE}/api/profile`,  {headers:h}).catch(()=>null),
-    ]);
-    if (histRes) { const convs = await safeJson(histRes); if (DOM.totalConvs) DOM.totalConvs.textContent = Array.isArray(convs) ? convs.length : 0; }
-    if (dashRes?.ok) { const dash = await safeJson(dashRes); if (DOM.docsAnalyzed && !dash.error) DOM.docsAnalyzed.textContent = dash.document_count || 0; }
-    if (profileRes?.ok) { const profile = await safeJson(profileRes); if (!profile.error) _renderProfileDemographics(profile); }
-}
-
-function _renderProfileDemographics(profile) {
-    let demoSection = document.getElementById("profile-demographics");
-    if (!demoSection) {
-        const hr = document.querySelector("#profile-modal hr");
-        if (!hr) return;
-        demoSection = document.createElement("div");
-        demoSection.id = "profile-demographics";
-        hr.parentNode.insertBefore(demoSection, hr.nextSibling);
-    }
-    const rows = [];
-    if (profile.first_name || profile.last_name) {
-        const name = [profile.first_name, profile.last_name].filter(Boolean).join(" ");
-        rows.push(`<div class="setting-item"><div class="setting-info"><h4><i class="fa-solid fa-user"></i> Name</h4><p>${escapeHtml(name)}</p></div></div>`);
-    }
-    if (profile.age)    rows.push(`<div class="setting-item"><div class="setting-info"><h4><i class="fa-solid fa-cake-candles"></i> Age</h4><p>${escapeHtml(String(profile.age))} years old</p></div></div>`);
-    if (profile.gender) rows.push(`<div class="setting-item"><div class="setting-info"><h4><i class="fa-solid fa-person"></i> Gender</h4><p>${escapeHtml(String(profile.gender).charAt(0).toUpperCase()+String(profile.gender).slice(1))}</p></div></div>`);
-    if (profile.plan)   rows.push(`<div class="setting-item"><div class="setting-info"><h4><i class="fa-solid fa-star"></i> Plan</h4><p>${profile.plan==="pro"?"✦ PHI Pro":"PHI Free"}</p></div></div>`);
-    if (rows.length) {
-        demoSection.innerHTML = `
-            <div style="font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.8px;padding:14px 0 8px">
-                <i class="fa-solid fa-brain" style="color:var(--brand)"></i> What PHI knows about you
-            </div>${rows.join("")}
-            <p style="font-size:11.5px;color:var(--text-muted);margin-top:6px;margin-bottom:4px">PHI uses your age and gender to apply clinically appropriate reference ranges.</p>
-            <hr>`;
-    }
-}
-
-async function loadHealthDashboard() {
-    if (!DOM.healthDash) return;
-    DOM.healthDash.innerHTML = '<div class="loading-text"><i class="fa-solid fa-spinner fa-spin"></i> Loading…</div>';
-
-    try {
-        const h = await getAuthHeaders();
-        const mr = await fetch(`${API_BASE}/api/health-markers`, {headers: h});
-        const markers = mr.ok ? await safeJson(mr) : [];
-
-        if (!Array.isArray(markers) || !markers.length) {
-            DOM.healthDash.innerHTML = _emptyHealthState(
-                "No lab reports yet",
-                "Upload a PDF lab report using the paperclip button. PHI will extract all your markers, explain what they mean, and track changes over time.",
-                "Upload My First Report"
-            );
-            DOM.healthDash.querySelector(".empty-cta-btn")?.addEventListener("click", () => {
-                window.closeModals();
-                DOM.fileInput?.click();
-            });
-            return;
-        }
-
-        renderHealthDashboard(markers, []);
-
-        fetch(`${API_BASE}/api/health-insights`, {headers: h})
-            .then(r => r.ok ? safeJson(r) : [])
-            .then(insights => {
-                if (Array.isArray(insights) && insights.length) renderHealthDashboard(markers, insights);
-            }).catch(() => {});
-
-    } catch (e) {
-        DOM.healthDash.innerHTML = '<div class="loading-text" style="color:var(--accent-warn)">Could not load health data.</div>';
-    }
-}
-
-function renderHealthDashboard(markers, insights) {
-    const color = s => s==="HIGH"||s==="LOW" ? "var(--accent-warn)" : s==="NORMAL" ? "var(--accent-ok)" : "var(--text-muted)";
-    const cards = markers.map(m =>
-        `<div style="background:var(--bg-hover);border-radius:8px;padding:9px;min-width:100px;flex:1">
-            <div style="font-size:10.5px;color:var(--text-muted)">${escapeHtml(m.marker_name)}</div>
-            <div style="font-size:1rem;font-weight:700;color:${color(m.status)}">${m.value} <span style="font-size:10px;font-weight:400">${escapeHtml(m.unit||"")}</span></div>
-            <div style="font-size:9.5px;color:var(--text-muted)">${escapeHtml(m.date||"")}</div>
-        </div>`
-    ).join("");
-    const insH = insights.map(ins =>
-        `<div style="border-left:3px solid ${ins.severity==="high"?"var(--accent-warn)":ins.severity==="medium"?"var(--accent-amber)":"var(--accent-ok)"};padding:6px 10px;margin-bottom:5px;background:var(--bg-hover);border-radius:0 6px 6px 0">
-            <div style="font-weight:600;font-size:12px">${escapeHtml(ins.headline||"")}</div>
-            <div style="font-size:11px;color:var(--text-muted)">${escapeHtml(ins.detail||"")}</div>
-        </div>`
-    ).join("");
-    DOM.healthDash.innerHTML =
-        (cards ? `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:11px">${cards}</div>` : "") +
-        (insH  ? `<div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:5px"><i class="fa-solid fa-lightbulb" style="color:var(--accent-amber)"></i> PHI Insights</div>${insH}` : "");
-    DOM.doctorBriefBtn?.addEventListener("click", showDoctorBriefModal, {once:true});
-}
-
-function showDoctorBriefModal() {
-    document.getElementById("doctor-brief-modal")?.remove();
-    const m = document.createElement("div");
-    m.id = "doctor-brief-modal"; m.className = "modal"; m.style.zIndex = "10001";
-    m.innerHTML = `<div class="modal-box">
-        <div class="modal-header">
-            <h3><i class="fa-solid fa-stethoscope"></i> Doctor Visit Prep</h3>
-            <button class="close-btn" id="briefCloseBtn"><i class="fa-solid fa-xmark"></i></button>
-        </div>
-        <div style="padding:4px 0 16px">
-            <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px">Personalised brief based on your health memory.</p>
-            <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:4px">Symptoms</label>
-            <input type="text" id="brief-symptoms" placeholder="fatigue, dizziness" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:13px;box-sizing:border-box;margin-bottom:10px;background:var(--bg-input);color:var(--text-main);font-family:var(--font)">
-            <label style="font-size:12.5px;font-weight:600;display:block;margin-bottom:4px">Medications</label>
-            <input type="text" id="brief-meds" placeholder="Metformin 500mg, Vitamin D" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:13px;box-sizing:border-box;margin-bottom:10px;background:var(--bg-input);color:var(--text-main);font-family:var(--font)">
-            <div id="brief-output" style="display:none;margin-top:12px;background:var(--bg-hover);border-radius:8px;padding:13px;font-size:13px;line-height:1.65;max-height:260px;overflow-y:auto"></div>
-        </div>
-        <div class="modal-actions">
-            <button class="btn-cancel" id="briefCancelBtn">Cancel</button>
-            <button id="genBriefBtn" style="padding:8px 16px;background:var(--brand);border:none;border-radius:8px;color:white;font-size:13.5px;font-weight:600;font-family:var(--font);cursor:pointer">
-                <i class="fa-solid fa-wand-magic-sparkles"></i> Generate
-            </button>
-        </div>
-    </div>`;
-    document.body.appendChild(m);
-    document.getElementById("briefCloseBtn").addEventListener("click",  () => m.remove());
-    document.getElementById("briefCancelBtn").addEventListener("click", () => m.remove());
-    document.getElementById("genBriefBtn").addEventListener("click", async () => {
-        const btn = document.getElementById("genBriefBtn");
-        btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
-        try {
-            const h = await getAuthHeaders();
-            const symptoms    = (document.getElementById("brief-symptoms")?.value||"").split(",").map(s=>s.trim()).filter(Boolean);
-            const medications = (document.getElementById("brief-meds")?.value||"").split(",").map(s=>s.trim()).filter(Boolean);
-            const res = await fetch(`${API_BASE}/api/doctor-brief`, {
-                method:"POST", headers:h, body:JSON.stringify({symptoms, medications})
-            });
-            const d = await safeJson(res);
-            const out = document.getElementById("brief-output");
-            if (out) { out.style.display = "block"; out.innerHTML = renderMarkdown(d.brief||"Could not generate. Try again."); }
-        } catch { showToast("Failed to generate brief.","error"); }
-        btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> Generate';
-    });
-}
-
-async function loadPlanStatus() {
-    const h = await getAuthHeaders();
-    if (!h.Authorization) return;
-    const res = await fetch(`${API_BASE}/api/payment/status`, {headers:h}).catch(()=>null);
-    if (!res?.ok) return;
-    const d = await safeJson(res);
-    if (DOM.dropdownPlan) {
-        DOM.dropdownPlan.textContent = d.is_pro ? "✦ PHI Pro" : "PHI Free";
-        if (d.is_pro) DOM.dropdownPlan.style.color = "var(--brand)";
-    }
-}
-
-function initVoiceInput() {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) { if (DOM.micBtn) { DOM.micBtn.disabled = true; DOM.micBtn.style.opacity = "0.3"; } return; }
-    let listening = false, rec = null;
-    DOM.micBtn?.addEventListener("click", () => {
-        if (listening) { rec?.stop(); return; }
-        rec = new SR(); rec.lang="en-US"; rec.interimResults=false; rec.maxAlternatives=1;
-        rec.onstart  = () => { listening=true; DOM.micBtn.classList.add("listening"); showToast("Listening…"); };
-        rec.onresult = e => { DOM.userInput.value=e.results[0][0].transcript; autoGrow(DOM.userInput); DOM.userInput.focus(); };
-        rec.onerror  = e => { const msgs={"no-speech":"No speech.","not-allowed":"Mic blocked.","network":"Network error."}; showToast(msgs[e.error]||`Error: ${e.error}`,"error"); };
-        rec.onend    = () => { listening=false; DOM.micBtn.classList.remove("listening"); };
-        try { rec.start(); } catch { showToast("Voice failed.","error"); }
-    });
-}
-
-function loadUserPreferences() {
-    const p = JSON.parse(localStorage.getItem("phi_prefs")||"{}");
-    const dark = p.theme === "dark";
-    if (dark) document.body.classList.add("dark-mode");
-    if (DOM.themeToggle) DOM.themeToggle.checked = dark;
-    const fs = p.fontSize || 15;
-    document.documentElement.style.setProperty("--chat-font-size", fs+"px");
-    if (DOM.fontSizeInput) DOM.fontSizeInput.value = fs;
-    if (DOM.fontSizeValue) DOM.fontSizeValue.textContent = fs+"px";
-}
-function savePref(k, v) {
-    const p = JSON.parse(localStorage.getItem("phi_prefs")||"{}");
-    p[k] = v;
-    localStorage.setItem("phi_prefs", JSON.stringify(p));
-}
-
-function initSettings() {
-    DOM.themeToggle?.addEventListener("change", e => {
-        document.body.classList.toggle("dark-mode", e.target.checked);
-        savePref("theme", e.target.checked ? "dark" : "light");
-        showToast(e.target.checked ? "Dark mode on" : "Light mode on");
-    });
-    DOM.fontSizeInput?.addEventListener("input", e => {
-        document.documentElement.style.setProperty("--chat-font-size", e.target.value+"px");
-        if (DOM.fontSizeValue) DOM.fontSizeValue.textContent = e.target.value+"px";
-        savePref("fontSize", +e.target.value);
-    });
-    DOM.exportChatBtn?.addEventListener("click", async () => {
-        if (!activeConvId) { showToast("No active conversation.","error"); return; }
-        const h = await getAuthHeaders();
-        const res = await fetch(`${API_BASE}/conversation`, {method:"POST",headers:h,body:JSON.stringify({conversation_id:activeConvId})});
-        const d = await safeJson(res);
-        if (!Array.isArray(d)) { showToast("Could not export.","error"); return; }
-        let out = "Curabook PHI Chat Export\n" + "=".repeat(40) + "\n\n";
-        d.forEach(m => { out += `${m.role.toUpperCase()}:\n${m.content}\n\n`; });
-        Object.assign(document.createElement("a"), {
-            href: URL.createObjectURL(new Blob([out],{type:"text/plain"})),
-            download: `phi-chat-${Date.now()}.txt`
-        }).click();
-        showToast("Chat exported");
-    });
-    DOM.clearHistBtn?.addEventListener("click", async () => {
-        if (!confirm("Delete ALL conversations?")) return;
-        const h = await getAuthHeaders();
-        const res = await fetch(`${API_BASE}/history`, {method:"POST",headers:h});
-        const convs = await safeJson(res);
-        if (Array.isArray(convs)) await Promise.all(convs.map(c => fetch(`${API_BASE}/delete`,{method:"POST",headers:h,body:JSON.stringify({conversation_id:c.id})}).catch(()=>{})));
-        DOM.chatDisplay.innerHTML = "";
-        activeConvId = null; uploadedFiles = []; _docCtx.clear(); _cache.clear();
-        updateFilePreview(); showWelcomeMode(); loadHistory(); window.closeModals();
-        showToast("All conversations deleted");
-    });
-    DOM.exportDataBtn?.addEventListener("click", async () => {
-        const h = await getAuthHeaders();
-        try {
-            const res = await fetch(`${API_BASE}/export-data`, {method:"POST",headers:h});
-            const d = await safeJson(res);
-            Object.assign(document.createElement("a"), {
-                href: URL.createObjectURL(new Blob([JSON.stringify(d,null,2)],{type:"application/json"})),
-                download: `phi-data-${Date.now()}.json`
-            }).click();
-            showToast("Data exported");
-        } catch { showToast("Export failed.","error"); }
-    });
-    DOM.deleteAccBtn?.addEventListener("click", async () => {
-        if (!confirm("PERMANENTLY DELETE YOUR ACCOUNT?\n\nAll health data will be erased. Cannot be undone.")) return;
-        if (prompt('Type "DELETE" to confirm:') !== "DELETE") return;
-        const h = await getAuthHeaders();
-        try { await supabaseClient.auth.signOut(); } catch {}
-        try {
-            const res = await fetch(`${API_BASE}/delete-account`, {method:"POST",headers:h});
-            const d = await safeJson(res);
-            showToast(d.success ? "Account deleted." : "Signed out. Contact support if data persists.", d.success?"success":"error");
-        } catch { showToast("Error. Contact support@curabook.com.","error"); }
-        setTimeout(() => window.location.href="/login", 1500);
-    });
-}
-
-function wireEvents() {
-    DOM.mobileMenu?.addEventListener("click", openSidebar);
-    DOM.closeSidebar?.addEventListener("click", closeSidebar);
-    DOM.overlay?.addEventListener("click", closeSidebar);
-    DOM.newChatBtn?.addEventListener("click", () => {
-        if (hasChatMessages() && !confirm("Start a new chat?")) return;
-        activeConvId = null; uploadedFiles = []; _docCtx.clear();
-        DOM.chatDisplay.innerHTML = "";
-        updateFilePreview(); showWelcomeMode();
-        DOM.historyList.querySelectorAll(".history-item").forEach(el => el.classList.remove("active"));
-        DOM.userInput.focus();
-    });
-    DOM.sendBtn?.addEventListener("click",    e => { e.preventDefault(); handleSend(); });
-    DOM.userInput?.addEventListener("keydown", e => { if (e.key==="Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } });
-    DOM.userInput?.addEventListener("input",   () => autoGrow(DOM.userInput));
-    DOM.attachBtn?.addEventListener("click",   () => DOM.fileInput?.click());
-    DOM.btnUploadNav?.addEventListener("click",  () => { closeSidebar(); DOM.fileInput?.click(); });
-    DOM.uploadNudgeBtn?.addEventListener("click",() => { closeSidebar(); DOM.fileInput?.click(); });
-    DOM.btnHealthPulse?.addEventListener("click",() => { closeSidebar(); openPulseModal(); });
-    DOM.btnLogActivity?.addEventListener("click", () => { closeSidebar(); openLogActivity(); });
-    DOM.advocacyInfoBtn?.addEventListener("click", openAdvocacyGuide);
-    DOM.btnAdvocacy?.addEventListener('click', () => { closeSidebar(); openAdvocacyModal(); });
-    DOM.advocacyInfoBtn?.addEventListener('click', openAdvocacyModal); 
-
-    DOM.fileInput?.addEventListener("change", e => {
-        Array.from(e.target.files||[]).forEach(f => {
-            if (f.size > 10*1024*1024) { showToast(`${f.name} too large. Max 10MB.`,"error"); return; }
-            if (!/\.(pdf|txt)$/i.test(f.name)) { showToast(`${f.name}: PDF or TXT only.`,"error"); return; }
-            uploadedFiles.push(f);
-        });
-        updateFilePreview();
-        DOM.fileInput.value = "";
-        if (uploadedFiles.length) { showToast(`${uploadedFiles.length} file(s) ready`); DOM.userInput.focus(); }
-    });
-
-    DOM.profileBtn?.addEventListener("click", e => { e.stopPropagation(); DOM.profileDrop?.classList.toggle("hidden"); });
-    document.addEventListener("click", e => { if (!DOM.profileDrop?.contains(e.target) && e.target !== DOM.profileBtn) DOM.profileDrop?.classList.add("hidden"); });
-
-    DOM.btnProfile?.addEventListener("click",  () => { window.closeModals(); DOM.profileModal?.classList.remove("hidden"); loadProfileStats(currentUser).catch(()=>{}); loadHealthDashboard(); });
-    DOM.btnSettings?.addEventListener("click", () => { window.closeModals(); DOM.settingsModal?.classList.remove("hidden"); });
-    DOM.logoutBtn?.addEventListener("click",   handleLogout);
-    DOM.modalLogout?.addEventListener("click", handleLogout);
-
-    document.addEventListener("keydown", e => {
-        if ((e.ctrlKey||e.metaKey) && e.key==="k") { e.preventDefault(); DOM.newChatBtn?.click(); }
-        if (e.key === "Escape") window.closeModals();
-    });
-
-    [DOM.profileModal, DOM.settingsModal, DOM.deleteModal,
-     DOM.pulseModal, DOM.logActivityModal, DOM.advocacyGuideModal].forEach(m => {
-        m?.addEventListener("click", e => { if (e.target === m) window.closeModals(); });
-    });
-
-    DOM.confirmDeleteBtn?.addEventListener("click", async () => {
-        if (!conversationToDelete) return;
-        const isActive = activeConvId === conversationToDelete;
-        const itemEl = DOM.historyList.querySelector(`.history-item[data-id="${conversationToDelete}"]`);
-        if (itemEl) itemEl.remove();
-        if (isActive) {
-            DOM.chatDisplay.innerHTML = "";
-            activeConvId = null; uploadedFiles = []; _docCtx.clear();
-            updateFilePreview(); showWelcomeMode();
-        }
-        window.closeModals();
-        const idToDelete = conversationToDelete; conversationToDelete = null;
-        showToast("Conversation deleted");
-        const h = await getAuthHeaders();
-        fetch(`${API_BASE}/delete`, {method:"POST",headers:h,body:JSON.stringify({conversation_id:idToDelete})}).catch(()=>{});
-        DOM.historyList.querySelectorAll(".history-group-label").forEach(label => {
-            const next = label.nextElementSibling;
-            if (!next || next.classList.contains("history-group-label")) label.remove();
-        });
-    });
-}
-
-/* ── Boot ─────────────────────────────────────────────────────── */
-document.addEventListener("DOMContentLoaded", async () => {
-    buildDOM();
-    try { await initSupabase(); } catch { showToast("Cannot connect to backend.","error"); return; }
-    const session = await getSession();
-    if (!session?.user) { window.location.href = "/login"; return; }
-    const user = session.user;
-    if (user.app_metadata?.provider==="google" && !localStorage.getItem(`phi_terms_${user.id}`)) {
-        window.location.href = "/login"; return;
-    }
-
-    wireEvents();
-    initSettings();
-    initVoiceInput();
-    loadUserPreferences();
-    await handleLoginSuccess(user);
-    
-    // TODO: Init Stripe Test Mode logic here when ready for $29.99 upgrades
-});
-
-/* ── Advocacy modal state ───────────────────────────────────── */
-let _advStep = 0;
-let _advBriefText = '';
-let _advData = null;
-
-function openAdvocacyModal() {
-  window.closeModals();
-  const modal = document.getElementById('advocacy-modal');
-  if (!modal) return;
-  modal.classList.remove('hidden');
-  _advStep = 0;
-  _advBriefText = '';
-  _advData = null;
-  _advRenderStep(0);
-  _advLoadEligibility();
-}
-
-async function advGoStep(n) {
-  _advStep = n;
-  _advRenderStep(n);
-  if (n === 1 && !_advData) await _advLoadEvidence();
-  if (n === 2) advGenerateBrief(false);
-}
-
-function _advRenderStep(n) {
-  for (let i = 0; i < 3; i++) {
-    const panel = document.getElementById('advPanel' + i);
-    const tab   = document.querySelector(`.adv-step[data-step="${i}"]`);
-    if (!panel || !tab) continue;
-    panel.classList.toggle('active', i === n);
-    panel.classList.toggle('hidden', i !== n);
-    tab.classList.remove('active', 'done');
-    if (i < n)      { tab.classList.add('done'); tab.querySelector('.adv-step-num').textContent = '✓'; }
-    else if (i === n) { tab.classList.add('active'); tab.querySelector('.adv-step-num').textContent = i + 1; }
-    else              { tab.querySelector('.adv-step-num').textContent = i + 1; }
+  } catch (err) {
+    console.error("[PHI] Boot error:", err);
+    toast("Failed to initialize. Please refresh.", "err");
   }
-  const connectors = document.querySelectorAll('.adv-connector');
-  connectors.forEach((c, i) => {
-    c.style.background = i < n ? '#22c55e' : 'var(--border)';
+}
+
+async function onSignIn(user) {
+  _user     = user;
+  _userName = user.user_metadata?.first_name
+    || user.email?.split("@")[0]?.replace(/[._-]/g, " ").split(" ")[0]
+    || "there";
+  _userName = _userName.charAt(0).toUpperCase() + _userName.slice(1);
+
+  // Update UI
+  const initial = _userName[0].toUpperCase();
+  el("userAvatar")?.textContent && (el("userAvatar").textContent = initial);
+  if (el("userAvatar")) el("userAvatar").textContent = initial;
+  setText("userEmail", user.email);
+  setText("welcomeName", _userName);
+
+  // Set time greeting
+  const h = new Date().getHours();
+  setText("timeGreeting", h < 12 ? "morning" : h < 17 ? "afternoon" : "evening");
+
+  // Save consents (non-blocking)
+  saveConsents().catch(() => {});
+
+  // Load app data
+  initTheme();
+  await loadHistory();
+  loadMarkersData();
+}
+
+/* ═══════════════════════════════════════
+   API HELPERS
+═══════════════════════════════════════ */
+async function getHeaders(contentType = "application/json") {
+  try {
+    const { data: { session } } = await _sb.auth.getSession();
+    if (!session) return null;
+    const h = { "Authorization": `Bearer ${session.access_token}` };
+    if (contentType) h["Content-Type"] = contentType;
+    return h;
+  } catch {
+    return null;
+  }
+}
+
+async function apiFetch(path, options = {}) {
+  const url = API_BASE + path;
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(timeout);
+    return res;
+  } catch (err) {
+    if (err.name === "AbortError") throw new Error("Request timed out");
+    throw err;
+  }
+}
+
+async function apiJson(path, options = {}) {
+  const res = await apiFetch(path, options);
+  const text = await res.text();
+  if (!text) return { ok: res.ok, status: res.status, data: null };
+  try {
+    return { ok: res.ok, status: res.status, data: JSON.parse(text) };
+  } catch {
+    return { ok: false, status: res.status, data: { error: "Invalid response" } };
+  }
+}
+
+async function saveConsents() {
+  const h = await getHeaders();
+  if (!h) return;
+  await apiFetch("/api/consent", {
+    method: "POST",
+    headers: h,
+    body: JSON.stringify({ consents: ["data_processing", "ai_processing", "document_processing"] })
   });
 }
 
-async function _advLoadEligibility() {
-  const el = document.getElementById('advCriteriaList');
-  if (!el) return;
+/* ═══════════════════════════════════════
+   THEME
+═══════════════════════════════════════ */
+function initTheme() {
+  const saved = localStorage.getItem("phi_theme") || "dark";
+  applyTheme(saved);
+}
+
+function toggleTheme() {
+  const cur = document.documentElement.dataset.theme || "dark";
+  applyTheme(cur === "dark" ? "light" : "dark");
+  closeUserMenu();
+}
+
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  localStorage.setItem("phi_theme", theme);
+  const isDark = theme === "dark";
+  const icon   = isDark ? "fa-moon" : "fa-sun";
+  const label  = isDark ? "Light Mode" : "Dark Mode";
+  setIcon("themeIcon", icon);
+  setIcon("topThemeIcon", icon);
+  setText("themeLabel", label);
+}
+
+/* ═══════════════════════════════════════
+   SIDEBAR
+═══════════════════════════════════════ */
+function openSidebar() {
+  el("sidebar")?.classList.add("open");
+  el("sidebarOverlay")?.classList.add("show");
+  el("mobileMenuBtn")?.setAttribute("aria-expanded", "true");
+}
+
+function closeSidebar() {
+  el("sidebar")?.classList.remove("open");
+  el("sidebarOverlay")?.classList.remove("show");
+  el("mobileMenuBtn")?.setAttribute("aria-expanded", "false");
+}
+
+function toggleUserMenu() {
+  const dd = el("userDropdown");
+  if (!dd) return;
+  const isHidden = dd.getAttribute("aria-hidden") !== "false";
+  dd.setAttribute("aria-hidden", isHidden ? "false" : "true");
+}
+
+function closeUserMenu() {
+  el("userDropdown")?.setAttribute("aria-hidden", "true");
+}
+
+/* ═══════════════════════════════════════
+   VIEWS
+═══════════════════════════════════════ */
+function showWelcome() {
+  el("welcomeScreen")?.classList.remove("hidden");
+  el("chatDisplay")?.classList.add("hidden");
+  setText("convTitle", "Ready");
+}
+
+function showChat() {
+  el("welcomeScreen")?.classList.add("hidden");
+  el("chatDisplay")?.classList.remove("hidden");
+}
+
+function resetToWelcome() {
+  _convId  = null;
+  _uploads = [];
+  _docCtx  = { text: null, sent: false };
+  clearFilePreview();
+  if (el("chatDisplay")) el("chatDisplay").innerHTML = "";
+  showWelcome();
+  document.querySelectorAll(".hist-item").forEach(e => e.classList.remove("active"));
+  setText("convTitle", "Ready");
+}
+
+/* ═══════════════════════════════════════
+   HISTORY
+═══════════════════════════════════════ */
+async function loadHistory() {
+  const h = await getHeaders();
+  if (!h) return;
 
   try {
-    const h   = await getAuthHeaders();
-    const res = await fetch(`${API_BASE}/api/advocacy?medication=GLP-1&raw=false`, { headers: h });
-    const d   = await safeJson(res);
-    if (!res.ok || d.error) throw new Error(d.error || 'API error');
-
-    _advData = d;
-    const facts    = d.clinical_facts    || [];
-    const missing  = d.missing_data      || [];
-    const strength = d.evidence_strength || 'limited';
-
-    const criteriaMap = _buildCriteriaFromFacts(facts, missing);
-    el.innerHTML = criteriaMap.map(c => `
-      <div class="adv-criterion ${c.status}">
-        <div class="adv-crit-icon">${c.status === 'met' ? '✓' : c.status === 'partial' ? '!' : '?'}</div>
-        <div style="flex:1">
-          <div class="adv-crit-title">${escapeHtml(c.title)}</div>
-          <div class="adv-crit-detail">${escapeHtml(c.detail)}</div>
-          <span class="adv-crit-tag">${escapeHtml(c.tag)}</span>
-        </div>
-      </div>`).join('');
-
-  } catch (e) {
-    el.innerHTML = _advFallbackCriteria();
+    const { ok, data } = await apiJson("/history", { method: "POST", headers: h, body: JSON.stringify({}) });
+    if (ok && Array.isArray(data)) {
+      renderHistory(data);
+    } else {
+      el("historyList").innerHTML = '<div class="sb-empty">Could not load history</div>';
+    }
+  } catch {
+    el("historyList").innerHTML = '<div class="sb-empty">No conversations yet</div>';
   }
 }
 
-async function _advLoadEvidence() {
-  const el = document.getElementById('advEvidenceContent');
-  if (!el) return;
+function renderHistory(conversations) {
+  const list = el("historyList");
+  if (!list) return;
 
-  if (!_advData) {
-    try {
-      const h   = await getAuthHeaders();
-      const res = await fetch(`${API_BASE}/api/advocacy?medication=GLP-1&raw=true`, { headers: h });
-      const d   = await safeJson(res);
-      if (!res.ok || d.error) throw new Error(d.error);
-      _advData = d;
-    } catch (e) {
-      el.innerHTML = '<div class="loading-text" style="color:var(--accent-warn)">Could not load evidence. Check connection.</div>';
+  if (!conversations.length) {
+    list.innerHTML = '<div class="sb-empty">No conversations yet</div>';
+    return;
+  }
+
+  // Group by date
+  const today     = new Date(); today.setHours(0, 0, 0, 0);
+  const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+
+  const groups = new Map();
+  conversations.forEach(c => {
+    const d = c.created_at ? new Date(c.created_at) : new Date();
+    d.setHours(0, 0, 0, 0);
+    let label;
+    if (d.getTime() === today.getTime())     label = "Today";
+    else if (d.getTime() === yesterday.getTime()) label = "Yesterday";
+    else label = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    if (!groups.has(label)) groups.set(label, []);
+    groups.get(label).push(c);
+  });
+
+  let html = "";
+  groups.forEach((convs, label) => {
+    html += `<div class="hist-group-label">${esc(label)}</div>`;
+    convs.forEach(c => {
+      const isActive = c.id === _convId ? " active" : "";
+      const title    = (c.title && c.title !== "New Chat") ? c.title : "New Conversation";
+      html += `<div class="hist-item${isActive}" data-id="${esc(c.id)}">
+        <span class="hist-title">${esc(title)}</span>
+        <button class="hist-del" data-del="${esc(c.id)}" title="Delete" aria-label="Delete conversation">
+          <i class="fa-solid fa-trash" aria-hidden="true"></i>
+        </button>
+      </div>`;
+    });
+  });
+
+  list.innerHTML = html;
+}
+
+async function openConversation(id) {
+  if (_isSending || id === _convId) { closeSidebar(); return; }
+
+  _convId  = id;
+  _uploads = [];
+  _docCtx  = { text: null, sent: false };
+  clearFilePreview();
+  showChat();
+  if (el("chatDisplay")) el("chatDisplay").innerHTML = "";
+
+  // Mark active
+  document.querySelectorAll(".hist-item").forEach(e =>
+    e.classList.toggle("active", e.dataset.id === id)
+  );
+  closeSidebar();
+
+  const h = await getHeaders();
+  if (!h) return;
+
+  try {
+    const { ok, data } = await apiJson("/conversation", {
+      method: "POST",
+      headers: h,
+      body: JSON.stringify({ conversation_id: id })
+    });
+
+    if (ok && Array.isArray(data) && data.length) {
+      data.forEach(m => appendMessage(m.content, m.role === "user" ? "user" : "ai"));
+      scrollToBottom();
+    }
+  } catch (err) {
+    toast("Could not load conversation", "err");
+  }
+}
+
+async function deleteConversation(id, e) {
+  e?.stopPropagation();
+  const h = await getHeaders();
+  if (!h) return;
+
+  // Optimistic remove from list
+  document.querySelector(`.hist-item[data-id="${id}"]`)?.remove();
+
+  if (id === _convId) resetToWelcome();
+
+  await apiFetch("/delete", {
+    method: "POST",
+    headers: h,
+    body: JSON.stringify({ conversation_id: id })
+  }).catch(() => {});
+
+  toast("Conversation deleted");
+}
+
+/* ═══════════════════════════════════════
+   CONVERSATIONS
+═══════════════════════════════════════ */
+async function createConversation() {
+  const h = await getHeaders();
+  if (!h) return null;
+
+  try {
+    const { ok, data } = await apiJson("/conversation/create", {
+      method: "POST",
+      headers: h,
+      body: JSON.stringify({})
+    });
+
+    if (ok && data?.conversation_id) {
+      _convId = data.conversation_id;
+      // Prepend to history
+      prependToHistory(_convId, "New Conversation");
+      return _convId;
+    }
+  } catch {}
+
+  // Fallback: local ID (offline)
+  _convId = "local-" + Date.now();
+  return _convId;
+}
+
+function prependToHistory(id, title) {
+  const list = el("historyList");
+  if (!list) return;
+
+  // Remove empty state
+  list.querySelector(".sb-empty")?.remove();
+
+  // Remove existing today label or create one
+  let todayGroup = list.querySelector(".hist-group-label");
+  if (!todayGroup || todayGroup.textContent !== "Today") {
+    todayGroup = document.createElement("div");
+    todayGroup.className = "hist-group-label";
+    todayGroup.textContent = "Today";
+    list.prepend(todayGroup);
+  }
+
+  // Create item
+  const item = document.createElement("div");
+  item.className = "hist-item active";
+  item.dataset.id = id;
+  item.innerHTML = `
+    <span class="hist-title">${esc(title)}</span>
+    <button class="hist-del" data-del="${esc(id)}" title="Delete" aria-label="Delete conversation">
+      <i class="fa-solid fa-trash" aria-hidden="true"></i>
+    </button>`;
+  todayGroup.insertAdjacentElement("afterend", item);
+
+  // Deactivate others
+  document.querySelectorAll(".hist-item").forEach(e =>
+    e.classList.toggle("active", e.dataset.id === id)
+  );
+}
+
+async function renameConversation(id, title) {
+  const h = await getHeaders();
+  if (!h || !id) return;
+
+  const short = title.slice(0, 50);
+
+  // Update in list
+  const titleEl = document.querySelector(`.hist-item[data-id="${id}"] .hist-title`);
+  if (titleEl) titleEl.textContent = short;
+  setText("convTitle", short);
+
+  await apiFetch("/rename", {
+    method: "POST",
+    headers: h,
+    body: JSON.stringify({ conversation_id: id, title: short })
+  }).catch(() => {});
+}
+
+/* ═══════════════════════════════════════
+   CHAT
+═══════════════════════════════════════ */
+async function handleSend() {
+  if (_isSending) return;
+
+  const ta   = el("chatInput");
+  let text   = ta?.value.trim();
+
+  // If no text but files attached, auto-prompt
+  if (!text && _uploads.length) {
+    text = "Please read my uploaded lab report and explain every finding — what's abnormal, what it means, and what I should discuss with my doctor.";
+  }
+  if (!text) return;
+
+  // Clear input
+  if (ta) { ta.value = ""; ta.style.height = "auto"; }
+
+  await sendMessage(text);
+}
+
+async function sendMessage(text) {
+  if (_isSending || !text) return;
+  _isSending = true;
+  setSendingState(true);
+  showChat();
+
+  // Ensure conversation exists
+  if (!_convId) {
+    const id = await createConversation();
+    if (!id) {
+      _isSending = false;
+      setSendingState(false);
+      toast("Could not start conversation. Please try again.", "err");
       return;
     }
   }
 
-  const facts    = _advData.clinical_facts    || [];
-  const missing  = _advData.missing_data      || [];
-  const strength = _advData.evidence_strength || 'limited';
-  const fillPct  = strength === 'strong' ? 85 : strength === 'moderate' ? 55 : 25;
-  const met      = facts.filter(f => f.pa_relevant).length;
+  // Process file uploads
+  let docResult = null;
+  if (_uploads.length) {
+    const loadRow = appendTyping();
+    updateTypingText(loadRow, "Reading your report…");
+    docResult = await processFileUpload(_uploads[0]);
+    loadRow?.remove();
+    _uploads = [];
+    clearFilePreview();
 
-  el.innerHTML = `
-    <div style="margin-bottom:12px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
-        <span style="font-size:12.5px;color:var(--text-muted)">PA evidence strength</span>
-        <strong style="font-size:13px;text-transform:capitalize">${strength}</strong>
-      </div>
-      <div class="adv-strength-track">
-        <div class="adv-strength-fill ${strength}" id="advStrengthFill" style="width:0%"></div>
-      </div>
-      <div style="display:flex;gap:10px">
-        <div style="flex:1;background:var(--bg);border-radius:6px;padding:8px;text-align:center;border:1px solid var(--border)">
-          <div style="font-size:1.2rem;font-weight:700;color:var(--brand)">${met}</div>
-          <div style="font-size:11px;color:var(--text-muted)">facts in record</div>
-        </div>
-        <div style="flex:1;background:var(--bg);border-radius:6px;padding:8px;text-align:center;border:1px solid var(--border)">
-          <div style="font-size:1.2rem;font-weight:700;color:#f59e0b">${missing.length}</div>
-          <div style="font-size:11px;color:var(--text-muted)">data gaps</div>
-        </div>
-      </div>
-    </div>
+    if (docResult?.document_text) {
+      _docCtx = { text: docResult.document_text, sent: false };
+    }
+  }
 
-    ${facts.filter(f => f.pa_relevant).length ? `
-    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:var(--text-muted);margin-bottom:8px">Clinical facts</div>
-    <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:12px">
-      ${facts.filter(f => f.pa_relevant).slice(0, 6).map(f => `
-        <div style="padding:9px 11px;background:var(--bg);border-radius:6px;border:1px solid var(--border)">
-          <div style="font-size:12.5px;font-weight:500;margin-bottom:2px">${escapeHtml(f.label || '')}</div>
-          <div style="font-size:12px;color:var(--text-muted)">${escapeHtml(String(f.value || '').slice(0, 120))}</div>
-        </div>`).join('')}
-    </div>` : ''}
+  // Show user message
+  appendMessage(text, "user");
+  const botRow = appendTyping();
+  scrollToBottom();
 
-    ${missing.length ? `
-    <div style="background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.25);border-radius:8px;padding:11px 13px">
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.7px;color:#f59e0b;margin-bottom:7px">Data gaps to address</div>
-      ${missing.slice(0, 4).map(m => `
-        <div style="display:flex;align-items:flex-start;gap:7px;font-size:12px;color:var(--text-muted);padding:4px 0;line-height:1.55">
-          <span style="width:5px;height:5px;border-radius:50%;background:#f59e0b;flex-shrink:0;margin-top:4px"></span>
-          ${escapeHtml(m)}
-        </div>`).join('')}
-    </div>` : ''}`;
+  // Get document text to send (only first time after upload)
+  const sendDoc = !_docCtx.sent && _docCtx.text
+    ? (_docCtx.sent = true, _docCtx.text)
+    : (docResult?.document_text || "");
 
-  setTimeout(() => {
-    const fill = document.getElementById('advStrengthFill');
-    if (fill) fill.style.width = fillPct + '%';
-  }, 80);
-}
-
-async function advGenerateBrief(forceRegen) {
-  const el = document.getElementById('advBriefContent');
-  if (!el) return;
-  if (_advBriefText && !forceRegen) {
-    el.innerHTML = `<div class="adv-brief-box">${escapeHtml(_advBriefText)}</div>`;
+  const h = await getHeaders();
+  if (!h) {
+    updateMessage(botRow, "Your session has expired. Please refresh the page.");
+    _isSending = false;
+    setSendingState(false);
     return;
   }
 
-  const btn = document.getElementById('advRegenerateBtn');
-  if (btn) btn.disabled = true;
-  el.innerHTML = '<div class="loading-text" style="text-align:center;padding:1.5rem"><i class="fa-solid fa-spinner fa-spin" style="font-size:1.2rem;color:var(--brand);display:block;margin-bottom:10px"></i>Generating PA support packet…</div>';
+  try {
+    const { ok, status, data } = await apiJson("/chat", {
+      method: "POST",
+      headers: h,
+      body: JSON.stringify({
+        conversation_id: _convId,
+        message:         text,
+        has_documents:   !!sendDoc || !!docResult,
+        document_text:   sendDoc || docResult?.document_text || ""
+      })
+    });
 
-  if (!_advData) {
-    try {
-      const h   = await getAuthHeaders();
-      const res = await fetch(`${API_BASE}/api/advocacy?medication=GLP-1&raw=true`, { headers: h });
-      const d   = await safeJson(res);
-      if (res.ok && !d.error) _advData = d;
-    } catch {}
+    const reply = data?.reply;
+
+    if (status === 401) {
+      updateMessage(botRow, "Your session has expired. Please [sign in again](/login).");
+    } else if (status === 403) {
+      updateMessage(botRow, "Consent required. Please check your account settings.");
+    } else if (!ok || !reply) {
+      updateMessage(botRow,
+        "I ran into a technical issue. Please try again in a moment.\n\n" +
+        "---\n⚕️ *PHI is an educational wellness tool. Always consult your provider.*"
+      );
+    } else {
+      updateMessage(botRow, reply);
+    }
+
+    // Rename on first user message
+    const userMsgs = el("chatDisplay")?.querySelectorAll(".chat-msg.user-msg").length || 0;
+    if (userMsgs === 1) {
+      renameConversation(_convId, text);
+    }
+
+    // Refresh markers if a report was just analyzed
+    if (docResult?.success) {
+      setTimeout(loadMarkersData, 2000);
+    }
+
+  } catch (err) {
+    const msg = err.message?.includes("timed out")
+      ? "The request timed out. The server may be busy — please try again."
+      : "Connection error. Please check your internet and try again.";
+    updateMessage(botRow, msg + "\n\n---\n⚕️ *PHI is an educational wellness tool. Always consult your provider.*");
   }
 
-  const packetText = _advData?.pa_packet || '';
+  _isSending = false;
+  setSendingState(false);
+  scrollToBottom();
+}
 
-  if (packetText && packetText.length > 100) {
-    _advBriefText = packetText.replace(/─+/g, '').replace(/⚕️.*?$/ms, '').trim();
-    el.innerHTML = `<div class="adv-brief-box">${escapeHtml(_advBriefText)}</div>`;
-    _advRenderNextSteps(_advData.next_steps || []);
+function setSendingState(on) {
+  const btn = el("sendBtn");
+  const ta  = el("chatInput");
+  if (btn) {
+    btn.disabled  = on;
+    btn.innerHTML = on
+      ? '<i class="fa-solid fa-spinner" style="animation:spin .7s linear infinite"></i>'
+      : '<i class="fa-solid fa-arrow-up"></i>';
+  }
+  if (ta) ta.disabled = on;
+}
+
+/* ═══════════════════════════════════════
+   FILE UPLOAD
+═══════════════════════════════════════ */
+function handleFileSelect(e) {
+  const files = Array.from(e.target.files || []);
+  files.forEach(f => addFile(f));
+  e.target.value = "";
+}
+
+function addFile(file) {
+  if (file.size > 10 * 1024 * 1024) {
+    toast(`${file.name} is too large. Max 10 MB.`, "err");
+    return;
+  }
+  if (!/\.(pdf|txt)$/i.test(file.name)) {
+    toast("Only PDF or TXT files are supported.", "err");
+    return;
+  }
+  _uploads.push(file);
+  renderFilePreview();
+  toast(`${file.name} ready — press Send to analyze`);
+}
+
+function removeFile(idx) {
+  _uploads.splice(idx, 1);
+  renderFilePreview();
+}
+
+function renderFilePreview() {
+  const strip = el("filePreview");
+  if (!strip) return;
+
+  if (!_uploads.length) {
+    strip.classList.remove("show");
+    strip.innerHTML = "";
+    return;
+  }
+
+  strip.classList.add("show");
+  strip.innerHTML = _uploads.map((f, i) => `
+    <div class="file-chip">
+      <i class="fa-solid ${f.name.endsWith(".pdf") ? "fa-file-pdf" : "fa-file-lines"}" aria-hidden="true"></i>
+      <span>${esc(f.name)}</span>
+      <button class="file-chip-rm" onclick="removeFile(${i})" aria-label="Remove ${esc(f.name)}">
+        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+      </button>
+    </div>`).join("");
+}
+
+function clearFilePreview() {
+  const strip = el("filePreview");
+  if (strip) { strip.classList.remove("show"); strip.innerHTML = ""; }
+}
+
+async function processFileUpload(file) {
+  const { data: { session } } = await _sb.auth.getSession();
+  if (!session) return null;
+
+  const form = new FormData();
+  form.append("file", file);
+
+  try {
+    const res = await apiFetch("/analyze", {
+      method:  "POST",
+      headers: { "Authorization": `Bearer ${session.access_token}` },
+      body:    form
+    });
+    const d = await res.json();
+    return d;
+  } catch {
+    return null;
+  }
+}
+
+/* ═══════════════════════════════════════
+   MESSAGE RENDERING
+═══════════════════════════════════════ */
+function appendMessage(text, role) {
+  const display = el("chatDisplay");
+  if (!display) return null;
+
+  const wrap = document.createElement("div");
+  wrap.className = `chat-msg ${role === "user" ? "user-msg" : "ai-msg"}`;
+
+  const avLabel   = role === "user" ? (_userName?.[0]?.toUpperCase() || "U") : "φ";
+  const avClass   = role === "user" ? "av-user" : "av-ai";
+  const avEl      = `<div class="msg-av ${avClass}" aria-hidden="true">${avLabel}</div>`;
+  const bodyEl    = document.createElement("div");
+  bodyEl.className = "msg-body";
+
+  if (role === "user") {
+    bodyEl.textContent = text;
   } else {
-    try {
-      const h = await getAuthHeaders();
-      if (!activeConvId) await createConversation();
-      const res = await fetch(`${API_BASE}/chat`, {
-        method: 'POST', headers: h,
-        body: JSON.stringify({
-          conversation_id: activeConvId,
-          message: 'Generate a structured GLP-1 prior authorization medical necessity support packet from my full health record. Format it with clear section headers: Patient Data Summary, Clinical Facts Supporting Medical Necessity, Cardiovascular Risk Documentation, Metabolic History, Lifestyle Intervention History, Data Gaps, and Recommended Provider Actions. Use specific dates and values from my record.',
-          has_documents: false,
-        }),
-      });
-      const d = await safeJson(res);
-      _advBriefText = (d.reply || '').replace(/^---[\s\S]*$/m, '').trim();
-      el.innerHTML = `<div class="adv-brief-box">${renderMarkdown(_advBriefText)}</div>`;
-      _advRenderNextSteps([
-        'Share this document with your healthcare provider — they make all clinical and authorization decisions',
-        'Ask your provider to document BMI and any prior medication history at your next visit',
-        'Bring your LDL trajectory data (specific dates and values) to the cardiology appointment',
-        'Upload any prior prescriptions or insurance correspondence to PHI to build a stronger record',
-      ]);
-    } catch {
-      el.innerHTML = '<div class="loading-text" style="color:var(--accent-warn)">Could not generate. Please try again.</div>';
+    renderAIContent(bodyEl, text);
+  }
+
+  if (role === "user") {
+    wrap.innerHTML = avEl;
+    const avNode = wrap.querySelector(".msg-av");
+    wrap.insertBefore(bodyEl, avNode);
+  } else {
+    wrap.innerHTML = avEl;
+    wrap.appendChild(bodyEl);
+  }
+
+  display.appendChild(wrap);
+  return wrap;
+}
+
+function appendTyping() {
+  const display = el("chatDisplay");
+  if (!display) return null;
+
+  const wrap = document.createElement("div");
+  wrap.className = "chat-msg ai-msg";
+  wrap.innerHTML = `
+    <div class="msg-av av-ai" aria-hidden="true">φ</div>
+    <div class="msg-body">
+      <div class="typing-indicator" aria-label="PHI is thinking">
+        <div class="t-dot"></div>
+        <div class="t-dot"></div>
+        <div class="t-dot"></div>
+      </div>
+    </div>`;
+  display.appendChild(wrap);
+  scrollToBottom();
+  return wrap;
+}
+
+function updateTypingText(wrap, text) {
+  const body = wrap?.querySelector(".msg-body");
+  if (body) body.textContent = text;
+}
+
+function updateMessage(wrap, text) {
+  const body = wrap?.querySelector(".msg-body");
+  if (!body) return;
+  renderAIContent(body, text);
+  scrollToBottom();
+}
+
+function renderAIContent(el, text) {
+  // Strip the disclaimer and render separately
+  const parts   = text.split(/---\n⚕️/);
+  const main    = parts[0].trim();
+  const hasLegal = parts.length > 1;
+
+  if (typeof marked !== "undefined") {
+    el.innerHTML = marked.parse(main);
+  } else {
+    el.textContent = main;
+  }
+
+  if (hasLegal) {
+    const legal = document.createElement("p");
+    legal.className = "phi-legal";
+    legal.innerHTML = `<span aria-hidden="true">⚕️</span> PHI is an educational wellness tool. Always consult your healthcare provider.`;
+    el.appendChild(legal);
+  }
+}
+
+function scrollToBottom() {
+  const d = el("chatDisplay");
+  if (d) d.scrollTop = d.scrollHeight;
+}
+
+/* ═══════════════════════════════════════
+   EXPORT
+═══════════════════════════════════════ */
+function exportCurrentChat() {
+  const msgs = el("chatDisplay")?.querySelectorAll(".chat-msg");
+  if (!msgs?.length) { toast("No conversation to export", "err"); return; }
+
+  let out = `Curabook PHI — Chat Export\n${"=".repeat(44)}\n\n`;
+  msgs.forEach(m => {
+    const role = m.classList.contains("user-msg") ? "You" : "PHI";
+    const text = m.querySelector(".msg-body")?.innerText || "";
+    out += `${role}:\n${text.trim()}\n\n`;
+  });
+
+  const a = Object.assign(document.createElement("a"), {
+    href:     URL.createObjectURL(new Blob([out], { type: "text/plain" })),
+    download: `phi-chat-${Date.now()}.txt`
+  });
+  a.click();
+  closeUserMenu();
+  toast("Chat exported");
+}
+
+async function handleLogout() {
+  closeUserMenu();
+  await _sb.auth.signOut();
+  // onAuthStateChange handles redirect
+}
+
+/* ═══════════════════════════════════════
+   HEALTH DATA
+═══════════════════════════════════════ */
+async function loadMarkersData() {
+  const h = await getHeaders();
+  if (!h) return;
+
+  try {
+    const { ok, data } = await apiJson("/api/health-markers", { headers: h });
+    if (ok && Array.isArray(data) && data.length) {
+      renderMarkers(data);
+      runCliffDetection(data);
+    }
+  } catch {}
+}
+
+function renderMarkers(markers) {
+  const grid = el("markersGrid");
+  if (!grid) return;
+
+  const show = markers.slice(0, 10);
+  if (!show.length) {
+    grid.innerHTML = '<div class="markers-empty">No markers yet — upload a lab report</div>';
+    return;
+  }
+
+  grid.innerHTML = show.map(m => {
+    const s     = (m.status || "").toLowerCase();
+    const cls   = s === "high" ? "val-high" : s === "low" ? "val-low" : s === "normal" ? "val-normal" : "";
+    const badge = (s && s !== "unknown")
+      ? `<span class="marker-status st-${s}">${s.toUpperCase()}</span>`
+      : "";
+    return `<div class="marker-card">
+      <div class="marker-card-name" title="${esc(m.marker_name)}">${esc(m.marker_name)}</div>
+      <div class="marker-card-val ${cls}">${m.value}<span class="marker-card-unit"> ${esc(m.unit || "")}</span></div>
+      ${badge}
+    </div>`;
+  }).join("");
+}
+
+function runCliffDetection(markers) {
+  const alerts  = [];
+  const grouped = {};
+
+  markers.forEach(m => {
+    const k = (m.marker_name || "").toLowerCase();
+    if (!grouped[k]) grouped[k] = [];
+    grouped[k].push({ ...m, _val: parseFloat(m.value) });
+  });
+
+  // Glucose rebound
+  const glucoseKey = Object.keys(grouped).find(k => /fasting.*glucose|blood.*glucose|glucose/i.test(k));
+  if (glucoseKey) {
+    const readings = grouped[glucoseKey].sort((a, b) => a.date < b.date ? -1 : 1);
+    if (readings.length >= 2) {
+      const base = readings[0]._val;
+      const last = readings[readings.length - 1]._val;
+      if (base > 0) {
+        const pct = ((last - base) / base) * 100;
+        if (pct >= 15) {
+          alerts.push({ type: "danger", title: `🚨 Glucose rebound +${pct.toFixed(0)}%`, desc: `From ${base} → ${last} mg/dL. Early cliff signal. Discuss urgently with provider.` });
+        } else if (pct >= 10) {
+          alerts.push({ type: "warn", title: `⚠ Glucose rising +${pct.toFixed(0)}%`, desc: `From ${base} → ${last} mg/dL. Approaching the 15% rebound threshold.` });
+        }
+      }
     }
   }
 
-  if (btn) btn.disabled = false;
+  // HbA1c rebound
+  const hba1cKey = Object.keys(grouped).find(k => /hba1c|hemoglobin a1c|a1c/i.test(k));
+  if (hba1cKey) {
+    const readings = grouped[hba1cKey].sort((a, b) => a.date < b.date ? -1 : 1);
+    for (let i = 1; i < readings.length; i++) {
+      const delta = readings[i]._val - readings[i - 1]._val;
+      if (delta >= 0.25) {
+        alerts.push({ type: "danger", title: `🚨 HbA1c rebound +${delta.toFixed(2)}%`, desc: `${readings[i - 1]._val}% → ${readings[i]._val}%. Sustained metabolic rebound signal.` });
+        break;
+      }
+    }
+  }
+
+  // High markers (non-glucose)
+  markers.filter(m => m.status === "HIGH" && !/glucose/i.test(m.marker_name))
+    .slice(0, 2)
+    .forEach(m => {
+      alerts.push({ type: "warn", title: `⬆ ${m.marker_name} HIGH`, desc: `${m.value} ${m.unit || ""} — outside normal range.` });
+    });
+
+  if (!alerts.length) {
+    alerts.push({ type: "ok", title: "✅ No rebound signals", desc: "All monitored markers are stable. Keep up protein intake and resistance training." });
+  }
+
+  renderCliffAlerts(alerts);
 }
 
-function _advRenderNextSteps(steps) {
-  const card = document.getElementById('advNextSteps');
-  const list = document.getElementById('advNextStepsList');
-  if (!card || !list || !steps.length) return;
-  list.innerHTML = steps.map((s, i) => `
-    <div class="adv-next-step-item">
-      <div class="adv-next-step-num">${i + 1}</div>
-      <span>${escapeHtml(s)}</span>
-    </div>`).join('');
-  card.style.display = 'block';
+function renderCliffAlerts(alerts) {
+  const container = el("cliffAlerts");
+  if (!container) return;
+  container.innerHTML = alerts.map(a => `
+    <div class="ca-item ca-${a.type}">
+      <div class="ca-title">${a.title}</div>
+      <div class="ca-desc">${a.desc}</div>
+    </div>`).join("");
 }
 
-function advCopyBrief() {
-  if (!_advBriefText) return;
-  navigator.clipboard.writeText(_advBriefText).then(() => {
-    const btn = document.getElementById('advCopyBtn');
-    if (btn) { btn.innerHTML = '<i class="fa-solid fa-check"></i> Copied!'; setTimeout(() => btn.innerHTML = '<i class="fa-regular fa-copy"></i> Copy', 2000); }
+/* ═══════════════════════════════════════
+   COCKPIT
+═══════════════════════════════════════ */
+function updateShield() {
+  const protein = parseFloat(el("inputProtein")?.value) || 0;
+  const steps   = parseFloat(el("inputSteps")?.value)   || 0;
+  const sleep   = parseFloat(el("inputSleep")?.value)   || 0;
+  const goalWt  = parseFloat(el("inputGoalWt")?.value)  || _goalWt;
+
+  _goalWt         = goalWt;
+  _proteinTarget  = Math.round(goalWt * 0.545 * 10) / 10;
+
+  const pPct = Math.min(100, Math.round((protein / _proteinTarget) * 100));
+  const mPct = Math.min(100, Math.round((steps   / 8000)          * 100));
+  const rPct = Math.max(0, Math.min(100, Math.round(((sleep - 4) / 5) * 100)));
+  const score = Math.round((pPct + mPct + rPct) / 3);
+
+  // Animate rings
+  setRing("ringProtein",  70, pPct, 440);
+  setRing("ringMovement", 55, mPct, 346);
+  setRing("ringRecovery", 41, rPct, 258);
+
+  // Update labels
+  setText("shieldScore", score + "%");
+  setText("shieldBadge", score + "%");
+  setText("proteinLegend",  `${protein}g / ${_proteinTarget}g (${pPct}%)`);
+  setText("movementLegend", `${steps.toLocaleString()} / 8,000 (${mPct}%)`);
+  setText("recoveryLegend", `${sleep}h sleep (${rPct}%)`);
+
+  // Animate bars
+  setBarWidth("proteinBar",  pPct);
+  setBarWidth("movementBar", mPct);
+  setBarWidth("recoveryBar", rPct);
+
+  // Log to backend (non-blocking)
+  logShieldData(protein, steps, sleep);
+}
+
+function setRing(id, r, pct, circ) {
+  const ring = el(id);
+  if (!ring) return;
+  ring.style.strokeDasharray  = circ;
+  ring.style.strokeDashoffset = circ - (circ * Math.max(0, Math.min(100, pct)) / 100);
+}
+
+function setBarWidth(id, pct) {
+  const bar = el(id);
+  if (bar) bar.style.width = Math.max(0, pct) + "%";
+}
+
+async function logShieldData(protein, steps, sleep) {
+  const h = await getHeaders();
+  if (!h) return;
+  const date = new Date().toISOString().slice(0, 10);
+  const logs = [];
+  if (protein) logs.push({ date, metric_name: "protein", value: protein, unit: "g" });
+  if (steps)   logs.push({ date, metric_name: "steps",   value: steps,   unit: "steps" });
+  if (sleep)   logs.push({ date, metric_name: "sleep",   value: sleep,   unit: "hours" });
+
+  logs.forEach(l =>
+    apiFetch("/api/behavioral-logs", {
+      method: "POST", headers: h, body: JSON.stringify(l)
+    }).catch(() => {})
+  );
+}
+
+function calcProtein() {
+  const gw = parseFloat(el("proteinInput")?.value);
+  if (!gw || gw < 80 || gw > 400) {
+    toast("Enter a valid goal weight between 80–400 lbs", "err");
+    return;
+  }
+
+  _goalWt        = gw;
+  _proteinTarget = Math.round(gw * 0.545 * 10) / 10;
+  const perMeal  = Math.round(_proteinTarget / 3 * 10) / 10;
+  const leucineOk = perMeal >= 30;
+
+  setText("proteinNum",     _proteinTarget);
+  setText("proteinCaption", `${gw} lbs × 0.545 = ${_proteinTarget}g/day`);
+
+  const details = el("proteinDetails");
+  if (details) {
+    details.classList.remove("hidden");
+    details.innerHTML = `
+      <strong>${perMeal}g per meal</strong> across 3 meals
+      &nbsp;—&nbsp; ${leucineOk ? "✅" : "⚠️"} ${leucineOk ? "Meets" : "Below"} 30g leucine threshold<br>
+      <span style="color:var(--text-3);margin-top:4px;display:block">
+        Sample: 4oz chicken (35g) + Greek yogurt (17g) + 2 eggs (12g) + whey scoop (25g)
+      </span>`;
+  }
+
+  // Sync with shield goal weight input
+  const gwInput = el("inputGoalWt");
+  if (gwInput) gwInput.value = gw;
+}
+
+function updateNoiseReadout() {
+  const val = parseInt(el("noiseSlider")?.value || 5);
+  const colors = { 1:"var(--ok)",2:"var(--ok)",3:"var(--ok)",4:"var(--amber)",5:"var(--amber)",6:"var(--amber)",7:"var(--danger)",8:"var(--danger)",9:"var(--danger)",10:"var(--danger)" };
+  const readout = el("noiseReadout");
+  if (readout) {
+    readout.innerHTML = `<strong style="color:${colors[val]}">Level ${val}/10</strong> — ${NOISE_MESSAGES[val]}`;
+  }
+}
+
+async function logNoiseLevel() {
+  const val = parseInt(el("noiseSlider")?.value || 5);
+  const h   = await getHeaders();
+  if (!h) { toast("Sign in to log data"); return; }
+
+  await apiFetch("/api/behavioral-logs", {
+    method: "POST",
+    headers: h,
+    body: JSON.stringify({
+      date:        new Date().toISOString().slice(0, 10),
+      metric_name: "food_noise",
+      value:       val,
+      unit:        "1-10",
+      notes:       `Ghrelin surge level: ${val}/10`
+    })
+  }).catch(() => {});
+
+  toast(`Food noise level ${val}/10 logged`, "info");
+}
+
+/* ═══════════════════════════════════════
+   VOICE INPUT
+═══════════════════════════════════════ */
+function initVoiceInput() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const btn = el("micBtn");
+  if (!SR || !btn) {
+    if (btn) { btn.style.opacity = ".3"; btn.disabled = true; }
+    return;
+  }
+
+  let listening = false, rec = null;
+  btn.addEventListener("click", () => {
+    if (listening) { rec?.stop(); return; }
+    rec = new SR();
+    rec.lang = "en-US";
+    rec.interimResults = false;
+    rec.onstart  = () => { listening = true;  btn.style.color = "var(--danger)"; };
+    rec.onresult = e => {
+      const ta = el("chatInput");
+      if (ta) { ta.value = e.results[0][0].transcript; autoGrow(ta); ta.focus(); }
+    };
+    rec.onend = () => { listening = false; btn.style.color = ""; };
+    rec.onerror = e => { toast(`Mic: ${e.error}`, "err"); };
+    try { rec.start(); } catch { toast("Voice failed", "err"); }
   });
 }
 
-function _buildCriteriaFromFacts(facts, missing) {
-  const hasBMI      = facts.some(f => f.category === 'bmi' || f.category === 'weight');
-  const hasHba1c    = facts.some(f => f.category === 'hba1c');
-  const hasMeds     = facts.some(f => f.category === 'medication_history');
-  const hasLifestyle= facts.some(f => f.category === 'lifestyle_attempt');
-  const hasComorbid = facts.some(f => f.category === 'comorbidity');
-
-  const bmiMissing     = missing.some(m => m.toLowerCase().includes('bmi'));
-  const medsMissing    = missing.some(m => m.toLowerCase().includes('medication'));
-  const styleMissing   = missing.some(m => m.toLowerCase().includes('diet') || m.toLowerCase().includes('lifestyle'));
-
-  return [
-    {
-      status: hasBMI ? 'met' : (bmiMissing ? 'missing' : 'partial'),
-      title:  'BMI ≥ 30 (obesity) or ≥ 27 with comorbidity',
-      detail: hasBMI ? 'BMI data found in your health record.' : hasComorbid ? 'BMI not directly recorded but cardiovascular comorbidities are documented — satisfies the ≥27 + comorbidity path.' : 'BMI not recorded. Your provider can measure this at the next visit.',
-      tag:    hasBMI ? 'Met — BMI documented' : hasComorbid ? 'Partial — comorbidity present, BMI needed' : 'Data gap — provider to document',
-    },
-    {
-      status: hasHba1c ? 'met' : 'missing',
-      title:  'Metabolic dysregulation (HbA1c / prediabetes)',
-      detail: hasHba1c ? 'HbA1c history found. Prediabetes-range values documented, supporting metabolic risk.' : 'No HbA1c in record. Upload a lab report containing this value.',
-      tag:    hasHba1c ? 'Met — HbA1c history in record' : 'Data gap — upload recent lab report',
-    },
-    {
-      status: hasLifestyle ? 'partial' : (styleMissing ? 'missing' : 'partial'),
-      title:  'Failed diet / exercise program',
-      detail: hasLifestyle ? 'Lifestyle attempts documented from conversation history. A formal structured program (dietitian referral, Weight Watchers) would further strengthen this criterion.' : 'No lifestyle program documented. Tell PHI about any diet or exercise changes you\'ve made.',
-      tag:    hasLifestyle ? 'Partial — informal record, formal documentation strengthens this' : 'Data gap — document lifestyle history',
-    },
-    {
-      status: hasComorbid ? 'met' : 'partial',
-      title:  'Cardiovascular / metabolic comorbidities',
-      detail: hasComorbid ? 'Relevant comorbidity markers (elevated LDL, CRP, or other cardiovascular indicators) are present in your record.' : 'Some markers suggest cardiovascular risk. Upload a full lipid panel to confirm.',
-      tag:    hasComorbid ? 'Met — comorbidity markers documented' : 'Partial — upload lipid panel',
-    },
-    {
-      status: hasMeds ? 'met' : (medsMissing ? 'missing' : 'missing'),
-      title:  'Prior medication history (Metformin / first-line agents)',
-      detail: hasMeds ? 'Prior medication history found in your conversation record.' : 'No medication history documented. Tell PHI: "I have/haven\'t tried Metformin or other treatments" and your provider should document this.',
-      tag:    hasMeds ? 'Met — medication history recorded' : 'Data gap — discuss with provider',
-    },
-  ];
+/* ═══════════════════════════════════════
+   UTILITY
+═══════════════════════════════════════ */
+function el(id)          { return document.getElementById(id); }
+function esc(s)          { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function setText(id, v)  { const e=el(id); if(e) e.textContent=v; }
+function setIcon(id, cls){ const e=el(id); if(e){e.className=`fa-solid ${cls}`;} }
+function autoGrow(ta) {
+  ta.style.height = "auto";
+  ta.style.height = Math.min(ta.scrollHeight, 130) + "px";
 }
 
-function _advFallbackCriteria() {
-  return ['BMI ≥ 30 or ≥ 27 with comorbidity','Prediabetes or Type 2 Diabetes (HbA1c ≥ 5.7%)','Failed diet/exercise program','Cardiovascular or metabolic comorbidity','Prior first-line medication history'].map((t, i) =>
-    `<div class="adv-criterion partial">
-       <div class="adv-crit-icon">?</div>
-       <div style="flex:1">
-         <div class="adv-crit-title">${escapeHtml(t)}</div>
-         <div class="adv-crit-detail">Upload lab reports and chat with PHI to populate this criterion from your health record.</div>
-         <span class="adv-crit-tag">Upload a report to check</span>
-       </div>
-     </div>`
-  ).join('');
-}
-// ── Weekly Brief ────────────────────────────────────────────────────
-document.getElementById('btn-weekly-brief')?.addEventListener('click', async () => {
-    closeSidebar();
-    const h = await getAuthHeaders();
-    
-    // Try to load latest brief first
-    const res = await fetch(`${API_BASE}/api/weekly-brief/latest`, { headers: h });
-    const data = await safeJson(res);
-    
-    if (!data.available) {
-        // Generate one
-        const genRes = await fetch(`${API_BASE}/api/weekly-brief`, {
-            method: 'POST', headers: h, body: JSON.stringify({})
-        });
-        const genData = await safeJson(genRes);
-        if (genData.brief) showWeeklyBriefModal(genData.brief);
-        else showToast('No health data yet — upload a report first', 'error');
-        return;
-    }
-    showWeeklyBriefModal(data.brief);
-});
-
-function showWeeklyBriefModal(brief) {
-    const existing = document.getElementById('weekly-brief-modal');
-    if (existing) existing.remove();
-    
-    const m = document.createElement('div');
-    m.id = 'weekly-brief-modal';
-    m.className = 'modal';
-    m.innerHTML = `
-        <div class="modal-box" style="max-width:540px">
-            <div class="modal-header">
-                <h3><i class="fa-solid fa-newspaper" style="color:var(--brand)"></i> Weekly Health Brief</h3>
-                <button class="close-btn" onclick="document.getElementById('weekly-brief-modal').remove()">
-                    <i class="fa-solid fa-xmark"></i>
-                </button>
-            </div>
-            <div style="padding:4px 0 8px">
-                <p style="font-size:14px;line-height:1.7;margin-bottom:14px">${escapeHtml(brief.headline || '')}</p>
-                
-                <div style="display:flex;flex-direction:column;gap:12px">
-                    ${briefSection('fa-magnifying-glass', 'What PHI noticed', brief.pattern)}
-                    ${briefSection('fa-check', 'One thing for this week', brief.action)}
-                    ${briefSection('fa-stethoscope', 'Question for your doctor', brief.doctor_q)}
-                    ${briefSection('fa-star', 'One good thing', brief.win)}
-                </div>
-                
-                <div style="margin-top:18px;padding-top:14px;border-top:0.5px solid var(--border)">
-                    <button onclick="window.closeModals();sendChip('Based on my weekly brief, what should I focus on most this week?')"
-                        style="width:100%;padding:10px;background:var(--brand);border:none;border-radius:8px;color:white;font-size:13.5px;font-weight:600;font-family:var(--font);cursor:pointer">
-                        Ask PHI about this week ↗
-                    </button>
-                </div>
-            </div>
-        </div>`;
-    document.body.appendChild(m);
+function toast(msg, type = "ok") {
+  const container = el("toasts");
+  if (!container) return;
+  const t = document.createElement("div");
+  const icon = type === "ok" ? "circle-check" : type === "err" ? "circle-exclamation" : "circle-info";
+  t.className = `toast toast-${type}`;
+  t.innerHTML = `<i class="fa-solid fa-${icon}" aria-hidden="true"></i> ${esc(msg)}`;
+  container.appendChild(t);
+  setTimeout(() => { t.style.opacity = "0"; t.style.transition = "opacity .3s"; setTimeout(() => t.remove(), 300); }, 3800);
 }
 
-function briefSection(icon, label, text) {
-    if (!text) return '';
-    return `<div style="padding:12px 14px;background:var(--bg-body);border-radius:10px;border-left:3px solid var(--brand)">
-        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text-muted);margin-bottom:6px">
-            <i class="fa-solid ${icon}" style="color:var(--brand);margin-right:5px"></i>${label}
-        </div>
-        <div style="font-size:13.5px;line-height:1.65">${escapeHtml(text)}</div>
-    </div>`;
-}
-document.getElementById('btn-appointment-prep')?.addEventListener('click', () => {
-    closeSidebar();
-    showAppointmentPrepModal();
-});
+/* ═══════════════════════════════════════
+   EVENT WIRING
+═══════════════════════════════════════ */
+function wireEvents() {
 
-function showAppointmentPrepModal() {
-    const existing = document.getElementById('appt-prep-modal');
-    if (existing) existing.remove();
-    
-    const today = new Date().toISOString().slice(0,10);
-    const m = document.createElement('div');
-    m.id = 'appt-prep-modal';
-    m.className = 'modal';
-    m.innerHTML = `
-        <div class="modal-box" style="max-width:500px">
-            <div class="modal-header">
-                <h3><i class="fa-solid fa-calendar-check" style="color:var(--brand)"></i> Appointment Prep</h3>
-                <button class="close-btn" onclick="document.getElementById('appt-prep-modal').remove()">
-                    <i class="fa-solid fa-xmark"></i>
-                </button>
-            </div>
-            <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;line-height:1.6">
-                PHI generates a one-page clinical brief for your doctor visit — 
-                your key findings, trend summary, and 3 specific questions to ask.
-            </p>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
-                <div>
-                    <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px;color:var(--text-muted)">Appointment date</label>
-                    <input type="date" id="appt-date" value="${today}" 
-                        style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:13px;font-family:var(--font);background:var(--bg-input);color:var(--text-main)">
-                </div>
-                <div>
-                    <label style="font-size:12px;font-weight:600;display:block;margin-bottom:5px;color:var(--text-muted)">Specialist type</label>
-                    <select id="appt-type" 
-                        style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:13px;font-family:var(--font);background:var(--bg-input);color:var(--text-main)">
-                        <option>primary care</option>
-                        <option>cardiologist</option>
-                        <option>endocrinologist</option>
-                        <option>nephrologist</option>
-                        <option>weight management</option>
-                        <option>other</option>
-                    </select>
-                </div>
-            </div>
-            <div id="appt-output" style="display:none;background:var(--bg-body);border-radius:8px;padding:14px;font-size:12.5px;line-height:1.75;max-height:300px;overflow-y:auto;white-space:pre-wrap;font-family:var(--font);margin-bottom:12px"></div>
-            <div class="modal-actions">
-                <button class="btn-cancel" onclick="document.getElementById('appt-prep-modal').remove()">Cancel</button>
-                <button id="gen-prep-btn" 
-                    style="padding:9px 18px;background:var(--brand);border:none;border-radius:8px;color:white;font-size:13.5px;font-weight:600;font-family:var(--font);cursor:pointer;display:flex;align-items:center;gap:6px">
-                    <i class="fa-solid fa-wand-magic-sparkles"></i> Generate brief
-                </button>
-            </div>
-        </div>`;
-    document.body.appendChild(m);
-    
-    document.getElementById('gen-prep-btn').addEventListener('click', async () => {
-        const btn = document.getElementById('gen-prep-btn');
-        const date = document.getElementById('appt-date')?.value;
-        const type = document.getElementById('appt-type')?.value;
-        btn.disabled = true;
-        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Generating...';
-        
-        const h = await getAuthHeaders();
-        const res = await fetch(`${API_BASE}/api/appointment-prep`, {
-            method: 'POST', headers: h,
-            body: JSON.stringify({ appointment_date: date, specialist_type: type })
-        });
-        const data = await safeJson(res);
-        
-        if (data.prep?.formatted) {
-            const out = document.getElementById('appt-output');
-            out.style.display = 'block';
-            out.textContent = data.prep.formatted;
-        } else {
-            showToast('Upload lab reports first to generate appointment prep', 'error');
-        }
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> Regenerate';
+  // New chat
+  el("newChatBtn")?.addEventListener("click", resetToWelcome);
+
+  // Nav items
+  document.querySelectorAll(".nav-item[data-view]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".nav-item").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      closeSidebar();
+      // Future: add view switching logic here
     });
+  });
+
+  // Sidebar
+  el("mobileMenuBtn")?.addEventListener("click", openSidebar);
+  el("sidebarOverlay")?.addEventListener("click", closeSidebar);
+
+  // User menu
+  el("userRow")?.addEventListener("click", e => {
+    if (!e.target.closest(".user-dropdown")) toggleUserMenu();
+  });
+  document.addEventListener("click", e => {
+    if (!el("userRow")?.contains(e.target)) closeUserMenu();
+  });
+
+  // User dropdown actions
+  el("themeToggleBtn")?.addEventListener("click", toggleTheme);
+  el("topThemeBtn")?.addEventListener("click", toggleTheme);
+  el("exportChatBtn")?.addEventListener("click", exportCurrentChat);
+  el("logoutBtn")?.addEventListener("click", handleLogout);
+
+  // History (event delegation)
+  el("historyList")?.addEventListener("click", e => {
+    const item   = e.target.closest(".hist-item[data-id]");
+    const delBtn = e.target.closest(".hist-del[data-del]");
+    if (delBtn) { deleteConversation(delBtn.dataset.del, e); }
+    else if (item) { openConversation(item.dataset.id); }
+  });
+
+  // Chat input
+  const ta = el("chatInput");
+  ta?.addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
+  });
+  ta?.addEventListener("input", () => autoGrow(ta));
+
+  // Send button
+  el("sendBtn")?.addEventListener("click", handleSend);
+
+  // Welcome chips
+  document.querySelectorAll(".suggestion-chips .chip").forEach(chip => {
+    chip.addEventListener("click", () => {
+      const q = chip.dataset.q;
+      if (!q) return;
+      if (ta) ta.value = q;
+      sendMessage(q);
+    });
+  });
+
+  // File attach
+  const fileInput = el("fileInput");
+  fileInput?.addEventListener("change", handleFileSelect);
+  el("attachTopBtn")?.addEventListener("click",   () => fileInput?.click());
+  el("attachInputBtn")?.addEventListener("click", () => fileInput?.click());
+  el("uploadNudgeBtn")?.addEventListener("click", () => fileInput?.click());
+
+  // Cockpit: shield
+  el("updateShieldBtn")?.addEventListener("click", updateShield);
+
+  // Cockpit: protein calc
+  el("calcBtn")?.addEventListener("click", calcProtein);
+  el("proteinInput")?.addEventListener("keydown", e => { if (e.key === "Enter") calcProtein(); });
+
+  // Cockpit: cliff alerts refresh
+  el("refreshAlertsBtn")?.addEventListener("click", loadMarkersData);
+
+  // Cockpit: food noise
+  el("noiseSlider")?.addEventListener("input", updateNoiseReadout);
+  el("logNoiseBtn")?.addEventListener("click", logNoiseLevel);
+
+  // Cockpit: markers refresh
+  el("refreshMarkersBtn")?.addEventListener("click", loadMarkersData);
+
+  // Drag-and-drop on chat area
+  document.addEventListener("dragover", e => e.preventDefault());
+  document.addEventListener("drop", e => {
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer?.files || []);
+    files.forEach(f => addFile(f));
+  });
+
+  // Keyboard shortcuts
+  document.addEventListener("keydown", e => {
+    // Ctrl/Cmd + K = new chat
+    if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+      e.preventDefault();
+      resetToWelcome();
+      el("chatInput")?.focus();
+    }
+    // Escape = close sidebar + user menu
+    if (e.key === "Escape") {
+      closeSidebar();
+      closeUserMenu();
+    }
+  });
 }
+
+/* ═══════════════════════════════════════
+   INIT
+═══════════════════════════════════════ */
+document.addEventListener("DOMContentLoaded", () => {
+  wireEvents();
+  updateNoiseReadout();
+  boot();
+  initVoiceInput();
+});

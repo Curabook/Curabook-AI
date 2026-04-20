@@ -1,1069 +1,379 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>PHI Performance Cockpit — GLP-1 Maintenance | Curabook</title>
-<meta name="description" content="Your GLP-1 maintenance command center. Track Muscle Defense, detect metabolic rebound, and stay ahead of the GLP-1 Cliff.">
-<link rel="canonical" href="https://curabook.com/health-ai">
-
-<!-- Fonts -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>PHI — Personal Health Intelligence</title>
+<meta name="description" content="Your GLP-1 co-pilot. Track metabolic rebound, protect lean mass, stay ahead of the cliff.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Space+Grotesk:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-
-<style>
-/* ═══════════════════════════════════════════════════════════
-   PERFORMANCE COCKPIT — Medical Dark + Industrial Precision
-   Palette: near-black obsidian, electric teal signal, warm amber warning
-   Typography: Space Grotesk (functional) + Playfair Display (editorial)
-   Aesthetic: F1 telemetry meets clinical dashboard
-═══════════════════════════════════════════════════════════ */
-
-:root {
-  --obsidian:    #080c0f;
-  --ink-1:       #0e1318;
-  --ink-2:       #141c22;
-  --ink-3:       #1c2830;
-  --ink-4:       #243040;
-  --signal:      #00e5cc;
-  --signal-2:    #00b5a0;
-  --signal-dim:  rgba(0,229,204,.08);
-  --signal-glow: rgba(0,229,204,.22);
-  --danger:      #ff4d6d;
-  --danger-dim:  rgba(255,77,109,.10);
-  --amber:       #ffa726;
-  --amber-dim:   rgba(255,167,38,.10);
-  --ok:          #4cddaa;
-  --ok-dim:      rgba(76,221,170,.10);
-  --text-1:      #edf0f4;
-  --text-2:      #8a9ab0;
-  --text-3:      #4a5a6a;
-  --border:      rgba(255,255,255,.07);
-  --border-2:    rgba(255,255,255,.13);
-  --mono:        'DM Mono', monospace;
-  --sans:        'Space Grotesk', system-ui, sans-serif;
-  --serif:       'Playfair Display', Georgia, serif;
-  --r:           10px;
-  --r-lg:        16px;
-}
-
-*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-html { scroll-behavior: smooth; }
-
-body {
-  font-family: var(--sans);
-  background: var(--obsidian);
-  color: var(--text-1);
-  min-height: 100vh;
-  -webkit-font-smoothing: antialiased;
-  overflow-x: hidden;
-}
-
-/* Scanline texture overlay */
-body::before {
-  content: '';
-  position: fixed; inset: 0;
-  background: repeating-linear-gradient(
-    0deg,
-    transparent,
-    transparent 2px,
-    rgba(0,229,204,.012) 2px,
-    rgba(0,229,204,.012) 4px
-  );
-  pointer-events: none; z-index: 0;
-}
-
-/* ── TOPBAR ──────────────────────────────────────────── */
-.topbar {
-  position: sticky; top: 0; z-index: 100;
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 12px 28px;
-  background: rgba(8,12,15,.92);
-  border-bottom: 1px solid var(--border);
-  backdrop-filter: blur(24px);
-}
-
-.logo {
-  display: flex; align-items: center; gap: 10px;
-  text-decoration: none;
-}
-.logo-mark {
-  width: 34px; height: 34px;
-  background: linear-gradient(135deg, var(--signal), var(--signal-2));
-  border-radius: 9px;
-  display: flex; align-items: center; justify-content: center;
-  font-family: var(--serif); font-size: 1.1rem; color: var(--obsidian); font-weight: 700;
-  box-shadow: 0 2px 16px var(--signal-glow);
-}
-.logo-name {
-  font-family: var(--sans); font-weight: 600; font-size: .95rem;
-  color: var(--text-2); letter-spacing: .04em;
-}
-.cockpit-badge {
-  font-size: .62rem; font-weight: 700; letter-spacing: .12em;
-  background: var(--signal-dim); color: var(--signal);
-  border: 1px solid rgba(0,229,204,.2);
-  padding: 3px 9px; border-radius: 20px; text-transform: uppercase;
-}
-
-.topbar-right { display: flex; align-items: center; gap: 12px; }
-.btn-cta {
-  padding: 8px 20px;
-  background: var(--signal); color: var(--obsidian);
-  border: none; border-radius: var(--r);
-  font-family: var(--sans); font-size: .85rem; font-weight: 700;
-  cursor: pointer; transition: all .15s; text-decoration: none;
-  display: inline-flex; align-items: center; gap: 6px;
-}
-.btn-cta:hover { background: var(--signal-2); transform: translateY(-1px); }
-.btn-outline {
-  padding: 7px 16px;
-  background: none; border: 1px solid var(--border-2);
-  border-radius: var(--r); color: var(--text-2);
-  font-family: var(--sans); font-size: .82rem;
-  cursor: pointer; transition: all .15s; text-decoration: none;
-}
-.btn-outline:hover { border-color: var(--signal); color: var(--signal); }
-
-/* ── HERO ────────────────────────────────────────────── */
-.hero {
-  position: relative; z-index: 1;
-  padding: 64px 28px 48px;
-  max-width: 1200px; margin: 0 auto; text-align: center;
-}
-.hero::before {
-  content: '';
-  position: absolute; top: -40px; left: 50%; transform: translateX(-50%);
-  width: 800px; height: 350px;
-  background: radial-gradient(ellipse, rgba(0,229,204,.10) 0%, transparent 70%);
-  pointer-events: none;
-}
-.hero-chip {
-  display: inline-flex; align-items: center; gap: 8px;
-  background: var(--danger-dim); border: 1px solid rgba(255,77,109,.2);
-  color: var(--danger); font-size: .78rem; font-weight: 600;
-  letter-spacing: .1em; padding: 5px 14px; border-radius: 20px;
-  text-transform: uppercase; margin-bottom: 22px;
-}
-.hero-chip .pulse {
-  width: 7px; height: 7px; border-radius: 50%; background: var(--danger);
-  animation: pulse-red 1.8s ease infinite;
-}
-@keyframes pulse-red {
-  0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(255,77,109,.4)}
-  50%{opacity:.7;box-shadow:0 0 0 8px rgba(255,77,109,0)}
-}
-
-.hero-h1 {
-  font-family: var(--serif); font-size: clamp(2.2rem,5vw,3.8rem);
-  font-weight: 700; line-height: 1.08; letter-spacing: -.04em;
-  margin-bottom: 18px; color: var(--text-1);
-}
-.hero-h1 em { font-style: italic; color: var(--signal); }
-
-.hero-sub {
-  font-size: 1.05rem; color: var(--text-2); line-height: 1.7;
-  max-width: 560px; margin: 0 auto 28px;
-}
-
-.cliff-stat-strip {
-  display: flex; justify-content: center; gap: 0;
-  margin: 0 auto 40px; max-width: 700px;
-}
-.cliff-stat {
-  flex: 1; padding: 18px 20px; text-align: center;
-  border: 1px solid var(--border);
-  background: var(--ink-1);
-}
-.cliff-stat:first-child { border-radius: var(--r-lg) 0 0 var(--r-lg); }
-.cliff-stat:last-child  { border-radius: 0 var(--r-lg) var(--r-lg) 0; }
-.cliff-stat:not(:last-child) { border-right: none; }
-.cliff-stat-num {
-  font-family: var(--mono); font-size: 1.9rem; font-weight: 500;
-  color: var(--danger); line-height: 1; margin-bottom: 4px;
-}
-.cliff-stat-label { font-size: .72rem; color: var(--text-3); letter-spacing: .06em; }
-
-/* ── MAIN GRID ───────────────────────────────────────── */
-.cockpit-grid {
-  position: relative; z-index: 1;
-  max-width: 1200px; margin: 0 auto;
-  padding: 0 28px 80px;
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  grid-template-rows: auto auto auto;
-  gap: 16px;
-}
-
-/* ── PANEL BASE ──────────────────────────────────────── */
-.panel {
-  background: var(--ink-1);
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  padding: 24px;
-  position: relative; overflow: hidden;
-  transition: border-color .2s;
-}
-.panel:hover { border-color: var(--border-2); }
-.panel::after {
-  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
-  background: linear-gradient(90deg, transparent, var(--signal), transparent);
-  opacity: 0; transition: opacity .3s;
-}
-.panel:hover::after { opacity: 1; }
-
-.panel-header {
-  display: flex; align-items: flex-start; justify-content: space-between;
-  margin-bottom: 20px;
-}
-.panel-label {
-  font-size: .68rem; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .12em; color: var(--text-3); margin-bottom: 5px;
-}
-.panel-title {
-  font-family: var(--serif); font-size: 1.15rem; font-weight: 400;
-  color: var(--text-1); line-height: 1.3;
-}
-.panel-icon {
-  width: 38px; height: 38px;
-  background: var(--signal-dim); border-radius: var(--r);
-  display: flex; align-items: center; justify-content: center;
-  color: var(--signal); font-size: 1rem; flex-shrink: 0;
-}
-
-/* Span classes */
-.span-2 { grid-column: span 2; }
-.span-3 { grid-column: span 3; }
-
-/* ── METABOLIC SHIELD — 3-ring SVG ──────────────────── */
-.shield-wrap {
-  display: flex; align-items: center; gap: 32px; flex-wrap: wrap;
-}
-.shield-svg-container {
-  position: relative; flex-shrink: 0;
-  width: 200px; height: 200px;
-}
-.shield-score-center {
-  position: absolute; inset: 0;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-}
-.shield-score-num {
-  font-family: var(--mono); font-size: 2.6rem; font-weight: 500; line-height: 1;
-  color: var(--signal);
-}
-.shield-score-label {
-  font-size: .68rem; color: var(--text-3); letter-spacing: .1em;
-  text-transform: uppercase; margin-top: 3px;
-}
-
-.shield-rings { flex: 1; min-width: 200px; }
-.ring-row {
-  display: flex; align-items: center; gap: 10px; margin-bottom: 16px;
-}
-.ring-row:last-child { margin-bottom: 0; }
-.ring-dot {
-  width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
-}
-.ring-info { flex: 1; }
-.ring-name { font-size: .82rem; font-weight: 500; color: var(--text-1); margin-bottom: 2px; }
-.ring-pct  { font-family: var(--mono); font-size: .72rem; color: var(--text-3); }
-.ring-bar-track {
-  width: 100%; height: 5px; background: var(--ink-3);
-  border-radius: 3px; margin-top: 4px; overflow: hidden;
-}
-.ring-bar-fill {
-  height: 100%; border-radius: 3px;
-  transition: width 1.2s cubic-bezier(.4,0,.2,1);
-}
-
-/* ── MUSCLE VS FAT CHART ─────────────────────────────── */
-.chart-container { position: relative; height: 200px; }
-
-/* ── PROTEIN CALCULATOR ──────────────────────────────── */
-.protein-calc { display: flex; flex-direction: column; gap: 14px; }
-.protein-input-row { display: flex; gap: 10px; align-items: center; }
-.protein-input {
-  flex: 1; padding: 9px 12px;
-  background: var(--ink-3); border: 1px solid var(--border);
-  border-radius: var(--r); color: var(--text-1);
-  font-family: var(--mono); font-size: 1rem; outline: none;
-  transition: border-color .2s;
-}
-.protein-input:focus { border-color: var(--signal); }
-.protein-btn {
-  padding: 9px 16px; background: var(--signal); color: var(--obsidian);
-  border: none; border-radius: var(--r); font-family: var(--sans);
-  font-size: .85rem; font-weight: 700; cursor: pointer; transition: all .15s;
-  white-space: nowrap;
-}
-.protein-btn:hover { background: var(--signal-2); }
-.protein-result {
-  display: none; background: var(--ink-2);
-  border: 1px solid rgba(0,229,204,.2); border-radius: var(--r);
-  padding: 14px;
-}
-.protein-result.show { display: block; }
-.protein-big {
-  font-family: var(--mono); font-size: 2.4rem; font-weight: 500;
-  color: var(--signal); line-height: 1;
-}
-.protein-big span { font-size: 1rem; color: var(--text-3); }
-.protein-breakdown { margin-top: 10px; font-size: .78rem; color: var(--text-2); line-height: 1.6; }
-.protein-foods { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 5px; }
-.protein-food-tag {
-  background: var(--ink-3); border: 1px solid var(--border);
-  padding: 3px 10px; border-radius: 20px; font-size: .72rem; color: var(--text-2);
-}
-
-/* ── CLIFF ALERT PANEL ───────────────────────────────── */
-.alert-panel { border-color: rgba(255,77,109,.25); }
-.alert-panel::after { background: linear-gradient(90deg, transparent, var(--danger), transparent) !important; opacity: 1 !important; }
-
-.cliff-alert-item {
-  display: flex; gap: 12px; align-items: flex-start;
-  padding: 12px 14px; border-radius: var(--r);
-  border-left: 3px solid transparent; margin-bottom: 10px;
-  background: var(--ink-2);
-  transition: background .15s;
-}
-.cliff-alert-item:last-child { margin-bottom: 0; }
-.cliff-alert-item.high   { border-left-color: var(--danger);  background: rgba(255,77,109,.05); }
-.cliff-alert-item.medium { border-left-color: var(--amber);   background: rgba(255,167,38,.05); }
-.cliff-alert-item.ok     { border-left-color: var(--ok);      background: rgba(76,221,170,.05); }
-.cliff-alert-icon  { font-size: 1.2rem; flex-shrink: 0; margin-top: 1px; }
-.cliff-alert-body  { flex: 1; }
-.cliff-alert-title { font-weight: 600; font-size: .85rem; margin-bottom: 3px; }
-.cliff-alert-desc  { font-size: .76rem; color: var(--text-2); line-height: 1.55; }
-
-/* ── TAPER EDUCATION ─────────────────────────────────── */
-.taper-options { display: flex; flex-direction: column; gap: 10px; }
-.taper-option {
-  display: flex; gap: 12px; align-items: flex-start;
-  padding: 12px 14px; background: var(--ink-2);
-  border: 1px solid var(--border); border-radius: var(--r);
-  cursor: pointer; transition: border-color .15s;
-}
-.taper-option:hover { border-color: var(--signal); }
-.taper-option-badge {
-  width: 28px; height: 28px; border-radius: 50%;
-  background: var(--signal-dim); color: var(--signal);
-  font-family: var(--mono); font-size: .7rem; font-weight: 500;
-  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-}
-.taper-option-title { font-weight: 600; font-size: .83rem; margin-bottom: 3px; }
-.taper-option-desc  { font-size: .75rem; color: var(--text-2); line-height: 1.5; }
-.taper-evidence {
-  font-size: .68rem; font-family: var(--mono); color: var(--signal);
-  margin-top: 4px;
-}
-
-/* ── FOOD NOISE TRACKER ──────────────────────────────── */
-.noise-meter-wrap { display: flex; flex-direction: column; gap: 12px; }
-.noise-slider-row { display: flex; align-items: center; gap: 12px; }
-.noise-label-left  { font-size: .75rem; color: var(--text-3); width: 80px; text-align: right; }
-.noise-label-right { font-size: .75rem; color: var(--text-3); width: 80px; }
-input[type="range"].noise-slider {
-  flex: 1; accent-color: var(--signal); height: 6px; cursor: pointer;
-}
-.noise-readout {
-  text-align: center; padding: 10px;
-  background: var(--ink-2); border-radius: var(--r);
-  font-size: .82rem; color: var(--text-2); line-height: 1.55;
-}
-.noise-readout strong { color: var(--text-1); }
-
-/* ── METRICS ROW ─────────────────────────────────────── */
-.metric-card {
-  background: var(--ink-2); border: 1px solid var(--border);
-  border-radius: var(--r); padding: 14px 16px;
-  display: flex; flex-direction: column; gap: 4px;
-}
-.metric-label { font-size: .68rem; color: var(--text-3); text-transform: uppercase; letter-spacing: .08em; }
-.metric-val   { font-family: var(--mono); font-size: 1.5rem; font-weight: 500; color: var(--text-1); }
-.metric-val.ok     { color: var(--ok); }
-.metric-val.warn   { color: var(--amber); }
-.metric-val.danger { color: var(--danger); }
-.metric-delta { font-size: .72rem; color: var(--text-3); }
-.metric-grid  { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
-
-/* ── CTA FOOTER ──────────────────────────────────────── */
-.cta-footer {
-  position: relative; z-index: 1;
-  max-width: 1200px; margin: 0 auto 80px; padding: 0 28px;
-}
-.cta-box {
-  background: linear-gradient(135deg, var(--ink-2) 0%, #0a1d1c 100%);
-  border: 1px solid rgba(0,229,204,.18);
-  border-radius: 20px; padding: 48px 40px; text-align: center;
-  position: relative; overflow: hidden;
-}
-.cta-box::before {
-  content: ''; position: absolute;
-  top: -60px; left: 50%; transform: translateX(-50%);
-  width: 600px; height: 300px;
-  background: radial-gradient(ellipse, rgba(0,229,204,.10) 0%, transparent 70%);
-  pointer-events: none;
-}
-.cta-box h2 {
-  font-family: var(--serif); font-size: clamp(1.6rem, 3vw, 2.4rem);
-  font-weight: 700; margin-bottom: 12px;
-}
-.cta-box h2 em { font-style: italic; color: var(--signal); }
-.cta-box p { font-size: .95rem; color: var(--text-2); line-height: 1.7; max-width: 500px; margin: 0 auto 24px; }
-.cta-trust {
-  display: flex; justify-content: center; gap: 20px;
-  flex-wrap: wrap; font-size: .74rem; color: var(--text-3); margin-top: 16px;
-}
-.cta-trust span { display: flex; align-items: center; gap: 5px; }
-.cta-trust i { color: var(--signal); }
-
-/* ── SVG RING ANIMATION ──────────────────────────────── */
-.ring-path { transition: stroke-dashoffset 1.4s cubic-bezier(.4,0,.2,1); }
-
-/* ── RESPONSIVE ──────────────────────────────────────── */
-@media (max-width: 900px) {
-  .cockpit-grid { grid-template-columns: 1fr; }
-  .span-2, .span-3 { grid-column: span 1; }
-  .cliff-stat-strip { max-width: 100%; }
-  .shield-wrap { flex-direction: column; align-items: center; }
-  .metric-grid { grid-template-columns: repeat(2, 1fr); }
-  .cta-box { padding: 32px 20px; }
-}
-
-@media (max-width: 600px) {
-  .topbar { padding: 10px 14px; }
-  .hero { padding: 40px 14px 32px; }
-  .cockpit-grid, .cta-footer { padding: 0 14px 60px; }
-  .cliff-stat-strip { flex-wrap: wrap; }
-  .cliff-stat { min-width: 40%; }
-  .cliff-stat:first-child { border-radius: var(--r); }
-  .cliff-stat:last-child  { border-radius: var(--r); }
-}
-</style>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
 
-<!-- ── TOPBAR ── -->
-<nav class="topbar">
-  <a href="/" class="logo">
-    <div class="logo-mark">φ</div>
-    <span class="logo-name">Curabook</span>
-    <span class="cockpit-badge">Performance Cockpit</span>
-  </a>
-  <div class="topbar-right">
-    <a href="/login" class="btn-outline">Sign In</a>
-    <a href="/signup" class="btn-cta"><i class="fa-solid fa-rocket"></i> Launch Cockpit</a>
-  </div>
-</nav>
+<!-- ═══════════════════════════════════════
+     APP SHELL
+═══════════════════════════════════════ -->
+<div id="shell">
 
-<!-- ── HERO ── -->
-<section class="hero">
-  <div class="hero-chip">
-    <span class="pulse"></span>
-    GLP-1 Cliff Prevention System
-  </div>
-  <h1 class="hero-h1">Your metabolic<br><em>command center.</em></h1>
-  <p class="hero-sub">
-    Stop the rebound before it starts. Track Muscle Defense in real time,
-    catch early cliff signals in your labs, and stay metabolically resilient
-    long after your last injection.
-  </p>
+  <!-- ─── SIDEBAR ─── -->
+  <aside id="sidebar" role="navigation" aria-label="Main navigation">
 
-  <!-- Cliff stats -->
-  <div class="cliff-stat-strip">
-    <div class="cliff-stat">
-      <div class="cliff-stat-num">70%</div>
-      <div class="cliff-stat-label">Quit GLP-1s in Year 1</div>
+    <div class="sb-brand">
+      <a href="/" class="sb-logo-link" title="Back to home">
+        <div class="sb-logo-mark">φ</div>
+        <span class="sb-logo-name">Curabook</span>
+      </a>
+      <span class="sb-version-tag">PHI</span>
     </div>
-    <div class="cliff-stat">
-      <div class="cliff-stat-num">39%</div>
-      <div class="cliff-stat-label">Weight lost is lean mass</div>
-    </div>
-    <div class="cliff-stat">
-      <div class="cliff-stat-num">0.8%</div>
-      <div class="cliff-stat-label">Regain with behavioral support</div>
-    </div>
-    <div class="cliff-stat">
-      <div class="cliff-stat-num">60%</div>
-      <div class="cliff-stat-label">Higher reversal with ≥25 interactions/mo</div>
-    </div>
-  </div>
-</section>
 
-<!-- ══════════════════════════════════════════════════════
-     PERFORMANCE COCKPIT GRID
-══════════════════════════════════════════════════════ -->
-<div class="cockpit-grid">
+    <div class="sb-actions">
+      <button id="newChatBtn" class="new-chat-btn" title="Start new conversation (Ctrl+K)">
+        <i class="fa-solid fa-plus"></i>
+        <span>New Conversation</span>
+        <i class="fa-regular fa-pen-to-square ms-auto"></i>
+      </button>
+    </div>
 
-  <!-- 1. METABOLIC SHIELD — 3-ring SVG ─────────────────── -->
-  <div class="panel span-2" id="shieldPanel">
-    <div class="panel-header">
-      <div>
-        <div class="panel-label">Metabolic Shield</div>
-        <div class="panel-title">Three-Pillar Resilience Score</div>
+    <nav class="sb-nav" aria-label="App sections">
+      <button class="nav-item active" data-view="chat" id="navChat">
+        <i class="fa-solid fa-comments"></i>
+        <span>Chat with PHI</span>
+      </button>
+      <button class="nav-item" data-view="health" id="navHealth">
+        <i class="fa-solid fa-gauge-high"></i>
+        <span>My Health</span>
+      </button>
+      <button class="nav-item" data-view="reports" id="navReports">
+        <i class="fa-solid fa-file-medical"></i>
+        <span>Lab Reports</span>
+      </button>
+    </nav>
+
+    <div class="sb-divider" role="separator"></div>
+    <div class="sb-section-label" aria-label="Conversation history">Recent</div>
+
+    <div id="historyList" class="sb-history" aria-live="polite">
+      <div class="sb-empty">No conversations yet</div>
+    </div>
+
+    <div class="sb-footer">
+      <div id="userRow" class="user-row" role="button" aria-haspopup="true" tabindex="0">
+        <div id="userAvatar" class="user-av" aria-hidden="true">U</div>
+        <div class="user-meta">
+          <div id="userEmail" class="user-email">Loading…</div>
+          <div id="userPlan" class="user-plan">PHI Free</div>
+        </div>
+        <i class="fa-solid fa-ellipsis-vertical user-more-icon" aria-hidden="true"></i>
+
+        <div id="userDropdown" class="user-dropdown" role="menu" aria-hidden="true">
+          <button class="dd-item" id="themeToggleBtn" role="menuitem">
+            <i class="fa-solid fa-moon" id="themeIcon" aria-hidden="true"></i>
+            <span id="themeLabel">Light Mode</span>
+          </button>
+          <button class="dd-item" id="exportChatBtn" role="menuitem">
+            <i class="fa-solid fa-download" aria-hidden="true"></i>
+            <span>Export Chat</span>
+          </button>
+          <div class="dd-divider" role="separator"></div>
+          <button class="dd-item dd-danger" id="logoutBtn" role="menuitem">
+            <i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i>
+            <span>Sign Out</span>
+          </button>
+        </div>
       </div>
-      <div class="panel-icon"><i class="fa-solid fa-shield-halved"></i></div>
     </div>
 
-    <div class="shield-wrap">
-      <!-- SVG 3-ring visualization -->
-      <div class="shield-svg-container">
-        <svg width="200" height="200" viewBox="0 0 200 200" id="shieldSvg">
-          <!-- Ring 1: Protein (outermost) -->
-          <circle cx="100" cy="100" r="88" fill="none" stroke="rgba(255,255,255,.05)" stroke-width="14"/>
-          <circle cx="100" cy="100" r="88" fill="none"
-            stroke="#00e5cc" stroke-width="14"
-            stroke-linecap="round"
-            stroke-dasharray="553" stroke-dashoffset="553"
-            transform="rotate(-90 100 100)"
-            class="ring-path" id="ringProtein"/>
+  </aside>
 
-          <!-- Ring 2: Movement (middle) -->
-          <circle cx="100" cy="100" r="70" fill="none" stroke="rgba(255,255,255,.05)" stroke-width="13"/>
-          <circle cx="100" cy="100" r="70" fill="none"
-            stroke="#ffa726" stroke-width="13"
-            stroke-linecap="round"
-            stroke-dasharray="440" stroke-dashoffset="440"
-            transform="rotate(-90 100 100)"
-            class="ring-path" id="ringMovement"/>
+  <!-- ─── MAIN ─── -->
+  <main id="main" role="main">
 
-          <!-- Ring 3: Recovery (innermost) -->
-          <circle cx="100" cy="100" r="53" fill="none" stroke="rgba(255,255,255,.05)" stroke-width="12"/>
-          <circle cx="100" cy="100" r="53" fill="none"
-            stroke="#4cddaa" stroke-width="12"
-            stroke-linecap="round"
-            stroke-dasharray="333" stroke-dashoffset="333"
-            transform="rotate(-90 100 100)"
-            class="ring-path" id="ringRecovery"/>
+    <!-- Top Bar -->
+    <div id="topbar" role="banner">
+      <div class="topbar-left">
+        <button id="mobileMenuBtn" class="topbar-icon-btn" aria-label="Open menu" aria-expanded="false">
+          <i class="fa-solid fa-bars" aria-hidden="true"></i>
+        </button>
+        <div class="status-badge" aria-live="polite">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span id="convTitle" class="status-text">Ready</span>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button id="topThemeBtn" class="topbar-icon-btn" aria-label="Toggle light/dark theme">
+          <i class="fa-solid fa-moon" id="topThemeIcon" aria-hidden="true"></i>
+        </button>
+        <button id="attachTopBtn" class="topbar-icon-btn" aria-label="Upload lab report">
+          <i class="fa-solid fa-paperclip" aria-hidden="true"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Chat Area -->
+    <div id="chatArea">
+
+      <!-- Welcome Screen (shown when no active chat) -->
+      <div id="welcomeScreen" role="region" aria-label="Chat welcome">
+        <div class="welcome-inner">
+          <div class="welcome-orb" aria-hidden="true">φ</div>
+          <h1 class="welcome-headline">
+            Good <span id="timeGreeting">morning</span>,
+            <em id="welcomeName">there</em>
+          </h1>
+          <p class="welcome-sub">
+            Your GLP-1 intelligence co-pilot. I track your rebound risk,
+            protect your lean mass, and keep you ahead of the cliff.
+          </p>
+
+          <div class="suggestion-chips" id="welcomeChips" role="list">
+            <button class="chip" role="listitem"
+              data-q="Am I at risk for the GLP-1 cliff? What signals should I watch for in my labs?">
+              <i class="fa-solid fa-triangle-exclamation chip-icon"></i>
+              My cliff risk
+            </button>
+            <button class="chip" role="listitem"
+              data-q="Calculate my daily protein target using the Muscle Defense formula. My goal weight is 165 lbs.">
+              <i class="fa-solid fa-dumbbell chip-icon"></i>
+              Protein target
+            </button>
+            <button class="chip" role="listitem"
+              data-q="Food noise and hunger are returning after reducing my GLP-1 dose. Explain the biology behind this — is it ghrelin?">
+              <i class="fa-solid fa-brain chip-icon"></i>
+              Food noise is back
+            </button>
+            <button class="chip" role="listitem"
+              data-q="Prepare me for my next provider appointment. What data should I bring and what 3 specific questions should I ask?">
+              <i class="fa-solid fa-stethoscope chip-icon"></i>
+              Doctor visit prep
+            </button>
+            <button class="chip" role="listitem"
+              data-q="Explain the evidence-based options for tapering off a GLP-1 medication: reduced-frequency dosing, microdosing, and AOM transition.">
+              <i class="fa-solid fa-syringe chip-icon"></i>
+              Tapering options
+            </button>
+            <button class="chip" role="listitem"
+              data-q="Help me build a GLP-1 prior authorization support packet from my health data for my insurance appeal.">
+              <i class="fa-solid fa-shield-halved chip-icon"></i>
+              Insurance appeal
+            </button>
+          </div>
+
+          <div class="welcome-upload-prompt" id="uploadPrompt">
+            <button id="uploadNudgeBtn" class="upload-nudge">
+              <i class="fa-solid fa-file-medical" aria-hidden="true"></i>
+              Upload a Lab Report
+            </button>
+            <p class="upload-hint">PDF from any lab — SRL, Thyrocare, Apollo, Quest, LabCorp</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Chat Messages Display -->
+      <div id="chatDisplay" class="chat-display hidden" role="log" aria-label="Conversation" aria-live="polite"></div>
+
+      <!-- File Preview Strip -->
+      <div id="filePreview" class="file-strip" aria-label="Attached files"></div>
+
+      <!-- Input Bar -->
+      <div id="inputWrap" class="input-wrap">
+        <div id="inputBar" class="input-bar" role="form" aria-label="Send message">
+          <textarea
+            id="chatInput"
+            class="chat-ta"
+            placeholder="Ask PHI about your GLP-1 journey…"
+            rows="1"
+            autocomplete="off"
+            aria-label="Message input"
+            maxlength="4000"
+          ></textarea>
+          <div class="input-actions">
+            <button id="micBtn" class="input-btn" aria-label="Voice input" title="Voice input">
+              <i class="fa-solid fa-microphone" aria-hidden="true"></i>
+            </button>
+            <button id="attachInputBtn" class="input-btn" aria-label="Attach file" title="Attach lab report">
+              <i class="fa-solid fa-paperclip" aria-hidden="true"></i>
+            </button>
+            <button id="sendBtn" class="send-btn" aria-label="Send message" title="Send (Enter)">
+              <i class="fa-solid fa-arrow-up" aria-hidden="true"></i>
+            </button>
+          </div>
+        </div>
+        <p class="input-disclaimer">
+          PHI is an educational wellness tool — not a medical device. Always consult your healthcare provider.
+        </p>
+      </div>
+
+    </div><!-- /chatArea -->
+  </main>
+
+  <!-- ─── COCKPIT PANEL ─── -->
+  <aside id="cockpit" aria-label="Health cockpit">
+
+    <!-- Metabolic Shield -->
+    <section class="cp-section" id="shieldSection">
+      <div class="cp-section-hd">
+        <h2 class="cp-section-title">Metabolic Shield</h2>
+        <span class="cp-section-badge" id="shieldBadge">--%</span>
+      </div>
+
+      <div class="shield-wrap">
+        <svg width="160" height="160" viewBox="0 0 160 160" aria-hidden="true">
+          <!-- Protein ring -->
+          <circle cx="80" cy="80" r="70" fill="none" stroke-width="12" class="ring-track"/>
+          <circle cx="80" cy="80" r="70" fill="none" stroke-width="12" stroke-linecap="round"
+            stroke="var(--signal)" stroke-dasharray="440" stroke-dashoffset="440"
+            transform="rotate(-90 80 80)" class="ring-arc" id="ringProtein"/>
+          <!-- Movement ring -->
+          <circle cx="80" cy="80" r="55" fill="none" stroke-width="11" class="ring-track"/>
+          <circle cx="80" cy="80" r="55" fill="none" stroke-width="11" stroke-linecap="round"
+            stroke="var(--amber)" stroke-dasharray="346" stroke-dashoffset="346"
+            transform="rotate(-90 80 80)" class="ring-arc" id="ringMovement"/>
+          <!-- Recovery ring -->
+          <circle cx="80" cy="80" r="41" fill="none" stroke-width="10" class="ring-track"/>
+          <circle cx="80" cy="80" r="41" fill="none" stroke-width="10" stroke-linecap="round"
+            stroke="var(--ok)" stroke-dasharray="258" stroke-dashoffset="258"
+            transform="rotate(-90 80 80)" class="ring-arc" id="ringRecovery"/>
         </svg>
-
-        <div class="shield-score-center">
-          <div class="shield-score-num" id="shieldScore">--</div>
+        <div class="shield-center" aria-live="polite">
+          <div class="shield-score" id="shieldScore">--</div>
           <div class="shield-score-label">Shield %</div>
         </div>
       </div>
 
-      <!-- Ring legend -->
-      <div class="shield-rings">
+      <div class="ring-legend">
         <div class="ring-row">
-          <div class="ring-dot" style="background:#00e5cc"></div>
+          <span class="ring-dot" style="background:var(--signal)"></span>
           <div class="ring-info">
-            <div class="ring-name">Protein Titration</div>
-            <div class="ring-pct" id="proteinPct">Enter goal weight below</div>
-            <div class="ring-bar-track">
-              <div class="ring-bar-fill" id="proteinBar" style="background:#00e5cc;width:0%"></div>
-            </div>
+            <div class="ring-name">Protein</div>
+            <div class="ring-val" id="proteinLegend">Log below</div>
+            <div class="ring-track-bar"><div class="ring-fill" id="proteinBar" style="background:var(--signal)"></div></div>
           </div>
         </div>
         <div class="ring-row">
-          <div class="ring-dot" style="background:#ffa726"></div>
+          <span class="ring-dot" style="background:var(--amber)"></span>
           <div class="ring-info">
-            <div class="ring-name">Daily Movement</div>
-            <div class="ring-pct" id="movementPct">Log steps to track</div>
-            <div class="ring-bar-track">
-              <div class="ring-bar-fill" id="movementBar" style="background:#ffa726;width:0%"></div>
-            </div>
+            <div class="ring-name">Movement</div>
+            <div class="ring-val" id="movementLegend">Log below</div>
+            <div class="ring-track-bar"><div class="ring-fill" id="movementBar" style="background:var(--amber)"></div></div>
           </div>
         </div>
         <div class="ring-row">
-          <div class="ring-dot" style="background:#4cddaa"></div>
+          <span class="ring-dot" style="background:var(--ok)"></span>
           <div class="ring-info">
-            <div class="ring-name">Biological Recovery</div>
-            <div class="ring-pct" id="recoveryPct">Log sleep to track</div>
-            <div class="ring-bar-track">
-              <div class="ring-bar-fill" id="recoveryBar" style="background:#4cddaa;width:0%"></div>
-            </div>
-          </div>
-        </div>
-
-        <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
-          <div style="font-size:.72rem;color:var(--text-3);margin-bottom:8px">QUICK UPDATE</div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <div style="display:flex;flex-direction:column;gap:4px">
-              <label style="font-size:.68rem;color:var(--text-3)">Protein today (g)</label>
-              <input type="number" id="proteinInput" placeholder="90" min="0" max="400" class="protein-input" style="width:90px;font-size:.9rem;padding:6px 8px">
-            </div>
-            <div style="display:flex;flex-direction:column;gap:4px">
-              <label style="font-size:.68rem;color:var(--text-3)">Steps today</label>
-              <input type="number" id="stepsInput" placeholder="8000" min="0" max="50000" class="protein-input" style="width:90px;font-size:.9rem;padding:6px 8px">
-            </div>
-            <div style="display:flex;flex-direction:column;gap:4px">
-              <label style="font-size:.68rem;color:var(--text-3)">Sleep (hrs)</label>
-              <input type="number" id="sleepInput" placeholder="7.5" min="0" max="14" step=".5" class="protein-input" style="width:90px;font-size:.9rem;padding:6px 8px">
-            </div>
-            <div style="display:flex;align-items:flex-end">
-              <button class="protein-btn" onclick="updateShield()">Update Shield</button>
-            </div>
+            <div class="ring-name">Recovery</div>
+            <div class="ring-val" id="recoveryLegend">Log below</div>
+            <div class="ring-track-bar"><div class="ring-fill" id="recoveryBar" style="background:var(--ok)"></div></div>
           </div>
         </div>
       </div>
-    </div>
-  </div>
 
-  <!-- 2. CLIFF ALERTS ──────────────────────────────────── -->
-  <div class="panel alert-panel">
-    <div class="panel-header">
-      <div>
-        <div class="panel-label">Rebound Detection</div>
-        <div class="panel-title">Cliff Alert System</div>
-      </div>
-      <div class="panel-icon" style="background:var(--danger-dim);color:var(--danger)">
-        <i class="fa-solid fa-triangle-exclamation"></i>
-      </div>
-    </div>
-
-    <div id="cliffAlerts">
-      <!-- OK state (default) -->
-      <div class="cliff-alert-item ok">
-        <div class="cliff-alert-icon">✅</div>
-        <div class="cliff-alert-body">
-          <div class="cliff-alert-title">No rebound signals detected</div>
-          <div class="cliff-alert-desc">Upload your lab reports to enable automatic monitoring of glucose, weight, and HbA1c for early cliff signals.</div>
+      <div class="shield-log-grid">
+        <div class="sl-group">
+          <label class="sl-label" for="inputProtein">Protein (g)</label>
+          <input type="number" id="inputProtein" class="sl-input" placeholder="0" min="0" max="400" aria-label="Protein grams today">
+        </div>
+        <div class="sl-group">
+          <label class="sl-label" for="inputSteps">Steps</label>
+          <input type="number" id="inputSteps" class="sl-input" placeholder="0" min="0" aria-label="Steps today">
+        </div>
+        <div class="sl-group">
+          <label class="sl-label" for="inputSleep">Sleep (h)</label>
+          <input type="number" id="inputSleep" class="sl-input" placeholder="0" min="0" max="14" step=".5" aria-label="Hours of sleep">
+        </div>
+        <div class="sl-group">
+          <label class="sl-label" for="inputGoalWt">Goal Wt (lbs)</label>
+          <input type="number" id="inputGoalWt" class="sl-input" placeholder="165" min="80" max="400" aria-label="Goal weight in pounds">
         </div>
       </div>
+      <button id="updateShieldBtn" class="cp-primary-btn">Update Shield</button>
+    </section>
 
-      <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
-        <div style="font-size:.68rem;color:var(--text-3);margin-bottom:8px;text-transform:uppercase;letter-spacing:.08em">What triggers an alert</div>
-        <div style="display:flex;flex-direction:column;gap:6px;font-size:.75rem;color:var(--text-2)">
-          <div>🔴 Fasting glucose rises <strong style="color:var(--text-1)">&gt;15%</strong> from your baseline</div>
-          <div>🔴 Weight rises <strong style="color:var(--text-1)">&gt;3%</strong> in any 14-day window</div>
-          <div>🔴 HbA1c increases by <strong style="color:var(--text-1)">≥0.25%</strong> between readings</div>
+    <!-- Protein Calculator -->
+    <section class="cp-section">
+      <div class="cp-section-hd">
+        <h2 class="cp-section-title">Muscle Defense Protocol</h2>
+      </div>
+      <div class="protein-display" aria-live="polite">
+        <span class="protein-num" id="proteinNum">--</span>
+        <span class="protein-unit">g / day</span>
+      </div>
+      <p class="cp-caption" id="proteinCaption">Enter goal weight to calculate target</p>
+      <div class="protein-row">
+        <input type="number" id="proteinInput" class="cp-input" placeholder="Goal weight (lbs)" min="80" max="400" aria-label="Goal weight for protein calculation">
+        <button id="calcBtn" class="cp-secondary-btn">Calc</button>
+      </div>
+      <div id="proteinDetails" class="protein-details" aria-live="polite"></div>
+    </section>
+
+    <!-- Cliff Alerts -->
+    <section class="cp-section">
+      <div class="cp-section-hd">
+        <h2 class="cp-section-title">Cliff Alert System</h2>
+        <button id="refreshAlertsBtn" class="cp-icon-btn" aria-label="Refresh alerts" title="Refresh">
+          <i class="fa-solid fa-rotate" aria-hidden="true"></i>
+        </button>
+      </div>
+      <div id="cliffAlerts" aria-live="polite">
+        <div class="ca-item ca-ok">
+          <div class="ca-title">✅ No rebound signals</div>
+          <div class="ca-desc">Upload lab reports to enable automatic cliff monitoring of glucose, HbA1c, and weight.</div>
         </div>
       </div>
+    </section>
 
-      <div style="margin-top:14px">
-        <a href="/signup" class="btn-cta" style="width:100%;justify-content:center;font-size:.82rem;padding:10px">
-          <i class="fa-solid fa-upload"></i> Upload labs to activate alerts
-        </a>
+    <!-- Ghrelin / Food Noise Log -->
+    <section class="cp-section">
+      <div class="cp-section-hd">
+        <h2 class="cp-section-title">Ghrelin Surge Log</h2>
       </div>
-    </div>
-  </div>
-
-  <!-- 3. MUSCLE VS FAT CHART ─────────────────────────── -->
-  <div class="panel span-2">
-    <div class="panel-header">
-      <div>
-        <div class="panel-label">Body Composition Intelligence</div>
-        <div class="panel-title">Muscle vs. Fat — Quality of Maintenance</div>
-      </div>
-      <div class="panel-icon"><i class="fa-solid fa-chart-area"></i></div>
-    </div>
-
-    <p style="font-size:.78rem;color:var(--text-2);margin-bottom:16px;line-height:1.5">
-      Scale weight alone is misleading. This chart tracks <em style="color:var(--signal)">lean mass preservation</em>
-      (the gap between total weight and fat) — the true measure of GLP-1 success.
-      A flat scale reading while fat decreases = <strong style="color:var(--ok)">optimal recomposition</strong>.
-    </p>
-
-    <div class="chart-container">
-      <canvas id="bodyCompChart"></canvas>
-    </div>
-
-    <div style="display:flex;gap:16px;margin-top:12px;flex-wrap:wrap">
-      <div style="display:flex;align-items:center;gap:6px;font-size:.72rem;color:var(--text-2)">
-        <div style="width:12px;height:3px;background:var(--signal);border-radius:2px"></div> Total Weight
-      </div>
-      <div style="display:flex;align-items:center;gap:6px;font-size:.72rem;color:var(--text-2)">
-        <div style="width:12px;height:3px;background:var(--ok);border-radius:2px"></div> Lean Mass (estimated)
-      </div>
-      <div style="display:flex;align-items:center;gap:6px;font-size:.72rem;color:var(--text-2)">
-        <div style="width:12px;height:8px;background:rgba(255,77,109,.25);border-radius:2px"></div> Fat Mass (shaded)
-      </div>
-      <div style="margin-left:auto;font-size:.68rem;color:var(--text-3)">Sample data — upload yours to personalize</div>
-    </div>
-  </div>
-
-  <!-- 4. MUSCLE DEFENSE CALCULATOR ───────────────────── -->
-  <div class="panel">
-    <div class="panel-header">
-      <div>
-        <div class="panel-label">Muscle Defense Protocol</div>
-        <div class="panel-title">Protein Target Calculator</div>
-      </div>
-      <div class="panel-icon"><i class="fa-solid fa-dumbbell"></i></div>
-    </div>
-
-    <div class="protein-calc">
-      <p style="font-size:.78rem;color:var(--text-2);line-height:1.5">
-        39% of GLP-1 weight loss is lean mass without intervention.
-        Your daily protein target is your primary metabolic shield.
-      </p>
-      <div class="protein-input-row">
-        <input type="number" class="protein-input" id="goalWeightInput"
-          placeholder="Goal weight (lbs)" min="80" max="400" step="1">
-        <button class="protein-btn" onclick="calculateProtein()">Calculate</button>
-      </div>
-
-      <div class="protein-result" id="proteinResult">
-        <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:8px">
-          <div class="protein-big" id="proteinGrams">--<span>g/day</span></div>
-          <div style="font-size:.78rem;color:var(--text-3)" id="proteinPerMeal">-- g/meal</div>
+      <p class="cp-caption">Food noise is biological data — not a willpower score.</p>
+      <div class="noise-wrap">
+        <div class="noise-labels" aria-hidden="true">
+          <span>Quiet</span>
+          <span>Relentless</span>
         </div>
-        <div style="font-family:var(--mono);font-size:.7rem;color:var(--signal);margin-bottom:8px">
-          Goal Weight (lbs) × 0.545 = Daily Protein (g)
-        </div>
-        <div class="protein-breakdown" id="proteinBreakdown"></div>
-        <div class="protein-foods" id="proteinFoods"></div>
+        <input type="range" id="noiseSlider" class="noise-slider" min="1" max="10" value="5"
+          aria-label="Food noise level 1 to 10">
       </div>
-
-      <!-- Leucine threshold note -->
-      <div style="background:var(--ink-2);border:1px solid var(--border);border-radius:var(--r);padding:10px 12px;font-size:.74rem;color:var(--text-2);line-height:1.55">
-        <strong style="color:var(--amber)">⚡ Leucine threshold:</strong>
-        30g+ protein per meal activates muscle protein synthesis.
-        Spreading protein across 3 meals is more effective than one large serving.
+      <div id="noiseReadout" class="noise-readout" aria-live="polite">
+        Move the slider to log today's food noise level.
       </div>
-    </div>
-  </div>
+      <button id="logNoiseBtn" class="cp-secondary-btn mt-8">
+        <i class="fa-solid fa-save" aria-hidden="true"></i> Log Level
+      </button>
+    </section>
 
-  <!-- 5. TAPER EDUCATION ──────────────────────────────── -->
-  <div class="panel span-2">
-    <div class="panel-header">
-      <div>
-        <div class="panel-label">Discontinuation Strategy</div>
-        <div class="panel-title">Evidence-Based Off-Ramps — Discuss With Your Provider</div>
+    <!-- Lab Markers -->
+    <section class="cp-section">
+      <div class="cp-section-hd">
+        <h2 class="cp-section-title">My Lab Markers</h2>
+        <button id="refreshMarkersBtn" class="cp-icon-btn" aria-label="Refresh markers" title="Refresh">
+          <i class="fa-solid fa-rotate" aria-hidden="true"></i>
+        </button>
       </div>
-      <div class="panel-icon"><i class="fa-solid fa-route"></i></div>
-    </div>
-
-    <div class="taper-options">
-      <div class="taper-option">
-        <div class="taper-option-badge">A</div>
-        <div>
-          <div class="taper-option-title">Reduced-Frequency Dosing</div>
-          <div class="taper-option-desc">Extend injections from weekly to every 10-14 days. Allows the hypothalamus to gradually recalibrate while the medication remains active.</div>
-          <div class="taper-evidence">📊 Case series (n=30): fat continued declining, muscle stabilized at 36-week follow-up — PubMed 41732031</div>
-        </div>
+      <div id="markersGrid" class="markers-grid" aria-live="polite">
+        <div class="markers-empty">Upload a lab report to see your markers</div>
       </div>
-      <div class="taper-option">
-        <div class="taper-option-badge">B</div>
-        <div>
-          <div class="taper-option-title">Microdosing Protocol</div>
-          <div class="taper-option-desc">Fractional doses (0.2-0.6mg range) suppress food noise while minimizing GI side effects — the #2 reason for discontinuation.</div>
-          <div class="taper-evidence">📊 Noom clinical data: 95% adherence in Month 1 vs. standard dosing; 2.2× longer persistence</div>
-        </div>
-      </div>
-      <div class="taper-option">
-        <div class="taper-option-badge">C</div>
-        <div>
-          <div class="taper-option-title">Generic AOM Transition</div>
-          <div class="taper-option-desc">After BMI &lt;30 on GLP-1s, transition to metformin / topiramate / bupropion. ~$4-10/month vs. $617-725/month for branded GLP-1s.</div>
-          <div class="taper-evidence">📊 Real-world study: 25.5% total weight loss maintained at 24 months — PMC 2026</div>
-        </div>
-      </div>
-    </div>
+    </section>
 
-    <div style="margin-top:14px;background:var(--danger-dim);border:1px solid rgba(255,77,109,.2);border-radius:var(--r);padding:10px 13px;font-size:.76rem;color:var(--text-2)">
-      <strong style="color:var(--danger)">⚠ Cold turkey = cliff:</strong>
-      STEP-10 trial showed 40%+ of lost weight regained within 28 weeks of abrupt semaglutide cessation. All evidence supports structured tapering.
-    </div>
-  </div>
+  </aside>
 
-  <!-- 6. FOOD NOISE TRACKER ────────────────────────────── -->
-  <div class="panel">
-    <div class="panel-header">
-      <div>
-        <div class="panel-label">Ghrelin Surge Monitor</div>
-        <div class="panel-title">Food Noise — Biological Data</div>
-      </div>
-      <div class="panel-icon"><i class="fa-solid fa-brain"></i></div>
-    </div>
+</div><!-- /shell -->
 
-    <div class="noise-meter-wrap">
-      <p style="font-size:.76rem;color:var(--text-2);line-height:1.5;margin-bottom:4px">
-        Food noise intensity is a <em style="color:var(--signal)">physiological data point</em> — your ghrelin
-        surge level after GLP-1 reduction. Not a willpower reading.
-      </p>
+<!-- Sidebar overlay (mobile only) -->
+<div id="sidebarOverlay" class="sidebar-overlay" aria-hidden="true"></div>
 
-      <div class="noise-slider-row">
-        <span class="noise-label-left">Quiet</span>
-        <input type="range" class="noise-slider" id="noiseSlider" min="1" max="10" value="5">
-        <span class="noise-label-right">Relentless</span>
-      </div>
+<!-- Hidden file input -->
+<input type="file" id="fileInput" accept=".pdf,.txt" multiple aria-hidden="true" style="display:none">
 
-      <div class="noise-readout" id="noiseReadout">
-        Move the slider to log your food noise level.
-      </div>
-    </div>
-  </div>
+<!-- Toast notification area -->
+<div id="toasts" role="status" aria-live="assertive" aria-atomic="true"></div>
 
-</div><!-- /cockpit-grid -->
-
-<!-- ── CTA FOOTER ── -->
-<div class="cta-footer">
-  <div class="cta-box">
-    <h2>Your lab data tells the story.<br><em>PHI translates it.</em></h2>
-    <p>Upload any lab report and PHI catches the early cliff signals — rising glucose, weight rebound, HbA1c drift — before they become setbacks. Free account, permanent memory, real-time alerts.</p>
-    <a href="/signup" class="btn-cta" style="font-size:1rem;padding:14px 32px">
-      <i class="fa-solid fa-user-plus"></i> Start Free — Activate Cliff Protection
-    </a>
-    <div class="cta-trust">
-      <span><i class="fa-solid fa-shield-halved"></i> HIPAA-Ready</span>
-      <span><i class="fa-solid fa-lock"></i> AES-256 Encrypted</span>
-      <span><i class="fa-solid fa-ban"></i> Zero Data Selling</span>
-      <span><i class="fa-solid fa-user-secret"></i> AI never sees your name</span>
-    </div>
-  </div>
-</div>
-
-<script>
-/* ──────────────────────────────────────────
-   PERFORMANCE COCKPIT — Interactive Logic
-────────────────────────────────────────── */
-
-// ── Protein Calculator ─────────────────────
-const PROTEIN_FOODS = [
-  { name: "4 oz chicken breast", g: 35 },
-  { name: "1 cup Greek yogurt",  g: 17 },
-  { name: "2 large eggs",        g: 12 },
-  { name: "1 scoop whey",        g: 25 },
-  { name: "3 oz salmon",         g: 21 },
-  { name: "½ cup cottage cheese",g: 14 },
-  { name: "1 cup edamame",       g: 17 },
-  { name: "2 oz string cheese",  g: 14 },
-];
-
-function calculateProtein() {
-  const goalWt = parseFloat(document.getElementById('goalWeightInput').value);
-  if (!goalWt || goalWt < 80 || goalWt > 400) {
-    document.getElementById('goalWeightInput').focus();
-    return;
-  }
-
-  const dailyProtein  = Math.round(goalWt * 0.545 * 10) / 10;
-  const perMeal       = Math.round(dailyProtein / 3 * 10) / 10;
-  const leucineOk     = perMeal >= 30;
-
-  // Build food breakdown
-  let remaining = dailyProtein;
-  const foods   = [];
-  for (const f of PROTEIN_FOODS) {
-    if (remaining <= 0) break;
-    foods.push(`${f.name} (${f.g}g)`);
-    remaining -= f.g;
-  }
-
-  document.getElementById('proteinGrams').innerHTML  = `${dailyProtein}<span>g/day</span>`;
-  document.getElementById('proteinPerMeal').textContent = `${perMeal}g per meal`;
-  document.getElementById('proteinBreakdown').innerHTML =
-    `<strong style="color:${leucineOk ? 'var(--ok)' : 'var(--amber)'}">`+
-    `${leucineOk ? '✓' : '⚠'} ${perMeal}g/meal `+
-    `${leucineOk ? 'meets' : 'is below'} the 30g leucine threshold</strong><br>`+
-    `Formula: ${goalWt} lbs × 0.545 = ${dailyProtein}g<br>`+
-    `(1.2g protein / kg body weight — OMA 2026 Algorithm)`;
-
-  const foodContainer = document.getElementById('proteinFoods');
-  foodContainer.innerHTML = foods.slice(0,6).map(f =>
-    `<span class="protein-food-tag">${f}</span>`).join('');
-
-  document.getElementById('proteinResult').classList.add('show');
-
-  // Update shield protein ring
-  window._proteinTarget = dailyProtein;
-  const inputProtein    = parseFloat(document.getElementById('proteinInput').value) || 0;
-  if (inputProtein > 0) updateShield();
-}
-
-// ── Metabolic Shield Rings ─────────────────
-function updateShield() {
-  const proteinToday = parseFloat(document.getElementById('proteinInput').value) || 0;
-  const stepsToday   = parseFloat(document.getElementById('stepsInput').value) || 0;
-  const sleepHrs     = parseFloat(document.getElementById('sleepInput').value) || 0;
-  const proteinTarget= window._proteinTarget || 90;
-
-  const proteinPct  = Math.min(100, Math.round((proteinToday / proteinTarget) * 100));
-  const movementPct = Math.min(100, Math.round((stepsToday / 8000) * 100));
-  const recoveryPct = Math.min(100, Math.round(((sleepHrs - 4) / 5) * 100));  // 4h=0%, 9h=100%
-  const shieldScore = Math.round((proteinPct + movementPct + Math.max(0, recoveryPct)) / 3);
-
-  // Update SVG rings
-  setRing('ringProtein',  88, proteinPct);
-  setRing('ringMovement', 70, movementPct);
-  setRing('ringRecovery', 53, Math.max(0, recoveryPct));
-
-  // Update score
-  document.getElementById('shieldScore').textContent = shieldScore + '%';
-
-  // Update text labels
-  document.getElementById('proteinPct').textContent    = `${proteinToday}g / ${proteinTarget}g target (${proteinPct}%)`;
-  document.getElementById('movementPct').textContent   = `${stepsToday.toLocaleString()} / 8,000 steps (${movementPct}%)`;
-  document.getElementById('recoveryPct').textContent   = `${sleepHrs}h sleep (${Math.max(0, recoveryPct)}%)`;
-
-  // Update bar fills
-  document.getElementById('proteinBar').style.width  = proteinPct  + '%';
-  document.getElementById('movementBar').style.width = movementPct + '%';
-  document.getElementById('recoveryBar').style.width = Math.max(0, recoveryPct) + '%';
-}
-
-function setRing(id, r, pct) {
-  const el         = document.getElementById(id);
-  const circumference = 2 * Math.PI * r;
-  const offset        = circumference - (circumference * Math.max(0, Math.min(100, pct)) / 100);
-  el.style.strokeDasharray  = circumference;
-  el.style.strokeDashoffset = offset;
-}
-
-// Animate rings on load
-window.addEventListener('load', () => {
-  setTimeout(() => {
-    setRing('ringProtein',  88, 0);
-    setRing('ringMovement', 70, 0);
-    setRing('ringRecovery', 53, 0);
-  }, 200);
-});
-
-// ── Muscle vs. Fat Chart ───────────────────
-(function initBodyCompChart() {
-  const ctx = document.getElementById('bodyCompChart').getContext('2d');
-
-  // Sample data showing GLP-1 progress + recomposition phase
-  const labels = [
-    'Start', 'Wk 4', 'Wk 8', 'Wk 12', 'Wk 16', 'Wk 20',
-    'Off GLP-1', '+4wk', '+8wk', '+12wk'
-  ];
-  const totalWeight = [220, 213, 206, 200, 196, 193, 193, 194, 195, 194];
-  const leanMass    = [145, 142, 140, 139, 139, 140, 141, 141, 142, 143];
-
-  const fatMass = totalWeight.map((w, i) => w - leanMass[i]);
-
-  new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels,
-      datasets: [
-        {
-          label: 'Total Weight (lbs)',
-          data: totalWeight,
-          borderColor: '#00e5cc',
-          borderWidth: 2,
-          pointBackgroundColor: '#00e5cc',
-          pointRadius: 4,
-          tension: .35,
-          fill: false,
-        },
-        {
-          label: 'Lean Mass (lbs)',
-          data: leanMass,
-          borderColor: '#4cddaa',
-          borderWidth: 2,
-          pointBackgroundColor: '#4cddaa',
-          pointRadius: 4,
-          tension: .35,
-          fill: false,
-        },
-        {
-          label: 'Fat Mass (shaded)',
-          data: totalWeight,
-          borderColor: 'transparent',
-          backgroundColor: ctx => {
-            const chart   = ctx.chart;
-            const {top, bottom} = chart.chartArea || {top:0, bottom:300};
-            const gradient = chart.ctx.createLinearGradient(0, top, 0, bottom);
-            gradient.addColorStop(0, 'rgba(255,77,109,.22)');
-            gradient.addColorStop(1, 'rgba(255,77,109,.04)');
-            return gradient;
-          },
-          fill: '+1',   // fill between totalWeight and leanMass
-          tension: .35,
-          pointRadius: 0,
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          backgroundColor: '#141c22',
-          borderColor: 'rgba(0,229,204,.2)',
-          borderWidth: 1,
-          titleColor: '#edf0f4',
-          bodyColor: '#8a9ab0',
-          callbacks: {
-            afterLabel: (item) => {
-              if (item.datasetIndex === 0) {
-                const fat = totalWeight[item.dataIndex] - leanMass[item.dataIndex];
-                return `Fat mass: ${fat} lbs`;
-              }
-              return '';
-            }
-          }
-        }
-      },
-      scales: {
-        x: {
-          grid:   { color: 'rgba(255,255,255,.04)' },
-          ticks:  { color: '#4a5a6a', font: { family: "'DM Mono'", size: 10 } },
-          border: { color: 'rgba(255,255,255,.06)' },
-        },
-        y: {
-          grid:   { color: 'rgba(255,255,255,.04)' },
-          ticks:  { color: '#4a5a6a', font: { family: "'DM Mono'", size: 10 } },
-          border: { color: 'rgba(255,255,255,.06)' },
-          min: 130,
-        }
-      },
-      animation: { duration: 1200, easing: 'easeOutQuart' },
-    }
-  });
-
-  // Add vertical divider at "Off GLP-1" point
-  Chart.register({
-    id: 'vertLine',
-    afterDraw(chart) {
-      const idx = 6; // "Off GLP-1" index
-      const meta = chart.getDatasetMeta(0);
-      if (!meta.data[idx]) return;
-      const x = meta.data[idx].x;
-      const {top, bottom} = chart.chartArea;
-      const ctx2 = chart.ctx;
-      ctx2.save();
-      ctx2.setLineDash([4, 4]);
-      ctx2.strokeStyle = 'rgba(255,77,109,.4)';
-      ctx2.lineWidth   = 1;
-      ctx2.beginPath();
-      ctx2.moveTo(x, top);
-      ctx2.lineTo(x, bottom);
-      ctx2.stroke();
-      ctx2.fillStyle = 'rgba(255,77,109,.7)';
-      ctx2.font      = '10px DM Mono';
-      ctx2.fillText('Off GLP-1', x + 4, top + 12);
-      ctx2.restore();
-    }
-  });
-})();
-
-// ── Food Noise Tracker ─────────────────────
-const NOISE_MESSAGES = {
-  1:  "Nearly silent. Excellent — this is the maintenance target. Ghrelin well suppressed.",
-  2:  "Very low food noise. Behavioral strategies alone are likely sufficient at this level.",
-  3:  "Mild. Occasional intrusive thoughts. 35g+ protein at meals typically resolves this.",
-  4:  "Low-moderate. <strong>Check protein intake</strong> — aim for your daily gram target.",
-  5:  "Moderate. Classic 'late-afternoon hunger' pattern. Post-lunch walk (20 min) helps significantly.",
-  6:  "Elevated. Ghrelin likely rising. <strong>Check sleep quality</strong> — each hour under 7h raises next-day ghrelin ~15%.",
-  7:  "High. This level often indicates the GLP-1 dose was reduced too quickly. Discuss with provider.",
-  8:  "Very high. Relentless food thoughts are a classic ghrelin surge signal. Biology, not willpower.",
-  9:  "Intense rebound. <strong>This data point matters.</strong> Log it in PHI — it may indicate early metabolic rebound.",
- 10:  "🚨 Maximum. This is the physiological equivalent of a cliff signal. Urgent provider discussion recommended.",
-};
-
-document.getElementById('noiseSlider').addEventListener('input', function() {
-  const val = parseInt(this.value);
-  const colors = {
-    low:  'var(--ok)',
-    mid:  'var(--amber)',
-    high: 'var(--danger)',
-  };
-  const color = val <= 3 ? colors.low : val <= 6 ? colors.mid : colors.high;
-  document.getElementById('noiseReadout').innerHTML =
-    `<strong style="color:${color}">Level ${val}/10</strong> — ${NOISE_MESSAGES[val]}`;
-});
-
-// Trigger initial state
-document.getElementById('noiseSlider').dispatchEvent(new Event('input'));
-</script>
+<script src="style.css"></script>
 </body>
 </html>
