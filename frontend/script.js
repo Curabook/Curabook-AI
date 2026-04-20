@@ -1,14 +1,16 @@
 /**
- * script.js — Curabook PHI v1.1
+ * script.js — Curabook PHI v1.2
  * GLP-1 Intelligence App — Production JavaScript
  *
  * FIXES IN THIS VERSION:
- *   - FIX-API-1: Dynamic API_BASE detection (localhost vs production)
- *   - FIX-AUTH-1: Soft redirect in dev mode (warning instead of hard redirect)
- *   - FIX-MOBILE-1: Cockpit right-drawer toggle (mobileCockpitBtn)
- *   - FIX-SHIELD-1: updateShield() safe with empty inputs + auth guard on logging
- *   - FIX-CTX-1: Document text context persisted across failed retries
- *   - FIX-LOGS-1: Behavioral logs only sent when authenticated
+ *   - FIX-API-1:    Dynamic API_BASE (localhost → 5000, prod → api.curabook.com)
+ *   - FIX-AUTH-1:   Dev-mode soft warning instead of hard redirect loop
+ *   - FIX-MOBILE-1: Cockpit drawer wired at ALL breakpoints (transform-based, never display:none)
+ *   - FIX-SHIELD-1: updateShield() safe with empty inputs + goalWt persisted to localStorage
+ *   - FIX-CTX-1:    _docCtx.sent only flips true after a SUCCESSFUL API response
+ *   - FIX-CTX-2:    removeFile() does NOT reset _docCtx.text — only clears the queue item
+ *   - FIX-LOGS-1:   logShieldData() / logNoiseLevel() guarded behind auth check
+ *   - FIX-PERSIST-1: Goal weight saved/restored from localStorage across sessions
  */
 
 "use strict";
@@ -20,45 +22,46 @@ const SUPABASE_URL = "https://pbeaawlxdcrdbvlmpqhc.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBiZWFhd2x4ZGNyZGJ2bG1wcWhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwMDk0MzksImV4cCI6MjA5MTU4NTQzOX0.6bUpYrDbe0mQjjBHX8Qscj-5R8i4-SqAtW_Z1UFzJ10";
 
 /**
- * FIX-API-1: Dynamic API base detection.
- * - localhost / 127.0.0.1 → use local Flask on port 5000
- * - Production → use api.curabook.com
+ * FIX-API-1: Dynamic API base.
+ * localhost / 127.0.0.1 → local Flask on port 5000
+ * Everything else → production
  */
 const IS_LOCAL = (
   window.location.hostname === "localhost" ||
   window.location.hostname === "127.0.0.1" ||
   window.location.hostname === "0.0.0.0"
 );
-const API_BASE = IS_LOCAL
-  ? `http://localhost:5000`
-  : "https://api.curabook.com";
+const API_BASE = IS_LOCAL ? "http://localhost:5000" : "https://api.curabook.com";
+const IS_DEV   = IS_LOCAL || window.location.hostname.includes("staging");
 
-const IS_DEV = IS_LOCAL || window.location.hostname.includes("staging");
-
-if (IS_DEV) {
-  console.info(`[PHI] DEV MODE — API: ${API_BASE}`);
-}
+if (IS_DEV) console.info(`[PHI] DEV MODE — API: ${API_BASE}`);
 
 /* ═══════════════════════════════════════
    STATE
 ═══════════════════════════════════════ */
-let _sb          = null;   // Supabase client
-let _user        = null;   // Current user object
-let _userName    = "";     // First name for display
-let _convId      = null;   // Active conversation ID
-let _isSending   = false;  // Prevent double-send
-let _uploads     = [];     // Queued files
-let _goalWt      = 165;    // Default protein calc weight
-let _proteinTarget = 90;   // Calculated protein target
+let _sb          = null;
+let _user        = null;
+let _userName    = "";
+let _convId      = null;
+let _isSending   = false;
+let _uploads     = [];
 
 /**
- * FIX-CTX-1: Persistent document context.
- * `text` is set once on upload and preserved across retries.
- * `sent` only turns true after a SUCCESSFUL send; failed messages re-use the text.
+ * FIX-PERSIST-1: Restore goal weight from localStorage.
+ * Default 165 lbs if never saved.
+ */
+let _goalWt        = parseFloat(localStorage.getItem("phi_goal_wt") || "165");
+let _proteinTarget = Math.round(_goalWt * 0.545 * 10) / 10;
+
+/**
+ * FIX-CTX-1 + FIX-CTX-2:
+ * - `text`   persists across file removals and failed retries
+ * - `sent`   only flips true after a SUCCESSFUL API response
+ * - `hasDoc` remembers a doc is loaded even between retries
  */
 let _docCtx = {
-  text:  null,    // full document text
-  sent:  false,   // has it been sent to the backend at least once?
+  text:   null,   // full document text from backend
+  sent:   false,  // has it been sent successfully at least once?
   hasDoc: false,  // any doc loaded this session?
 };
 
@@ -89,11 +92,11 @@ async function boot() {
         await onSignIn(session.user);
       } else if (event === "SIGNED_OUT") {
         /**
-         * FIX-AUTH-1: In dev/local, log a warning instead of hard redirecting.
-         * This prevents boot loops when testing without a Supabase session.
+         * FIX-AUTH-1: In dev, log a warning instead of hard-redirecting.
+         * Hard redirect causes boot loops on localhost with no session.
          */
         if (IS_DEV) {
-          console.warn("[PHI] DEV: Signed out — skipping login redirect. Sign in at /login manually.");
+          console.warn("[PHI] DEV: Signed out — skipping redirect. Sign in at /login.");
           showDevAuthBanner();
         } else {
           window.location.href = "/login";
@@ -104,11 +107,11 @@ async function boot() {
     const { data: { session } } = await _sb.auth.getSession();
     if (!session?.user) {
       if (IS_DEV) {
-        console.warn("[PHI] DEV: No session found. App in unauthenticated mode — some features disabled.");
+        console.warn("[PHI] DEV: No session. Running in unauthenticated mode.");
         showDevAuthBanner();
-        // Still initialize UI in dev mode
         initTheme();
         wireEvents();
+        restoreShieldInputs();
         return;
       } else {
         window.location.href = "/login";
@@ -124,9 +127,10 @@ async function boot() {
   }
 }
 
-/** FIX-AUTH-1: Dev-mode banner shown when no session exists locally */
 function showDevAuthBanner() {
+  if (document.getElementById("devAuthBanner")) return;
   const banner = document.createElement("div");
+  banner.id = "devAuthBanner";
   banner.style.cssText = `
     position:fixed;top:0;left:0;right:0;z-index:9999;
     background:#1a1000;border-bottom:2px solid #fbbf24;
@@ -134,15 +138,14 @@ function showDevAuthBanner() {
     padding:6px 16px;display:flex;align-items:center;gap:12px;
   `;
   banner.innerHTML = `
-    ⚠️ DEV MODE — No Supabase session.
+    ⚠️ DEV MODE — No session.
     <a href="/login" style="color:#2dd4bf;text-decoration:underline">Sign in</a>
-    to test authenticated features. API: ${API_BASE}
+    to test auth features. API: ${API_BASE}
     <button onclick="this.parentNode.remove()" style="margin-left:auto;color:#fbbf24;background:none;border:none;cursor:pointer;font-size:1rem;">×</button>
   `;
   document.body.appendChild(banner);
-  // Shift topbar down
   const topbar = document.getElementById("topbar");
-  if (topbar) topbar.style.marginTop = "32px";
+  if (topbar) topbar.style.marginTop = "30px";
 }
 
 async function onSignIn(user) {
@@ -153,15 +156,15 @@ async function onSignIn(user) {
   _userName = _userName.charAt(0).toUpperCase() + _userName.slice(1);
 
   if (el("userAvatar")) el("userAvatar").textContent = _userName[0].toUpperCase();
-  setText("userEmail", user.email);
-  setText("welcomeName", _userName);
+  setText("userEmail",     user.email);
+  setText("welcomeName",   _userName);
 
   const h = new Date().getHours();
   setText("timeGreeting", h < 12 ? "morning" : h < 17 ? "afternoon" : "evening");
 
   saveConsents().catch(() => {});
-
   initTheme();
+  restoreShieldInputs();
   await loadHistory();
   loadMarkersData();
 }
@@ -201,7 +204,7 @@ async function apiFetch(path, options = {}) {
 }
 
 async function apiJson(path, options = {}) {
-  const res = await apiFetch(path, options);
+  const res  = await apiFetch(path, options);
   const text = await res.text();
   if (!text) return { ok: res.ok, status: res.status, data: null };
   try {
@@ -238,9 +241,8 @@ function applyTheme(theme) {
   document.documentElement.dataset.theme = theme;
   localStorage.setItem("phi_theme", theme);
   const isDark = theme === "dark";
-  const icon   = isDark ? "fa-moon" : "fa-sun";
-  setIcon("themeIcon",    icon);
-  setIcon("topThemeIcon", icon);
+  setIcon("themeIcon",    isDark ? "fa-moon" : "fa-sun");
+  setIcon("topThemeIcon", isDark ? "fa-moon" : "fa-sun");
   setText("themeLabel", isDark ? "Light Mode" : "Dark Mode");
 }
 
@@ -251,8 +253,7 @@ function openSidebar() {
   el("sidebar")?.classList.add("open");
   el("sidebarOverlay")?.classList.add("show");
   el("mobileMenuBtn")?.setAttribute("aria-expanded", "true");
-  // Close cockpit if open
-  closeCockpit();
+  closeCockpit();   // can't have both open at once on mobile
 }
 
 function closeSidebar() {
@@ -274,12 +275,13 @@ function closeUserMenu() {
 
 /* ═══════════════════════════════════════
    FIX-MOBILE-1: COCKPIT DRAWER
+   Uses CSS transform (translateX) — cockpit is NEVER display:none.
+   Works at all breakpoints: desktop inline, ≤1200px right drawer.
 ═══════════════════════════════════════ */
 function openCockpit() {
   el("cockpit")?.classList.add("open");
   el("cockpitOverlay")?.classList.add("show");
-  // Close sidebar if open
-  closeSidebar();
+  closeSidebar();   // can't have both open at once on mobile
 }
 
 function closeCockpit() {
@@ -314,7 +316,14 @@ function showChat() {
 function resetToWelcome() {
   _convId  = null;
   _uploads = [];
-  _docCtx  = { text: null, sent: false, hasDoc: false };
+
+  /**
+   * FIX-CTX-2: Resetting a conversation does NOT wipe _docCtx.text —
+   * that could be confusing. Instead we fully reset only when explicitly
+   * starting a new conversation (the user can re-attach if needed).
+   */
+  _docCtx = { text: null, sent: false, hasDoc: false };
+
   clearFilePreview();
   if (el("chatDisplay")) el("chatDisplay").innerHTML = "";
   showWelcome();
@@ -346,7 +355,6 @@ async function loadHistory() {
 function renderHistory(conversations) {
   const list = el("historyList");
   if (!list) return;
-
   if (!conversations.length) {
     list.innerHTML = '<div class="sb-empty">No conversations yet</div>';
     return;
@@ -354,8 +362,8 @@ function renderHistory(conversations) {
 
   const today     = new Date(); today.setHours(0, 0, 0, 0);
   const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+  const groups    = new Map();
 
-  const groups = new Map();
   conversations.forEach(c => {
     const d = c.created_at ? new Date(c.created_at) : new Date();
     d.setHours(0, 0, 0, 0);
@@ -375,26 +383,23 @@ function renderHistory(conversations) {
       const title    = (c.title && c.title !== "New Chat") ? c.title : "New Conversation";
       html += `<div class="hist-item${isActive}" data-id="${esc(c.id)}">
         <span class="hist-title">${esc(title)}</span>
-        <button class="hist-del" data-del="${esc(c.id)}" title="Delete" aria-label="Delete conversation">
-          <i class="fa-solid fa-trash" aria-hidden="true"></i>
+        <button class="hist-del" data-del="${esc(c.id)}" title="Delete">
+          <i class="fa-solid fa-trash"></i>
         </button>
       </div>`;
     });
   });
-
   list.innerHTML = html;
 }
 
 async function openConversation(id) {
   if (_isSending || id === _convId) { closeSidebar(); return; }
-
   _convId  = id;
   _uploads = [];
   _docCtx  = { text: null, sent: false, hasDoc: false };
   clearFilePreview();
   showChat();
   if (el("chatDisplay")) el("chatDisplay").innerHTML = "";
-
   document.querySelectorAll(".hist-item").forEach(e =>
     e.classList.toggle("active", e.dataset.id === id)
   );
@@ -419,15 +424,12 @@ async function deleteConversation(id, e) {
   e?.stopPropagation();
   const h = await getHeaders();
   if (!h) return;
-
   document.querySelector(`.hist-item[data-id="${id}"]`)?.remove();
   if (id === _convId) resetToWelcome();
-
   await apiFetch("/delete", {
     method: "POST", headers: h,
     body: JSON.stringify({ conversation_id: id })
   }).catch(() => {});
-
   toast("Conversation deleted");
 }
 
@@ -449,6 +451,7 @@ async function createConversation() {
     }
   } catch {}
 
+  // Fallback for dev/unauthenticated mode
   _convId = "local-" + Date.now();
   return _convId;
 }
@@ -461,18 +464,18 @@ function prependToHistory(id, title) {
   let todayGroup = list.querySelector(".hist-group-label");
   if (!todayGroup || todayGroup.textContent !== "Today") {
     todayGroup = document.createElement("div");
-    todayGroup.className = "hist-group-label";
+    todayGroup.className   = "hist-group-label";
     todayGroup.textContent = "Today";
     list.prepend(todayGroup);
   }
 
   const item = document.createElement("div");
-  item.className = "hist-item active";
+  item.className  = "hist-item active";
   item.dataset.id = id;
-  item.innerHTML = `
+  item.innerHTML  = `
     <span class="hist-title">${esc(title)}</span>
-    <button class="hist-del" data-del="${esc(id)}" title="Delete" aria-label="Delete conversation">
-      <i class="fa-solid fa-trash" aria-hidden="true"></i>
+    <button class="hist-del" data-del="${esc(id)}" title="Delete">
+      <i class="fa-solid fa-trash"></i>
     </button>`;
   todayGroup.insertAdjacentElement("afterend", item);
 
@@ -484,12 +487,10 @@ function prependToHistory(id, title) {
 async function renameConversation(id, title) {
   const h = await getHeaders();
   if (!h || !id) return;
-
-  const short = title.slice(0, 50);
+  const short  = title.slice(0, 50);
   const titleEl = document.querySelector(`.hist-item[data-id="${id}"] .hist-title`);
   if (titleEl) titleEl.textContent = short;
   setText("convTitle", short);
-
   await apiFetch("/rename", {
     method: "POST", headers: h,
     body: JSON.stringify({ conversation_id: id, title: short })
@@ -501,8 +502,8 @@ async function renameConversation(id, title) {
 ═══════════════════════════════════════ */
 async function handleSend() {
   if (_isSending) return;
-  const ta  = el("chatInput");
-  let text  = ta?.value.trim();
+  const ta   = el("chatInput");
+  let text   = ta?.value.trim();
   if (!text && _uploads.length) {
     text = "Please read my uploaded lab report and explain every finding — what's abnormal, what it means, and what I should discuss with my doctor.";
   }
@@ -527,7 +528,7 @@ async function sendMessage(text) {
     }
   }
 
-  // Process any queued file uploads
+  // Process any queued file uploads first
   if (_uploads.length) {
     const loadRow = appendTyping();
     updateTypingText(loadRow, "Reading your report…");
@@ -537,9 +538,10 @@ async function sendMessage(text) {
     clearFilePreview();
 
     if (docResult?.document_text) {
+      // FIX-CTX-1: Set context, mark as unsent so it goes with the next message
       _docCtx.text   = docResult.document_text;
       _docCtx.hasDoc = true;
-      _docCtx.sent   = false;   // not yet sent — will be sent with user message below
+      _docCtx.sent   = false;
     }
   }
 
@@ -547,10 +549,7 @@ async function sendMessage(text) {
   const botRow = appendTyping();
   scrollToBottom();
 
-  /**
-   * FIX-CTX-1: Only mark as sent AFTER a successful response.
-   * On failure, _docCtx.sent stays false, so the next retry re-sends the text.
-   */
+  // FIX-CTX-1: Send doc text with this message if not yet sent
   const sendDoc = !_docCtx.sent ? (_docCtx.text || "") : "";
 
   const h = await getHeaders();
@@ -587,13 +586,12 @@ async function sendMessage(text) {
     } else {
       updateMessage(botRow, reply);
       success = true;
-
-      // FIX-CTX-1: Mark document as sent only after success
+      // FIX-CTX-1: Only mark sent AFTER success — failed calls can retry with doc text
       if (sendDoc) _docCtx.sent = true;
     }
 
-    const userMsgs = el("chatDisplay")?.querySelectorAll(".chat-msg.user-msg").length || 0;
-    if (userMsgs === 1) renameConversation(_convId, text);
+    const userMsgCount = el("chatDisplay")?.querySelectorAll(".chat-msg.user-msg").length || 0;
+    if (userMsgCount === 1) renameConversation(_convId, text);
 
     if (success && _docCtx.hasDoc) {
       setTimeout(loadMarkersData, 2000);
@@ -601,9 +599,11 @@ async function sendMessage(text) {
 
   } catch (err) {
     const msg = err.message?.includes("timed out")
-      ? "The request timed out. The server may be busy — please try again."
-      : "Connection error. Please check your internet and try again.";
-    updateMessage(botRow, msg + "\n\n---\n⚕️ *PHI is an educational wellness tool. Always consult your provider.*");
+      ? "The request timed out — please try again."
+      : "Connection error. Please check your internet connection.";
+    updateMessage(botRow,
+      msg + "\n\n---\n⚕️ *PHI is an educational wellness tool. Always consult your provider.*"
+    );
   }
 
   _isSending = false;
@@ -641,6 +641,11 @@ function addFile(file) {
 }
 
 function removeFile(idx) {
+  /**
+   * FIX-CTX-2: Removing a queued file only removes it from the upload queue.
+   * It does NOT clear _docCtx.text — that would lose already-loaded context.
+   * A user who removes a file before sending simply won't have that file processed.
+   */
   _uploads.splice(idx, 1);
   renderFilePreview();
 }
@@ -648,14 +653,17 @@ function removeFile(idx) {
 function renderFilePreview() {
   const strip = el("filePreview");
   if (!strip) return;
-  if (!_uploads.length) { strip.classList.remove("show"); strip.innerHTML = ""; return; }
+  if (!_uploads.length) {
+    strip.classList.remove("show"); strip.innerHTML = "";
+    return;
+  }
   strip.classList.add("show");
   strip.innerHTML = _uploads.map((f, i) => `
     <div class="file-chip">
-      <i class="fa-solid ${f.name.endsWith(".pdf") ? "fa-file-pdf" : "fa-file-lines"}" aria-hidden="true"></i>
+      <i class="fa-solid ${f.name.endsWith(".pdf") ? "fa-file-pdf" : "fa-file-lines"}"></i>
       <span>${esc(f.name)}</span>
       <button class="file-chip-rm" onclick="removeFile(${i})" aria-label="Remove ${esc(f.name)}">
-        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+        <i class="fa-solid fa-xmark"></i>
       </button>
     </div>`).join("");
 }
@@ -687,25 +695,22 @@ function appendMessage(text, role) {
   const display = el("chatDisplay");
   if (!display) return null;
 
-  const wrap = document.createElement("div");
+  const wrap    = document.createElement("div");
   wrap.className = `chat-msg ${role === "user" ? "user-msg" : "ai-msg"}`;
 
   const avLabel = role === "user" ? (_userName?.[0]?.toUpperCase() || "U") : "φ";
   const avClass = role === "user" ? "av-user" : "av-ai";
-  const avEl    = `<div class="msg-av ${avClass}" aria-hidden="true">${avLabel}</div>`;
+  const avEl    = `<div class="msg-av ${avClass}">${avLabel}</div>`;
+
   const bodyEl  = document.createElement("div");
   bodyEl.className = "msg-body";
 
   if (role === "user") {
     bodyEl.textContent = text;
-  } else {
-    renderAIContent(bodyEl, text);
-  }
-
-  if (role === "user") {
     wrap.innerHTML = avEl;
     wrap.insertBefore(bodyEl, wrap.querySelector(".msg-av"));
   } else {
+    renderAIContent(bodyEl, text);
     wrap.innerHTML = avEl;
     wrap.appendChild(bodyEl);
   }
@@ -720,9 +725,9 @@ function appendTyping() {
   const wrap = document.createElement("div");
   wrap.className = "chat-msg ai-msg";
   wrap.innerHTML = `
-    <div class="msg-av av-ai" aria-hidden="true">φ</div>
+    <div class="msg-av av-ai">φ</div>
     <div class="msg-body">
-      <div class="typing-indicator" aria-label="PHI is thinking">
+      <div class="typing-indicator">
         <div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div>
       </div>
     </div>`;
@@ -757,7 +762,7 @@ function renderAIContent(elem, text) {
   if (hasLegal) {
     const legal = document.createElement("p");
     legal.className = "phi-legal";
-    legal.innerHTML = `<span aria-hidden="true">⚕️</span> PHI is an educational wellness tool. Always consult your healthcare provider.`;
+    legal.textContent = "⚕️ PHI is an educational wellness tool. Always consult your healthcare provider.";
     elem.appendChild(legal);
   }
 }
@@ -768,19 +773,17 @@ function scrollToBottom() {
 }
 
 /* ═══════════════════════════════════════
-   EXPORT
+   EXPORT & LOGOUT
 ═══════════════════════════════════════ */
 function exportCurrentChat() {
   const msgs = el("chatDisplay")?.querySelectorAll(".chat-msg");
   if (!msgs?.length) { toast("No conversation to export", "err"); return; }
-
   let out = `Curabook PHI — Chat Export\n${"=".repeat(44)}\n\n`;
   msgs.forEach(m => {
     const role = m.classList.contains("user-msg") ? "You" : "PHI";
     const text = m.querySelector(".msg-body")?.innerText || "";
     out += `${role}:\n${text.trim()}\n\n`;
   });
-
   const a = Object.assign(document.createElement("a"), {
     href:     URL.createObjectURL(new Blob([out], { type: "text/plain" })),
     download: `phi-chat-${Date.now()}.txt`
@@ -801,7 +804,6 @@ async function handleLogout() {
 async function loadMarkersData() {
   const h = await getHeaders();
   if (!h) return;
-
   try {
     const { ok, data } = await apiJson("/api/health-markers", { headers: h });
     if (ok && Array.isArray(data) && data.length) {
@@ -814,13 +816,11 @@ async function loadMarkersData() {
 function renderMarkers(markers) {
   const grid = el("markersGrid");
   if (!grid) return;
-
   const show = markers.slice(0, 10);
   if (!show.length) {
     grid.innerHTML = '<div class="markers-empty">No markers yet — upload a lab report</div>';
     return;
   }
-
   grid.innerHTML = show.map(m => {
     const s     = (m.status || "").toLowerCase();
     const cls   = s === "high" ? "val-high" : s === "low" ? "val-low" : s === "normal" ? "val-normal" : "";
@@ -844,6 +844,7 @@ function runCliffDetection(markers) {
     grouped[k].push({ ...m, _val: parseFloat(m.value) });
   });
 
+  // Glucose rebound detection (15% threshold)
   const glucoseKey = Object.keys(grouped).find(k => /fasting.*glucose|blood.*glucose|glucose/i.test(k));
   if (glucoseKey) {
     const readings = grouped[glucoseKey].sort((a, b) => a.date < b.date ? -1 : 1);
@@ -861,18 +862,20 @@ function runCliffDetection(markers) {
     }
   }
 
+  // HbA1c rebound (0.25% threshold)
   const hba1cKey = Object.keys(grouped).find(k => /hba1c|hemoglobin a1c|a1c/i.test(k));
   if (hba1cKey) {
     const readings = grouped[hba1cKey].sort((a, b) => a.date < b.date ? -1 : 1);
     for (let i = 1; i < readings.length; i++) {
       const delta = readings[i]._val - readings[i - 1]._val;
       if (delta >= 0.25) {
-        alerts.push({ type: "danger", title: `🚨 HbA1c rebound +${delta.toFixed(2)}%`, desc: `${readings[i - 1]._val}% → ${readings[i]._val}%. Sustained metabolic rebound signal.` });
+        alerts.push({ type: "danger", title: `🚨 HbA1c rebound +${delta.toFixed(2)}%`, desc: `${readings[i-1]._val}% → ${readings[i]._val}%. Sustained metabolic rebound signal.` });
         break;
       }
     }
   }
 
+  // General HIGH markers
   markers.filter(m => m.status === "HIGH" && !/glucose/i.test(m.marker_name))
     .slice(0, 2)
     .forEach(m => {
@@ -897,21 +900,39 @@ function renderCliffAlerts(alerts) {
 }
 
 /* ═══════════════════════════════════════
-   COCKPIT
+   COCKPIT — METABOLIC SHIELD
 ═══════════════════════════════════════ */
 
 /**
- * FIX-SHIELD-1: updateShield() is safe with empty/partial inputs.
- * - Defaults to 0 for missing numeric values
- * - Only calls logShieldData() when all conditions met (user authenticated, values > 0)
+ * FIX-SHIELD-1 + FIX-PERSIST-1:
+ * - Reads goalWt from localStorage if input is empty
+ * - Never logs to backend unless user is authenticated
+ * - Saves goalWt back to localStorage after each successful calc
  */
+function restoreShieldInputs() {
+  const savedGoalWt = localStorage.getItem("phi_goal_wt");
+  if (savedGoalWt) {
+    const gwInput = el("inputGoalWt");
+    if (gwInput && !gwInput.value) gwInput.value = savedGoalWt;
+    const proteinInput = el("proteinInput");
+    if (proteinInput && !proteinInput.value) proteinInput.value = savedGoalWt;
+  }
+}
+
 function updateShield() {
   const protein = parseFloat(el("inputProtein")?.value) || 0;
   const steps   = parseFloat(el("inputSteps")?.value)   || 0;
   const sleep   = parseFloat(el("inputSleep")?.value)   || 0;
-  const goalWt  = parseFloat(el("inputGoalWt")?.value)  || _goalWt || 165;
 
-  _goalWt        = goalWt;
+  // FIX-PERSIST-1: Use saved goal weight if input is empty
+  const gwInputVal = parseFloat(el("inputGoalWt")?.value);
+  const goalWt = gwInputVal || _goalWt || 165;
+
+  if (gwInputVal && gwInputVal !== _goalWt) {
+    _goalWt = gwInputVal;
+    localStorage.setItem("phi_goal_wt", String(_goalWt));
+  }
+
   _proteinTarget = Math.round(goalWt * 0.545 * 10) / 10;
 
   const pPct = Math.min(100, Math.round((protein / (_proteinTarget || 90)) * 100));
@@ -933,7 +954,7 @@ function updateShield() {
   setBarWidth("movementBar", mPct);
   setBarWidth("recoveryBar", rPct);
 
-  // FIX-SHIELD-1: Only log if user is authenticated and values are non-zero
+  // FIX-LOGS-1: Only log if authenticated and at least one value is non-zero
   if (_user && (protein > 0 || steps > 0 || sleep > 0)) {
     logShieldData(protein, steps, sleep).catch(() => {});
   }
@@ -951,13 +972,9 @@ function setBarWidth(id, pct) {
   if (bar) bar.style.width = Math.max(0, pct) + "%";
 }
 
-/**
- * FIX-LOGS-1: logShieldData only runs when authenticated.
- * Behavioral logs route exists in health_routes.py — verified.
- */
 async function logShieldData(protein, steps, sleep) {
   const h = await getHeaders();
-  if (!h) return;   // Not authenticated — skip silently
+  if (!h) return;  // FIX-LOGS-1: silently skip if not authenticated
 
   const date = new Date().toISOString().slice(0, 10);
   const logs = [];
@@ -965,11 +982,10 @@ async function logShieldData(protein, steps, sleep) {
   if (steps   > 0) logs.push({ date, metric_name: "steps",   value: steps,   unit: "steps" });
   if (sleep   > 0) logs.push({ date, metric_name: "sleep",   value: sleep,   unit: "hours" });
 
-  // Fire-and-forget each log
   logs.forEach(l =>
     apiFetch("/api/behavioral-logs", {
       method: "POST", headers: h, body: JSON.stringify(l)
-    }).catch(err => console.warn("[PHI] Behavioral log failed:", err))
+    }).catch(err => console.warn("[PHI] Log failed:", err))
   );
 }
 
@@ -985,6 +1001,9 @@ function calcProtein() {
   const perMeal  = Math.round(_proteinTarget / 3 * 10) / 10;
   const leucineOk = perMeal >= 30;
 
+  // FIX-PERSIST-1: Save to localStorage
+  localStorage.setItem("phi_goal_wt", String(gw));
+
   setText("proteinNum",     _proteinTarget);
   setText("proteinCaption", `${gw} lbs × 0.545 = ${_proteinTarget}g/day`);
 
@@ -999,13 +1018,18 @@ function calcProtein() {
       </span>`;
   }
 
+  // Also update the goal weight input in the shield section
   const gwInput = el("inputGoalWt");
   if (gwInput) gwInput.value = gw;
 }
 
 function updateNoiseReadout() {
   const val = parseInt(el("noiseSlider")?.value || 5);
-  const colors = { 1:"var(--ok)",2:"var(--ok)",3:"var(--ok)",4:"var(--amber)",5:"var(--amber)",6:"var(--amber)",7:"var(--danger)",8:"var(--danger)",9:"var(--danger)",10:"var(--danger)" };
+  const colors = {
+    1:"var(--ok)", 2:"var(--ok)", 3:"var(--ok)",
+    4:"var(--amber)", 5:"var(--amber)", 6:"var(--amber)",
+    7:"var(--danger)", 8:"var(--danger)", 9:"var(--danger)", 10:"var(--danger)"
+  };
   const readout = el("noiseReadout");
   if (readout) {
     readout.innerHTML = `<strong style="color:${colors[val]}">Level ${val}/10</strong> — ${NOISE_MESSAGES[val]}`;
@@ -1015,14 +1039,15 @@ function updateNoiseReadout() {
 async function logNoiseLevel() {
   const val = parseInt(el("noiseSlider")?.value || 5);
   const h   = await getHeaders();
-  if (!h) { toast("Sign in to log data"); return; }
+  if (!h) { toast("Sign in to log food noise data", "info"); return; }
 
   await apiFetch("/api/behavioral-logs", {
     method: "POST", headers: h,
     body: JSON.stringify({
       date:        new Date().toISOString().slice(0, 10),
       metric_name: "food_noise",
-      value:       val, unit: "1-10",
+      value:       val,
+      unit:        "1-10",
       notes:       `Ghrelin surge level: ${val}/10`
     })
   }).catch(() => {});
@@ -1040,7 +1065,6 @@ function initVoiceInput() {
     if (btn) { btn.style.opacity = ".3"; btn.disabled = true; }
     return;
   }
-
   let listening = false, rec = null;
   btn.addEventListener("click", () => {
     if (listening) { rec?.stop(); return; }
@@ -1074,12 +1098,13 @@ function toast(msg, type = "ok") {
   const container = el("toasts");
   if (!container) return;
   const t = document.createElement("div");
-  const icon = type === "ok" ? "circle-check" : type === "err" ? "circle-exclamation" : "circle-info";
+  const iconMap = { ok: "circle-check", err: "circle-exclamation", info: "circle-info" };
   t.className = `toast toast-${type}`;
-  t.innerHTML = `<i class="fa-solid fa-${icon}" aria-hidden="true"></i> ${esc(msg)}`;
+  t.innerHTML = `<i class="fa-solid fa-${iconMap[type] || "circle-info"}"></i> ${esc(msg)}`;
   container.appendChild(t);
   setTimeout(() => {
-    t.style.opacity = "0"; t.style.transition = "opacity .3s";
+    t.style.opacity    = "0";
+    t.style.transition = "opacity .3s";
     setTimeout(() => t.remove(), 300);
   }, 3800);
 }
@@ -1104,7 +1129,11 @@ function wireEvents() {
   el("mobileMenuBtn")?.addEventListener("click", openSidebar);
   el("sidebarOverlay")?.addEventListener("click", closeSidebar);
 
-  // FIX-MOBILE-1: Cockpit toggle
+  /**
+   * FIX-MOBILE-1: Cockpit toggle wired for ALL breakpoints.
+   * mobileCockpitBtn is shown via CSS at ≤1200px; clicking it calls toggleCockpit().
+   * The cockpit uses transform not display, so it's always reachable.
+   */
   el("mobileCockpitBtn")?.addEventListener("click", toggleCockpit);
   el("cockpitOverlay")?.addEventListener("click", closeCockpit);
   el("cockpitCloseBtn")?.addEventListener("click", closeCockpit);
@@ -1117,7 +1146,7 @@ function wireEvents() {
     if (!el("userRow")?.contains(e.target)) closeUserMenu();
   });
 
-  // User dropdown
+  // User dropdown actions
   el("themeToggleBtn")?.addEventListener("click", toggleTheme);
   el("topThemeBtn")?.addEventListener("click", toggleTheme);
   el("exportChatBtn")?.addEventListener("click", exportCurrentChat);
@@ -1158,29 +1187,28 @@ function wireEvents() {
   el("attachInputBtn")?.addEventListener("click", () => fileInput?.click());
   el("uploadNudgeBtn")?.addEventListener("click", () => fileInput?.click());
 
-  // Cockpit: shield
+  // Cockpit shield
   el("updateShieldBtn")?.addEventListener("click", updateShield);
 
-  // Cockpit: protein calc
+  // Cockpit protein calc
   el("calcBtn")?.addEventListener("click", calcProtein);
   el("proteinInput")?.addEventListener("keydown", e => { if (e.key === "Enter") calcProtein(); });
 
-  // Cockpit: cliff alerts refresh
+  // Cockpit cliff alerts refresh
   el("refreshAlertsBtn")?.addEventListener("click", loadMarkersData);
 
-  // Cockpit: food noise
+  // Cockpit food noise
   el("noiseSlider")?.addEventListener("input", updateNoiseReadout);
   el("logNoiseBtn")?.addEventListener("click", logNoiseLevel);
 
-  // Cockpit: markers refresh
+  // Cockpit markers refresh
   el("refreshMarkersBtn")?.addEventListener("click", loadMarkersData);
 
-  // Drag-and-drop
+  // Drag and drop anywhere on page
   document.addEventListener("dragover", e => e.preventDefault());
   document.addEventListener("drop", e => {
     e.preventDefault();
-    const files = Array.from(e.dataTransfer?.files || []);
-    files.forEach(f => addFile(f));
+    Array.from(e.dataTransfer?.files || []).forEach(f => addFile(f));
   });
 
   // Keyboard shortcuts

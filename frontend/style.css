@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════
-   APP.CSS — Curabook PHI  v1.1  (Mobile-First Refactor)
+   APP.CSS — Curabook PHI  v1.2  (Mobile-First + Cockpit Drawer Fix)
    GLP-1 Intelligence App — Production Styles
    Fonts: Playfair Display · Space Grotesk · DM Mono
 ═══════════════════════════════════════════════════════ */
@@ -100,8 +100,8 @@ a { text-decoration: none; color: inherit; }
 .ms-auto { margin-left: auto; }
 .mt-8 { margin-top: 8px; }
 
-/* Mobile-only utility */
-.mobile-only { display: none; }
+/* Mobile-only utility — hidden by default, shown at ≤768px */
+.mobile-only { display: none !important; }
 
 /* ─── SCROLLBARS ─── */
 ::-webkit-scrollbar { width: 5px; }
@@ -342,7 +342,7 @@ a { text-decoration: none; color: inherit; }
   max-width: 440px; margin: 0 auto 24px;
 }
 
-/* Chips — improved touch targets */
+/* Chips */
 .suggestion-chips {
   display: flex; flex-wrap: wrap; gap: 8px;
   justify-content: center; margin-bottom: 22px;
@@ -441,7 +441,7 @@ a { text-decoration: none; color: inherit; }
   font-size: .72rem; color: var(--text-3); font-style: italic; line-height: 1.5;
 }
 
-/* Typing indicator — visible and centered on mobile */
+/* Typing indicator */
 .typing-indicator {
   display: flex; align-items: center; justify-content: flex-start; gap: 5px;
   padding: 8px 4px;
@@ -506,33 +506,42 @@ a { text-decoration: none; color: inherit; }
 .input-disclaimer { font-size: .69rem; color: var(--text-3); text-align: center; margin-top: 6px; }
 
 /* ═══════════════════════════════════════
-   COCKPIT PANEL — Desktop
+   COCKPIT PANEL
+   Desktop: fixed right column
+   ≤1200px: right-side drawer (transform-based, NEVER display:none)
+   Mobile: same drawer, full-height
 ═══════════════════════════════════════ */
 #cockpit {
   width: var(--cockpit-w);
   background: var(--surface); border-left: 1px solid var(--border);
-  display: flex; flex-direction: column;
+  display: flex;              /* ALWAYS flex — never hidden */
+  flex-direction: column;
   overflow-y: auto; flex-shrink: 0;
   scrollbar-width: thin; scrollbar-color: var(--surface-3) transparent;
   transition: background .22s, transform .3s cubic-bezier(.4,0,.2,1);
   position: relative;
+  z-index: 60;
 }
 
-/* Close button (mobile-only, hidden on desktop) */
-.cockpit-close-btn {
+/* Cockpit close button — hidden on desktop, visible in drawer mode */
+#cockpitCloseBtn {
+  display: none;
   position: sticky; top: 0; z-index: 10;
-  display: flex; align-items: center; justify-content: flex-end;
-  width: 100%; padding: 12px 16px 0;
+  justify-content: flex-end;
+  padding: 10px 12px 0;
   background: var(--surface);
+  border: none;
+  width: 100%;
+  cursor: pointer;
+  color: var(--text-2);
 }
-.cockpit-close-btn button, .cockpit-close-btn {
-  background: none; border: none; color: var(--text-2);
-  font-size: 1.1rem; cursor: pointer;
+#cockpitCloseBtn i {
   width: var(--touch-min); height: var(--touch-min);
   display: flex; align-items: center; justify-content: center;
-  border-radius: var(--r-sm); transition: all .15s;
+  border-radius: var(--r-sm); font-size: 1rem;
+  transition: all .15s;
 }
-.cockpit-close-btn:hover, #cockpitCloseBtn:hover { color: var(--text); background: var(--surface-2); }
+#cockpitCloseBtn:hover i { color: var(--text); background: var(--surface-2); }
 
 .cp-section { padding: 16px 15px 18px; border-bottom: 1px solid var(--border); }
 .cp-section:last-child { border-bottom: none; }
@@ -653,11 +662,11 @@ a { text-decoration: none; color: inherit; }
 .marker-status.st-normal { background: var(--ok-dim);     color: var(--ok); }
 
 /* ═══════════════════════════════════════
-   OVERLAYS (mobile)
+   OVERLAYS
 ═══════════════════════════════════════ */
 .sidebar-overlay, .cockpit-overlay {
   display: none; position: fixed; inset: 0;
-  background: rgba(0,0,0,.55); z-index: 40; animation: fadeIn .2s ease;
+  background: rgba(0,0,0,.55); z-index: 55; animation: fadeIn .2s ease;
 }
 .sidebar-overlay.show, .cockpit-overlay.show { display: block; }
 
@@ -693,28 +702,42 @@ a { text-decoration: none; color: inherit; }
 @keyframes slideInFromRight { from{transform:translateX(100%)} to{transform:translateX(0)} }
 
 /* ═══════════════════════════════════════
-   RESPONSIVE — 1200px
+   RESPONSIVE — 1200px (tablet landscape)
+   Cockpit becomes right-side DRAWER
+   but NEVER collapses to display:none
 ═══════════════════════════════════════ */
 @media (max-width: 1200px) {
+  /* Remove cockpit from grid — it becomes position:fixed */
   #shell { grid-template-columns: var(--sidebar-w) 1fr; }
 
-  /* Cockpit becomes a RIGHT DRAWER on medium screens */
   #cockpit {
     position: fixed;
     top: 0; right: 0; bottom: 0;
-    z-index: 60;
-    width: min(var(--cockpit-w), 90vw);
     height: 100vh;
+    width: min(var(--cockpit-w), 88vw);
+    /* Start off-screen to the right — NOT display:none */
     transform: translateX(100%);
     box-shadow: var(--shadow);
     border-left: 1px solid var(--border-2);
     overflow-y: auto;
+    /* z-index above overlay */
+    z-index: 65;
   }
+
+  /* When JS adds .open, slide into view */
   #cockpit.open {
     transform: translateX(0);
     animation: slideInFromRight .28s cubic-bezier(.4,0,.2,1);
   }
-  .cockpit-overlay { z-index: 55; }
+
+  /* Show the close button inside the drawer */
+  #cockpitCloseBtn { display: flex; }
+
+  /* Cockpit overlay sits behind the cockpit */
+  .cockpit-overlay { z-index: 60; }
+
+  /* Mobile cockpit toggle button appears in topbar */
+  .mobile-only { display: flex !important; }
 }
 
 /* ═══════════════════════════════════════
@@ -723,80 +746,61 @@ a { text-decoration: none; color: inherit; }
 @media (max-width: 768px) {
   #shell { grid-template-columns: 1fr; }
 
-  /* Sidebar becomes a left drawer */
+  /* Sidebar becomes left drawer */
   #sidebar {
     position: fixed;
     top: 0; bottom: 0; left: 0;
     width: var(--sidebar-w);
     transform: translateX(-100%);
-    box-shadow: var(--shadow); z-index: 65;
+    box-shadow: var(--shadow);
+    z-index: 70;
   }
   #sidebar.open { transform: translateX(0); }
-  .sidebar-overlay { z-index: 60; }
+  .sidebar-overlay { z-index: 65; }
 
-  /* Show mobile-only elements */
-  .mobile-only { display: flex; }
-  #mobileMenuBtn { display: flex; }
+  #mobileMenuBtn { display: flex !important; }
 
   /* Chat messages — tighter padding */
   .chat-msg { padding: 6px 12px; }
   .msg-body { max-width: 90%; }
 
-  /* Input bar — full width, more padding for thumbs */
+  /* Input bar */
   .input-wrap { padding: 6px 12px 16px; }
   .input-bar { padding: 10px 10px 10px 14px; }
 
-  /* Welcome screen — tighter */
+  /* Welcome screen */
   #welcomeScreen { padding: 16px 12px; align-items: flex-start; padding-top: 24px; }
   .welcome-inner { text-align: left; }
   .welcome-orb { margin: 0 0 14px; }
   .welcome-headline { font-size: 1.6rem; text-align: left; }
   .welcome-sub { text-align: left; margin: 0 0 20px; max-width: 100%; }
-
-  /* Chips — full width on mobile for easier tapping */
   .suggestion-chips { justify-content: flex-start; }
-  .chip { flex: 0 0 auto; min-width: 0; }
-
-  /* Upload nudge — full width */
   .upload-nudge { width: 100%; justify-content: center; }
   .welcome-upload-prompt { width: 100%; }
 
-  /* Typing indicator — slightly bigger dots */
-  .t-dot { width: 8px; height: 8px; }
-
-  /* Cockpit drawer — full height right panel */
+  /* Cockpit drawer on mobile — slides from right */
   #cockpit {
-    width: min(var(--cockpit-w), 88vw);
-    padding-top: 8px;
-  }
-  #cockpitCloseBtn {
-    display: flex;
-    justify-content: flex-end;
-    padding: 8px 12px 4px;
-    width: 100%;
-    background: none;
-    border: none;
+    width: min(var(--cockpit-w), 90vw);
   }
 
-  /* Toast — bottom center on mobile */
-  #toasts {
-    bottom: 80px; right: 12px; left: 12px; max-width: 100%;
-  }
+  /* Toast — bottom center */
+  #toasts { bottom: 80px; right: 12px; left: 12px; max-width: 100%; }
   .toast { max-width: 100%; }
 }
 
 /* ═══════════════════════════════════════
-   RESPONSIVE — 480px
+   RESPONSIVE — 480px (small mobile)
 ═══════════════════════════════════════ */
 @media (max-width: 480px) {
   :root { --sidebar-w: 290px; }
   .welcome-headline { font-size: 1.4rem; }
   .chat-msg { padding: 5px 10px; }
-
-  /* Stack input actions on very small screens */
   .input-actions { gap: 2px; }
   .input-btn { width: 40px; height: 40px; font-size: .8rem; }
   .send-btn  { width: 40px; height: 40px; font-size: .8rem; }
+
+  /* Cockpit nearly full-width on small phones */
+  #cockpit { width: 92vw; }
 }
 
 /* ─── Reduced motion ─── */
