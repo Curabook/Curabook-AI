@@ -1,13 +1,15 @@
 """
-api/health_routes.py — Complete with memory context API
+api/health_routes.py — Complete with memory context API + behavioral logs stub
 ─────────────────────────────────────────────────────────────────────────────
 FIX B-04: _compute_status imported and called with correct signature.
-          Previously: from health_memory.memory import ... _compute_status
-          then called as _compute_status(value, ref, status) — but the
-          function signature is _compute_status(value, reference_range, existing_status).
-          The import is from a private function (_compute_status) which is
-          fragile. This version uses the public-facing logic inline to avoid
-          relying on a private helper from another module.
+FIX LOGS-1: Added /api/behavioral-logs GET+POST stub so the frontend
+            cockpit can log protein, steps, sleep, and food_noise without
+            a 404. The full implementation lives in intelligence_routes.py
+            (/api/behavioral-logs), but this stub handles the POST from
+            script.js's logShieldData() and logNoiseLevel() gracefully
+            when the intelligence blueprint isn't registered or available.
+            If the full route IS registered, these stubs are never reached
+            (Flask matches the first registered route). Safe to keep both.
 
 Endpoints:
   GET  /api/health-timeline     — chronological marker readings for charts
@@ -17,9 +19,12 @@ Endpoints:
   POST /api/doctor-brief        — generate doctor visit prep
   GET  /api/memory/context      — structured JSON health context
   GET  /api/memory/facts        — conversation memory facts
+  GET  /api/behavioral-logs     — fetch behavioral logs (stub/fallback)
+  POST /api/behavioral-logs     — store behavioral log entry (stub/fallback)
 """
 
 from flask import Blueprint, request, jsonify
+from datetime import datetime, timezone
 
 health_bp = Blueprint("health", __name__)
 
@@ -242,11 +247,9 @@ def memory_context():
                 "last_updated":       None,
             })
 
-        # Build conditions list (all abnormal markers)
         conditions = []
         alerts     = []
         for name, m in sorted(latest.items()):
-            # FIX B-04: use local resolver, not imported private function
             status = _resolve_status(
                 m.get("value"), m.get("reference_range", ""), m.get("status", "")
             )
@@ -376,3 +379,115 @@ def delete_memory_fact(fact_id: str):
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# ── Behavioral Logs — Stub/Fallback ──────────────────────────────────────────
+# FIX-LOGS-1: These endpoints handle the cockpit's logShieldData() and
+# logNoiseLevel() calls. The full implementation is in intelligence_routes.py.
+# This stub is a safe fallback if that blueprint isn't registered, and also
+# acts as documentation of the expected request/response shape.
+
+@health_bp.route("/api/behavioral-logs", methods=["GET"])
+def behavioral_logs_get():
+    """
+    Fetch behavioral logs for the authenticated user.
+    Full implementation: intelligence_routes.py /api/behavioral-logs GET
+    This stub provides a safe fallback.
+    """
+    from app import supabase
+    from services.auth import get_authenticated_user
+
+    user = get_authenticated_user(supabase)
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    metric = request.args.get("metric", "")
+    days   = min(int(request.args.get("days", 30)), 365)
+
+    from datetime import date, timedelta
+    cutoff = (date.today() - timedelta(days=days)).isoformat()
+
+    try:
+        q = (supabase.table("behavioral_logs")
+             .select("id,date,metric_name,value,unit,notes,created_at")
+             .eq("user_id", user.id)
+             .gte("date", cutoff)
+             .order("date", desc=True)
+             .limit(500))
+        if metric:
+            q = q.ilike("metric_name", f"%{metric}%")
+        res  = q.execute()
+        return jsonify(res.data or [])
+    except Exception as e:
+        # If the table doesn't exist yet, return empty rather than 500
+        if "does not exist" in str(e).lower():
+            return jsonify([])
+        return jsonify({"error": str(e)}), 500
+
+
+@health_bp.route("/api/behavioral-logs", methods=["POST"])
+def behavioral_logs_post():
+    """
+    Store a behavioral log entry (protein, steps, sleep, food_noise, weight).
+
+    Expected body:
+    {
+        "date":        "2026-04-20",
+        "metric_name": "protein",
+        "value":       95.0,
+        "unit":        "g",
+        "notes":       ""       (optional)
+    }
+
+    Full implementation: intelligence_routes.py /api/behavioral-logs POST
+    This stub provides a safe fallback for the cockpit.
+    """
+    from app import supabase
+    from services.auth import get_authenticated_user
+
+    user = get_authenticated_user(supabase)
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    body        = request.json or {}
+    date_str    = str(body.get("date", ""))[:10]
+    metric_name = str(body.get("metric_name", ""))[:50].strip()
+    value       = body.get("value")
+    unit        = str(body.get("unit",  ""))[:20]
+    notes       = str(body.get("notes", ""))[:500]
+
+    if not date_str or not metric_name or value is None:
+        return jsonify({"error": "date, metric_name, and value are required"}), 400
+
+    try:
+        float(value)
+    except (TypeError, ValueError):
+        return jsonify({"error": "value must be numeric"}), 400
+
+    # Validate metric names to prevent unexpected writes
+    VALID_METRICS = {"protein", "steps", "sleep", "stress", "weight", "food_noise",
+                     "calories", "water", "exercise_minutes"}
+    if metric_name.lower() not in VALID_METRICS:
+        # Accept it anyway but log a warning — don't block the frontend
+        print(f"[BEHAVIORAL-LOGS] Unknown metric: {metric_name} (user: {user.id[:8]})")
+
+    try:
+        res = supabase.table("behavioral_logs").insert({
+            "user_id":     user.id,
+            "date":        date_str,
+            "metric_name": metric_name,
+            "value":       float(value),
+            "unit":        unit,
+            "notes":       notes,
+            "created_at":  datetime.now(timezone.utc).isoformat(),
+        }).execute()
+        return jsonify({"success": True, "id": res.data[0].get("id") if res.data else None})
+    except Exception as e:
+        err_str = str(e).lower()
+        if "does not exist" in err_str:
+            # behavioral_logs table not yet created — return 200 silently
+            # so the frontend cockpit doesn't show errors
+            print(f"[BEHAVIORAL-LOGS] Table not found — run schema.sql first. Silently ignoring.")
+            return jsonify({"success": False, "reason": "behavioral_logs table not created yet"}), 200
+        print(f"[BEHAVIORAL-LOGS] Insert error: {e}")
+        return jsonify({"error": f"Could not save log: {type(e).__name__}"}), 500

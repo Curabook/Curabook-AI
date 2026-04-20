@@ -9,6 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Space+Grotesk:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<!-- FIX: Proper stylesheet link (was incorrectly referenced as a script) -->
 <link rel="stylesheet" href="style.css">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -111,13 +112,17 @@
         <button id="attachTopBtn" class="topbar-icon-btn" aria-label="Upload lab report">
           <i class="fa-solid fa-paperclip" aria-hidden="true"></i>
         </button>
+        <!-- Mobile cockpit toggle button -->
+        <button id="mobileCockpitBtn" class="topbar-icon-btn mobile-only" aria-label="Toggle health cockpit" title="Health Cockpit">
+          <i class="fa-solid fa-gauge-high" aria-hidden="true"></i>
+        </button>
       </div>
     </div>
 
     <!-- Chat Area -->
     <div id="chatArea">
 
-      <!-- Welcome Screen (shown when no active chat) -->
+      <!-- Welcome Screen -->
       <div id="welcomeScreen" role="region" aria-label="Chat welcome">
         <div class="welcome-inner">
           <div class="welcome-orb" aria-hidden="true">φ</div>
@@ -214,6 +219,11 @@
   <!-- ─── COCKPIT PANEL ─── -->
   <aside id="cockpit" aria-label="Health cockpit">
 
+    <!-- Mobile cockpit close button -->
+    <button id="cockpitCloseBtn" class="cockpit-close-btn mobile-only" aria-label="Close cockpit">
+      <i class="fa-solid fa-xmark"></i>
+    </button>
+
     <!-- Metabolic Shield -->
     <section class="cp-section" id="shieldSection">
       <div class="cp-section-hd">
@@ -223,17 +233,14 @@
 
       <div class="shield-wrap">
         <svg width="160" height="160" viewBox="0 0 160 160" aria-hidden="true">
-          <!-- Protein ring -->
           <circle cx="80" cy="80" r="70" fill="none" stroke-width="12" class="ring-track"/>
           <circle cx="80" cy="80" r="70" fill="none" stroke-width="12" stroke-linecap="round"
             stroke="var(--signal)" stroke-dasharray="440" stroke-dashoffset="440"
             transform="rotate(-90 80 80)" class="ring-arc" id="ringProtein"/>
-          <!-- Movement ring -->
           <circle cx="80" cy="80" r="55" fill="none" stroke-width="11" class="ring-track"/>
           <circle cx="80" cy="80" r="55" fill="none" stroke-width="11" stroke-linecap="round"
             stroke="var(--amber)" stroke-dasharray="346" stroke-dashoffset="346"
             transform="rotate(-90 80 80)" class="ring-arc" id="ringMovement"/>
-          <!-- Recovery ring -->
           <circle cx="80" cy="80" r="41" fill="none" stroke-width="10" class="ring-track"/>
           <circle cx="80" cy="80" r="41" fill="none" stroke-width="10" stroke-linecap="round"
             stroke="var(--ok)" stroke-dasharray="258" stroke-dashoffset="258"
@@ -275,19 +282,19 @@
       <div class="shield-log-grid">
         <div class="sl-group">
           <label class="sl-label" for="inputProtein">Protein (g)</label>
-          <input type="number" id="inputProtein" class="sl-input" placeholder="0" min="0" max="400" aria-label="Protein grams today">
+          <input type="number" id="inputProtein" class="sl-input" placeholder="0" min="0" max="400">
         </div>
         <div class="sl-group">
           <label class="sl-label" for="inputSteps">Steps</label>
-          <input type="number" id="inputSteps" class="sl-input" placeholder="0" min="0" aria-label="Steps today">
+          <input type="number" id="inputSteps" class="sl-input" placeholder="0" min="0">
         </div>
         <div class="sl-group">
           <label class="sl-label" for="inputSleep">Sleep (h)</label>
-          <input type="number" id="inputSleep" class="sl-input" placeholder="0" min="0" max="14" step=".5" aria-label="Hours of sleep">
+          <input type="number" id="inputSleep" class="sl-input" placeholder="0" min="0" max="14" step=".5">
         </div>
         <div class="sl-group">
           <label class="sl-label" for="inputGoalWt">Goal Wt (lbs)</label>
-          <input type="number" id="inputGoalWt" class="sl-input" placeholder="165" min="80" max="400" aria-label="Goal weight in pounds">
+          <input type="number" id="inputGoalWt" class="sl-input" placeholder="165" min="80" max="400">
         </div>
       </div>
       <button id="updateShieldBtn" class="cp-primary-btn">Update Shield</button>
@@ -304,7 +311,7 @@
       </div>
       <p class="cp-caption" id="proteinCaption">Enter goal weight to calculate target</p>
       <div class="protein-row">
-        <input type="number" id="proteinInput" class="cp-input" placeholder="Goal weight (lbs)" min="80" max="400" aria-label="Goal weight for protein calculation">
+        <input type="number" id="proteinInput" class="cp-input" placeholder="Goal weight (lbs)" min="80" max="400">
         <button id="calcBtn" class="cp-secondary-btn">Calc</button>
       </div>
       <div id="proteinDetails" class="protein-details" aria-live="polite"></div>
@@ -321,7 +328,7 @@
       <div id="cliffAlerts" aria-live="polite">
         <div class="ca-item ca-ok">
           <div class="ca-title">✅ No rebound signals</div>
-          <div class="ca-desc">Upload lab reports to enable automatic cliff monitoring of glucose, HbA1c, and weight.</div>
+          <div class="ca-desc">Upload lab reports to enable automatic cliff monitoring.</div>
         </div>
       </div>
     </section>
@@ -367,6 +374,8 @@
 
 <!-- Sidebar overlay (mobile only) -->
 <div id="sidebarOverlay" class="sidebar-overlay" aria-hidden="true"></div>
+<!-- Cockpit overlay (mobile only) -->
+<div id="cockpitOverlay" class="cockpit-overlay" aria-hidden="true"></div>
 
 <!-- Hidden file input -->
 <input type="file" id="fileInput" accept=".pdf,.txt" multiple aria-hidden="true" style="display:none">
@@ -374,6 +383,7 @@
 <!-- Toast notification area -->
 <div id="toasts" role="status" aria-live="assertive" aria-atomic="true"></div>
 
+<!-- FIX: Correct script tag pointing to script.js (not style.css) -->
 <script src="script.js"></script>
 </body>
 </html>

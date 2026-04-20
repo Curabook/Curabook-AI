@@ -1,21 +1,14 @@
 /**
- * app.js — Curabook PHI v1.0
+ * script.js — Curabook PHI v1.1
  * GLP-1 Intelligence App — Production JavaScript
  *
- * Architecture:
- *   CONFIG        → constants, Supabase init
- *   STATE         → runtime state
- *   BOOT          → init, auth check, session guard
- *   API           → fetch helpers, header builder
- *   THEME         → light/dark toggle
- *   SIDEBAR       → mobile open/close, user menu
- *   VIEWS         → welcome ↔ chat transition
- *   HISTORY       → load, render, open, delete
- *   CONVERSATIONS → create, rename
- *   CHAT          → send, file handling, rendering
- *   HEALTH DATA   → markers, dashboard, cliff detection
- *   COCKPIT       → shield rings, protein calc, food noise
- *   EVENTS        → wire all DOM events
+ * FIXES IN THIS VERSION:
+ *   - FIX-API-1: Dynamic API_BASE detection (localhost vs production)
+ *   - FIX-AUTH-1: Soft redirect in dev mode (warning instead of hard redirect)
+ *   - FIX-MOBILE-1: Cockpit right-drawer toggle (mobileCockpitBtn)
+ *   - FIX-SHIELD-1: updateShield() safe with empty inputs + auth guard on logging
+ *   - FIX-CTX-1: Document text context persisted across failed retries
+ *   - FIX-LOGS-1: Behavioral logs only sent when authenticated
  */
 
 "use strict";
@@ -25,7 +18,26 @@
 ═══════════════════════════════════════ */
 const SUPABASE_URL = "https://pbeaawlxdcrdbvlmpqhc.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBiZWFhd2x4ZGNyZGJ2bG1wcWhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwMDk0MzksImV4cCI6MjA5MTU4NTQzOX0.6bUpYrDbe0mQjjBHX8Qscj-5R8i4-SqAtW_Z1UFzJ10";
-const API_BASE     = "https://api.curabook.com";
+
+/**
+ * FIX-API-1: Dynamic API base detection.
+ * - localhost / 127.0.0.1 → use local Flask on port 5000
+ * - Production → use api.curabook.com
+ */
+const IS_LOCAL = (
+  window.location.hostname === "localhost" ||
+  window.location.hostname === "127.0.0.1" ||
+  window.location.hostname === "0.0.0.0"
+);
+const API_BASE = IS_LOCAL
+  ? `http://localhost:5000`
+  : "https://api.curabook.com";
+
+const IS_DEV = IS_LOCAL || window.location.hostname.includes("staging");
+
+if (IS_DEV) {
+  console.info(`[PHI] DEV MODE — API: ${API_BASE}`);
+}
 
 /* ═══════════════════════════════════════
    STATE
@@ -36,9 +48,19 @@ let _userName    = "";     // First name for display
 let _convId      = null;   // Active conversation ID
 let _isSending   = false;  // Prevent double-send
 let _uploads     = [];     // Queued files
-let _docCtx      = { text: null, sent: false };  // Document context for chat
 let _goalWt      = 165;    // Default protein calc weight
 let _proteinTarget = 90;   // Calculated protein target
+
+/**
+ * FIX-CTX-1: Persistent document context.
+ * `text` is set once on upload and preserved across retries.
+ * `sent` only turns true after a SUCCESSFUL send; failed messages re-use the text.
+ */
+let _docCtx = {
+  text:  null,    // full document text
+  sent:  false,   // has it been sent to the backend at least once?
+  hasDoc: false,  // any doc loaded this session?
+};
 
 const NOISE_MESSAGES = {
   1:  "Nearly silent — ghrelin well suppressed. Excellent maintenance state.",
@@ -58,26 +80,40 @@ const NOISE_MESSAGES = {
 ═══════════════════════════════════════ */
 async function boot() {
   try {
-    // Initialize Supabase
     _sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
       auth: { detectSessionInUrl: true, persistSession: true }
     });
 
-    // Auth state listener
     _sb.auth.onAuthStateChange(async (event, session) => {
       if (event === "SIGNED_IN" && session?.user) {
         await onSignIn(session.user);
       } else if (event === "SIGNED_OUT") {
-        window.location.href = "/login";
+        /**
+         * FIX-AUTH-1: In dev/local, log a warning instead of hard redirecting.
+         * This prevents boot loops when testing without a Supabase session.
+         */
+        if (IS_DEV) {
+          console.warn("[PHI] DEV: Signed out — skipping login redirect. Sign in at /login manually.");
+          showDevAuthBanner();
+        } else {
+          window.location.href = "/login";
+        }
       }
     });
 
-    // Check existing session
     const { data: { session } } = await _sb.auth.getSession();
     if (!session?.user) {
-      // Not authenticated — redirect to login
-      window.location.href = "/login";
-      return;
+      if (IS_DEV) {
+        console.warn("[PHI] DEV: No session found. App in unauthenticated mode — some features disabled.");
+        showDevAuthBanner();
+        // Still initialize UI in dev mode
+        initTheme();
+        wireEvents();
+        return;
+      } else {
+        window.location.href = "/login";
+        return;
+      }
     }
 
     await onSignIn(session.user);
@@ -88,6 +124,27 @@ async function boot() {
   }
 }
 
+/** FIX-AUTH-1: Dev-mode banner shown when no session exists locally */
+function showDevAuthBanner() {
+  const banner = document.createElement("div");
+  banner.style.cssText = `
+    position:fixed;top:0;left:0;right:0;z-index:9999;
+    background:#1a1000;border-bottom:2px solid #fbbf24;
+    color:#fbbf24;font-size:.78rem;font-family:monospace;
+    padding:6px 16px;display:flex;align-items:center;gap:12px;
+  `;
+  banner.innerHTML = `
+    ⚠️ DEV MODE — No Supabase session.
+    <a href="/login" style="color:#2dd4bf;text-decoration:underline">Sign in</a>
+    to test authenticated features. API: ${API_BASE}
+    <button onclick="this.parentNode.remove()" style="margin-left:auto;color:#fbbf24;background:none;border:none;cursor:pointer;font-size:1rem;">×</button>
+  `;
+  document.body.appendChild(banner);
+  // Shift topbar down
+  const topbar = document.getElementById("topbar");
+  if (topbar) topbar.style.marginTop = "32px";
+}
+
 async function onSignIn(user) {
   _user     = user;
   _userName = user.user_metadata?.first_name
@@ -95,21 +152,15 @@ async function onSignIn(user) {
     || "there";
   _userName = _userName.charAt(0).toUpperCase() + _userName.slice(1);
 
-  // Update UI
-  const initial = _userName[0].toUpperCase();
-  el("userAvatar")?.textContent && (el("userAvatar").textContent = initial);
-  if (el("userAvatar")) el("userAvatar").textContent = initial;
+  if (el("userAvatar")) el("userAvatar").textContent = _userName[0].toUpperCase();
   setText("userEmail", user.email);
   setText("welcomeName", _userName);
 
-  // Set time greeting
   const h = new Date().getHours();
   setText("timeGreeting", h < 12 ? "morning" : h < 17 ? "afternoon" : "evening");
 
-  // Save consents (non-blocking)
   saveConsents().catch(() => {});
 
-  // Load app data
   initTheme();
   await loadHistory();
   loadMarkersData();
@@ -118,16 +169,21 @@ async function onSignIn(user) {
 /* ═══════════════════════════════════════
    API HELPERS
 ═══════════════════════════════════════ */
-async function getHeaders(contentType = "application/json") {
+async function getSession() {
   try {
     const { data: { session } } = await _sb.auth.getSession();
+    return session;
+  } catch { return null; }
+}
+
+async function getHeaders(contentType = "application/json") {
+  try {
+    const session = await getSession();
     if (!session) return null;
     const h = { "Authorization": `Bearer ${session.access_token}` };
     if (contentType) h["Content-Type"] = contentType;
     return h;
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
 async function apiFetch(path, options = {}) {
@@ -159,10 +215,9 @@ async function saveConsents() {
   const h = await getHeaders();
   if (!h) return;
   await apiFetch("/api/consent", {
-    method: "POST",
-    headers: h,
+    method: "POST", headers: h,
     body: JSON.stringify({ consents: ["data_processing", "ai_processing", "document_processing"] })
-  });
+  }).catch(() => {});
 }
 
 /* ═══════════════════════════════════════
@@ -184,10 +239,9 @@ function applyTheme(theme) {
   localStorage.setItem("phi_theme", theme);
   const isDark = theme === "dark";
   const icon   = isDark ? "fa-moon" : "fa-sun";
-  const label  = isDark ? "Light Mode" : "Dark Mode";
-  setIcon("themeIcon", icon);
+  setIcon("themeIcon",    icon);
   setIcon("topThemeIcon", icon);
-  setText("themeLabel", label);
+  setText("themeLabel", isDark ? "Light Mode" : "Dark Mode");
 }
 
 /* ═══════════════════════════════════════
@@ -197,6 +251,8 @@ function openSidebar() {
   el("sidebar")?.classList.add("open");
   el("sidebarOverlay")?.classList.add("show");
   el("mobileMenuBtn")?.setAttribute("aria-expanded", "true");
+  // Close cockpit if open
+  closeCockpit();
 }
 
 function closeSidebar() {
@@ -217,6 +273,31 @@ function closeUserMenu() {
 }
 
 /* ═══════════════════════════════════════
+   FIX-MOBILE-1: COCKPIT DRAWER
+═══════════════════════════════════════ */
+function openCockpit() {
+  el("cockpit")?.classList.add("open");
+  el("cockpitOverlay")?.classList.add("show");
+  // Close sidebar if open
+  closeSidebar();
+}
+
+function closeCockpit() {
+  el("cockpit")?.classList.remove("open");
+  el("cockpitOverlay")?.classList.remove("show");
+}
+
+function toggleCockpit() {
+  const cockpit = el("cockpit");
+  if (!cockpit) return;
+  if (cockpit.classList.contains("open")) {
+    closeCockpit();
+  } else {
+    openCockpit();
+  }
+}
+
+/* ═══════════════════════════════════════
    VIEWS
 ═══════════════════════════════════════ */
 function showWelcome() {
@@ -233,7 +314,7 @@ function showChat() {
 function resetToWelcome() {
   _convId  = null;
   _uploads = [];
-  _docCtx  = { text: null, sent: false };
+  _docCtx  = { text: null, sent: false, hasDoc: false };
   clearFilePreview();
   if (el("chatDisplay")) el("chatDisplay").innerHTML = "";
   showWelcome();
@@ -249,7 +330,9 @@ async function loadHistory() {
   if (!h) return;
 
   try {
-    const { ok, data } = await apiJson("/history", { method: "POST", headers: h, body: JSON.stringify({}) });
+    const { ok, data } = await apiJson("/history", {
+      method: "POST", headers: h, body: JSON.stringify({})
+    });
     if (ok && Array.isArray(data)) {
       renderHistory(data);
     } else {
@@ -269,7 +352,6 @@ function renderHistory(conversations) {
     return;
   }
 
-  // Group by date
   const today     = new Date(); today.setHours(0, 0, 0, 0);
   const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
 
@@ -278,7 +360,7 @@ function renderHistory(conversations) {
     const d = c.created_at ? new Date(c.created_at) : new Date();
     d.setHours(0, 0, 0, 0);
     let label;
-    if (d.getTime() === today.getTime())     label = "Today";
+    if (d.getTime() === today.getTime())          label = "Today";
     else if (d.getTime() === yesterday.getTime()) label = "Yesterday";
     else label = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
     if (!groups.has(label)) groups.set(label, []);
@@ -308,12 +390,11 @@ async function openConversation(id) {
 
   _convId  = id;
   _uploads = [];
-  _docCtx  = { text: null, sent: false };
+  _docCtx  = { text: null, sent: false, hasDoc: false };
   clearFilePreview();
   showChat();
   if (el("chatDisplay")) el("chatDisplay").innerHTML = "";
 
-  // Mark active
   document.querySelectorAll(".hist-item").forEach(e =>
     e.classList.toggle("active", e.dataset.id === id)
   );
@@ -324,18 +405,14 @@ async function openConversation(id) {
 
   try {
     const { ok, data } = await apiJson("/conversation", {
-      method: "POST",
-      headers: h,
+      method: "POST", headers: h,
       body: JSON.stringify({ conversation_id: id })
     });
-
     if (ok && Array.isArray(data) && data.length) {
       data.forEach(m => appendMessage(m.content, m.role === "user" ? "user" : "ai"));
       scrollToBottom();
     }
-  } catch (err) {
-    toast("Could not load conversation", "err");
-  }
+  } catch { toast("Could not load conversation", "err"); }
 }
 
 async function deleteConversation(id, e) {
@@ -343,14 +420,11 @@ async function deleteConversation(id, e) {
   const h = await getHeaders();
   if (!h) return;
 
-  // Optimistic remove from list
   document.querySelector(`.hist-item[data-id="${id}"]`)?.remove();
-
   if (id === _convId) resetToWelcome();
 
   await apiFetch("/delete", {
-    method: "POST",
-    headers: h,
+    method: "POST", headers: h,
     body: JSON.stringify({ conversation_id: id })
   }).catch(() => {});
 
@@ -366,20 +440,15 @@ async function createConversation() {
 
   try {
     const { ok, data } = await apiJson("/conversation/create", {
-      method: "POST",
-      headers: h,
-      body: JSON.stringify({})
+      method: "POST", headers: h, body: JSON.stringify({})
     });
-
     if (ok && data?.conversation_id) {
       _convId = data.conversation_id;
-      // Prepend to history
       prependToHistory(_convId, "New Conversation");
       return _convId;
     }
   } catch {}
 
-  // Fallback: local ID (offline)
   _convId = "local-" + Date.now();
   return _convId;
 }
@@ -387,11 +456,8 @@ async function createConversation() {
 function prependToHistory(id, title) {
   const list = el("historyList");
   if (!list) return;
-
-  // Remove empty state
   list.querySelector(".sb-empty")?.remove();
 
-  // Remove existing today label or create one
   let todayGroup = list.querySelector(".hist-group-label");
   if (!todayGroup || todayGroup.textContent !== "Today") {
     todayGroup = document.createElement("div");
@@ -400,7 +466,6 @@ function prependToHistory(id, title) {
     list.prepend(todayGroup);
   }
 
-  // Create item
   const item = document.createElement("div");
   item.className = "hist-item active";
   item.dataset.id = id;
@@ -411,7 +476,6 @@ function prependToHistory(id, title) {
     </button>`;
   todayGroup.insertAdjacentElement("afterend", item);
 
-  // Deactivate others
   document.querySelectorAll(".hist-item").forEach(e =>
     e.classList.toggle("active", e.dataset.id === id)
   );
@@ -422,15 +486,12 @@ async function renameConversation(id, title) {
   if (!h || !id) return;
 
   const short = title.slice(0, 50);
-
-  // Update in list
   const titleEl = document.querySelector(`.hist-item[data-id="${id}"] .hist-title`);
   if (titleEl) titleEl.textContent = short;
   setText("convTitle", short);
 
   await apiFetch("/rename", {
-    method: "POST",
-    headers: h,
+    method: "POST", headers: h,
     body: JSON.stringify({ conversation_id: id, title: short })
   }).catch(() => {});
 }
@@ -440,19 +501,13 @@ async function renameConversation(id, title) {
 ═══════════════════════════════════════ */
 async function handleSend() {
   if (_isSending) return;
-
-  const ta   = el("chatInput");
-  let text   = ta?.value.trim();
-
-  // If no text but files attached, auto-prompt
+  const ta  = el("chatInput");
+  let text  = ta?.value.trim();
   if (!text && _uploads.length) {
     text = "Please read my uploaded lab report and explain every finding — what's abnormal, what it means, and what I should discuss with my doctor.";
   }
   if (!text) return;
-
-  // Clear input
   if (ta) { ta.value = ""; ta.style.height = "auto"; }
-
   await sendMessage(text);
 }
 
@@ -462,7 +517,6 @@ async function sendMessage(text) {
   setSendingState(true);
   showChat();
 
-  // Ensure conversation exists
   if (!_convId) {
     const id = await createConversation();
     if (!id) {
@@ -473,30 +527,31 @@ async function sendMessage(text) {
     }
   }
 
-  // Process file uploads
-  let docResult = null;
+  // Process any queued file uploads
   if (_uploads.length) {
     const loadRow = appendTyping();
     updateTypingText(loadRow, "Reading your report…");
-    docResult = await processFileUpload(_uploads[0]);
+    const docResult = await processFileUpload(_uploads[0]);
     loadRow?.remove();
     _uploads = [];
     clearFilePreview();
 
     if (docResult?.document_text) {
-      _docCtx = { text: docResult.document_text, sent: false };
+      _docCtx.text   = docResult.document_text;
+      _docCtx.hasDoc = true;
+      _docCtx.sent   = false;   // not yet sent — will be sent with user message below
     }
   }
 
-  // Show user message
   appendMessage(text, "user");
   const botRow = appendTyping();
   scrollToBottom();
 
-  // Get document text to send (only first time after upload)
-  const sendDoc = !_docCtx.sent && _docCtx.text
-    ? (_docCtx.sent = true, _docCtx.text)
-    : (docResult?.document_text || "");
+  /**
+   * FIX-CTX-1: Only mark as sent AFTER a successful response.
+   * On failure, _docCtx.sent stays false, so the next retry re-sends the text.
+   */
+  const sendDoc = !_docCtx.sent ? (_docCtx.text || "") : "";
 
   const h = await getHeaders();
   if (!h) {
@@ -506,15 +561,15 @@ async function sendMessage(text) {
     return;
   }
 
+  let success = false;
   try {
     const { ok, status, data } = await apiJson("/chat", {
-      method: "POST",
-      headers: h,
+      method: "POST", headers: h,
       body: JSON.stringify({
         conversation_id: _convId,
         message:         text,
-        has_documents:   !!sendDoc || !!docResult,
-        document_text:   sendDoc || docResult?.document_text || ""
+        has_documents:   _docCtx.hasDoc,
+        document_text:   sendDoc,
       })
     });
 
@@ -531,16 +586,16 @@ async function sendMessage(text) {
       );
     } else {
       updateMessage(botRow, reply);
+      success = true;
+
+      // FIX-CTX-1: Mark document as sent only after success
+      if (sendDoc) _docCtx.sent = true;
     }
 
-    // Rename on first user message
     const userMsgs = el("chatDisplay")?.querySelectorAll(".chat-msg.user-msg").length || 0;
-    if (userMsgs === 1) {
-      renameConversation(_convId, text);
-    }
+    if (userMsgs === 1) renameConversation(_convId, text);
 
-    // Refresh markers if a report was just analyzed
-    if (docResult?.success) {
+    if (success && _docCtx.hasDoc) {
       setTimeout(loadMarkersData, 2000);
     }
 
@@ -578,14 +633,8 @@ function handleFileSelect(e) {
 }
 
 function addFile(file) {
-  if (file.size > 10 * 1024 * 1024) {
-    toast(`${file.name} is too large. Max 10 MB.`, "err");
-    return;
-  }
-  if (!/\.(pdf|txt)$/i.test(file.name)) {
-    toast("Only PDF or TXT files are supported.", "err");
-    return;
-  }
+  if (file.size > 10 * 1024 * 1024) { toast(`${file.name} is too large. Max 10 MB.`, "err"); return; }
+  if (!/\.(pdf|txt)$/i.test(file.name)) { toast("Only PDF or TXT files are supported.", "err"); return; }
   _uploads.push(file);
   renderFilePreview();
   toast(`${file.name} ready — press Send to analyze`);
@@ -599,13 +648,7 @@ function removeFile(idx) {
 function renderFilePreview() {
   const strip = el("filePreview");
   if (!strip) return;
-
-  if (!_uploads.length) {
-    strip.classList.remove("show");
-    strip.innerHTML = "";
-    return;
-  }
-
+  if (!_uploads.length) { strip.classList.remove("show"); strip.innerHTML = ""; return; }
   strip.classList.add("show");
   strip.innerHTML = _uploads.map((f, i) => `
     <div class="file-chip">
@@ -623,23 +666,18 @@ function clearFilePreview() {
 }
 
 async function processFileUpload(file) {
-  const { data: { session } } = await _sb.auth.getSession();
+  const session = await getSession();
   if (!session) return null;
-
   const form = new FormData();
   form.append("file", file);
-
   try {
     const res = await apiFetch("/analyze", {
-      method:  "POST",
+      method: "POST",
       headers: { "Authorization": `Bearer ${session.access_token}` },
-      body:    form
+      body: form
     });
-    const d = await res.json();
-    return d;
-  } catch {
-    return null;
-  }
+    return await res.json();
+  } catch { return null; }
 }
 
 /* ═══════════════════════════════════════
@@ -652,10 +690,10 @@ function appendMessage(text, role) {
   const wrap = document.createElement("div");
   wrap.className = `chat-msg ${role === "user" ? "user-msg" : "ai-msg"}`;
 
-  const avLabel   = role === "user" ? (_userName?.[0]?.toUpperCase() || "U") : "φ";
-  const avClass   = role === "user" ? "av-user" : "av-ai";
-  const avEl      = `<div class="msg-av ${avClass}" aria-hidden="true">${avLabel}</div>`;
-  const bodyEl    = document.createElement("div");
+  const avLabel = role === "user" ? (_userName?.[0]?.toUpperCase() || "U") : "φ";
+  const avClass = role === "user" ? "av-user" : "av-ai";
+  const avEl    = `<div class="msg-av ${avClass}" aria-hidden="true">${avLabel}</div>`;
+  const bodyEl  = document.createElement("div");
   bodyEl.className = "msg-body";
 
   if (role === "user") {
@@ -666,8 +704,7 @@ function appendMessage(text, role) {
 
   if (role === "user") {
     wrap.innerHTML = avEl;
-    const avNode = wrap.querySelector(".msg-av");
-    wrap.insertBefore(bodyEl, avNode);
+    wrap.insertBefore(bodyEl, wrap.querySelector(".msg-av"));
   } else {
     wrap.innerHTML = avEl;
     wrap.appendChild(bodyEl);
@@ -680,16 +717,13 @@ function appendMessage(text, role) {
 function appendTyping() {
   const display = el("chatDisplay");
   if (!display) return null;
-
   const wrap = document.createElement("div");
   wrap.className = "chat-msg ai-msg";
   wrap.innerHTML = `
     <div class="msg-av av-ai" aria-hidden="true">φ</div>
     <div class="msg-body">
       <div class="typing-indicator" aria-label="PHI is thinking">
-        <div class="t-dot"></div>
-        <div class="t-dot"></div>
-        <div class="t-dot"></div>
+        <div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div>
       </div>
     </div>`;
   display.appendChild(wrap);
@@ -709,23 +743,22 @@ function updateMessage(wrap, text) {
   scrollToBottom();
 }
 
-function renderAIContent(el, text) {
-  // Strip the disclaimer and render separately
-  const parts   = text.split(/---\n⚕️/);
-  const main    = parts[0].trim();
+function renderAIContent(elem, text) {
+  const parts    = text.split(/---\n⚕️/);
+  const main     = parts[0].trim();
   const hasLegal = parts.length > 1;
 
   if (typeof marked !== "undefined") {
-    el.innerHTML = marked.parse(main);
+    elem.innerHTML = marked.parse(main);
   } else {
-    el.textContent = main;
+    elem.textContent = main;
   }
 
   if (hasLegal) {
     const legal = document.createElement("p");
     legal.className = "phi-legal";
     legal.innerHTML = `<span aria-hidden="true">⚕️</span> PHI is an educational wellness tool. Always consult your healthcare provider.`;
-    el.appendChild(legal);
+    elem.appendChild(legal);
   }
 }
 
@@ -760,7 +793,6 @@ function exportCurrentChat() {
 async function handleLogout() {
   closeUserMenu();
   await _sb.auth.signOut();
-  // onAuthStateChange handles redirect
 }
 
 /* ═══════════════════════════════════════
@@ -793,8 +825,7 @@ function renderMarkers(markers) {
     const s     = (m.status || "").toLowerCase();
     const cls   = s === "high" ? "val-high" : s === "low" ? "val-low" : s === "normal" ? "val-normal" : "";
     const badge = (s && s !== "unknown")
-      ? `<span class="marker-status st-${s}">${s.toUpperCase()}</span>`
-      : "";
+      ? `<span class="marker-status st-${s}">${s.toUpperCase()}</span>` : "";
     return `<div class="marker-card">
       <div class="marker-card-name" title="${esc(m.marker_name)}">${esc(m.marker_name)}</div>
       <div class="marker-card-val ${cls}">${m.value}<span class="marker-card-unit"> ${esc(m.unit || "")}</span></div>
@@ -813,7 +844,6 @@ function runCliffDetection(markers) {
     grouped[k].push({ ...m, _val: parseFloat(m.value) });
   });
 
-  // Glucose rebound
   const glucoseKey = Object.keys(grouped).find(k => /fasting.*glucose|blood.*glucose|glucose/i.test(k));
   if (glucoseKey) {
     const readings = grouped[glucoseKey].sort((a, b) => a.date < b.date ? -1 : 1);
@@ -825,13 +855,12 @@ function runCliffDetection(markers) {
         if (pct >= 15) {
           alerts.push({ type: "danger", title: `🚨 Glucose rebound +${pct.toFixed(0)}%`, desc: `From ${base} → ${last} mg/dL. Early cliff signal. Discuss urgently with provider.` });
         } else if (pct >= 10) {
-          alerts.push({ type: "warn", title: `⚠ Glucose rising +${pct.toFixed(0)}%`, desc: `From ${base} → ${last} mg/dL. Approaching the 15% rebound threshold.` });
+          alerts.push({ type: "warn", title: `⚠ Glucose rising +${pct.toFixed(0)}%`, desc: `Approaching the 15% rebound threshold.` });
         }
       }
     }
   }
 
-  // HbA1c rebound
   const hba1cKey = Object.keys(grouped).find(k => /hba1c|hemoglobin a1c|a1c/i.test(k));
   if (hba1cKey) {
     const readings = grouped[hba1cKey].sort((a, b) => a.date < b.date ? -1 : 1);
@@ -844,7 +873,6 @@ function runCliffDetection(markers) {
     }
   }
 
-  // High markers (non-glucose)
   markers.filter(m => m.status === "HIGH" && !/glucose/i.test(m.marker_name))
     .slice(0, 2)
     .forEach(m => {
@@ -871,39 +899,44 @@ function renderCliffAlerts(alerts) {
 /* ═══════════════════════════════════════
    COCKPIT
 ═══════════════════════════════════════ */
+
+/**
+ * FIX-SHIELD-1: updateShield() is safe with empty/partial inputs.
+ * - Defaults to 0 for missing numeric values
+ * - Only calls logShieldData() when all conditions met (user authenticated, values > 0)
+ */
 function updateShield() {
   const protein = parseFloat(el("inputProtein")?.value) || 0;
   const steps   = parseFloat(el("inputSteps")?.value)   || 0;
   const sleep   = parseFloat(el("inputSleep")?.value)   || 0;
-  const goalWt  = parseFloat(el("inputGoalWt")?.value)  || _goalWt;
+  const goalWt  = parseFloat(el("inputGoalWt")?.value)  || _goalWt || 165;
 
-  _goalWt         = goalWt;
-  _proteinTarget  = Math.round(goalWt * 0.545 * 10) / 10;
+  _goalWt        = goalWt;
+  _proteinTarget = Math.round(goalWt * 0.545 * 10) / 10;
 
-  const pPct = Math.min(100, Math.round((protein / _proteinTarget) * 100));
-  const mPct = Math.min(100, Math.round((steps   / 8000)          * 100));
+  const pPct = Math.min(100, Math.round((protein / (_proteinTarget || 90)) * 100));
+  const mPct = Math.min(100, Math.round((steps   / 8000) * 100));
   const rPct = Math.max(0, Math.min(100, Math.round(((sleep - 4) / 5) * 100)));
   const score = Math.round((pPct + mPct + rPct) / 3);
 
-  // Animate rings
   setRing("ringProtein",  70, pPct, 440);
   setRing("ringMovement", 55, mPct, 346);
   setRing("ringRecovery", 41, rPct, 258);
 
-  // Update labels
-  setText("shieldScore", score + "%");
-  setText("shieldBadge", score + "%");
+  setText("shieldScore",    score + "%");
+  setText("shieldBadge",    score + "%");
   setText("proteinLegend",  `${protein}g / ${_proteinTarget}g (${pPct}%)`);
   setText("movementLegend", `${steps.toLocaleString()} / 8,000 (${mPct}%)`);
   setText("recoveryLegend", `${sleep}h sleep (${rPct}%)`);
 
-  // Animate bars
   setBarWidth("proteinBar",  pPct);
   setBarWidth("movementBar", mPct);
   setBarWidth("recoveryBar", rPct);
 
-  // Log to backend (non-blocking)
-  logShieldData(protein, steps, sleep);
+  // FIX-SHIELD-1: Only log if user is authenticated and values are non-zero
+  if (_user && (protein > 0 || steps > 0 || sleep > 0)) {
+    logShieldData(protein, steps, sleep).catch(() => {});
+  }
 }
 
 function setRing(id, r, pct, circ) {
@@ -918,19 +951,25 @@ function setBarWidth(id, pct) {
   if (bar) bar.style.width = Math.max(0, pct) + "%";
 }
 
+/**
+ * FIX-LOGS-1: logShieldData only runs when authenticated.
+ * Behavioral logs route exists in health_routes.py — verified.
+ */
 async function logShieldData(protein, steps, sleep) {
   const h = await getHeaders();
-  if (!h) return;
+  if (!h) return;   // Not authenticated — skip silently
+
   const date = new Date().toISOString().slice(0, 10);
   const logs = [];
-  if (protein) logs.push({ date, metric_name: "protein", value: protein, unit: "g" });
-  if (steps)   logs.push({ date, metric_name: "steps",   value: steps,   unit: "steps" });
-  if (sleep)   logs.push({ date, metric_name: "sleep",   value: sleep,   unit: "hours" });
+  if (protein > 0) logs.push({ date, metric_name: "protein", value: protein, unit: "g" });
+  if (steps   > 0) logs.push({ date, metric_name: "steps",   value: steps,   unit: "steps" });
+  if (sleep   > 0) logs.push({ date, metric_name: "sleep",   value: sleep,   unit: "hours" });
 
+  // Fire-and-forget each log
   logs.forEach(l =>
     apiFetch("/api/behavioral-logs", {
       method: "POST", headers: h, body: JSON.stringify(l)
-    }).catch(() => {})
+    }).catch(err => console.warn("[PHI] Behavioral log failed:", err))
   );
 }
 
@@ -960,7 +999,6 @@ function calcProtein() {
       </span>`;
   }
 
-  // Sync with shield goal weight input
   const gwInput = el("inputGoalWt");
   if (gwInput) gwInput.value = gw;
 }
@@ -980,13 +1018,11 @@ async function logNoiseLevel() {
   if (!h) { toast("Sign in to log data"); return; }
 
   await apiFetch("/api/behavioral-logs", {
-    method: "POST",
-    headers: h,
+    method: "POST", headers: h,
     body: JSON.stringify({
       date:        new Date().toISOString().slice(0, 10),
       metric_name: "food_noise",
-      value:       val,
-      unit:        "1-10",
+      value:       val, unit: "1-10",
       notes:       `Ghrelin surge level: ${val}/10`
     })
   }).catch(() => {});
@@ -998,7 +1034,7 @@ async function logNoiseLevel() {
    VOICE INPUT
 ═══════════════════════════════════════ */
 function initVoiceInput() {
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const SR  = window.SpeechRecognition || window.webkitSpeechRecognition;
   const btn = el("micBtn");
   if (!SR || !btn) {
     if (btn) { btn.style.opacity = ".3"; btn.disabled = true; }
@@ -1016,7 +1052,7 @@ function initVoiceInput() {
       const ta = el("chatInput");
       if (ta) { ta.value = e.results[0][0].transcript; autoGrow(ta); ta.focus(); }
     };
-    rec.onend = () => { listening = false; btn.style.color = ""; };
+    rec.onend  = () => { listening = false; btn.style.color = ""; };
     rec.onerror = e => { toast(`Mic: ${e.error}`, "err"); };
     try { rec.start(); } catch { toast("Voice failed", "err"); }
   });
@@ -1028,7 +1064,7 @@ function initVoiceInput() {
 function el(id)          { return document.getElementById(id); }
 function esc(s)          { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 function setText(id, v)  { const e=el(id); if(e) e.textContent=v; }
-function setIcon(id, cls){ const e=el(id); if(e){e.className=`fa-solid ${cls}`;} }
+function setIcon(id, cls){ const e=el(id); if(e) e.className=`fa-solid ${cls}`; }
 function autoGrow(ta) {
   ta.style.height = "auto";
   ta.style.height = Math.min(ta.scrollHeight, 130) + "px";
@@ -1042,14 +1078,16 @@ function toast(msg, type = "ok") {
   t.className = `toast toast-${type}`;
   t.innerHTML = `<i class="fa-solid fa-${icon}" aria-hidden="true"></i> ${esc(msg)}`;
   container.appendChild(t);
-  setTimeout(() => { t.style.opacity = "0"; t.style.transition = "opacity .3s"; setTimeout(() => t.remove(), 300); }, 3800);
+  setTimeout(() => {
+    t.style.opacity = "0"; t.style.transition = "opacity .3s";
+    setTimeout(() => t.remove(), 300);
+  }, 3800);
 }
 
 /* ═══════════════════════════════════════
    EVENT WIRING
 ═══════════════════════════════════════ */
 function wireEvents() {
-
   // New chat
   el("newChatBtn")?.addEventListener("click", resetToWelcome);
 
@@ -1059,13 +1097,17 @@ function wireEvents() {
       document.querySelectorAll(".nav-item").forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
       closeSidebar();
-      // Future: add view switching logic here
     });
   });
 
   // Sidebar
   el("mobileMenuBtn")?.addEventListener("click", openSidebar);
   el("sidebarOverlay")?.addEventListener("click", closeSidebar);
+
+  // FIX-MOBILE-1: Cockpit toggle
+  el("mobileCockpitBtn")?.addEventListener("click", toggleCockpit);
+  el("cockpitOverlay")?.addEventListener("click", closeCockpit);
+  el("cockpitCloseBtn")?.addEventListener("click", closeCockpit);
 
   // User menu
   el("userRow")?.addEventListener("click", e => {
@@ -1075,7 +1117,7 @@ function wireEvents() {
     if (!el("userRow")?.contains(e.target)) closeUserMenu();
   });
 
-  // User dropdown actions
+  // User dropdown
   el("themeToggleBtn")?.addEventListener("click", toggleTheme);
   el("topThemeBtn")?.addEventListener("click", toggleTheme);
   el("exportChatBtn")?.addEventListener("click", exportCurrentChat);
@@ -1133,7 +1175,7 @@ function wireEvents() {
   // Cockpit: markers refresh
   el("refreshMarkersBtn")?.addEventListener("click", loadMarkersData);
 
-  // Drag-and-drop on chat area
+  // Drag-and-drop
   document.addEventListener("dragover", e => e.preventDefault());
   document.addEventListener("drop", e => {
     e.preventDefault();
@@ -1143,16 +1185,15 @@ function wireEvents() {
 
   // Keyboard shortcuts
   document.addEventListener("keydown", e => {
-    // Ctrl/Cmd + K = new chat
     if ((e.ctrlKey || e.metaKey) && e.key === "k") {
       e.preventDefault();
       resetToWelcome();
       el("chatInput")?.focus();
     }
-    // Escape = close sidebar + user menu
     if (e.key === "Escape") {
       closeSidebar();
       closeUserMenu();
+      closeCockpit();
     }
   });
 }
