@@ -3,25 +3,18 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>PHI — Your Personal Health Intelligence | Curabook</title>
-<meta name="description" content="Upload your lab report. PHI reads every value, explains what it means, tracks your trends, and prepares you for every doctor visit. Free to try, no account needed.">
-<meta property="og:title" content="PHI — AI That Actually Understands Your Lab Results">
-<meta property="og:description" content="Upload your blood test. PHI explains every finding in plain English, detects patterns, and prepares you for your doctor. Try free in 30 seconds.">
+<title>PHI — GLP-1 Cliff Prevention | Curabook</title>
+<meta name="description" content="70% of GLP-1 users regain their weight within a year of stopping. PHI monitors your glucose, HbA1c, and body composition to detect metabolic rebound before it becomes a crisis.">
+<meta property="og:title" content="PHI — Don't Let the GLP-1 Cliff Take Your Progress">
+<meta property="og:description" content="PHI detects metabolic rebound signals in your lab results, calculates your Muscle Defense protein target, and builds your insurance appeal packet.">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,300;1,9..144,400&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,300;1,9..144,400&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" defer></script>
 
 <style>
-/* ══════════════════════════════════════════════════
-   DESIGN SYSTEM — Medical Luxury Dark
-   Fonts: Fraunces (editorial serif) + DM Sans (body)
-   Palette: Near-black canvas, teal signal, warm accents
-   Aesthetic: Bloomberg Terminal meets Architectural Digest
-══════════════════════════════════════════════════ */
-
 :root {
   --ink:        #0a0b0e;
   --ink-2:      #111318;
@@ -50,574 +43,138 @@
 
 *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
 html { scroll-behavior:smooth; }
+body { font-family:var(--sans); background:var(--ink); color:var(--text-1); min-height:100vh; -webkit-font-smoothing:antialiased; overflow-x:hidden; }
+body::before { content:''; position:fixed; inset:0; background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E"); pointer-events:none; z-index:0; opacity:.4; }
 
-body {
-  font-family: var(--sans);
-  background: var(--ink);
-  color: var(--text-1);
-  min-height: 100vh;
-  -webkit-font-smoothing: antialiased;
-  overflow-x: hidden;
-}
-
-/* Grain overlay for atmosphere */
-body::before {
-  content:'';
-  position:fixed; inset:0;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
-  pointer-events:none; z-index:0;
-  opacity:.4;
-}
-
-/* ── NAV ─────────────────────────────────────────── */
-.nav {
-  position:sticky; top:0; z-index:100;
-  display:flex; align-items:center; justify-content:space-between;
-  padding:14px 28px;
-  background:rgba(10,11,14,.85);
-  backdrop-filter:blur(20px);
-  border-bottom:1px solid var(--border);
-}
-
-.nav-brand {
-  display:flex; align-items:center; gap:10px;
-  text-decoration:none;
-}
-.nav-logo {
-  width:32px; height:32px;
-  background:linear-gradient(135deg,var(--signal),var(--signal-2));
-  border-radius:9px;
-  display:flex; align-items:center; justify-content:center;
-  font-family:var(--serif); font-size:1rem; color:var(--ink);
-  font-weight:600;
-}
-.nav-name {
-  font-family:var(--sans); font-weight:600;
-  font-size:.95rem; color:var(--text-1);
-  letter-spacing:.02em;
-}
-.nav-tag {
-  font-size:.65rem; font-weight:700;
-  background:var(--signal-dim); color:var(--signal);
-  border:1px solid rgba(0,212,200,.2);
-  padding:1px 7px; border-radius:20px;
-  letter-spacing:.08em;
-}
-
+/* NAV */
+.nav { position:sticky; top:0; z-index:100; display:flex; align-items:center; justify-content:space-between; padding:14px 28px; background:rgba(10,11,14,.85); backdrop-filter:blur(20px); border-bottom:1px solid var(--border); }
+.nav-brand { display:flex; align-items:center; gap:10px; text-decoration:none; }
+.nav-logo { width:32px; height:32px; background:linear-gradient(135deg,var(--signal),var(--signal-2)); border-radius:9px; display:flex; align-items:center; justify-content:center; font-family:var(--serif); font-size:1rem; color:var(--ink); font-weight:600; }
+.nav-name { font-weight:600; font-size:.95rem; color:var(--text-1); letter-spacing:.02em; }
+.nav-tag { font-size:.65rem; font-weight:700; background:var(--signal-dim); color:var(--signal); border:1px solid rgba(0,212,200,.2); padding:1px 7px; border-radius:20px; letter-spacing:.08em; }
 .nav-right { display:flex; align-items:center; gap:10px; }
-
-.btn-ghost {
-  padding:7px 16px;
-  background:none; border:1px solid var(--border-2);
-  border-radius:8px; color:var(--text-2);
-  font-size:.85rem; font-family:var(--sans);
-  cursor:pointer; transition:all .15s;
-  text-decoration:none;
-  display:inline-flex; align-items:center; gap:6px;
-}
+.btn-ghost { padding:7px 16px; background:none; border:1px solid var(--border-2); border-radius:8px; color:var(--text-2); font-size:.85rem; font-family:var(--sans); cursor:pointer; transition:all .15s; text-decoration:none; display:inline-flex; align-items:center; gap:6px; }
 .btn-ghost:hover { border-color:var(--signal); color:var(--signal); }
-
-.btn-primary {
-  padding:8px 20px;
-  background:var(--signal);
-  border:none; border-radius:8px;
-  color:var(--ink); font-size:.85rem; font-weight:600;
-  font-family:var(--sans); cursor:pointer;
-  transition:all .15s; text-decoration:none;
-  display:inline-flex; align-items:center; gap:6px;
-  box-shadow:0 4px 16px var(--signal-glow);
-}
+.btn-primary { padding:8px 20px; background:var(--signal); border:none; border-radius:8px; color:var(--ink); font-size:.85rem; font-weight:600; font-family:var(--sans); cursor:pointer; transition:all .15s; text-decoration:none; display:inline-flex; align-items:center; gap:6px; box-shadow:0 4px 16px var(--signal-glow); }
 .btn-primary:hover { background:var(--signal-2); transform:translateY(-1px); }
+.demo-pill { font-size:.7rem; font-weight:700; background:var(--amber-dim); color:var(--amber); border:1px solid rgba(245,158,11,.2); padding:2px 9px; border-radius:20px; letter-spacing:.05em; }
 
-.demo-pill {
-  font-size:.7rem; font-weight:700;
-  background:var(--amber-dim); color:var(--amber);
-  border:1px solid rgba(245,158,11,.2);
-  padding:2px 9px; border-radius:20px;
-  letter-spacing:.05em;
-}
-
-/* ── HERO ────────────────────────────────────────── */
-.hero {
-  position:relative; z-index:1;
-  padding:72px 28px 0;
-  max-width:1100px; margin:0 auto;
-  text-align:center;
-}
-
-/* Radial glow behind hero text */
-.hero::before {
-  content:'';
-  position:absolute;
-  top:-80px; left:50%; transform:translateX(-50%);
-  width:700px; height:400px;
-  background:radial-gradient(ellipse at center, rgba(0,212,200,.12) 0%, transparent 70%);
-  pointer-events:none;
-}
-
-.hero-eyebrow {
-  display:inline-flex; align-items:center; gap:8px;
-  font-size:.8rem; font-weight:500; color:var(--signal);
-  letter-spacing:.1em; text-transform:uppercase;
-  background:var(--signal-dim); border:1px solid rgba(0,212,200,.18);
-  padding:5px 14px; border-radius:20px; margin-bottom:24px;
-}
-.hero-eyebrow span.dot {
-  width:6px; height:6px; border-radius:50%;
-  background:var(--signal);
-  animation:pulse-glow 2s ease infinite;
-}
-@keyframes pulse-glow {
-  0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(0,212,200,.4)}
-  50%{opacity:.7;box-shadow:0 0 0 6px rgba(0,212,200,0)}
-}
-
-.hero-h1 {
-  font-family:var(--serif);
-  font-size:clamp(2.4rem,5vw,4rem);
-  font-weight:400;
-  line-height:1.1;
-  letter-spacing:-.03em;
-  color:var(--text-1);
-  margin-bottom:20px;
-  max-width:820px; margin-left:auto; margin-right:auto;
-}
-.hero-h1 em {
-  font-style:italic;
-  color:var(--signal);
-}
-.hero-h1 .sub-line {
-  display:block;
-  font-weight:300;
-  color:var(--text-2);
-  font-size:clamp(1.6rem,3.5vw,2.6rem);
-  margin-top:6px;
-}
-
-.hero-sub {
-  font-size:1.05rem; color:var(--text-2);
-  line-height:1.7; max-width:520px;
-  margin:0 auto 32px;
-}
-
-.hero-actions {
-  display:flex; align-items:center;
-  justify-content:center; gap:12px;
-  flex-wrap:wrap; margin-bottom:20px;
-}
-
-.btn-hero {
-  padding:14px 32px;
-  background:var(--signal);
-  border:none; border-radius:var(--r);
-  color:var(--ink); font-size:1rem; font-weight:700;
-  font-family:var(--sans); cursor:pointer;
-  transition:all .2s; text-decoration:none;
-  display:inline-flex; align-items:center; gap:9px;
-  box-shadow:0 6px 28px rgba(0,212,200,.35);
-}
+/* HERO */
+.hero { position:relative; z-index:1; padding:72px 28px 0; max-width:1100px; margin:0 auto; text-align:center; }
+.hero::before { content:''; position:absolute; top:-80px; left:50%; transform:translateX(-50%); width:700px; height:400px; background:radial-gradient(ellipse at center, rgba(0,212,200,.12) 0%, transparent 70%); pointer-events:none; }
+.hero-eyebrow { display:inline-flex; align-items:center; gap:8px; font-size:.8rem; font-weight:500; color:var(--signal); letter-spacing:.1em; text-transform:uppercase; background:var(--signal-dim); border:1px solid rgba(0,212,200,.18); padding:5px 14px; border-radius:20px; margin-bottom:24px; }
+.hero-eyebrow span.dot { width:6px; height:6px; border-radius:50%; background:var(--signal); animation:pulse-glow 2s ease infinite; }
+@keyframes pulse-glow { 0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(0,212,200,.4)} 50%{opacity:.7;box-shadow:0 0 0 6px rgba(0,212,200,0)} }
+.hero-h1 { font-family:var(--serif); font-size:clamp(2.4rem,5vw,4rem); font-weight:400; line-height:1.1; letter-spacing:-.03em; color:var(--text-1); margin-bottom:20px; max-width:820px; margin-left:auto; margin-right:auto; }
+.hero-h1 em { font-style:italic; color:var(--signal); }
+.hero-h1 .sub-line { display:block; font-weight:300; color:var(--text-2); font-size:clamp(1.6rem,3.5vw,2.6rem); margin-top:6px; }
+.hero-sub { font-size:1.05rem; color:var(--text-2); line-height:1.7; max-width:540px; margin:0 auto 32px; }
+.hero-actions { display:flex; align-items:center; justify-content:center; gap:12px; flex-wrap:wrap; margin-bottom:20px; }
+.btn-hero { padding:14px 32px; background:var(--signal); border:none; border-radius:var(--r); color:var(--ink); font-size:1rem; font-weight:700; font-family:var(--sans); cursor:pointer; transition:all .2s; text-decoration:none; display:inline-flex; align-items:center; gap:9px; box-shadow:0 6px 28px rgba(0,212,200,.35); }
 .btn-hero:hover { background:var(--signal-2); transform:translateY(-2px); box-shadow:0 10px 36px rgba(0,212,200,.4); }
-
-.btn-hero-outline {
-  padding:13px 28px;
-  background:none;
-  border:1.5px solid var(--border-2);
-  border-radius:var(--r);
-  color:var(--text-1); font-size:.95rem; font-weight:500;
-  font-family:var(--sans); cursor:pointer;
-  transition:all .2s; text-decoration:none;
-  display:inline-flex; align-items:center; gap:8px;
-}
+.btn-hero-outline { padding:13px 28px; background:none; border:1.5px solid var(--border-2); border-radius:var(--r); color:var(--text-1); font-size:.95rem; font-weight:500; font-family:var(--sans); cursor:pointer; transition:all .2s; text-decoration:none; display:inline-flex; align-items:center; gap:8px; }
 .btn-hero-outline:hover { border-color:var(--signal); color:var(--signal); }
-
-.hero-trust {
-  display:flex; justify-content:center; gap:20px;
-  flex-wrap:wrap; font-size:.78rem; color:var(--text-3);
-  margin-top:16px; margin-bottom:0;
-}
+.hero-trust { display:flex; justify-content:center; gap:20px; flex-wrap:wrap; font-size:.78rem; color:var(--text-3); margin-top:16px; }
 .hero-trust span { display:flex; align-items:center; gap:5px; }
 .hero-trust i { color:var(--signal); font-size:.7rem; }
 
-/* ── STAT STRIP ──────────────────────────────────── */
-.stat-strip {
-  position:relative; z-index:1;
-  max-width:1100px; margin:0 auto;
-  padding:0 28px;
-  display:grid; grid-template-columns:repeat(4,1fr);
-  gap:1px;
-  background:var(--border);
-  border-radius:var(--r-lg);
-  overflow:hidden;
-  margin-top:48px;
-  border:1px solid var(--border);
-}
-
-.stat-cell {
-  background:var(--ink-2);
-  padding:22px 24px;
-  text-align:center;
-}
+/* CLIFF STAT STRIP */
+.stat-strip { position:relative; z-index:1; max-width:1100px; margin:48px auto 0; padding:0 28px; }
+.stat-inner { display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--border); border-radius:var(--r-lg); overflow:hidden; border:1px solid var(--border); }
+.stat-cell { background:var(--ink-2); padding:22px 24px; text-align:center; }
 .stat-cell:first-child { border-radius:var(--r-lg) 0 0 var(--r-lg); }
 .stat-cell:last-child  { border-radius:0 var(--r-lg) var(--r-lg) 0; }
-
-.stat-num {
-  font-family:var(--serif);
-  font-size:1.8rem; font-weight:600;
-  color:var(--signal);
-  line-height:1;
-  margin-bottom:5px;
-}
+.stat-num { font-family:var(--serif); font-size:1.8rem; font-weight:600; color:var(--warn); line-height:1; margin-bottom:5px; }
+.stat-num.ok { color:var(--signal); }
 .stat-label { font-size:.75rem; color:var(--text-3); letter-spacing:.05em; }
 
-/* ── FEATURES STRIP ──────────────────────────────── */
-.features {
-  position:relative; z-index:1;
-  max-width:1100px; margin:60px auto 0;
-  padding:0 28px;
-  display:grid;
-  grid-template-columns:repeat(3,1fr);
-  gap:16px;
-}
-
-.feature-card {
-  background:var(--ink-2);
-  border:1px solid var(--border);
-  border-radius:var(--r-lg);
-  padding:28px;
-  transition:border-color .2s, transform .2s;
-  cursor:default;
-  position:relative;
-  overflow:hidden;
-}
-.feature-card::before {
-  content:'';
-  position:absolute; top:0; left:0; right:0;
-  height:2px;
-  background:linear-gradient(90deg, transparent, var(--signal), transparent);
-  opacity:0;
-  transition:opacity .3s;
-}
+/* FEATURES */
+.features { position:relative; z-index:1; max-width:1100px; margin:60px auto 0; padding:0 28px; display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
+.feature-card { background:var(--ink-2); border:1px solid var(--border); border-radius:var(--r-lg); padding:28px; transition:border-color .2s,transform .2s; position:relative; overflow:hidden; }
+.feature-card::before { content:''; position:absolute; top:0; left:0; right:0; height:2px; background:linear-gradient(90deg,transparent,var(--signal),transparent); opacity:0; transition:opacity .3s; }
 .feature-card:hover { border-color:var(--border-2); transform:translateY(-3px); }
 .feature-card:hover::before { opacity:1; }
+.feat-icon { width:40px; height:40px; background:var(--signal-dim); border:1px solid rgba(0,212,200,.15); border-radius:10px; display:flex; align-items:center; justify-content:center; color:var(--signal); font-size:.9rem; margin-bottom:16px; }
+.feat-icon.red { background:var(--warn-dim); border-color:rgba(255,107,74,.2); color:var(--warn); }
+.feat-icon.amber { background:var(--amber-dim); border-color:rgba(245,158,11,.2); color:var(--amber); }
+.feat-title { font-family:var(--serif); font-size:1.05rem; font-weight:600; margin-bottom:8px; color:var(--text-1); line-height:1.3; }
+.feat-desc { font-size:.85rem; color:var(--text-2); line-height:1.65; }
 
-.feat-icon {
-  width:40px; height:40px;
-  background:var(--signal-dim);
-  border:1px solid rgba(0,212,200,.15);
-  border-radius:10px;
-  display:flex; align-items:center; justify-content:center;
-  color:var(--signal); font-size:.9rem;
-  margin-bottom:16px;
-}
-.feat-title {
-  font-family:var(--serif);
-  font-size:1.05rem; font-weight:600;
-  margin-bottom:8px; color:var(--text-1);
-  line-height:1.3;
-}
-.feat-desc {
-  font-size:.85rem; color:var(--text-2); line-height:1.65;
-}
-
-/* ── DEMO SECTION ────────────────────────────────── */
-.demo-section {
-  position:relative; z-index:1;
-  max-width:1100px; margin:72px auto 0;
-  padding:0 28px;
-}
-
-.demo-section-title {
-  text-align:center;
-  margin-bottom:36px;
-}
-.demo-section-title h2 {
-  font-family:var(--serif);
-  font-size:clamp(1.6rem,3vw,2.4rem);
-  font-weight:400;
-  color:var(--text-1);
-  margin-bottom:10px;
-}
+/* DEMO SECTION */
+.demo-section { position:relative; z-index:1; max-width:1100px; margin:72px auto 0; padding:0 28px; }
+.demo-section-title { text-align:center; margin-bottom:36px; }
+.demo-section-title h2 { font-family:var(--serif); font-size:clamp(1.6rem,3vw,2.4rem); font-weight:400; color:var(--text-1); margin-bottom:10px; }
 .demo-section-title h2 em { font-style:italic; color:var(--signal); }
-.demo-section-title p {
-  font-size:.95rem; color:var(--text-2); max-width:480px; margin:0 auto;
-}
+.demo-section-title p { font-size:.95rem; color:var(--text-2); max-width:480px; margin:0 auto; }
 
-/* ── UPLOAD ZONE ─────────────────────────────────── */
-.upload-area {
-  background:var(--ink-2);
-  border:2px dashed var(--border-2);
-  border-radius:var(--r-lg);
-  padding:48px 32px;
-  text-align:center;
-  cursor:pointer;
-  transition:all .2s;
-  position:relative;
-  overflow:hidden;
-  margin-bottom:16px;
-}
-.upload-area:hover, .upload-area.drag-over {
-  border-color:var(--signal);
-  background:var(--ink-3);
-}
-.upload-area input[type="file"] {
-  position:absolute; inset:0; opacity:0; cursor:pointer;
-}
-.upload-icon {
-  width:56px; height:56px;
-  background:var(--signal-dim);
-  border:1px solid rgba(0,212,200,.2);
-  border-radius:14px;
-  display:flex; align-items:center; justify-content:center;
-  color:var(--signal); font-size:1.3rem;
-  margin:0 auto 16px;
-}
-.upload-area h3 {
-  font-family:var(--serif);
-  font-size:1.15rem; font-weight:500;
-  margin-bottom:8px; color:var(--text-1);
-}
+/* UPLOAD ZONE */
+.upload-area { background:var(--ink-2); border:2px dashed var(--border-2); border-radius:var(--r-lg); padding:48px 32px; text-align:center; cursor:pointer; transition:all .2s; position:relative; overflow:hidden; margin-bottom:16px; }
+.upload-area:hover,.upload-area.drag-over { border-color:var(--signal); background:var(--ink-3); }
+.upload-area input[type="file"] { position:absolute; inset:0; opacity:0; cursor:pointer; }
+.upload-icon { width:56px; height:56px; background:var(--signal-dim); border:1px solid rgba(0,212,200,.2); border-radius:14px; display:flex; align-items:center; justify-content:center; color:var(--signal); font-size:1.3rem; margin:0 auto 16px; }
+.upload-area h3 { font-family:var(--serif); font-size:1.15rem; font-weight:500; margin-bottom:8px; color:var(--text-1); }
 .upload-area p { font-size:.85rem; color:var(--text-3); margin-bottom:18px; }
-.upload-area .try-sample-btn {
-  display:inline-flex; align-items:center; gap:7px;
-  padding:8px 18px;
-  background:var(--signal); color:var(--ink);
-  border:none; border-radius:8px;
-  font-size:.85rem; font-weight:600; font-family:var(--sans);
-  cursor:pointer; transition:all .15s;
-  pointer-events:none;
-}
-.upload-area:hover .try-sample-btn { background:var(--signal-2); }
 
-.sample-note {
-  font-size:.72rem; color:var(--text-3);
-  text-align:center; margin-top:8px; margin-bottom:0;
-}
-
-/* ── PROCESSING BANNER ───────────────────────────── */
-.processing-banner {
-  display:none;
-  align-items:center; gap:12px;
-  padding:13px 18px;
-  background:var(--signal-dim); border:1px solid rgba(0,212,200,.2);
-  border-radius:var(--r); margin-bottom:16px;
-  font-size:.88rem; color:var(--signal); font-weight:500;
-}
+/* PROCESSING */
+.processing-banner { display:none; align-items:center; gap:12px; padding:13px 18px; background:var(--signal-dim); border:1px solid rgba(0,212,200,.2); border-radius:var(--r); margin-bottom:16px; font-size:.88rem; color:var(--signal); font-weight:500; }
 .processing-banner.show { display:flex; }
-.processing-spinner {
-  width:18px; height:18px;
-  border:2.5px solid rgba(0,212,200,.2);
-  border-top-color:var(--signal);
-  border-radius:50%;
-  animation:spin .7s linear infinite;
-  flex-shrink:0;
-}
+.processing-spinner { width:18px; height:18px; border:2.5px solid rgba(0,212,200,.2); border-top-color:var(--signal); border-radius:50%; animation:spin .7s linear infinite; flex-shrink:0; }
 @keyframes spin { to { transform:rotate(360deg); } }
 
-/* ── CHAT INTERFACE ──────────────────────────────── */
-.chat-shell {
-  background:var(--ink-2);
-  border:1px solid var(--border);
-  border-radius:var(--r-lg);
-  overflow:hidden;
-  display:flex; flex-direction:column;
-  min-height:500px;
-  box-shadow:0 24px 60px rgba(0,0,0,.4);
-}
-
-.chat-topbar {
-  display:flex; align-items:center; gap:12px;
-  padding:14px 20px;
-  border-bottom:1px solid var(--border);
-  background:var(--ink-3);
-  flex-shrink:0;
-}
-.phi-orb {
-  width:34px; height:34px;
-  background:linear-gradient(135deg,var(--signal),var(--signal-2));
-  border-radius:50%;
-  display:flex; align-items:center; justify-content:center;
-  font-family:var(--serif); font-size:.9rem; color:var(--ink);
-  font-weight:600; flex-shrink:0;
-  box-shadow:0 2px 12px var(--signal-glow);
-}
+/* CHAT SHELL */
+.chat-shell { background:var(--ink-2); border:1px solid var(--border); border-radius:var(--r-lg); overflow:hidden; display:flex; flex-direction:column; min-height:500px; box-shadow:0 24px 60px rgba(0,0,0,.4); }
+.chat-topbar { display:flex; align-items:center; gap:12px; padding:14px 20px; border-bottom:1px solid var(--border); background:var(--ink-3); flex-shrink:0; }
+.phi-orb { width:34px; height:34px; background:linear-gradient(135deg,var(--signal),var(--signal-2)); border-radius:50%; display:flex; align-items:center; justify-content:center; font-family:var(--serif); font-size:.9rem; color:var(--ink); font-weight:600; flex-shrink:0; box-shadow:0 2px 12px var(--signal-glow); }
 .chat-topbar-text h4 { font-size:.85rem; font-weight:600; }
-.chat-topbar-text p  { font-size:.72rem; color:var(--text-3); }
-.online-pulse {
-  width:7px; height:7px; background:var(--ok);
-  border-radius:50%; display:inline-block;
-  margin-right:4px;
-  animation:pulse-glow 2.5s ease infinite;
-}
-
-/* ── CHAT MESSAGES ───────────────────────────────── */
-.chat-body {
-  flex:1; overflow-y:auto;
-  padding:20px;
-  display:flex; flex-direction:column;
-  gap:18px;
-  min-height:340px; max-height:420px;
-  scrollbar-width:thin;
-  scrollbar-color:var(--ink-4) transparent;
-}
-
+.chat-topbar-text p { font-size:.72rem; color:var(--text-3); }
+.online-pulse { width:7px; height:7px; background:var(--ok); border-radius:50%; display:inline-block; margin-right:4px; animation:pulse-glow 2.5s ease infinite; }
+.chat-body { flex:1; overflow-y:auto; padding:20px; display:flex; flex-direction:column; gap:18px; min-height:340px; max-height:480px; scrollbar-width:thin; scrollbar-color:var(--ink-4) transparent; }
 .msg { display:flex; gap:10px; align-items:flex-start; }
 .msg.user-msg { flex-direction:row-reverse; }
-
-.msg-av {
-  width:28px; height:28px; border-radius:50%;
-  display:flex; align-items:center; justify-content:center;
-  font-size:.75rem; font-weight:700; flex-shrink:0;
-  margin-top:3px;
-}
+.msg-av { width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:.75rem; font-weight:700; flex-shrink:0; margin-top:3px; }
 .msg-av.ai  { background:linear-gradient(135deg,var(--signal),var(--signal-2)); color:var(--ink); font-family:var(--serif); font-size:.9rem; font-weight:600; box-shadow:0 2px 8px var(--signal-glow); }
 .msg-av.usr { background:var(--ink-4); color:var(--text-2); }
-
-.msg-bub {
-  max-width:80%; font-size:.9rem; line-height:1.7;
-  color:var(--text-1);
-}
-.msg.user-msg .msg-bub {
-  background:linear-gradient(135deg, #1a2030, #1e2535);
-  border:1px solid rgba(255,255,255,.08);
-  padding:11px 15px;
-  border-radius:14px 14px 4px 14px;
-}
-.msg.ai-msg .msg-bub {
-  padding:2px 0;
-}
-
-/* Markdown styles inside chat bubbles */
+.msg-bub { max-width:80%; font-size:.9rem; line-height:1.7; color:var(--text-1); }
+.msg.user-msg .msg-bub { background:linear-gradient(135deg,#1a2030,#1e2535); border:1px solid rgba(255,255,255,.08); padding:11px 15px; border-radius:14px 14px 4px 14px; }
+.msg.ai-msg .msg-bub { padding:2px 0; }
 .msg-bub h2 { font-family:var(--sans); font-weight:700; font-size:.82rem; color:var(--signal); margin:14px 0 5px; padding-bottom:3px; border-bottom:1px solid rgba(0,212,200,.15); }
 .msg-bub h2:first-child { margin-top:0; }
 .msg-bub h3 { font-size:.8rem; font-weight:600; margin:10px 0 4px; color:var(--text-1); }
-.msg-bub p  { margin-bottom:8px; }
+.msg-bub p { margin-bottom:8px; }
 .msg-bub p:last-child { margin-bottom:0; }
-.msg-bub ul, .msg-bub ol { margin:5px 0 10px; padding-left:0; list-style:none; }
+.msg-bub ul,.msg-bub ol { margin:5px 0 10px; padding-left:0; list-style:none; }
 .msg-bub li { padding:3px 0 3px 17px; position:relative; line-height:1.65; font-size:.88rem; }
 .msg-bub ul li::before { content:"▸"; position:absolute; left:0; color:var(--signal); font-size:.7rem; top:7px; }
-.msg-bub ol { counter-reset:li; }
-.msg-bub ol li { counter-increment:li; padding-left:22px; }
-.msg-bub ol li::before { content:counter(li); position:absolute; left:0; top:4px; width:16px; height:16px; background:var(--signal-dim); color:var(--signal); border-radius:50%; font-size:.65rem; font-weight:700; display:flex; align-items:center; justify-content:center; }
 .msg-bub strong { font-weight:600; }
 .msg-bub hr { border:none; border-top:1px solid var(--border); margin:10px 0; }
-
-/* Legal footer in chat */
-.phi-legal {
-  margin-top:10px; padding-top:8px;
-  border-top:1px solid var(--border);
-  font-size:.72rem; color:var(--text-3); font-style:italic; opacity:.7;
-}
-
-/* ── TYPING DOTS ─────────────────────────────────── */
+.phi-legal { margin-top:10px; padding-top:8px; border-top:1px solid var(--border); font-size:.72rem; color:var(--text-3); font-style:italic; opacity:.7; }
 .typing { display:flex; align-items:center; gap:4px; padding:4px 0; }
-.t-dot {
-  width:6px; height:6px;
-  background:var(--signal); border-radius:50%;
-  animation:tdot 1.2s ease infinite;
-  opacity:.4;
-}
+.t-dot { width:6px; height:6px; background:var(--signal); border-radius:50%; animation:tdot 1.2s ease infinite; opacity:.4; }
 .t-dot:nth-child(2) { animation-delay:.2s; }
 .t-dot:nth-child(3) { animation-delay:.4s; }
 @keyframes tdot { 0%,60%,100%{transform:scale(1);opacity:.4} 30%{transform:scale(1.5);opacity:1} }
-
-/* ── SUGGESTION CHIPS ────────────────────────────── */
-.chips {
-  display:flex; flex-wrap:wrap; gap:7px;
-  padding:4px 0 8px;
-}
-.chip {
-  display:inline-flex; align-items:center; gap:6px;
-  padding:6px 13px;
-  background:var(--ink-3); border:1px solid var(--border-2);
-  border-radius:20px; font-size:.78rem;
-  color:var(--text-2); cursor:pointer;
-  font-family:var(--sans); transition:all .15s;
-}
+.chips { display:flex; flex-wrap:wrap; gap:7px; padding:4px 0 8px; }
+.chip { display:inline-flex; align-items:center; gap:6px; padding:6px 13px; background:var(--ink-3); border:1px solid var(--border-2); border-radius:20px; font-size:.78rem; color:var(--text-2); cursor:pointer; font-family:var(--sans); transition:all .15s; }
 .chip:hover { border-color:var(--signal); color:var(--signal); background:var(--signal-dim); }
-
-/* ── CHAT INPUT ──────────────────────────────────── */
-.chat-input-row {
-  padding:14px 16px;
-  border-top:1px solid var(--border);
-  display:flex; gap:9px; align-items:flex-end;
-  background:var(--ink-3);
-  flex-shrink:0;
-}
-.chat-ta {
-  flex:1; resize:none;
-  background:var(--ink-4); border:1.5px solid var(--border);
-  border-radius:10px; padding:10px 13px;
-  color:var(--text-1); font-size:.88rem; font-family:var(--sans);
-  outline:none; min-height:42px; max-height:100px;
-  line-height:1.5; transition:border-color .2s;
-}
+.chat-input-row { padding:14px 16px; border-top:1px solid var(--border); display:flex; gap:9px; align-items:flex-end; background:var(--ink-3); flex-shrink:0; }
+.chat-ta { flex:1; resize:none; background:var(--ink-4); border:1.5px solid var(--border); border-radius:10px; padding:10px 13px; color:var(--text-1); font-size:.88rem; font-family:var(--sans); outline:none; min-height:42px; max-height:100px; line-height:1.5; transition:border-color .2s; }
 .chat-ta:focus { border-color:var(--signal); }
 .chat-ta::placeholder { color:var(--text-3); }
-.send-btn {
-  width:42px; height:42px;
-  background:var(--signal); border:none;
-  border-radius:10px; color:var(--ink);
-  font-size:.9rem; cursor:pointer;
-  display:flex; align-items:center; justify-content:center;
-  transition:all .15s; flex-shrink:0;
-}
+.send-btn { width:42px; height:42px; background:var(--signal); border:none; border-radius:10px; color:var(--ink); font-size:.9rem; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all .15s; flex-shrink:0; }
 .send-btn:hover { background:var(--signal-2); transform:scale(1.06); }
 .send-btn:disabled { background:var(--ink-4); color:var(--text-3); cursor:not-allowed; transform:none; }
+.chat-disclaimer { text-align:center; font-size:.68rem; color:var(--text-3); padding:7px 16px 10px; background:var(--ink-3); border-top:1px solid var(--border); flex-shrink:0; }
 
-.chat-disclaimer {
-  text-align:center; font-size:.68rem;
-  color:var(--text-3); padding:7px 16px 10px;
-  background:var(--ink-3); border-top:1px solid var(--border);
-  flex-shrink:0;
-}
-
-/* ── CTA MODAL / GATE ────────────────────────────── */
-.cta-banner {
-  display:none;
-  background:linear-gradient(135deg, #0d1520 0%, #0a1a18 100%);
-  border:1px solid rgba(0,212,200,.2);
-  border-radius:var(--r-lg);
-  padding:32px;
-  margin-top:20px;
-  text-align:center;
-  position:relative;
-  overflow:hidden;
-  animation:slideUp .4s ease;
-}
+/* CTA BANNER */
+.cta-banner { display:none; background:linear-gradient(135deg,#0d1520 0%,#0a1a18 100%); border:1px solid rgba(0,212,200,.2); border-radius:var(--r-lg); padding:32px; margin-top:20px; text-align:center; position:relative; overflow:hidden; animation:slideUp .4s ease; }
 .cta-banner.show { display:block; }
 @keyframes slideUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
-
-.cta-banner::before {
-  content:'';
-  position:absolute;
-  top:-40px; left:50%; transform:translateX(-50%);
-  width:400px; height:200px;
-  background:radial-gradient(ellipse, rgba(0,212,200,.12) 0%, transparent 70%);
-  pointer-events:none;
-}
-
-.cta-banner h3 {
-  font-family:var(--serif);
-  font-size:1.6rem; font-weight:400;
-  margin-bottom:10px;
-}
+.cta-banner::before { content:''; position:absolute; top:-40px; left:50%; transform:translateX(-50%); width:400px; height:200px; background:radial-gradient(ellipse,rgba(0,212,200,.12) 0%,transparent 70%); pointer-events:none; }
+.cta-banner h3 { font-family:var(--serif); font-size:1.6rem; font-weight:400; margin-bottom:10px; }
 .cta-banner h3 em { font-style:italic; color:var(--signal); }
-.cta-banner p {
-  font-size:.9rem; color:var(--text-2);
-  margin-bottom:24px; line-height:1.65;
-  max-width:460px; margin-left:auto; margin-right:auto;
-}
-
-/* Comparison grid */
-.cta-compare {
-  display:grid; grid-template-columns:1fr 1fr;
-  gap:12px; margin-bottom:24px; text-align:left;
-  max-width:500px; margin-left:auto; margin-right:auto;
-}
-.cmp-col {
-  background:rgba(255,255,255,.03); border:1px solid var(--border);
-  border-radius:var(--r); padding:14px;
-}
+.cta-banner p { font-size:.9rem; color:var(--text-2); margin-bottom:24px; line-height:1.65; max-width:460px; margin-left:auto; margin-right:auto; }
+.cta-compare { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:24px; text-align:left; max-width:500px; margin-left:auto; margin-right:auto; }
+.cmp-col { background:rgba(255,255,255,.03); border:1px solid var(--border); border-radius:var(--r); padding:14px; }
 .cmp-col.highlight { background:rgba(0,212,200,.06); border-color:rgba(0,212,200,.25); }
 .cmp-head { font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--text-3); margin-bottom:10px; }
 .cmp-head.branded { color:var(--signal); }
@@ -627,232 +184,87 @@ body::before {
 .cmp-row i { font-size:.65rem; flex-shrink:0; }
 .cmp-row.yes i { color:var(--ok); }
 .cmp-row.no  i { color:var(--text-3); }
-
-.cta-signup-btn {
-  display:inline-flex; align-items:center; gap:9px;
-  padding:14px 36px;
-  background:var(--signal); color:var(--ink);
-  border:none; border-radius:var(--r);
-  font-size:1rem; font-weight:700; font-family:var(--sans);
-  cursor:pointer; text-decoration:none;
-  transition:all .2s;
-  box-shadow:0 6px 28px rgba(0,212,200,.35);
-}
+.cta-signup-btn { display:inline-flex; align-items:center; gap:9px; padding:14px 36px; background:var(--signal); color:var(--ink); border:none; border-radius:var(--r); font-size:1rem; font-weight:700; font-family:var(--sans); cursor:pointer; text-decoration:none; transition:all .2s; box-shadow:0 6px 28px rgba(0,212,200,.35); }
 .cta-signup-btn:hover { background:var(--signal-2); transform:translateY(-2px); }
 .cta-sub { font-size:.72rem; color:var(--text-3); margin-top:10px; }
 
-/* ── SOCIAL PROOF ────────────────────────────────── */
-.social-proof {
-  position:relative; z-index:1;
-  max-width:1100px; margin:72px auto 0;
-  padding:0 28px;
-}
-
-.sp-header {
-  text-align:center; margin-bottom:32px;
-}
-.sp-header h2 {
-  font-family:var(--serif); font-size:1.6rem; font-weight:400;
-  margin-bottom:8px;
-}
+/* SOCIAL PROOF */
+.social-proof { position:relative; z-index:1; max-width:1100px; margin:72px auto 0; padding:0 28px; }
+.sp-header { text-align:center; margin-bottom:32px; }
+.sp-header h2 { font-family:var(--serif); font-size:1.6rem; font-weight:400; margin-bottom:8px; }
 .sp-header p { font-size:.88rem; color:var(--text-2); }
-
-.testimonials {
-  display:grid; grid-template-columns:repeat(3,1fr); gap:16px;
-}
-
-.testimonial {
-  background:var(--ink-2);
-  border:1px solid var(--border);
-  border-radius:var(--r-lg);
-  padding:24px;
-  position:relative;
-  transition:border-color .2s;
-}
+.testimonials { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
+.testimonial { background:var(--ink-2); border:1px solid var(--border); border-radius:var(--r-lg); padding:24px; position:relative; transition:border-color .2s; }
 .testimonial:hover { border-color:var(--border-2); }
-
-.t-quote {
-  font-size:.88rem; line-height:1.7;
-  color:var(--text-2); margin-bottom:16px;
-  font-style:italic;
-}
+.t-quote { font-size:.88rem; line-height:1.7; color:var(--text-2); margin-bottom:16px; font-style:italic; }
 .t-quote strong { color:var(--text-1); font-style:normal; }
-
-.t-author {
-  display:flex; align-items:center; gap:10px;
-}
-.t-avatar {
-  width:32px; height:32px; border-radius:50%;
-  display:flex; align-items:center; justify-content:center;
-  font-weight:700; font-size:.85rem; flex-shrink:0;
-}
+.t-author { display:flex; align-items:center; gap:10px; }
+.t-avatar { width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:.85rem; flex-shrink:0; }
 .t-name { font-size:.8rem; font-weight:600; }
 .t-role { font-size:.72rem; color:var(--text-3); }
+.t-stars { position:absolute; top:20px; right:20px; color:var(--amber); font-size:.65rem; letter-spacing:1px; }
 
-.t-stars {
-  position:absolute; top:20px; right:20px;
-  color:var(--amber); font-size:.65rem;
-  letter-spacing:1px;
-}
-
-/* ── HOW IT WORKS ────────────────────────────────── */
-.how-section {
-  position:relative; z-index:1;
-  max-width:1100px; margin:72px auto 0;
-  padding:0 28px;
-}
-
-.how-header {
-  text-align:center; margin-bottom:40px;
-}
-.how-header h2 {
-  font-family:var(--serif); font-size:1.8rem; font-weight:400;
-  margin-bottom:8px;
-}
+/* HOW IT WORKS */
+.how-section { position:relative; z-index:1; max-width:1100px; margin:72px auto 0; padding:0 28px; }
+.how-header { text-align:center; margin-bottom:40px; }
+.how-header h2 { font-family:var(--serif); font-size:1.8rem; font-weight:400; margin-bottom:8px; }
 .how-header h2 em { font-style:italic; color:var(--signal); }
 .how-header p { font-size:.9rem; color:var(--text-2); }
-
-.how-steps {
-  display:grid; grid-template-columns:repeat(4,1fr);
-  gap:16px; position:relative;
-}
-.how-steps::after {
-  content:'';
-  position:absolute;
-  top:28px; left:12.5%; right:12.5%;
-  height:1px;
-  background:linear-gradient(90deg, transparent, var(--border-2), transparent);
-}
-
-.how-step {
-  background:var(--ink-2);
-  border:1px solid var(--border);
-  border-radius:var(--r-lg);
-  padding:24px 20px 20px;
-  text-align:center;
-  position:relative;
-  z-index:1;
-}
-
-.how-num {
-  width:48px; height:48px;
-  background:var(--signal-dim);
-  border:1.5px solid rgba(0,212,200,.2);
-  border-radius:50%;
-  display:flex; align-items:center; justify-content:center;
-  font-family:var(--serif); font-size:1.2rem; color:var(--signal);
-  margin:0 auto 16px; font-weight:500;
-}
+.how-steps { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; position:relative; }
+.how-steps::after { content:''; position:absolute; top:28px; left:12.5%; right:12.5%; height:1px; background:linear-gradient(90deg,transparent,var(--border-2),transparent); }
+.how-step { background:var(--ink-2); border:1px solid var(--border); border-radius:var(--r-lg); padding:24px 20px 20px; text-align:center; position:relative; z-index:1; }
+.how-num { width:48px; height:48px; background:var(--signal-dim); border:1.5px solid rgba(0,212,200,.2); border-radius:50%; display:flex; align-items:center; justify-content:center; font-family:var(--serif); font-size:1.2rem; color:var(--signal); margin:0 auto 16px; font-weight:500; }
 .how-step h4 { font-size:.9rem; font-weight:600; margin-bottom:7px; }
-.how-step p  { font-size:.78rem; color:var(--text-2); line-height:1.6; }
+.how-step p { font-size:.78rem; color:var(--text-2); line-height:1.6; }
 
-/* ── BOTTOM CTA ──────────────────────────────────── */
-.bottom-cta {
-  position:relative; z-index:1;
-  max-width:1100px; margin:80px auto 0;
-  padding:0 28px;
-}
-
-.bottom-cta-box {
-  background:linear-gradient(135deg, var(--ink-3) 0%, #0d1d1c 100%);
-  border:1px solid rgba(0,212,200,.15);
-  border-radius:24px;
-  padding:60px 48px;
-  text-align:center;
-  position:relative; overflow:hidden;
-}
-.bottom-cta-box::before {
-  content:'';
-  position:absolute;
-  top:-60px; left:50%; transform:translateX(-50%);
-  width:500px; height:300px;
-  background:radial-gradient(ellipse, rgba(0,212,200,.1) 0%, transparent 70%);
-  pointer-events:none;
-}
-
-.bottom-cta-box h2 {
-  font-family:var(--serif);
-  font-size:clamp(1.6rem,3vw,2.6rem);
-  font-weight:400; margin-bottom:16px;
-}
+/* BOTTOM CTA */
+.bottom-cta { position:relative; z-index:1; max-width:1100px; margin:80px auto 0; padding:0 28px; }
+.bottom-cta-box { background:linear-gradient(135deg,var(--ink-3) 0%,#0d1d1c 100%); border:1px solid rgba(0,212,200,.15); border-radius:24px; padding:60px 48px; text-align:center; position:relative; overflow:hidden; }
+.bottom-cta-box::before { content:''; position:absolute; top:-60px; left:50%; transform:translateX(-50%); width:500px; height:300px; background:radial-gradient(ellipse,rgba(0,212,200,.1) 0%,transparent 70%); pointer-events:none; }
+.bottom-cta-box h2 { font-family:var(--serif); font-size:clamp(1.6rem,3vw,2.6rem); font-weight:400; margin-bottom:16px; }
 .bottom-cta-box h2 em { font-style:italic; color:var(--signal); }
-.bottom-cta-box p {
-  font-size:.95rem; color:var(--text-2);
-  max-width:480px; margin:0 auto 28px; line-height:1.7;
-}
-
-.cta-badges {
-  display:flex; justify-content:center; gap:16px;
-  flex-wrap:wrap; font-size:.75rem; color:var(--text-3);
-  margin-top:16px;
-}
+.bottom-cta-box p { font-size:.95rem; color:var(--text-2); max-width:480px; margin:0 auto 28px; line-height:1.7; }
+.cta-badges { display:flex; justify-content:center; gap:16px; flex-wrap:wrap; font-size:.75rem; color:var(--text-3); margin-top:16px; }
 .cta-badges span { display:flex; align-items:center; gap:5px; }
 .cta-badges i { color:var(--signal); }
 
-/* ── FOOTER ──────────────────────────────────────── */
-footer {
-  position:relative; z-index:1;
-  border-top:1px solid var(--border);
-  padding:28px; margin-top:72px;
-  text-align:center;
-}
-.footer-links {
-  display:flex; justify-content:center; flex-wrap:wrap;
-  gap:16px; font-size:.78rem; margin-bottom:12px;
-}
+/* FOOTER */
+footer { position:relative; z-index:1; border-top:1px solid var(--border); padding:28px; margin-top:72px; text-align:center; }
+.footer-links { display:flex; justify-content:center; flex-wrap:wrap; gap:16px; font-size:.78rem; margin-bottom:12px; }
 .footer-links a { color:var(--text-3); text-decoration:none; transition:color .15s; }
 .footer-links a:hover { color:var(--signal); }
 footer p { font-size:.72rem; color:var(--text-3); }
 
-/* ── TOASTS ──────────────────────────────────────── */
-.toast {
-  position:fixed; bottom:24px; right:24px;
-  padding:12px 18px; border-radius:10px;
-  font-size:.85rem; font-weight:500;
-  display:flex; align-items:center; gap:8px;
-  z-index:9999; max-width:320px;
-  animation:slideInR .25s ease;
-  box-shadow:0 8px 32px rgba(0,0,0,.4);
-}
+/* TOAST */
+.toast { position:fixed; bottom:24px; right:24px; padding:12px 18px; border-radius:10px; font-size:.85rem; font-weight:500; display:flex; align-items:center; gap:8px; z-index:9999; max-width:320px; animation:slideInR .25s ease; box-shadow:0 8px 32px rgba(0,0,0,.4); }
 .toast.ok  { background:#0a2018; border:1px solid rgba(74,222,128,.25); color:var(--ok); }
 .toast.err { background:#200a0a; border:1px solid rgba(255,107,74,.25); color:var(--warn); }
 @keyframes slideInR { from{opacity:0;transform:translateX(360px)} to{opacity:1;transform:translateX(0)} }
 
-/* ── RESPONSIVE ──────────────────────────────────── */
+/* RESPONSIVE */
 @media(max-width:900px) {
-  .stat-strip { grid-template-columns:repeat(2,1fr); }
-  .stat-cell:nth-child(2) { border-radius:0; }
-  .stat-cell:nth-child(1) { border-radius:var(--r-lg) 0 0 0; }
-  .stat-cell:nth-child(3) { border-radius:0 0 0 var(--r-lg); }
-  .stat-cell:nth-child(4) { border-radius:0 0 var(--r-lg) 0; }
-  .features, .testimonials, .how-steps { grid-template-columns:1fr; }
+  .stat-inner { grid-template-columns:repeat(2,1fr); }
+  .features,.testimonials,.how-steps { grid-template-columns:1fr; }
   .cta-compare { grid-template-columns:1fr; }
   .how-steps::after { display:none; }
   .nav { padding:12px 16px; }
   .hero { padding:48px 16px 0; }
-  .demo-section, .features, .social-proof, .how-section, .bottom-cta { padding:0 16px; }
+  .demo-section,.features,.social-proof,.how-section,.bottom-cta { padding:0 16px; }
   .bottom-cta-box { padding:40px 24px; }
 }
-
 @media(max-width:600px) {
   .hero-h1 { font-size:2rem; }
   .nav-right .btn-ghost { display:none; }
 }
-
-/* ── ANIMATIONS ──────────────────────────────────── */
-.fade-in {
-  opacity:0; transform:translateY(20px);
-  animation:fadeUp .5s ease forwards;
-}
+.fade-in { opacity:0; transform:translateY(20px); animation:fadeUp .5s ease forwards; }
 .fade-in:nth-child(2) { animation-delay:.1s; }
 .fade-in:nth-child(3) { animation-delay:.2s; }
-.fade-in:nth-child(4) { animation-delay:.3s; }
 @keyframes fadeUp { to { opacity:1; transform:translateY(0); } }
 </style>
 </head>
 <body>
 
-<!-- ══════════════════════ NAV ══════════════════════ -->
+<!-- NAV -->
 <nav class="nav">
   <a href="#" class="nav-brand">
     <div class="nav-logo">φ</div>
@@ -866,261 +278,257 @@ footer p { font-size:.72rem; color:var(--text-3); }
   </div>
 </nav>
 
-<!-- ══════════════════════ HERO ══════════════════════ -->
+<!-- HERO — GLP-1 Cliff Positioning -->
 <section class="hero">
   <div class="hero-eyebrow">
     <span class="dot"></span>
-    Personal Health Intelligence
+    GLP-1 Cliff Prevention
   </div>
 
   <h1 class="hero-h1">
-    Your lab report has been<br>
-    trying to <em>tell you something.</em>
-    <span class="sub-line">PHI translates it.</span>
+    You worked hard for<br>
+    that weight loss.
+    <em>Don't lose it.</em>
+    <span class="sub-line">PHI tracks your cliff risk.</span>
   </h1>
 
   <p class="hero-sub">
-    Upload any blood test. PHI reads every value, explains what it means in plain English, detects metabolic patterns, and prepares a brief for your next doctor visit.
+    70% of GLP-1 users regain their weight within a year of stopping.
+    PHI monitors your glucose, HbA1c, and body composition — and detects
+    metabolic rebound before it becomes a crisis.
   </p>
 
   <div class="hero-actions">
     <a href="#demo-zone" class="btn-hero">
       <i class="fa-solid fa-flask"></i>
-      Try with sample report
+      See a cliff alert live
     </a>
     <a href="/signup" class="btn-hero-outline">
       <i class="fa-solid fa-upload"></i>
-      Upload my report free
+      Upload my labs free
     </a>
   </div>
 
   <div class="hero-trust">
-    <span><i class="fa-solid fa-check"></i> No account needed to try</span>
-    <span><i class="fa-solid fa-lock"></i> Not stored in demo</span>
-    <span><i class="fa-solid fa-user-secret"></i> AI never sees your name</span>
+    <span><i class="fa-solid fa-check"></i> No account to try</span>
+    <span><i class="fa-solid fa-lock"></i> Demo data only — nothing stored</span>
     <span><i class="fa-solid fa-shield-halved"></i> AES-256 encrypted</span>
+    <span><i class="fa-solid fa-user-secret"></i> AI never sees your name</span>
   </div>
 </section>
 
-<!-- ══════════════════════ STATS ══════════════════════ -->
-<div class="stat-strip" style="position:relative;z-index:1;max-width:1100px;margin:48px auto 0;padding:0 28px;">
-  <div style="background:var(--border);border-radius:var(--r-lg);overflow:hidden;border:1px solid var(--border);display:grid;grid-template-columns:repeat(4,1fr);gap:1px;width:100%">
+<!-- CLIFF STATS -->
+<div class="stat-strip">
+  <div class="stat-inner">
     <div class="stat-cell">
-      <div class="stat-num">40+</div>
-      <div class="stat-label">Markers decoded</div>
+      <div class="stat-num">70%</div>
+      <div class="stat-label">discontinue within year 1</div>
     </div>
     <div class="stat-cell">
-      <div class="stat-num">30s</div>
-      <div class="stat-label">To full analysis</div>
+      <div class="stat-num">14%</div>
+      <div class="stat-label">body weight regained (SURMOUNT-4)</div>
     </div>
     <div class="stat-cell">
-      <div class="stat-num">60%</div>
-      <div class="stat-label">Higher outcomes with engagement</div>
+      <div class="stat-num">1.4 yrs</div>
+      <div class="stat-label">to full cardiometabolic rebound</div>
     </div>
     <div class="stat-cell">
-      <div class="stat-num">0</div>
-      <div class="stat-label">Ads, ever</div>
+      <div class="stat-num ok">0.8%</div>
+      <div class="stat-label">weight change with behavioral support (Omada)</div>
     </div>
   </div>
 </div>
 
-<!-- ══════════════════════ FEATURES ══════════════════ -->
+<!-- FEATURES -->
 <section class="features" style="margin-top:60px;">
   <div class="feature-card fade-in">
-    <div class="feat-icon"><i class="fa-solid fa-file-medical"></i></div>
-    <div class="feat-title">Report Decoder</div>
-    <p class="feat-desc">PHI reads any PDF lab report — SRL, Dr Lal, Thyrocare, Apollo, Quest, LabCorp. Every value explained in plain English. Abnormal results flagged with context, not just a number.</p>
+    <div class="feat-icon red"><i class="fa-solid fa-triangle-exclamation"></i></div>
+    <div class="feat-title">Cliff Alert System</div>
+    <p class="feat-desc">PHI watches for glucose rebound (&gt;15% from your baseline), HbA1c rise (≥0.25%), and weight regain (3% in 14 days) — the exact thresholds from SURMOUNT-4 and STEP-10 trial data.</p>
   </div>
   <div class="feature-card fade-in">
-    <div class="feat-icon"><i class="fa-solid fa-brain"></i></div>
-    <div class="feat-title">Health Memory</div>
-    <p class="feat-desc">PHI stores every report you upload and tracks how your markers change over time. LDL rising 21% over 9 months is more important than any single reading. PHI sees the trajectory.</p>
+    <div class="feat-icon amber"><i class="fa-solid fa-dumbbell"></i></div>
+    <div class="feat-title">Muscle Defense Protocol</div>
+    <p class="feat-desc">39% of GLP-1 weight loss is lean mass without intervention. PHI calculates your daily protein target (Goal Weight × 0.545g) and tracks it alongside your steps and sleep against the cliff.</p>
   </div>
   <div class="feature-card fade-in">
-    <div class="feat-icon"><i class="fa-solid fa-stethoscope"></i></div>
-    <div class="feat-title">Doctor Visit Prep</div>
-    <p class="feat-desc">Before every appointment, PHI generates a one-page clinical brief: the one finding to lead with, the trend to show, three specific questions to ask. Walk in prepared.</p>
+    <div class="feat-icon"><i class="fa-solid fa-shield-halved"></i></div>
+    <div class="feat-title">Insurance PA Support</div>
+    <p class="feat-desc">PHI builds your prior authorization packet from your actual lab data — HbA1c trajectory, glucose rebound, cardiovascular risk markers — with the clinical framing payers require.</p>
   </div>
 </section>
 
-<!-- ══════════════════ DEMO SECTION ══════════════════ -->
+<!-- DEMO SECTION -->
 <section class="demo-section" id="demo-zone">
   <div class="demo-section-title">
-    <h2>See PHI <em>in action</em></h2>
-    <p>Upload your own report or load a sample — PHI will analyze it live, right here.</p>
+    <h2>See a real <em>cliff alert</em></h2>
+    <p>Load Sarah's case — 8 weeks post-Zepbound, insurance denied, rebound in progress. Or upload your own Quest or LabCorp PDF.</p>
   </div>
 
-  <!-- Upload Zone -->
   <div class="upload-area" id="uploadArea">
     <input type="file" id="fileInput" accept=".pdf,.txt" aria-label="Upload lab report">
     <div class="upload-icon"><i class="fa-solid fa-file-medical-alt"></i></div>
     <h3>Upload your lab report</h3>
-    <p>PDF or TXT · Max 5MB · Works with any standard lab format</p>
-    <div class="try-sample-btn"><i class="fa-solid fa-flask"></i> Choose File or Drop Here</div>
-    <p class="sample-note" style="margin-top:12px;pointer-events:none">Can't share your real report? Use the sample below. ↓</p>
+    <p>PDF from Quest, LabCorp, or any US lab · Max 5MB</p>
+    <div style="display:inline-flex;align-items:center;gap:7px;padding:8px 18px;background:var(--signal);color:var(--ink);border:none;border-radius:8px;font-size:.85rem;font-weight:600;font-family:var(--sans);pointer-events:none;">
+      <i class="fa-solid fa-upload"></i> Choose File or Drop Here
+    </div>
   </div>
 
-  <!-- Sample report button -->
   <div style="text-align:center;margin:12px 0 16px;">
     <button id="loadSampleBtn" style="display:inline-flex;align-items:center;gap:7px;padding:9px 20px;background:var(--ink-3);border:1px solid var(--border-2);border-radius:8px;color:var(--text-2);font-size:.82rem;font-family:var(--sans);cursor:pointer;transition:all .15s;" onmouseover="this.style.borderColor='var(--signal)';this.style.color='var(--signal)'" onmouseout="this.style.borderColor='var(--border-2)';this.style.color='var(--text-2)'">
-      <i class="fa-solid fa-flask"></i> Load sample report instead
+      <i class="fa-solid fa-person-running"></i> Load Sarah's case — 8 weeks post-Zepbound
     </button>
   </div>
 
-  <!-- Processing -->
   <div class="processing-banner" id="procBanner">
     <div class="processing-spinner"></div>
     <span id="procText">Analyzing your report…</span>
   </div>
 
-  <!-- Chat interface -->
+  <!-- Chat -->
   <div class="chat-shell" id="chatShell">
     <div class="chat-topbar">
       <div class="phi-orb">φ</div>
       <div class="chat-topbar-text">
-        <h4>PHI — Personal Health Intelligence</h4>
-        <p><span class="online-pulse"></span>Demo session · Free to try</p>
+        <h4>PHI — GLP-1 Cliff Intelligence</h4>
+        <p><span class="online-pulse"></span>Demo · Free to try · No account needed</p>
       </div>
     </div>
 
     <div class="chat-body" id="chatBody">
-      <!-- Welcome message -->
       <div class="msg ai-msg">
         <div class="msg-av ai">φ</div>
         <div class="msg-bub">
-          <p><strong>Hi — I'm PHI, your personal health intelligence co-pilot.</strong></p>
-          <p>I do three things most health apps don't:</p>
+          <p><strong>Hi — I'm PHI, your GLP-1 cliff prevention co-pilot.</strong></p>
+          <p>I watch for three early warning signals most patients miss until it's too late:</p>
           <ul>
-            <li><strong>Decode lab reports</strong> — every value, explained without jargon</li>
-            <li><strong>Track trends over time</strong> — rising LDL over 9 months matters more than any snapshot</li>
-            <li><strong>Prepare you for your doctor</strong> — specific questions, specific data, no wasted appointments</li>
+            <li><strong>Glucose rebound</strong> — any rise &gt;15% from your personal baseline</li>
+            <li><strong>HbA1c drift</strong> — ≥0.25% increase between readings</li>
+            <li><strong>Weight surge</strong> — &gt;3% gain in any 14-day window</li>
           </ul>
-          <p><strong>→ Upload your lab report above</strong>, or load the sample to see PHI analyze a full blood panel live.</p>
-          <p>Or just ask me anything:</p>
+          <p><strong>→ Load Sarah's case</strong> below to see a live cliff alert, or upload your own Quest / LabCorp PDF. Or just ask me anything:</p>
           <div class="chips" id="startChips">
-            <button class="chip" data-q="What does HbA1c actually measure?"><i class="fa-solid fa-droplet"></i> What does HbA1c measure?</button>
-            <button class="chip" data-q="My LDL is 168 mg/dL — is that dangerous?"><i class="fa-solid fa-heart-pulse"></i> My LDL is 168 — is that dangerous?</button>
-            <button class="chip" data-q="What's the difference between LDL and ApoB?"><i class="fa-solid fa-microscope"></i> LDL vs ApoB?</button>
-            <button class="chip" data-q="How do I prepare for a cardiology appointment?"><i class="fa-solid fa-stethoscope"></i> Cardiology appointment prep</button>
+            <button class="chip" data-q="What is the GLP-1 cliff and am I at risk?"><i class="fa-solid fa-triangle-exclamation"></i> What is the GLP-1 cliff?</button>
+            <button class="chip" data-q="My food noise is coming back since I reduced my Wegovy dose. Is this ghrelin rebound?"><i class="fa-solid fa-brain"></i> Food noise is coming back</button>
+            <button class="chip" data-q="Calculate my Muscle Defense protein target. My goal weight is 165 lbs."><i class="fa-solid fa-dumbbell"></i> My protein target</button>
+            <button class="chip" data-q="My insurance denied prior authorization for Zepbound. What data do I need for an appeal?"><i class="fa-solid fa-shield-halved"></i> Insurance PA appeal</button>
           </div>
         </div>
       </div>
     </div>
 
     <div class="chat-input-row">
-      <textarea class="chat-ta" id="chatInput" placeholder="Ask PHI about your health…" rows="1"></textarea>
+      <textarea class="chat-ta" id="chatInput" placeholder="Ask PHI about your GLP-1 journey…" rows="1"></textarea>
       <button class="send-btn" id="sendBtn"><i class="fa-solid fa-arrow-up"></i></button>
     </div>
     <div class="chat-disclaimer">PHI is not a doctor. Always consult your healthcare provider for medical decisions.</div>
   </div>
 
-  <!-- CTA Banner — appears after interaction -->
+  <!-- CTA Banner -->
   <div class="cta-banner" id="ctaBanner">
-    <h3>You've seen what PHI can do <em>in 5 minutes.</em></h3>
-    <p>A free account gives PHI a memory. Every report you upload is stored, tracked, and connected — building a complete health picture over time. No credit card, takes 30 seconds.</p>
+    <h3>PHI gives you <em>memory across every lab.</em></h3>
+    <p>A free account means PHI tracks your cliff risk over time — every Quest report, every LabCorp result, every trend. The cliff is predictable. Start predicting it now.</p>
 
     <div class="cta-compare">
       <div class="cmp-col">
         <div class="cmp-head">Demo (right now)</div>
         <div class="cmp-row no"><i class="fa-solid fa-xmark"></i> Data lost when you close</div>
-        <div class="cmp-row no"><i class="fa-solid fa-xmark"></i> No trend tracking</div>
-        <div class="cmp-row no"><i class="fa-solid fa-xmark"></i> No health alerts</div>
-        <div class="cmp-row yes"><i class="fa-solid fa-check"></i> Report decoding ✓</div>
-        <div class="cmp-row yes"><i class="fa-solid fa-check"></i> Q&A about results ✓</div>
+        <div class="cmp-row no"><i class="fa-solid fa-xmark"></i> No cliff trend tracking</div>
+        <div class="cmp-row no"><i class="fa-solid fa-xmark"></i> No protein goal persistence</div>
+        <div class="cmp-row yes"><i class="fa-solid fa-check"></i> Cliff alert analysis ✓</div>
+        <div class="cmp-row yes"><i class="fa-solid fa-check"></i> Q&A about your labs ✓</div>
       </div>
       <div class="cmp-col highlight">
         <div class="cmp-head branded">Free Account</div>
-        <div class="cmp-row yes"><i class="fa-solid fa-check"></i> Permanent health memory</div>
-        <div class="cmp-row yes"><i class="fa-solid fa-check"></i> Trend tracking over time</div>
-        <div class="cmp-row yes"><i class="fa-solid fa-check"></i> Proactive health alerts</div>
-        <div class="cmp-row yes"><i class="fa-solid fa-check"></i> Doctor visit prep cards</div>
-        <div class="cmp-row yes"><i class="fa-solid fa-check"></i> Insurance advocacy support</div>
+        <div class="cmp-row yes"><i class="fa-solid fa-check"></i> Permanent lab memory</div>
+        <div class="cmp-row yes"><i class="fa-solid fa-check"></i> Cliff risk score over time</div>
+        <div class="cmp-row yes"><i class="fa-solid fa-check"></i> Muscle Defense tracking</div>
+        <div class="cmp-row yes"><i class="fa-solid fa-check"></i> Insurance PA packet builder</div>
+        <div class="cmp-row yes"><i class="fa-solid fa-check"></i> Ghrelin surge log + history</div>
       </div>
     </div>
 
     <a href="/signup" class="cta-signup-btn">
-      <i class="fa-solid fa-user-plus"></i> Create Free Account — Takes 30 seconds
+      <i class="fa-solid fa-user-plus"></i> Create Free Account — 30 seconds
     </a>
-    <p class="cta-sub">No credit card required · Free to start · Your data stays yours</p>
+    <p class="cta-sub">No credit card · Free to start · Your data stays yours</p>
   </div>
 </section>
 
-<!-- ══════════════ SOCIAL PROOF ══════════════ -->
+<!-- SOCIAL PROOF -->
 <section class="social-proof">
   <div class="sp-header">
-    <h2 style="font-family:var(--serif);font-size:1.6rem;font-weight:400;margin-bottom:8px;">What patients are saying</h2>
-    <p style="font-size:.88rem;color:var(--text-2)">From Reddit forums, clinical focus groups, and early users across India, UK, and the US</p>
+    <h2 style="font-family:var(--serif);font-size:1.6rem;font-weight:400;margin-bottom:8px;">From people navigating the cliff</h2>
+    <p style="font-size:.88rem;color:var(--text-2)">Composite of patient experiences from Reddit forums, clinical focus groups, and early users</p>
   </div>
-
   <div class="testimonials">
     <div class="testimonial">
       <div class="t-stars">★★★★★</div>
-      <p class="t-quote">"I'd been looking at the same LDL number for three years and my doctor never explained why it kept rising. <strong>PHI showed me the trajectory — 18% up over 14 months</strong> — and gave me exactly the right question to ask at my next appointment."</p>
+      <p class="t-quote">"My insurance denied my Wegovy renewal and I had no idea what data to give my doctor for the appeal. <strong>PHI pulled my glucose trajectory, HbA1c rise, and LDL numbers and told me exactly what to say.</strong> PA approved on first appeal."</p>
       <div class="t-author">
-        <div class="t-avatar" style="background:var(--signal-dim);color:var(--signal)">R</div>
-        <div><div class="t-name">Roshni M.</div><div class="t-role">Managing HbA1c · Bangalore</div></div>
+        <div class="t-avatar" style="background:var(--signal-dim);color:var(--signal)">K</div>
+        <div><div class="t-name">Kayla R.</div><div class="t-role">Post-Wegovy · Dallas TX</div></div>
       </div>
     </div>
     <div class="testimonial">
       <div class="t-stars">★★★★★</div>
-      <p class="t-quote">"My insurance denied Wegovy and I didn't know why. <strong>PHI pulled my HbA1c trend, my LDL, my CRP — all with dates — and told me exactly what my provider needed to document.</strong> PA approved first appeal."</p>
+      <p class="t-quote">"I stopped Zepbound 6 weeks ago and couldn't figure out why I felt so awful. <strong>PHI showed me my glucose had rebounded 19% from my personal baseline in 6 weeks.</strong> That number made it real — not a mindset issue, a metabolic one."</p>
       <div class="t-author">
-        <div class="t-avatar" style="background:var(--warn-dim);color:var(--warn)">D</div>
-        <div><div class="t-name">David K.</div><div class="t-role">GLP-1 prior auth · Chicago</div></div>
+        <div class="t-avatar" style="background:var(--warn-dim);color:var(--warn)">M</div>
+        <div><div class="t-name">Marcus T.</div><div class="t-role">Post-Zepbound · Chicago IL</div></div>
       </div>
     </div>
     <div class="testimonial">
       <div class="t-stars">★★★★★</div>
-      <p class="t-quote">"My mother doesn't speak English well and her doctor's explanations never got through. <strong>I upload her reports and PHI explains everything in plain language I can translate for her.</strong> First time she actually understood her Vitamin D numbers."</p>
+      <p class="t-quote">"The food noise came back so hard after stopping and I thought I was failing. <strong>PHI explained it was a ghrelin surge — documented, expected, biological.</strong> That reframe changed everything. I stopped hating myself and started tracking my protein."</p>
       <div class="t-author">
-        <div class="t-avatar" style="background:var(--ok-dim);color:var(--ok)">A</div>
-        <div><div class="t-name">Alinta W.</div><div class="t-role">Family health advocate · London</div></div>
+        <div class="t-avatar" style="background:var(--ok-dim);color:var(--ok)">J</div>
+        <div><div class="t-name">Jamie S.</div><div class="t-role">GLP-1 taper · Austin TX</div></div>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ══════════════ HOW IT WORKS ══════════════ -->
+<!-- HOW IT WORKS -->
 <section class="how-section">
   <div class="how-header">
-    <h2>From upload to <em>understanding</em> in 30 seconds</h2>
-    <p style="font-size:.88rem;color:var(--text-2)">No setup, no training, no medical degree required.</p>
+    <h2>From lab upload to <em>cliff score</em> in 30 seconds</h2>
+    <p style="font-size:.88rem;color:var(--text-2)">Works with any Quest, LabCorp, or US lab PDF.</p>
   </div>
   <div class="how-steps">
     <div class="how-step">
       <div class="how-num">1</div>
-      <h4>Upload your report</h4>
-      <p>PDF from any lab — SRL, Dr Lal, Thyrocare, Quest, LabCorp, Apollo, NHS. PHI handles the rest.</p>
+      <h4>Upload your labs</h4>
+      <p>Quest, LabCorp, any US lab. PHI extracts every value — glucose, HbA1c, LDL, CRP, and more.</p>
     </div>
     <div class="how-step">
       <div class="how-num">2</div>
-      <h4>PHI decodes it</h4>
-      <p>Every value extracted, explained, and flagged. Not just "high" — but why, and what it means for you specifically.</p>
+      <h4>PHI builds your baseline</h4>
+      <p>PHI stores your on-medication results as your personal baseline. Every future result is measured against that — not a population average.</p>
     </div>
     <div class="how-step">
       <div class="how-num">3</div>
-      <h4>Ask anything</h4>
-      <p>"Why is my LDL up?" "Is my HbA1c improving?" "What should I tell my cardiologist?" PHI knows your full history.</p>
+      <h4>Cliff alerts fire automatically</h4>
+      <p>When your glucose rises 15%+ or HbA1c increases 0.25%+, you get a specific alert with the clinical context your provider needs.</p>
     </div>
     <div class="how-step">
       <div class="how-num">4</div>
-      <h4>Walk in prepared</h4>
-      <p>Before every visit, PHI generates a one-page brief — your trends, your questions, your data. Your doctor notices.</p>
+      <h4>Walk into every appointment prepared</h4>
+      <p>PHI generates your PA support packet, your doctor prep brief, and your protein + movement targets — all from your actual data.</p>
     </div>
   </div>
 </section>
 
-<!-- ══════════════ BOTTOM CTA ══════════════ -->
+<!-- BOTTOM CTA -->
 <section class="bottom-cta">
   <div class="bottom-cta-box">
-    <h2>Your health data has been <em>sitting in a drawer.</em></h2>
-    <p>Every lab report you've ever had is a data point. PHI connects them into a continuous picture — tracking, detecting, alerting. Free account, permanent memory, no credit card.</p>
-
-    <a href="/signup" class="btn-hero">
+    <h2>The cliff is predictable.<br><em>Start predicting it.</em></h2>
+    <p>PHI monitors the three early signals — glucose trajectory, HbA1c drift, and body weight — so you know what's happening before your next appointment. Free account, permanent memory, no credit card.</p>
+    <a href="/signup" class="btn-hero" style="margin:0 auto;">
       <i class="fa-solid fa-user-plus"></i>
       Start for Free
     </a>
-
     <div class="cta-badges">
       <span><i class="fa-solid fa-shield-halved"></i> AES-256 encrypted</span>
       <span><i class="fa-solid fa-user-secret"></i> AI never sees your name</span>
@@ -1130,7 +538,6 @@ footer p { font-size:.72rem; color:var(--text-3); }
   </div>
 </section>
 
-<!-- ══════════════ FOOTER ══════════════ -->
 <footer>
   <div class="footer-links">
     <a href="/demo">Try Demo</a>
@@ -1139,92 +546,63 @@ footer p { font-size:.72rem; color:var(--text-3); }
     <a href="/privacy">Privacy Policy</a>
     <a href="/terms">Terms</a>
   </div>
-  <p>© 2025 Curabook PHI · AI health intelligence · Not a medical device · Always consult your healthcare provider</p>
+  <p>© 2026 Curabook PHI · GLP-1 cliff prevention · Not a medical device · Always consult your healthcare provider</p>
 </footer>
 
-<!-- ═══════════════════ JAVASCRIPT ═══════════════════ -->
 <script>
 "use strict";
-
 const API = "https://api.curabook.com";
-
-// ── State ──────────────────────────────────────────
 let sessionId = localStorage.getItem("phi_demo_sid") || "";
 let convId    = "demo-conv-" + Date.now();
 let chatCount = 0;
 let docLoaded = false;
 const docCtx  = { text: null, sent: false, hasDoc: false };
 
-// ── Sample report data ─────────────────────────────
-const SAMPLE_REPORT_TEXT = `PATIENT: [DEMO - CURABOOK PHI]
-REPORT DATE: 2025-01-15
-LABORATORY: PHI Demo Laboratory
+// Sarah's case: 8 weeks post-Zepbound, cliff in progress
+const SAMPLE_REPORT_TEXT = `PATIENT: [DEMO - PHI GLP-1 Cliff Case]
+REPORT DATE: 2026-02-10
+LABORATORY: Quest Diagnostics — Austin TX
 
-COMPLETE BLOOD COUNT:
-Hemoglobin: 11.2 g/dL  Reference: 12.0-15.5  LOW
-WBC: 7.2 x10^3/uL  Reference: 4.5-11.0  NORMAL
-Platelets: 210 x10^3/uL  Reference: 150-400  NORMAL
+DIABETES / METABOLIC MARKERS:
+Fasting Blood Glucose  : 112 mg/dL    Reference: 70-100     HIGH  (+23% from personal baseline of 91)
+HbA1c                  : 5.9 %        Reference: <5.7       HIGH  (+0.4% from 5.5% on medication)
+Insulin (Fasting)      : 14.8 µIU/mL  Reference: 2.6-24.9  NORMAL
 
 LIPID PANEL:
-LDL Cholesterol: 168 mg/dL  Reference: <100  HIGH
-HDL Cholesterol: 38 mg/dL  Reference: >40  LOW
-Total Cholesterol: 224 mg/dL  Reference: <200  HIGH
-Triglycerides: 168 mg/dL  Reference: <150  HIGH
+LDL Cholesterol        : 124 mg/dL    Reference: <100       HIGH  (was 98 on Zepbound)
+HDL Cholesterol        : 48  mg/dL    Reference: >40        NORMAL
+Total Cholesterol      : 214 mg/dL    Reference: <200       HIGH
+Triglycerides          : 171 mg/dL    Reference: <150       HIGH
 
-DIABETES MARKERS:
-HbA1c: 5.9%  Reference: <5.7  HIGH
-Fasting Glucose: 108 mg/dL  Reference: 70-100  HIGH
+INFLAMMATION:
+CRP (C-Reactive Protein): 4.2 mg/L   Reference: <3.0       HIGH  (was 1.1 on medication)
 
-VITAMINS:
-Vitamin D (25-OH): 18 ng/mL  Reference: 30-100  LOW
-Vitamin B12: 280 pg/mL  Reference: 200-900  NORMAL
-Ferritin: 12 ng/mL  Reference: 15-150  LOW
+VITAMINS / MINERALS:
+Vitamin D (25-OH)      : 28  ng/mL    Reference: 30-100     LOW
+
+KIDNEY / LIVER:
+eGFR                   : 91  mL/min   Reference: >60        NORMAL
+ALT                    : 31  U/L      Reference: 7-40       NORMAL
 
 THYROID:
-TSH: 2.4 mIU/L  Reference: 0.4-4.0  NORMAL
+TSH                    : 2.4 mIU/L    Reference: 0.4-4.0    NORMAL
 
-KIDNEY FUNCTION:
-Creatinine: 0.9 mg/dL  Reference: 0.6-1.2  NORMAL
-eGFR: 88 mL/min  Reference: >60  NORMAL
+CLINICAL CONTEXT (from PHI memory):
+- Patient stopped Zepbound 10mg weekly on 12/15/2025 due to insurance denial
+- On-medication baseline (9/2025): Glucose 91, HbA1c 5.4%, LDL 92, CRP 0.8
+- Current weight: ~178 lbs (regained 6 lbs from 172 lbs low)
+- Goal weight: 158 lbs
+- Patient reports intense food noise returning`;
 
-LIVER FUNCTION:
-ALT: 32 U/L  Reference: 7-40  NORMAL
-AST: 28 U/L  Reference: 10-40  NORMAL
-CRP: 3.2 mg/L  Reference: <3.0  HIGH`;
-
-const SAMPLE_MARKERS = [
-  {name:"Hemoglobin",   value:"11.2", unit:"g/dL",   status:"LOW",    ref:"12.0-15.5"},
-  {name:"LDL Cholesterol", value:"168", unit:"mg/dL", status:"HIGH",  ref:"<100"},
-  {name:"HDL Cholesterol", value:"38",  unit:"mg/dL", status:"LOW",   ref:">40"},
-  {name:"Total Cholesterol",value:"224",unit:"mg/dL", status:"HIGH",  ref:"<200"},
-  {name:"Triglycerides",value:"168",    unit:"mg/dL", status:"HIGH",  ref:"<150"},
-  {name:"HbA1c",        value:"5.9",   unit:"%",      status:"HIGH",  ref:"<5.7"},
-  {name:"Fasting Glucose",value:"108", unit:"mg/dL",  status:"HIGH",  ref:"70-100"},
-  {name:"Vitamin D",    value:"18",    unit:"ng/mL",  status:"LOW",   ref:"30-100"},
-  {name:"Ferritin",     value:"12",    unit:"ng/mL",  status:"LOW",   ref:"15-150"},
-  {name:"CRP",          value:"3.2",   unit:"mg/L",   status:"HIGH",  ref:"<3.0"},
-  {name:"TSH",          value:"2.4",   unit:"mIU/L",  status:"NORMAL",ref:"0.4-4.0"},
-  {name:"Creatinine",   value:"0.9",   unit:"mg/dL",  status:"NORMAL",ref:"0.6-1.2"},
-];
-
-// ── Init session ───────────────────────────────────
 async function initSession() {
   try {
-    const headers = sessionId ? { "X-Demo-Session": sessionId } : {};
-    const res = await fetch(`${API}/demo/session`, { method:"POST", headers });
+    const headers = sessionId ? {"X-Demo-Session": sessionId} : {};
+    const res = await fetch(`${API}/demo/session`, {method:"POST", headers});
     const d = await res.json();
-    if (d.session_id) {
-      sessionId = d.session_id;
-      localStorage.setItem("phi_demo_sid", sessionId);
-    }
-  } catch(e) { /* non-fatal */ }
+    if (d.session_id) { sessionId = d.session_id; localStorage.setItem("phi_demo_sid", sessionId); }
+  } catch(e) {}
 }
 
-function headers() {
-  return { "X-Demo-Session": sessionId };
-}
-
-// ── Toast ──────────────────────────────────────────
 function toast(msg, type="ok") {
   const el = document.createElement("div");
   el.className = `toast ${type}`;
@@ -1234,62 +612,46 @@ function toast(msg, type="ok") {
   setTimeout(() => el.remove(), 4000);
 }
 
-// ── Sample data load ───────────────────────────────
+// Load Sarah's case
 document.getElementById("loadSampleBtn").addEventListener("click", () => {
   docCtx.text = SAMPLE_REPORT_TEXT;
   docCtx.sent = false;
   docCtx.hasDoc = true;
   docLoaded = true;
-
-  // Show processing briefly
   const banner = document.getElementById("procBanner");
-  banner.querySelector("#procText").textContent = "Loading sample lab report…";
+  banner.querySelector("#procText").textContent = "Loading Sarah's case — 8 weeks post-Zepbound…";
   banner.classList.add("show");
-
   setTimeout(() => {
     banner.classList.remove("show");
-    // Remove start chips
     const chips = document.getElementById("startChips");
     if(chips) chips.style.display = "none";
-    // Auto-trigger explanation
-    sendMessage("Please read this lab report and explain every finding. Tell me what each value means, which are concerning, and what I should discuss with my doctor.", true);
-    toast("Sample report loaded — PHI is analyzing it…");
-  }, 1200);
+    sendMessage("I stopped Zepbound 8 weeks ago because my insurance denied the prior auth. My new labs just came back and everything looks worse — glucose is 112, HbA1c 5.9%, LDL 124. The food noise is relentless. Can you analyze what's happening and what I should do?", true);
+    toast("Sarah's post-Zepbound case loaded — PHI is running cliff analysis…");
+  }, 1400);
 });
 
-// ── File upload ────────────────────────────────────
+// File upload
 document.getElementById("fileInput").addEventListener("change", async (e) => {
   const file = e.target.files[0];
   if (!file) return;
   if (file.size > 5 * 1024 * 1024) { toast("File too large. Max 5MB.", "err"); return; }
-
   const banner = document.getElementById("procBanner");
   banner.querySelector("#procText").textContent = `Reading ${file.name}…`;
   banner.classList.add("show");
   document.getElementById("uploadArea").style.opacity = ".5";
-
   const form = new FormData();
   form.append("file", file);
-
   try {
-    const res = await fetch(`${API}/demo/analyze`, {
-      method:"POST", headers: headers(), body: form
-    });
+    const res = await fetch(`${API}/demo/analyze`, {method:"POST", headers:{"X-Demo-Session":sessionId}, body:form});
     const d = await res.json();
     banner.classList.remove("show");
     document.getElementById("uploadArea").style.opacity = "1";
-
-    if (!res.ok || !d.success) {
-      toast(d.error || "Could not read this file.", "err"); return;
-    }
-
+    if (!res.ok || !d.success) { toast(d.error || "Could not read this file.", "err"); return; }
     docCtx.text = d.document_text || SAMPLE_REPORT_TEXT;
     docCtx.sent = false; docCtx.hasDoc = true; docLoaded = true;
-
     const chips = document.getElementById("startChips");
     if(chips) chips.style.display = "none";
-
-    sendMessage("Please read my uploaded medical report and explain every finding. What's abnormal, what does it mean, and what should I discuss with my doctor?", true);
+    sendMessage("Please analyze my lab report for GLP-1 cliff signals. What markers are concerning and what should I do?", true);
     toast(`${file.name} analyzed ✓`);
   } catch(e) {
     banner.classList.remove("show");
@@ -1299,48 +661,32 @@ document.getElementById("fileInput").addEventListener("change", async (e) => {
   e.target.value = "";
 });
 
-// Drag and drop
+// Drag/drop
 const ua = document.getElementById("uploadArea");
 ua.addEventListener("dragover", e => { e.preventDefault(); ua.classList.add("drag-over"); });
 ua.addEventListener("dragleave", () => ua.classList.remove("drag-over"));
 ua.addEventListener("drop", e => {
   e.preventDefault(); ua.classList.remove("drag-over");
   const file = e.dataTransfer.files[0];
-  if (file) {
-    const dt = new DataTransfer();
-    dt.items.add(file);
-    document.getElementById("fileInput").files = dt.files;
-    document.getElementById("fileInput").dispatchEvent(new Event("change"));
-  }
+  if (file) { const dt = new DataTransfer(); dt.items.add(file); document.getElementById("fileInput").files = dt.files; document.getElementById("fileInput").dispatchEvent(new Event("change")); }
 });
 
-// ── Chat helpers ───────────────────────────────────
-function escHtml(s) {
-  return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
-}
-
-function md(text) {
-  return typeof marked !== "undefined" ? marked.parse(String(text||"")) : escHtml(text);
-}
+function esc(s) { return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function md(text) { return typeof marked !== "undefined" ? marked.parse(String(text||"")) : esc(text); }
 
 function addMsg(text, role, typing=false) {
   const body = document.getElementById("chatBody");
   const wrap = document.createElement("div");
-  wrap.className = `msg ${role === "user" ? "user-msg" : "ai-msg"}`;
-
+  wrap.className = `msg ${role==="user"?"user-msg":"ai-msg"}`;
   const av = document.createElement("div");
-  av.className = `msg-av ${role === "user" ? "usr" : "ai"}`;
-  av.textContent = role === "user" ? "Y" : "φ";
-
+  av.className = `msg-av ${role==="user"?"usr":"ai"}`;
+  av.textContent = role==="user" ? "Y" : "φ";
   const bub = document.createElement("div");
   bub.className = "msg-bub";
-
-  if (typing) {
-    bub.innerHTML = '<div class="typing"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div>';
-  } else if (role === "user") {
-    bub.textContent = text;
-  } else {
-    const cleaned = text.replace(/⚕️[\s\S]*?decisions\./g, "").trim();
+  if (typing) { bub.innerHTML = '<div class="typing"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div>'; }
+  else if (role==="user") { bub.textContent = text; }
+  else {
+    const cleaned = text.replace(/⚕️[\s\S]*?decisions\./g,"").trim();
     bub.innerHTML = md(cleaned);
     if (text.includes("⚕️")) {
       const legal = document.createElement("p");
@@ -1349,10 +695,8 @@ function addMsg(text, role, typing=false) {
       bub.appendChild(legal);
     }
   }
-
-  if (role === "user") { wrap.appendChild(bub); wrap.appendChild(av); }
-  else                  { wrap.appendChild(av);  wrap.appendChild(bub); }
-
+  if (role==="user") { wrap.appendChild(bub); wrap.appendChild(av); }
+  else { wrap.appendChild(av); wrap.appendChild(bub); }
   body.appendChild(wrap);
   body.scrollTop = body.scrollHeight;
   return wrap;
@@ -1361,7 +705,7 @@ function addMsg(text, role, typing=false) {
 function updateMsg(wrap, text) {
   const bub = wrap.querySelector(".msg-bub");
   if (!bub) return;
-  const cleaned = text.replace(/---[\s\S]*?decisions\.\*/g, "").trim();
+  const cleaned = text.replace(/---[\s\S]*?decisions\.\*/g,"").trim();
   bub.innerHTML = md(cleaned);
   if (text.includes("⚕️") || text.includes("PHI is an educational")) {
     const legal = document.createElement("p");
@@ -1372,115 +716,66 @@ function updateMsg(wrap, text) {
   document.getElementById("chatBody").scrollTop = document.getElementById("chatBody").scrollHeight;
 }
 
-// ── Send message ───────────────────────────────────
 let isSending = false;
 
 async function sendMessage(text, isAuto=false) {
   if (isSending) return;
   const inputEl = document.getElementById("chatInput");
-  if (!isAuto) {
-    text = (text || inputEl.value).trim();
-    if (!text) return;
-    inputEl.value = "";
-    inputEl.style.height = "auto";
-  }
+  if (!isAuto) { text = (text||inputEl.value).trim(); if(!text) return; inputEl.value=""; inputEl.style.height="auto"; }
   if (!text) return;
-
-  // Remove chips once first message sent
   const chips = document.getElementById("startChips");
   if (chips) chips.style.display = "none";
-
   isSending = true;
   const btn = document.getElementById("sendBtn");
   btn.disabled = true;
   btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
-
   addMsg(text, "user");
   const botRow = addMsg("", "ai", true);
-
   try {
-    // Only send doc text ONCE (first message after upload)
     const sendDoc = !docCtx.sent ? docCtx.text : null;
     if (sendDoc) docCtx.sent = true;
-
     const res = await fetch(`${API}/demo/chat`, {
       method:"POST",
-      headers: { ...headers(), "Content-Type":"application/json" },
-      body: JSON.stringify({
-        message: text,
-        conversation_id: convId,
-        has_documents: docCtx.hasDoc,
-        document_text: sendDoc || "",
-      }),
+      headers:{"X-Demo-Session":sessionId,"Content-Type":"application/json"},
+      body:JSON.stringify({message:text, conversation_id:convId, has_documents:docCtx.hasDoc, document_text:sendDoc||""})
     });
-
     const d = await res.json();
     updateMsg(botRow, d.reply || "I couldn't process that. Please try again.");
     chatCount++;
 
-    // Show follow-up chips after first AI reply (if doc loaded)
     if (docLoaded && chatCount === 1) {
-      const followChips = `
-        <div class="chips" style="margin-top:10px" id="followChips">
-          <button class="chip" data-q="What should I do about the abnormal results?">What to do about abnormal results?</button>
-          <button class="chip" data-q="How urgent is this? Do I need to see a doctor this week?">How urgent is this?</button>
-          <button class="chip" data-q="What lifestyle changes will help most?">What lifestyle changes will help?</button>
-          <button class="chip" data-q="Prepare me for my doctor visit based on these results">Doctor visit prep</button>
-        </div>`;
+      const followDiv = document.createElement("div");
+      followDiv.className = "chips";
+      followDiv.style.marginTop = "10px";
+      followDiv.innerHTML = `
+        <button class="chip" data-q="What is my Muscle Defense protein target and how do I hit it with food?"><i class="fa-solid fa-dumbbell"></i> Protein target & food plan</button>
+        <button class="chip" data-q="Help me build my insurance prior authorization appeal from this lab data."><i class="fa-solid fa-file-medical"></i> Build my PA appeal</button>
+        <button class="chip" data-q="What should I tell my cardiologist at my appointment next week about these results?"><i class="fa-solid fa-stethoscope"></i> Doctor visit prep</button>
+        <button class="chip" data-q="What are my options for getting back on a GLP-1 at a lower cost?"><i class="fa-solid fa-syringe"></i> GLP-1 access options</button>`;
       const bub = botRow.querySelector(".msg-bub");
-      if (bub) {
-        const div = document.createElement("div");
-        div.innerHTML = followChips;
-        bub.appendChild(div.firstChild);
-        document.querySelectorAll("#followChips .chip").forEach(c => {
-          c.addEventListener("click", () => sendMessage(c.getAttribute("data-q")));
-        });
-      }
+      if (bub) bub.appendChild(followDiv);
+      followDiv.querySelectorAll(".chip").forEach(c => c.addEventListener("click", () => sendMessage(c.getAttribute("data-q"))));
     }
 
-    // Show CTA after 2 interactions
     if (chatCount >= 2) {
       const cta = document.getElementById("ctaBanner");
-      if (cta && !cta.classList.contains("show")) {
-        cta.classList.add("show");
-        cta.scrollIntoView({ behavior:"smooth", block:"nearest" });
-      }
+      if (cta && !cta.classList.contains("show")) { cta.classList.add("show"); cta.scrollIntoView({behavior:"smooth",block:"nearest"}); }
     }
-
   } catch(e) {
-    updateMsg(botRow, "Connection error. Is the backend running at " + API + "?");
+    updateMsg(botRow, "Connection error. Is the backend running?");
   }
-
   isSending = false;
   btn.disabled = false;
   btn.innerHTML = '<i class="fa-solid fa-arrow-up"></i>';
 }
 
-// Input events
 const inputEl = document.getElementById("chatInput");
-inputEl.addEventListener("keydown", e => {
-  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
-});
-inputEl.addEventListener("input", () => {
-  inputEl.style.height = "auto";
-  inputEl.style.height = Math.min(inputEl.scrollHeight, 100) + "px";
-});
-document.getElementById("sendBtn").addEventListener("click", () => sendMessage());
+inputEl.addEventListener("keydown", e => { if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMessage();} });
+inputEl.addEventListener("input", () => { inputEl.style.height="auto"; inputEl.style.height=Math.min(inputEl.scrollHeight,100)+"px"; });
+document.getElementById("sendBtn").addEventListener("click", ()=>sendMessage());
+document.querySelectorAll("#startChips .chip").forEach(c => c.addEventListener("click",()=>sendMessage(c.getAttribute("data-q"))));
+document.querySelectorAll('a[href="#demo-zone"]').forEach(a => a.addEventListener("click",e=>{e.preventDefault();document.getElementById("demo-zone").scrollIntoView({behavior:"smooth"});}));
 
-// Chip clicks (starting chips)
-document.querySelectorAll("#startChips .chip").forEach(c => {
-  c.addEventListener("click", () => sendMessage(c.getAttribute("data-q")));
-});
-
-// Smooth scroll from hero CTA
-document.querySelectorAll('a[href="#demo-zone"]').forEach(a => {
-  a.addEventListener("click", e => {
-    e.preventDefault();
-    document.getElementById("demo-zone").scrollIntoView({ behavior:"smooth" });
-  });
-});
-
-// Init
 initSession();
 </script>
 </body>

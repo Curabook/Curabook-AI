@@ -3,22 +3,18 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>PHI — Personal Health Intelligence</title>
-<meta name="description" content="Your GLP-1 co-pilot. Track metabolic rebound, protect lean mass, stay ahead of the cliff.">
+<title>PHI — GLP-1 Cliff Prevention</title>
+<meta name="description" content="PHI monitors your glucose, HbA1c, and body composition to detect GLP-1 metabolic rebound before it becomes a crisis.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Space+Grotesk:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-<!-- FIX: Proper stylesheet link (was incorrectly referenced as a script) -->
 <link rel="stylesheet" href="style.css">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
 
-<!-- ═══════════════════════════════════════
-     APP SHELL
-═══════════════════════════════════════ -->
 <div id="shell">
 
   <!-- ─── SIDEBAR ─── -->
@@ -112,7 +108,6 @@
         <button id="attachTopBtn" class="topbar-icon-btn" aria-label="Upload lab report">
           <i class="fa-solid fa-paperclip" aria-hidden="true"></i>
         </button>
-        <!-- Mobile cockpit toggle button -->
         <button id="mobileCockpitBtn" class="topbar-icon-btn mobile-only" aria-label="Toggle health cockpit" title="Health Cockpit">
           <i class="fa-solid fa-gauge-high" aria-hidden="true"></i>
         </button>
@@ -122,7 +117,7 @@
     <!-- Chat Area -->
     <div id="chatArea">
 
-      <!-- Welcome Screen -->
+      <!-- Welcome Screen — GLP-1 Cliff Positioning -->
       <div id="welcomeScreen" role="region" aria-label="Chat welcome">
         <div class="welcome-inner">
           <div class="welcome-orb" aria-hidden="true">φ</div>
@@ -131,40 +126,41 @@
             <em id="welcomeName">there</em>
           </h1>
           <p class="welcome-sub">
-            Your GLP-1 intelligence co-pilot. I track your rebound risk,
-            protect your lean mass, and keep you ahead of the cliff.
+            Your GLP-1 cliff co-pilot. I watch your glucose rebound,
+            protect your lean mass, and build your insurance appeal — from your actual lab data.
           </p>
 
+          <!-- GLP-1 focused chips -->
           <div class="suggestion-chips" id="welcomeChips" role="list">
             <button class="chip" role="listitem"
-              data-q="Am I at risk for the GLP-1 cliff? What signals should I watch for in my labs?">
+              data-q="Run a cliff risk analysis on my stored health data. Show me my glucose trajectory, HbA1c trend, and any rebound signals.">
               <i class="fa-solid fa-triangle-exclamation chip-icon"></i>
               My cliff risk
             </button>
             <button class="chip" role="listitem"
-              data-q="Calculate my daily protein target using the Muscle Defense formula. My goal weight is 165 lbs.">
+              data-q="Calculate my daily protein target using the Muscle Defense formula. My goal weight is stored in my profile.">
               <i class="fa-solid fa-dumbbell chip-icon"></i>
               Protein target
             </button>
             <button class="chip" role="listitem"
-              data-q="Food noise and hunger are returning after reducing my GLP-1 dose. Explain the biology behind this — is it ghrelin?">
+              data-q="The food noise and hunger are coming back since I reduced my GLP-1 dose. Explain the biology — is this ghrelin rebound? What do I do?">
               <i class="fa-solid fa-brain chip-icon"></i>
               Food noise is back
             </button>
             <button class="chip" role="listitem"
-              data-q="Prepare me for my next provider appointment. What data should I bring and what 3 specific questions should I ask?">
+              data-q="Prepare me for my next provider appointment. What are my three most important data points to bring and what specific questions should I ask?">
               <i class="fa-solid fa-stethoscope chip-icon"></i>
               Doctor visit prep
             </button>
             <button class="chip" role="listitem"
-              data-q="Explain the evidence-based options for tapering off a GLP-1 medication: reduced-frequency dosing, microdosing, and AOM transition.">
+              data-q="Explain my options for tapering off a GLP-1: reduced-frequency dosing every 10-14 days, microdosing, and transitioning to generic AOMs. What does the evidence say?">
               <i class="fa-solid fa-syringe chip-icon"></i>
               Tapering options
             </button>
             <button class="chip" role="listitem"
-              data-q="Help me build a GLP-1 prior authorization support packet from my health data for my insurance appeal.">
+              data-q="Build me a GLP-1 prior authorization support packet from my lab data. I need clinical evidence for my insurance appeal.">
               <i class="fa-solid fa-shield-halved chip-icon"></i>
-              Insurance appeal
+              Insurance PA appeal
             </button>
           </div>
 
@@ -173,7 +169,7 @@
               <i class="fa-solid fa-file-medical" aria-hidden="true"></i>
               Upload a Lab Report
             </button>
-            <p class="upload-hint">PDF from any lab — SRL, Thyrocare, Apollo, Quest, LabCorp</p>
+            <p class="upload-hint">PDF from Quest, LabCorp, or any US lab</p>
           </div>
         </div>
       </div>
@@ -219,7 +215,6 @@
   <!-- ─── COCKPIT PANEL ─── -->
   <aside id="cockpit" aria-label="Health cockpit">
 
-    <!-- Mobile cockpit close button -->
     <button id="cockpitCloseBtn" class="cockpit-close-btn mobile-only" aria-label="Close cockpit">
       <i class="fa-solid fa-xmark"></i>
     </button>
@@ -309,12 +304,12 @@
         <span class="protein-num" id="proteinNum">--</span>
         <span class="protein-unit">g / day</span>
       </div>
-      <p class="cp-caption" id="proteinCaption">Enter goal weight to calculate target</p>
+      <p class="cp-caption" id="proteinCaption">Goal Weight × 0.545 = daily protein target</p>
       <div class="protein-row">
         <input type="number" id="proteinInput" class="cp-input" placeholder="Goal weight (lbs)" min="80" max="400">
         <button id="calcBtn" class="cp-secondary-btn">Calc</button>
       </div>
-      <div id="proteinDetails" class="protein-details" aria-live="polite"></div>
+      <div id="proteinDetails" class="protein-details hidden" aria-live="polite"></div>
     </section>
 
     <!-- Cliff Alerts -->
@@ -328,7 +323,7 @@
       <div id="cliffAlerts" aria-live="polite">
         <div class="ca-item ca-ok">
           <div class="ca-title">✅ No rebound signals</div>
-          <div class="ca-desc">Upload lab reports to enable automatic cliff monitoring.</div>
+          <div class="ca-desc">Upload your Quest or LabCorp report to enable automatic cliff monitoring.</div>
         </div>
       </div>
     </section>
@@ -338,7 +333,7 @@
       <div class="cp-section-hd">
         <h2 class="cp-section-title">Ghrelin Surge Log</h2>
       </div>
-      <p class="cp-caption">Food noise is biological data — not a willpower score.</p>
+      <p class="cp-caption">Food noise is ghrelin biology — not a willpower score.</p>
       <div class="noise-wrap">
         <div class="noise-labels" aria-hidden="true">
           <span>Quiet</span>
@@ -348,7 +343,7 @@
           aria-label="Food noise level 1 to 10">
       </div>
       <div id="noiseReadout" class="noise-readout" aria-live="polite">
-        Move the slider to log today's food noise level.
+        Move the slider to log today's ghrelin surge level.
       </div>
       <button id="logNoiseBtn" class="cp-secondary-btn mt-8">
         <i class="fa-solid fa-save" aria-hidden="true"></i> Log Level
@@ -364,7 +359,7 @@
         </button>
       </div>
       <div id="markersGrid" class="markers-grid" aria-live="polite">
-        <div class="markers-empty">Upload a lab report to see your markers</div>
+        <div class="markers-empty">Upload a Quest or LabCorp PDF to see your markers</div>
       </div>
     </section>
 
@@ -372,18 +367,12 @@
 
 </div><!-- /shell -->
 
-<!-- Sidebar overlay (mobile only) -->
 <div id="sidebarOverlay" class="sidebar-overlay" aria-hidden="true"></div>
-<!-- Cockpit overlay (mobile only) -->
 <div id="cockpitOverlay" class="cockpit-overlay" aria-hidden="true"></div>
 
-<!-- Hidden file input -->
 <input type="file" id="fileInput" accept=".pdf,.txt" multiple aria-hidden="true" style="display:none">
-
-<!-- Toast notification area -->
 <div id="toasts" role="status" aria-live="assertive" aria-atomic="true"></div>
 
-<!-- FIX: Correct script tag pointing to script.js (not style.css) -->
 <script src="script.js"></script>
 </body>
 </html>
