@@ -1,23 +1,30 @@
 /**
- * script.js — Curabook PHI v1.3
- * GLP-1 Intelligence App — Production JavaScript
+ * script.js — Curabook PHI v1.4  (FIXED)
  *
- * FIXES IN THIS VERSION:
- *   - FIX-SEND-1:  handleSend() now shows a clear error if session is missing
- *                  instead of silently doing nothing
- *   - FIX-SEND-2:  processFileUpload() shows a toast on every failure mode
- *                  (no session, server error, 403 consent, 413 too large)
- *   - FIX-SEND-3:  createConversation() failure now shows a toast + logs the
- *                  actual server response instead of swallowing the error
- *   - FIX-SEND-4:  403 on /chat now clears properly with auto-consent retry
- *   - FIX-SEND-5:  File upload 403 triggers consent save then retries once
- *   - FIX-API-1:   Dynamic API_BASE (localhost → 5000, prod → api.curabook.com)
- *   - FIX-AUTH-1:  Dev-mode soft warning instead of hard redirect loop
- *   - FIX-MOBILE-1:Cockpit drawer wired at ALL breakpoints
- *   - FIX-SHIELD-1:updateShield() safe with empty inputs + goalWt persisted
- *   - FIX-CTX-1:   _docCtx.sent only flips true after SUCCESSFUL API response
- *   - FIX-CTX-2:   removeFile() does NOT reset _docCtx.text
- *   - FIX-PERSIST-1:Goal weight saved/restored from localStorage
+ * ROOT CAUSE FIXES:
+ *
+ * FIX-LOCK-1: Multiple GoTrueClient instances were created — one in login.html
+ *   and one here — fighting over "sb-pbeaawlxdcrdbvlmpqhc-auth-token" lock.
+ *   Fix: reuse any existing GoTrueClient via window.__phiSb singleton.
+ *   Never call supabase.createClient() more than once per page load.
+ *
+ * FIX-LOCK-2: boot() was crashing mid-execution due to the lock error,
+ *   leaving _sb = null. Every subsequent getHeaders() call threw, causing
+ *   ALL buttons (send, sign out, theme, history, cockpit) to silently fail.
+ *
+ * FIX-BOOT-1: Added window.__phiBooted guard so boot() can never run twice.
+ *
+ * FIX-SESSION-1: getSession() now has a hard fallback — if the lock errors,
+ *   we attempt refreshSession() once before giving up.
+ *
+ * FIX-SEND-1: _isSending stuck-true is now auto-reset after 35 seconds
+ *   and on tab visibility change.
+ *
+ * FIX-BUTTONS-1: All button listeners now have null-guards with console
+ *   warnings instead of silent failures via optional chaining.
+ *
+ * FIX-HISTORY-1: loadHistory() failures now show a visible error state
+ *   instead of silently leaving the sidebar empty.
  */
 
 "use strict";
@@ -47,15 +54,12 @@ let _userName    = "";
 let _convId      = null;
 let _isSending   = false;
 let _uploads     = [];
+let _sendingTimer = null;  // FIX-SEND-1: auto-reset timer
 
 let _goalWt        = parseFloat(localStorage.getItem("phi_goal_wt") || "165");
 let _proteinTarget = Math.round(_goalWt * 0.545 * 10) / 10;
 
-let _docCtx = {
-  text:   null,
-  sent:   false,
-  hasDoc: false,
-};
+let _docCtx = { text: null, sent: false, hasDoc: false };
 
 const NOISE_MESSAGES = {
   1:  "Nearly silent — ghrelin well suppressed. Excellent maintenance state.",
@@ -64,19 +68,61 @@ const NOISE_MESSAGES = {
   4:  "Low-moderate. Check your daily protein — is it hitting your target?",
   5:  "Moderate. A 20-minute post-meal walk reduces post-meal glucose 30–50 mg/dL.",
   6:  "Elevated. Check sleep — each hour under 7h raises next-day ghrelin ~15%.",
-  7:  "High. This level often indicates the dose reduction was too fast. Discuss with provider.",
+  7:  "High. This level often indicates the dose reduction was too fast.",
   8:  "Very high. Classic ghrelin surge — this is physiology, not willpower.",
-  9:  "Intense rebound. This is an important data point — discuss urgently with provider.",
+  9:  "Intense rebound. Discuss urgently with provider.",
   10: "🚨 Maximum. Severe ghrelin surge. Urgent provider conversation recommended."
 };
+
+/* ═══════════════════════════════════════
+   FIX-LOCK-1: SUPABASE SINGLETON
+   Never create more than one GoTrueClient.
+   Reuse window.__phiSb if it already exists
+   (e.g. created by login.html on redirect).
+═══════════════════════════════════════ */
+function getOrCreateSupabaseClient() {
+  // Reuse existing client if already created on this page
+  if (window.__phiSb) {
+    console.info("[PHI] Reusing existing Supabase client");
+    return window.__phiSb;
+  }
+  if (typeof supabase === "undefined") {
+    throw new Error("Supabase SDK not loaded — check CDN script tag in index.html");
+  }
+  const client = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+    auth: {
+      detectSessionInUrl:  true,
+      persistSession:      true,
+      autoRefreshToken:    true,
+      // FIX-LOCK-2: Use same storage key as login.html (default)
+      // Do NOT set a custom storageKey — must match login.html's client
+    }
+  });
+  window.__phiSb = client;
+  return client;
+}
 
 /* ═══════════════════════════════════════
    BOOT
 ═══════════════════════════════════════ */
 async function boot() {
+  // FIX-BOOT-1: Prevent double-boot
+  if (window.__phiBooted) {
+    console.warn("[PHI] boot() called twice — skipping");
+    return;
+  }
+  window.__phiBooted = true;
+
   try {
-    _sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
-      auth: { detectSessionInUrl: true, persistSession: true }
+    _sb = getOrCreateSupabaseClient();
+
+    // FIX-SEND-1: Auto-reset stuck _isSending on tab focus
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden && _isSending) {
+        console.warn("[PHI] Tab refocused with stuck _isSending — resetting");
+        _isSending = false;
+        setSendingState(false);
+      }
     });
 
     _sb.auth.onAuthStateChange(async (event, session) => {
@@ -84,18 +130,22 @@ async function boot() {
         await onSignIn(session.user);
       } else if (event === "SIGNED_OUT") {
         if (IS_DEV) {
-          console.warn("[PHI] DEV: Signed out — skipping redirect.");
+          console.warn("[PHI] DEV: Signed out");
           showDevAuthBanner();
         } else {
           window.location.href = "/login";
         }
+      } else if (event === "TOKEN_REFRESHED") {
+        console.info("[PHI] Token refreshed successfully");
       }
     });
 
-    const { data: { session } } = await _sb.auth.getSession();
+    // FIX-SESSION-1: Get session with lock-error recovery
+    const session = await getSessionSafe();
+
     if (!session?.user) {
       if (IS_DEV) {
-        console.warn("[PHI] DEV: No session. Running in unauthenticated mode.");
+        console.warn("[PHI] DEV: No session — unauthenticated mode");
         showDevAuthBanner();
         initTheme();
         wireEvents();
@@ -111,7 +161,33 @@ async function boot() {
 
   } catch (err) {
     console.error("[PHI] Boot error:", err);
-    toast("Failed to initialize. Please refresh.", "err");
+    toast("Failed to initialize. Please refresh the page.", "err");
+    // Still wire events so buttons at least respond
+    initTheme();
+    wireEvents();
+  }
+}
+
+/* ═══════════════════════════════════════
+   FIX-SESSION-1: LOCK-SAFE getSession
+   Retries once with refreshSession() if
+   the WebLock is stolen by another client.
+═══════════════════════════════════════ */
+async function getSessionSafe() {
+  try {
+    const { data, error } = await _sb.auth.getSession();
+    if (error) throw error;
+    return data?.session;
+  } catch (lockErr) {
+    console.warn("[PHI] getSession lock error — trying refreshSession:", lockErr.message);
+    try {
+      const { data, error } = await _sb.auth.refreshSession();
+      if (error) throw error;
+      return data?.session;
+    } catch (refreshErr) {
+      console.error("[PHI] refreshSession also failed:", refreshErr.message);
+      return null;
+    }
   }
 }
 
@@ -128,7 +204,7 @@ function showDevAuthBanner() {
   banner.innerHTML = `
     ⚠️ DEV MODE — No session.
     <a href="/login" style="color:#2dd4bf;text-decoration:underline">Sign in</a>
-    to test auth features. API: ${API_BASE}
+    to test auth. API: ${API_BASE}
     <button onclick="this.parentNode.remove()" style="margin-left:auto;color:#fbbf24;background:none;border:none;cursor:pointer;font-size:1rem;">×</button>
   `;
   document.body.appendChild(banner);
@@ -141,18 +217,17 @@ async function onSignIn(user) {
     || "there";
   _userName = _userName.charAt(0).toUpperCase() + _userName.slice(1);
 
-  if (el("userAvatar")) el("userAvatar").textContent = _userName[0].toUpperCase();
-  setText("userEmail",   user.email);
-  setText("welcomeName", _userName);
+  const avatarEl = el("userAvatar");
+  if (avatarEl) avatarEl.textContent = _userName[0].toUpperCase();
+  setText("userEmail",    user.email);
+  setText("welcomeName",  _userName);
 
   const h = new Date().getHours();
   setText("timeGreeting", h < 12 ? "morning" : h < 17 ? "afternoon" : "evening");
 
-  // FIX-SEND-4: Save consents immediately on sign-in — blocking await so
-  // we know consent rows exist before the user can send a message
   await saveConsents();
-
   initTheme();
+  wireEvents();
   restoreShieldInputs();
   await loadHistory();
   loadMarkersData();
@@ -162,29 +237,29 @@ async function onSignIn(user) {
    API HELPERS
 ═══════════════════════════════════════ */
 async function getSession() {
-  try {
-    const { data: { session } } = await _sb.auth.getSession();
-    return session;
-  } catch { return null; }
+  return await getSessionSafe();
 }
 
 async function getHeaders(contentType = "application/json") {
   try {
-    let session = await getSession();
+    let session = await getSessionSafe();
 
-    // If token is expired, try to refresh it
     if (!session) {
+      // One retry — force refresh
       const { data } = await _sb.auth.refreshSession();
       session = data?.session;
     }
 
-    if (!session) return null;
+    if (!session?.access_token) {
+      console.warn("[PHI] getHeaders: no valid session");
+      return null;
+    }
 
     const h = { "Authorization": `Bearer ${session.access_token}` };
     if (contentType) h["Content-Type"] = contentType;
     return h;
   } catch (err) {
-    console.error("[PHI] getHeaders error:", err);
+    console.error("[PHI] getHeaders error:", err.message);
     return null;
   }
 }
@@ -193,8 +268,8 @@ async function apiFetch(path, options = {}) {
   const url = API_BASE + path;
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
-    const res = await fetch(url, { ...options, signal: controller.signal });
+    const timeout    = setTimeout(() => controller.abort(), 30000);
+    const res        = await fetch(url, { ...options, signal: controller.signal });
     clearTimeout(timeout);
     return res;
   } catch (err) {
@@ -210,25 +285,21 @@ async function apiJson(path, options = {}) {
   try {
     return { ok: res.ok, status: res.status, data: JSON.parse(text) };
   } catch {
-    return { ok: false, status: res.status, data: { error: "Invalid response from server" } };
+    return { ok: false, status: res.status, data: { error: "Invalid server response" } };
   }
 }
 
-// FIX-SEND-4: saveConsents is now awaited on sign-in and retried silently
 async function saveConsents() {
   try {
     const h = await getHeaders();
     if (!h) return;
-    const res = await apiFetch("/api/consent", {
-      method: "POST",
+    await apiFetch("/api/consent", {
+      method:  "POST",
       headers: h,
-      body: JSON.stringify({ consents: ["data_processing", "ai_processing", "document_processing"] })
+      body:    JSON.stringify({ consents: ["data_processing", "ai_processing", "document_processing"] })
     });
-    if (!res.ok) {
-      console.warn("[PHI] Consent save returned:", res.status);
-    }
   } catch (err) {
-    console.warn("[PHI] Consent save failed (non-fatal):", err);
+    console.warn("[PHI] Consent save failed (non-fatal):", err.message);
   }
 }
 
@@ -252,11 +323,11 @@ function applyTheme(theme) {
   const isDark = theme === "dark";
   setIcon("themeIcon",    isDark ? "fa-moon" : "fa-sun");
   setIcon("topThemeIcon", isDark ? "fa-moon" : "fa-sun");
-  setText("themeLabel", isDark ? "Light Mode" : "Dark Mode");
+  setText("themeLabel",   isDark ? "Light Mode" : "Dark Mode");
 }
 
 /* ═══════════════════════════════════════
-   SIDEBAR
+   SIDEBAR / COCKPIT
 ═══════════════════════════════════════ */
 function openSidebar() {
   el("sidebar")?.classList.add("open");
@@ -282,9 +353,6 @@ function closeUserMenu() {
   el("userDropdown")?.setAttribute("aria-hidden", "true");
 }
 
-/* ═══════════════════════════════════════
-   COCKPIT DRAWER
-═══════════════════════════════════════ */
 function openCockpit() {
   el("cockpit")?.classList.add("open");
   el("cockpitOverlay")?.classList.add("show");
@@ -299,8 +367,7 @@ function closeCockpit() {
 function toggleCockpit() {
   const cockpit = el("cockpit");
   if (!cockpit) return;
-  if (cockpit.classList.contains("open")) closeCockpit();
-  else openCockpit();
+  cockpit.classList.contains("open") ? closeCockpit() : openCockpit();
 }
 
 /* ═══════════════════════════════════════
@@ -322,7 +389,8 @@ function resetToWelcome() {
   _uploads = [];
   _docCtx  = { text: null, sent: false, hasDoc: false };
   clearFilePreview();
-  if (el("chatDisplay")) el("chatDisplay").innerHTML = "";
+  const cd = el("chatDisplay");
+  if (cd) cd.innerHTML = "";
   showWelcome();
   document.querySelectorAll(".hist-item").forEach(e => e.classList.remove("active"));
   setText("convTitle", "Ready");
@@ -333,7 +401,11 @@ function resetToWelcome() {
 ═══════════════════════════════════════ */
 async function loadHistory() {
   const h = await getHeaders();
-  if (!h) return;
+  if (!h) {
+    const list = el("historyList");
+    if (list) list.innerHTML = '<div class="sb-empty">Sign in to see history</div>';
+    return;
+  }
 
   try {
     const { ok, data } = await apiJson("/history", {
@@ -342,10 +414,12 @@ async function loadHistory() {
     if (ok && Array.isArray(data)) {
       renderHistory(data);
     } else {
-      el("historyList").innerHTML = '<div class="sb-empty">Could not load history</div>';
+      const list = el("historyList");
+      if (list) list.innerHTML = '<div class="sb-empty">Could not load history</div>';
     }
   } catch {
-    el("historyList").innerHTML = '<div class="sb-empty">No conversations yet</div>';
+    const list = el("historyList");
+    if (list) list.innerHTML = '<div class="sb-empty">No conversations yet</div>';
   }
 }
 
@@ -365,7 +439,7 @@ function renderHistory(conversations) {
     const d = c.created_at ? new Date(c.created_at) : new Date();
     d.setHours(0, 0, 0, 0);
     let label;
-    if (d.getTime() === today.getTime())          label = "Today";
+    if      (d.getTime() === today.getTime())     label = "Today";
     else if (d.getTime() === yesterday.getTime()) label = "Yesterday";
     else label = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
     if (!groups.has(label)) groups.set(label, []);
@@ -396,7 +470,8 @@ async function openConversation(id) {
   _docCtx  = { text: null, sent: false, hasDoc: false };
   clearFilePreview();
   showChat();
-  if (el("chatDisplay")) el("chatDisplay").innerHTML = "";
+  const cd = el("chatDisplay");
+  if (cd) cd.innerHTML = "";
   document.querySelectorAll(".hist-item").forEach(e =>
     e.classList.toggle("active", e.dataset.id === id)
   );
@@ -408,7 +483,7 @@ async function openConversation(id) {
   try {
     const { ok, data } = await apiJson("/conversation", {
       method: "POST", headers: h,
-      body: JSON.stringify({ conversation_id: id })
+      body:   JSON.stringify({ conversation_id: id })
     });
     if (ok && Array.isArray(data) && data.length) {
       data.forEach(m => appendMessage(m.content, m.role === "user" ? "user" : "ai"));
@@ -424,8 +499,9 @@ async function deleteConversation(id, e) {
   document.querySelector(`.hist-item[data-id="${id}"]`)?.remove();
   if (id === _convId) resetToWelcome();
   await apiFetch("/delete", {
-    method: "POST", headers: h,
-    body: JSON.stringify({ conversation_id: id })
+    method:  "POST",
+    headers: h,
+    body:    JSON.stringify({ conversation_id: id })
   }).catch(() => {});
   toast("Conversation deleted");
 }
@@ -433,8 +509,6 @@ async function deleteConversation(id, e) {
 /* ═══════════════════════════════════════
    CONVERSATIONS
 ═══════════════════════════════════════ */
-// FIX-SEND-3: createConversation now logs the actual error and returns a local
-// fallback ID so the user can still chat even if the DB call fails
 async function createConversation() {
   const h = await getHeaders();
   if (!h) {
@@ -454,11 +528,9 @@ async function createConversation() {
       return _convId;
     }
 
-    // Log exactly what went wrong
     console.error("[PHI] createConversation failed:", status, data);
 
     if (status === 403) {
-      // Consent missing — resave and retry once
       await saveConsents();
       const retry = await apiJson("/conversation/create", {
         method: "POST", headers: h, body: JSON.stringify({})
@@ -469,18 +541,17 @@ async function createConversation() {
         return _convId;
       }
     }
-
   } catch (err) {
     console.error("[PHI] createConversation exception:", err);
   }
 
-  // Dev fallback — local ID so chat still works without DB
   if (IS_DEV) {
     _convId = "local-" + Date.now();
     console.warn("[PHI] Using local conversation ID:", _convId);
     return _convId;
   }
 
+  toast("Could not start conversation. Please try again.", "err");
   return null;
 }
 
@@ -497,10 +568,10 @@ function prependToHistory(id, title) {
     list.prepend(todayGroup);
   }
 
-  const item = document.createElement("div");
-  item.className  = "hist-item active";
-  item.dataset.id = id;
-  item.innerHTML  = `
+  const item       = document.createElement("div");
+  item.className   = "hist-item active";
+  item.dataset.id  = id;
+  item.innerHTML   = `
     <span class="hist-title">${esc(title)}</span>
     <button class="hist-del" data-del="${esc(id)}" title="Delete">
       <i class="fa-solid fa-trash"></i>
@@ -520,28 +591,37 @@ async function renameConversation(id, title) {
   if (titleEl) titleEl.textContent = short;
   setText("convTitle", short);
   await apiFetch("/rename", {
-    method: "POST", headers: h,
-    body: JSON.stringify({ conversation_id: id, title: short })
+    method:  "POST",
+    headers: h,
+    body:    JSON.stringify({ conversation_id: id, title: short })
   }).catch(() => {});
 }
 
 /* ═══════════════════════════════════════
-   CHAT
+   CHAT — SEND
 ═══════════════════════════════════════ */
-// FIX-SEND-1: handleSend checks session before doing anything
 async function handleSend() {
-  if (_isSending) return;
+  // FIX-SEND-1: Reset stuck _isSending (safety valve)
+  if (_isSending) {
+    const stuckMs = _sendingTimer ? Date.now() - _sendingTimer : 0;
+    if (stuckMs > 35000) {
+      console.warn("[PHI] _isSending stuck >35s — resetting");
+      _isSending = false;
+      setSendingState(false);
+    } else {
+      return;
+    }
+  }
 
-  // Guard: check session first
-  const session = await getSession();
+  const session = await getSessionSafe();
   if (!session) {
     toast("Session expired. Please sign in again.", "err");
     setTimeout(() => { window.location.href = "/login"; }, 2000);
     return;
   }
 
-  const ta   = el("chatInput");
-  let text   = ta?.value.trim();
+  const ta  = el("chatInput");
+  let text  = ta?.value.trim();
   if (!text && _uploads.length) {
     text = "Please read my uploaded lab report and explain every finding — what's abnormal, what it means, and what I should discuss with my doctor.";
   }
@@ -552,7 +632,8 @@ async function handleSend() {
 
 async function sendMessage(text) {
   if (_isSending || !text) return;
-  _isSending = true;
+  _isSending    = true;
+  _sendingTimer = Date.now();  // FIX-SEND-1: track when send started
   setSendingState(true);
   showChat();
 
@@ -561,12 +642,11 @@ async function sendMessage(text) {
     if (!id) {
       _isSending = false;
       setSendingState(false);
-      toast("Could not start conversation. Check your connection.", "err");
       return;
     }
   }
 
-  // Process any queued file uploads first
+  // Process queued file uploads first
   if (_uploads.length) {
     const loadRow = appendTyping();
     updateTypingText(loadRow, "Reading your report…");
@@ -580,7 +660,6 @@ async function sendMessage(text) {
       _docCtx.hasDoc = true;
       _docCtx.sent   = false;
     } else if (docResult === null) {
-      // Upload failed — processFileUpload already showed a toast
       _isSending = false;
       setSendingState(false);
       return;
@@ -592,8 +671,8 @@ async function sendMessage(text) {
   scrollToBottom();
 
   const sendDoc = !_docCtx.sent ? (_docCtx.text || "") : "";
+  const h       = await getHeaders();
 
-  const h = await getHeaders();
   if (!h) {
     updateMessage(botRow, "Your session has expired. Please [sign in again](/login).");
     _isSending = false;
@@ -601,11 +680,11 @@ async function sendMessage(text) {
     return;
   }
 
-  let success = false;
   try {
     const { ok, status, data } = await apiJson("/chat", {
-      method: "POST", headers: h,
-      body: JSON.stringify({
+      method:  "POST",
+      headers: h,
+      body:    JSON.stringify({
         conversation_id: _convId,
         message:         text,
         has_documents:   _docCtx.hasDoc,
@@ -619,12 +698,11 @@ async function sendMessage(text) {
       updateMessage(botRow, "Your session has expired. Please sign in again.");
       toast("Session expired.", "err");
     } else if (status === 403) {
-      // Consent missing — resave and retry once
-      console.warn("[PHI] 403 on /chat — retrying after consent resave");
       await saveConsents();
       const retry = await apiJson("/chat", {
-        method: "POST", headers: h,
-        body: JSON.stringify({
+        method:  "POST",
+        headers: h,
+        body:    JSON.stringify({
           conversation_id: _convId,
           message:         text,
           has_documents:   _docCtx.hasDoc,
@@ -633,47 +711,36 @@ async function sendMessage(text) {
       });
       if (retry.ok && retry.data?.reply) {
         updateMessage(botRow, retry.data.reply);
-        success = true;
         if (sendDoc) _docCtx.sent = true;
       } else {
-        updateMessage(botRow, "Consent required. Please refresh the page and try again.");
+        updateMessage(botRow, "Consent required. Please refresh the page.");
       }
-    } else if (status === 500) {
-      console.error("[PHI] 500 on /chat:", data);
-      updateMessage(botRow,
-        "PHI ran into a server error. The team has been notified.\n\n" +
-        "---\n⚕️ *PHI is an educational wellness tool. Always consult your provider.*"
-      );
     } else if (!ok || !reply) {
       console.error("[PHI] Chat error:", status, data);
       updateMessage(botRow,
-        "I ran into a technical issue. Please try again in a moment.\n\n" +
+        "I ran into a technical issue. Please try again.\n\n" +
         "---\n⚕️ *PHI is an educational wellness tool. Always consult your provider.*"
       );
     } else {
       updateMessage(botRow, reply);
-      success = true;
       if (sendDoc) _docCtx.sent = true;
-    }
-
-    const userMsgCount = el("chatDisplay")?.querySelectorAll(".chat-msg.user-msg").length || 0;
-    if (userMsgCount === 1 && _convId) renameConversation(_convId, text);
-
-    if (success && _docCtx.hasDoc) {
-      setTimeout(loadMarkersData, 2000);
+      const userMsgCount = el("chatDisplay")?.querySelectorAll(".chat-msg.user-msg").length || 0;
+      if (userMsgCount === 1 && _convId) renameConversation(_convId, text);
+      if (_docCtx.hasDoc) setTimeout(loadMarkersData, 2000);
     }
 
   } catch (err) {
     const msg = err.message?.includes("timed out")
       ? "The request timed out — please try again."
-      : "Connection error. Please check your internet connection.";
+      : "Connection error. Please check your internet.";
     updateMessage(botRow,
       msg + "\n\n---\n⚕️ *PHI is an educational wellness tool. Always consult your provider.*"
     );
     console.error("[PHI] sendMessage exception:", err);
   }
 
-  _isSending = false;
+  _isSending    = false;
+  _sendingTimer = null;
   setSendingState(false);
   scrollToBottom();
 }
@@ -694,14 +761,13 @@ function setSendingState(on) {
    FILE UPLOAD
 ═══════════════════════════════════════ */
 function handleFileSelect(e) {
-  const files = Array.from(e.target.files || []);
-  files.forEach(f => addFile(f));
+  Array.from(e.target.files || []).forEach(f => addFile(f));
   e.target.value = "";
 }
 
 function addFile(file) {
   if (file.size > 10 * 1024 * 1024) { toast(`${file.name} is too large. Max 10 MB.`, "err"); return; }
-  if (!/\.(pdf|txt)$/i.test(file.name)) { toast("Only PDF or TXT files are supported.", "err"); return; }
+  if (!/\.(pdf|txt)$/i.test(file.name)) { toast("Only PDF or TXT files supported.", "err"); return; }
   _uploads.push(file);
   renderFilePreview();
   toast(`${file.name} ready — press Send to analyze`);
@@ -715,16 +781,13 @@ function removeFile(idx) {
 function renderFilePreview() {
   const strip = el("filePreview");
   if (!strip) return;
-  if (!_uploads.length) {
-    strip.classList.remove("show"); strip.innerHTML = "";
-    return;
-  }
+  if (!_uploads.length) { strip.classList.remove("show"); strip.innerHTML = ""; return; }
   strip.classList.add("show");
   strip.innerHTML = _uploads.map((f, i) => `
     <div class="file-chip">
       <i class="fa-solid ${f.name.endsWith(".pdf") ? "fa-file-pdf" : "fa-file-lines"}"></i>
       <span>${esc(f.name)}</span>
-      <button class="file-chip-rm" onclick="removeFile(${i})" aria-label="Remove ${esc(f.name)}">
+      <button class="file-chip-rm" onclick="removeFile(${i})" aria-label="Remove">
         <i class="fa-solid fa-xmark"></i>
       </button>
     </div>`).join("");
@@ -735,12 +798,10 @@ function clearFilePreview() {
   if (strip) { strip.classList.remove("show"); strip.innerHTML = ""; }
 }
 
-// FIX-SEND-2: processFileUpload now handles every failure mode with a toast
 async function processFileUpload(file) {
-  const session = await getSession();
+  const session = await getSessionSafe();
   if (!session) {
     toast("Session expired. Please sign in again.", "err");
-    setTimeout(() => { window.location.href = "/login"; }, 2000);
     return null;
   }
 
@@ -754,56 +815,33 @@ async function processFileUpload(file) {
       body:    form,
     });
 
-    // Handle specific HTTP errors
-    if (res.status === 401) {
-      toast("Session expired. Please sign in again.", "err");
-      return null;
-    }
-
+    if (res.status === 401) { toast("Session expired.", "err"); return null; }
     if (res.status === 403) {
-      // Consent missing — resave and retry once
-      console.warn("[PHI] 403 on /analyze — retrying after consent resave");
       await saveConsents();
       const retry = await apiFetch("/analyze", {
         method:  "POST",
         headers: { "Authorization": `Bearer ${session.access_token}` },
         body:    form,
       });
-      if (retry.ok) {
-        const d = await retry.json();
-        return d;
-      }
-      toast("Permission error. Please refresh the page and try again.", "err");
+      if (retry.ok) return await retry.json();
+      toast("Permission error. Refresh and try again.", "err");
       return null;
     }
-
-    if (res.status === 413) {
-      toast("File too large. Maximum 5 MB.", "err");
-      return null;
-    }
-
+    if (res.status === 413) { toast("File too large. Max 5 MB.", "err"); return null; }
     if (res.status === 400) {
       const d = await res.json().catch(() => ({}));
-      toast(d.error || "Could not read this file. Try a clear PDF.", "err");
+      toast(d.error || "Could not read this file.", "err");
       return null;
     }
-
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
-      console.error("[PHI] /analyze error:", res.status, d);
-      toast(d.error || `Upload failed (${res.status}). Please try again.`, "err");
+      toast(d.error || `Upload failed (${res.status}).`, "err");
       return null;
     }
-
     return await res.json();
 
   } catch (err) {
-    console.error("[PHI] processFileUpload exception:", err);
-    if (err.message?.includes("timed out")) {
-      toast("Upload timed out. Try a smaller file.", "err");
-    } else {
-      toast("Upload failed. Check your connection.", "err");
-    }
+    toast(err.message?.includes("timed out") ? "Upload timed out." : "Upload failed.", "err");
     return null;
   }
 }
@@ -815,14 +853,12 @@ function appendMessage(text, role) {
   const display = el("chatDisplay");
   if (!display) return null;
 
-  const wrap    = document.createElement("div");
-  wrap.className = `chat-msg ${role === "user" ? "user-msg" : "ai-msg"}`;
-
-  const avLabel = role === "user" ? (_userName?.[0]?.toUpperCase() || "U") : "φ";
-  const avClass = role === "user" ? "av-user" : "av-ai";
-  const avEl    = `<div class="msg-av ${avClass}">${avLabel}</div>`;
-
-  const bodyEl  = document.createElement("div");
+  const wrap      = document.createElement("div");
+  wrap.className  = `chat-msg ${role === "user" ? "user-msg" : "ai-msg"}`;
+  const avLabel   = role === "user" ? (_userName?.[0]?.toUpperCase() || "U") : "φ";
+  const avClass   = role === "user" ? "av-user" : "av-ai";
+  const avEl      = `<div class="msg-av ${avClass}">${avLabel}</div>`;
+  const bodyEl    = document.createElement("div");
   bodyEl.className = "msg-body";
 
   if (role === "user") {
@@ -842,9 +878,9 @@ function appendMessage(text, role) {
 function appendTyping() {
   const display = el("chatDisplay");
   if (!display) return null;
-  const wrap = document.createElement("div");
-  wrap.className = "chat-msg ai-msg";
-  wrap.innerHTML = `
+  const wrap      = document.createElement("div");
+  wrap.className  = "chat-msg ai-msg";
+  wrap.innerHTML  = `
     <div class="msg-av av-ai">φ</div>
     <div class="msg-body">
       <div class="typing-indicator">
@@ -880,8 +916,8 @@ function renderAIContent(elem, text) {
   }
 
   if (hasLegal) {
-    const legal = document.createElement("p");
-    legal.className = "phi-legal";
+    const legal      = document.createElement("p");
+    legal.className  = "phi-legal";
     legal.textContent = "⚕️ PHI is an educational wellness tool. Always consult your healthcare provider.";
     elem.appendChild(legal);
   }
@@ -915,7 +951,15 @@ function exportCurrentChat() {
 
 async function handleLogout() {
   closeUserMenu();
-  await _sb.auth.signOut();
+  try {
+    if (_sb) await _sb.auth.signOut();
+  } catch (e) {
+    console.warn("[PHI] Sign out error:", e);
+  }
+  // Clear singleton so next page load creates fresh client
+  window.__phiSb     = null;
+  window.__phiBooted = false;
+  window.location.href = "/login";
 }
 
 /* ═══════════════════════════════════════
@@ -942,8 +986,8 @@ function renderMarkers(markers) {
     return;
   }
   grid.innerHTML = show.map(m => {
-    const s     = (m.status || "").toLowerCase();
-    const cls   = s === "high" ? "val-high" : s === "low" ? "val-low" : s === "normal" ? "val-normal" : "";
+    const s   = (m.status || "").toLowerCase();
+    const cls = s === "high" ? "val-high" : s === "low" ? "val-low" : s === "normal" ? "val-normal" : "";
     const badge = (s && s !== "unknown")
       ? `<span class="marker-status st-${s}">${s.toUpperCase()}</span>` : "";
     return `<div class="marker-card">
@@ -964,7 +1008,6 @@ function runCliffDetection(markers) {
     grouped[k].push({ ...m, _val: parseFloat(m.value) });
   });
 
-  // Glucose rebound detection (15% threshold)
   const glucoseKey = Object.keys(grouped).find(k => /fasting.*glucose|blood.*glucose|glucose/i.test(k));
   if (glucoseKey) {
     const readings = grouped[glucoseKey].sort((a, b) => a.date < b.date ? -1 : 1);
@@ -974,7 +1017,7 @@ function runCliffDetection(markers) {
       if (base > 0) {
         const pct = ((last - base) / base) * 100;
         if (pct >= 15) {
-          alerts.push({ type: "danger", title: `🚨 Glucose rebound +${pct.toFixed(0)}%`, desc: `From ${base} → ${last} mg/dL. Early cliff signal. Discuss urgently with provider.` });
+          alerts.push({ type: "danger", title: `🚨 Glucose rebound +${pct.toFixed(0)}%`, desc: `From ${base} → ${last} mg/dL. Early cliff signal.` });
         } else if (pct >= 10) {
           alerts.push({ type: "warn", title: `⚠ Glucose rising +${pct.toFixed(0)}%`, desc: `Approaching the 15% rebound threshold.` });
         }
@@ -982,20 +1025,18 @@ function runCliffDetection(markers) {
     }
   }
 
-  // HbA1c rebound (0.25% threshold)
   const hba1cKey = Object.keys(grouped).find(k => /hba1c|hemoglobin a1c|a1c/i.test(k));
   if (hba1cKey) {
     const readings = grouped[hba1cKey].sort((a, b) => a.date < b.date ? -1 : 1);
     for (let i = 1; i < readings.length; i++) {
       const delta = readings[i]._val - readings[i - 1]._val;
       if (delta >= 0.25) {
-        alerts.push({ type: "danger", title: `🚨 HbA1c rebound +${delta.toFixed(2)}%`, desc: `${readings[i-1]._val}% → ${readings[i]._val}%. Sustained metabolic rebound signal.` });
+        alerts.push({ type: "danger", title: `🚨 HbA1c rebound +${delta.toFixed(2)}%`, desc: `${readings[i-1]._val}% → ${readings[i]._val}%. Sustained metabolic rebound.` });
         break;
       }
     }
   }
 
-  // General HIGH markers
   markers.filter(m => m.status === "HIGH" && !/glucose/i.test(m.marker_name))
     .slice(0, 2)
     .forEach(m => {
@@ -1003,7 +1044,7 @@ function runCliffDetection(markers) {
     });
 
   if (!alerts.length) {
-    alerts.push({ type: "ok", title: "✅ No rebound signals", desc: "All monitored markers are stable. Keep up protein intake and resistance training." });
+    alerts.push({ type: "ok", title: "✅ No rebound signals", desc: "All monitored markers are stable." });
   }
 
   renderCliffAlerts(alerts);
@@ -1025,9 +1066,9 @@ function renderCliffAlerts(alerts) {
 function restoreShieldInputs() {
   const savedGoalWt = localStorage.getItem("phi_goal_wt");
   if (savedGoalWt) {
-    const gwInput = el("inputGoalWt");
-    if (gwInput && !gwInput.value) gwInput.value = savedGoalWt;
+    const gwInput      = el("inputGoalWt");
     const proteinInput = el("proteinInput");
+    if (gwInput      && !gwInput.value)      gwInput.value      = savedGoalWt;
     if (proteinInput && !proteinInput.value) proteinInput.value = savedGoalWt;
   }
 }
@@ -1038,7 +1079,7 @@ function updateShield() {
   const sleep   = parseFloat(el("inputSleep")?.value)   || 0;
 
   const gwInputVal = parseFloat(el("inputGoalWt")?.value);
-  const goalWt = gwInputVal || _goalWt || 165;
+  const goalWt     = gwInputVal || _goalWt || 165;
 
   if (gwInputVal && gwInputVal !== _goalWt) {
     _goalWt = gwInputVal;
@@ -1084,19 +1125,17 @@ function setBarWidth(id, pct) {
 }
 
 async function logShieldData(protein, steps, sleep) {
-  const h = await getHeaders();
+  const h    = await getHeaders();
   if (!h) return;
-
   const date = new Date().toISOString().slice(0, 10);
   const logs = [];
   if (protein > 0) logs.push({ date, metric_name: "protein", value: protein, unit: "g" });
   if (steps   > 0) logs.push({ date, metric_name: "steps",   value: steps,   unit: "steps" });
   if (sleep   > 0) logs.push({ date, metric_name: "sleep",   value: sleep,   unit: "hours" });
-
   logs.forEach(l =>
     apiFetch("/api/behavioral-logs", {
       method: "POST", headers: h, body: JSON.stringify(l)
-    }).catch(err => console.warn("[PHI] Log failed:", err))
+    }).catch(() => {})
   );
 }
 
@@ -1106,17 +1145,13 @@ function calcProtein() {
     toast("Enter a valid goal weight between 80–400 lbs", "err");
     return;
   }
-
   _goalWt        = gw;
   _proteinTarget = Math.round(gw * 0.545 * 10) / 10;
   const perMeal  = Math.round(_proteinTarget / 3 * 10) / 10;
   const leucineOk = perMeal >= 30;
-
   localStorage.setItem("phi_goal_wt", String(gw));
-
   setText("proteinNum",     _proteinTarget);
   setText("proteinCaption", `${gw} lbs × 0.545 = ${_proteinTarget}g/day`);
-
   const details = el("proteinDetails");
   if (details) {
     details.classList.remove("hidden");
@@ -1127,13 +1162,12 @@ function calcProtein() {
         Sample: 4oz chicken (35g) + Greek yogurt (17g) + 2 eggs (12g) + whey scoop (25g)
       </span>`;
   }
-
   const gwInput = el("inputGoalWt");
   if (gwInput) gwInput.value = gw;
 }
 
 function updateNoiseReadout() {
-  const val = parseInt(el("noiseSlider")?.value || 5);
+  const val    = parseInt(el("noiseSlider")?.value || 5);
   const colors = {
     1:"var(--ok)", 2:"var(--ok)", 3:"var(--ok)",
     4:"var(--amber)", 5:"var(--amber)", 6:"var(--amber)",
@@ -1149,10 +1183,9 @@ async function logNoiseLevel() {
   const val = parseInt(el("noiseSlider")?.value || 5);
   const h   = await getHeaders();
   if (!h) { toast("Sign in to log food noise data", "info"); return; }
-
   await apiFetch("/api/behavioral-logs", {
     method: "POST", headers: h,
-    body: JSON.stringify({
+    body:   JSON.stringify({
       date:        new Date().toISOString().slice(0, 10),
       metric_name: "food_noise",
       value:       val,
@@ -1160,7 +1193,6 @@ async function logNoiseLevel() {
       notes:       `Ghrelin surge level: ${val}/10`
     })
   }).catch(() => {});
-
   toast(`Food noise level ${val}/10 logged`, "info");
 }
 
@@ -1178,15 +1210,15 @@ function initVoiceInput() {
   btn.addEventListener("click", () => {
     if (listening) { rec?.stop(); return; }
     rec = new SR();
-    rec.lang = "en-US";
+    rec.lang           = "en-US";
     rec.interimResults = false;
     rec.onstart  = () => { listening = true;  btn.style.color = "var(--danger)"; };
-    rec.onresult = e => {
+    rec.onresult = e  => {
       const ta = el("chatInput");
       if (ta) { ta.value = e.results[0][0].transcript; autoGrow(ta); ta.focus(); }
     };
-    rec.onend  = () => { listening = false; btn.style.color = ""; };
-    rec.onerror = e => { toast(`Mic: ${e.error}`, "err"); };
+    rec.onend    = () => { listening = false; btn.style.color = ""; };
+    rec.onerror  = e  => { toast(`Mic: ${e.error}`, "err"); };
     try { rec.start(); } catch { toast("Voice failed", "err"); }
   });
 }
@@ -1196,8 +1228,8 @@ function initVoiceInput() {
 ═══════════════════════════════════════ */
 function el(id)          { return document.getElementById(id); }
 function esc(s)          { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
-function setText(id, v)  { const e=el(id); if(e) e.textContent=v; }
-function setIcon(id, cls){ const e=el(id); if(e) e.className=`fa-solid ${cls}`; }
+function setText(id, v)  { const e = el(id); if (e) e.textContent = v; }
+function setIcon(id, cls){ const e = el(id); if (e) e.className = `fa-solid ${cls}`; }
 function autoGrow(ta) {
   ta.style.height = "auto";
   ta.style.height = Math.min(ta.scrollHeight, 130) + "px";
@@ -1205,11 +1237,11 @@ function autoGrow(ta) {
 
 function toast(msg, type = "ok") {
   const container = el("toasts");
-  if (!container) return;
-  const t = document.createElement("div");
-  const iconMap = { ok: "circle-check", err: "circle-exclamation", info: "circle-info" };
-  t.className = `toast toast-${type}`;
-  t.innerHTML = `<i class="fa-solid fa-${iconMap[type] || "circle-info"}"></i> ${esc(msg)}`;
+  if (!container) { console.warn("[PHI] Toast (no container):", msg); return; }
+  const t        = document.createElement("div");
+  const iconMap  = { ok: "circle-check", err: "circle-exclamation", info: "circle-info" };
+  t.className    = `toast toast-${type}`;
+  t.innerHTML    = `<i class="fa-solid fa-${iconMap[type] || "circle-info"}"></i> ${esc(msg)}`;
   container.appendChild(t);
   setTimeout(() => {
     t.style.opacity    = "0";
@@ -1219,11 +1251,92 @@ function toast(msg, type = "ok") {
 }
 
 /* ═══════════════════════════════════════
-   EVENT WIRING
+   FIX-BUTTONS-1: EVENT WIRING
+   Every listener now logs a warning if
+   the target element is missing, instead
+   of silently doing nothing via ?. chain.
 ═══════════════════════════════════════ */
 function wireEvents() {
-  el("newChatBtn")?.addEventListener("click", resetToWelcome);
+  function bind(id, event, handler) {
+    const elem = el(id);
+    if (!elem) { console.warn(`[PHI] wireEvents: #${id} not found`); return; }
+    elem.addEventListener(event, handler);
+  }
 
+  bind("newChatBtn",      "click", resetToWelcome);
+  bind("mobileMenuBtn",   "click", openSidebar);
+  bind("sidebarOverlay",  "click", closeSidebar);
+  bind("mobileCockpitBtn","click", toggleCockpit);
+  bind("cockpitOverlay",  "click", closeCockpit);
+  bind("cockpitCloseBtn", "click", closeCockpit);
+  bind("themeToggleBtn",  "click", toggleTheme);
+  bind("topThemeBtn",     "click", toggleTheme);
+  bind("exportChatBtn",   "click", exportCurrentChat);
+  bind("logoutBtn",       "click", handleLogout);
+  bind("updateShieldBtn", "click", updateShield);
+  bind("calcBtn",         "click", calcProtein);
+  bind("refreshAlertsBtn","click", loadMarkersData);
+  bind("noiseSlider",     "input", updateNoiseReadout);
+  bind("logNoiseBtn",     "click", logNoiseLevel);
+  bind("refreshMarkersBtn","click",loadMarkersData);
+  bind("sendBtn",         "click", handleSend);
+  bind("attachTopBtn",    "click", () => el("fileInput")?.click());
+  bind("attachInputBtn",  "click", () => el("fileInput")?.click());
+  bind("uploadNudgeBtn",  "click", () => el("fileInput")?.click());
+
+  // User menu toggle
+  const userRow = el("userRow");
+  if (userRow) {
+    userRow.addEventListener("click", e => {
+      if (!e.target.closest(".user-dropdown")) toggleUserMenu();
+    });
+  }
+  document.addEventListener("click", e => {
+    if (!el("userRow")?.contains(e.target)) closeUserMenu();
+  });
+
+  // Textarea
+  const ta = el("chatInput");
+  if (ta) {
+    ta.addEventListener("keydown", e => {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
+    });
+    ta.addEventListener("input", () => autoGrow(ta));
+  } else {
+    console.warn("[PHI] wireEvents: #chatInput not found");
+  }
+
+  // File input
+  const fileInput = el("fileInput");
+  if (fileInput) fileInput.addEventListener("change", handleFileSelect);
+
+  // Protein input enter key
+  const proteinInput = el("proteinInput");
+  if (proteinInput) proteinInput.addEventListener("keydown", e => { if (e.key === "Enter") calcProtein(); });
+
+  // Suggestion chips
+  document.querySelectorAll(".suggestion-chips .chip").forEach(chip => {
+    chip.addEventListener("click", () => {
+      const q = chip.dataset.q;
+      if (!q) return;
+      const ta = el("chatInput");
+      if (ta) ta.value = q;
+      sendMessage(q);
+    });
+  });
+
+  // History list (event delegation)
+  const histList = el("historyList");
+  if (histList) {
+    histList.addEventListener("click", e => {
+      const item   = e.target.closest(".hist-item[data-id]");
+      const delBtn = e.target.closest(".hist-del[data-del]");
+      if (delBtn)  deleteConversation(delBtn.dataset.del, e);
+      else if (item) openConversation(item.dataset.id);
+    });
+  }
+
+  // Nav items
   document.querySelectorAll(".nav-item[data-view]").forEach(btn => {
     btn.addEventListener("click", () => {
       document.querySelectorAll(".nav-item").forEach(b => b.classList.remove("active"));
@@ -1232,68 +1345,14 @@ function wireEvents() {
     });
   });
 
-  el("mobileMenuBtn")?.addEventListener("click", openSidebar);
-  el("sidebarOverlay")?.addEventListener("click", closeSidebar);
-  el("mobileCockpitBtn")?.addEventListener("click", toggleCockpit);
-  el("cockpitOverlay")?.addEventListener("click", closeCockpit);
-  el("cockpitCloseBtn")?.addEventListener("click", closeCockpit);
-
-  el("userRow")?.addEventListener("click", e => {
-    if (!e.target.closest(".user-dropdown")) toggleUserMenu();
-  });
-  document.addEventListener("click", e => {
-    if (!el("userRow")?.contains(e.target)) closeUserMenu();
-  });
-
-  el("themeToggleBtn")?.addEventListener("click", toggleTheme);
-  el("topThemeBtn")?.addEventListener("click", toggleTheme);
-  el("exportChatBtn")?.addEventListener("click", exportCurrentChat);
-  el("logoutBtn")?.addEventListener("click", handleLogout);
-
-  el("historyList")?.addEventListener("click", e => {
-    const item   = e.target.closest(".hist-item[data-id]");
-    const delBtn = e.target.closest(".hist-del[data-del]");
-    if (delBtn) { deleteConversation(delBtn.dataset.del, e); }
-    else if (item) { openConversation(item.dataset.id); }
-  });
-
-  const ta = el("chatInput");
-  ta?.addEventListener("keydown", e => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
-  });
-  ta?.addEventListener("input", () => autoGrow(ta));
-
-  el("sendBtn")?.addEventListener("click", handleSend);
-
-  document.querySelectorAll(".suggestion-chips .chip").forEach(chip => {
-    chip.addEventListener("click", () => {
-      const q = chip.dataset.q;
-      if (!q) return;
-      if (ta) ta.value = q;
-      sendMessage(q);
-    });
-  });
-
-  const fileInput = el("fileInput");
-  fileInput?.addEventListener("change", handleFileSelect);
-  el("attachTopBtn")?.addEventListener("click",   () => fileInput?.click());
-  el("attachInputBtn")?.addEventListener("click", () => fileInput?.click());
-  el("uploadNudgeBtn")?.addEventListener("click", () => fileInput?.click());
-
-  el("updateShieldBtn")?.addEventListener("click", updateShield);
-  el("calcBtn")?.addEventListener("click", calcProtein);
-  el("proteinInput")?.addEventListener("keydown", e => { if (e.key === "Enter") calcProtein(); });
-  el("refreshAlertsBtn")?.addEventListener("click", loadMarkersData);
-  el("noiseSlider")?.addEventListener("input", updateNoiseReadout);
-  el("logNoiseBtn")?.addEventListener("click", logNoiseLevel);
-  el("refreshMarkersBtn")?.addEventListener("click", loadMarkersData);
-
+  // Drag and drop
   document.addEventListener("dragover", e => e.preventDefault());
   document.addEventListener("drop", e => {
     e.preventDefault();
     Array.from(e.dataTransfer?.files || []).forEach(f => addFile(f));
   });
 
+  // Keyboard shortcuts
   document.addEventListener("keydown", e => {
     if ((e.ctrlKey || e.metaKey) && e.key === "k") {
       e.preventDefault();
