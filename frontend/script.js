@@ -75,19 +75,20 @@ const NOISE_MESSAGES = {
 ═══════════════════════════════════════ */
 async function boot() {
   try {
-    // Guard: prevent multiple GoTrueClient instances
-    if (window.__phiBooted) {
-      console.warn("[PHI] boot() called twice — skipping duplicate init");
-      return;
-    }
-    window.__phiBooted = true;
-
     _sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
-      auth: { 
-        detectSessionInUrl: true, 
-        persistSession: true,
-        // Prevents lock contention between tabs/instances
-        storageKey: "phi-auth-token"
+      auth: { detectSessionInUrl: true, persistSession: true }
+    });
+
+    _sb.auth.onAuthStateChange(async (event, session) => {
+      if (event === "SIGNED_IN" && session?.user) {
+        await onSignIn(session.user);
+      } else if (event === "SIGNED_OUT") {
+        if (IS_DEV) {
+          console.warn("[PHI] DEV: Signed out — skipping redirect.");
+          showDevAuthBanner();
+        } else {
+          window.location.href = "/login";
+        }
       }
     });
 
