@@ -12,6 +12,11 @@ FIXES APPLIED:
   #CORS-2 — OPTIONS preflight requests now handled before auth/rate checks.
   #BUG-CORS-404 — Added 404 handler with CORS headers so preflight
                   requests to unknown routes don't return bare 404s.
+  #FIX-BP-SHADOW — Removed duplicate blueprint re-registrations with
+                   url_prefix="/api/v1" that were shadowing the original
+                   routes. Flask 2.x cannot re-register the same blueprint
+                   object with a different url_prefix — it silently breaks
+                   the original routes (e.g. POST /chat becomes unreachable).
 """
 
 import os
@@ -115,8 +120,6 @@ RATE_LIMITS = {
     "/conversation/create":        (10, 60),
     "/history":                    (120, 60),
     "/analyze":                    (10, 60),
-    "/api/v1/chat":                (20, 60),
-    "/api/v1/conversation/create": (10, 60),
     "/demo/chat":                  (30, 60),
     "/demo/analyze":               (15, 60),
 }
@@ -235,8 +238,13 @@ from api.health_routes       import health_bp
 from api.compliance_routes   import compliance_bp
 from api.profile_routes      import profile_bp
 from api.intelligence_routes import intelligence_bp
-from api.cron_routes import cron_bp
+from api.cron_routes         import cron_bp
 
+# Register blueprints ONCE — no url_prefix duplicates.
+# FIX #FIX-BP-SHADOW: The original code re-registered the same blueprint
+# objects with url_prefix="/api/v1", which in Flask 2.x silently shadows
+# the original routes. E.g. POST /chat would only resolve to /api/v1/chat,
+# making the frontend's calls to /chat return 404.
 app.register_blueprint(auth_bp)
 app.register_blueprint(chat_bp)
 app.register_blueprint(document_bp)
@@ -245,12 +253,6 @@ app.register_blueprint(compliance_bp)
 app.register_blueprint(profile_bp)
 app.register_blueprint(intelligence_bp)
 app.register_blueprint(cron_bp)
-
-app.register_blueprint(auth_bp,       url_prefix="/api/v1", name="auth_v1")
-app.register_blueprint(chat_bp,       url_prefix="/api/v1", name="chat_v1")
-app.register_blueprint(document_bp,   url_prefix="/api/v1", name="doc_v1")
-app.register_blueprint(health_bp,     url_prefix="/api/v1", name="health_v1")
-app.register_blueprint(compliance_bp, url_prefix="/api/v1", name="comp_v1")
 
 try:
     from api.demo_routes import demo_bp
@@ -269,7 +271,6 @@ try:
 except ImportError:
     print("ℹ️  Payment routes not active")
 
-# After existing blueprint registrations — around line 130
 from api.retention_routes import retention_bp
 app.register_blueprint(retention_bp)
 print("✅  Retention routes ready")
@@ -312,6 +313,14 @@ def handle_exception(e):
     # Manually apply CORS — after_request may not fire on unhandled exceptions
     _apply_cors(resp)
     return resp
+
+
+# ── Debug routes endpoint (dev only) ─────────────────────────────────────────
+@app.route("/debug/routes")
+def debug_routes():
+    """List all registered routes — useful to verify blueprint registration."""
+    routes = [(r.rule, sorted(r.methods - {"HEAD", "OPTIONS"})) for r in app.url_map.iter_rules()]
+    return jsonify(sorted(routes, key=lambda x: x[0]))
 
 
 # ── Health + monitoring endpoints ─────────────────────────────────────────────

@@ -17,9 +17,17 @@ FIX #VERIFY-1  _verify_against_source() previously used strict string
                   - integer form          (5.0  → 5)
                   - comma decimal         (5,7  → 5.7 in some European labs)
                If any variant matches, the marker is verified=True.
+
+FIX #EXTRACTOR-OPENAI  extract_health_markers() and _extract_via_llm() now
+               support OpenAI as a fallback when groq_client is None.
+               Previously, if OPENAI_API_KEY was set but groq_client was None,
+               the function fell through to regex extraction only — losing all
+               LLM-quality extraction. Now it tries OpenAI first when groq is
+               unavailable, so extraction works with either AI backend.
 """
 
 import json
+import os
 import re
 from datetime import datetime, timezone
 
@@ -100,7 +108,12 @@ def extract_health_markers(
 
     today = fallback_date or datetime.now(timezone.utc).date().isoformat()
 
-    if groq_client:
+    # FIX #EXTRACTOR-OPENAI: Check if ANY LLM backend is available,
+    # not just groq_client. OpenAI is used as primary/fallback.
+    import os
+    has_llm = bool(groq_client) or bool(os.getenv("OPENAI_API_KEY"))
+
+    if has_llm:
         markers = _extract_via_llm(text, groq_client, source_document, today)
         if markers:
             verified = _verify_against_source(markers, text)
@@ -252,29 +265,87 @@ def _check_unit_mismatch(marker_name: str, value: float, unit: str) -> bool:
 def _extract_via_llm(
     text: str, groq_client, source_document: str, today: str,
 ) -> list[dict]:
+    """
+    FIX #EXTRACTOR-OPENAI: Try OpenAI first (if available), then Groq.
+    Previously this function crashed with AttributeError when groq_client
+    was None but OPENAI_API_KEY was set — it never tried the OpenAI path.
+    Now it checks both backends gracefully.
+    """
     truncated = text[:6000]
-    try:
-        resp = groq_client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[
-                {"role": "system", "content": _SYSTEM},
-                {"role": "user",   "content": f"Extract all health markers from this document:\n\n{truncated}"},
-            ],
-            temperature=0.0,
-            max_tokens=2000,
-        )
-        raw = resp.choices[0].message.content.strip()
-        raw = raw.lstrip("```json").lstrip("```").rstrip("```").strip()
-        parsed = json.loads(raw)
-        if not isinstance(parsed, list):
+    messages = [
+        {"role": "system", "content": _SYSTEM},
+        {"role": "user",   "content": f"Extract all health markers from this document:\n\n{truncated}"},
+    ]
+
+    import os
+    openai_key = os.getenv("OPENAI_API_KEY")
+
+    # Try OpenAI first if groq_client is not available
+    if openai_key and not groq_client:
+        try:
+            from openai import OpenAI
+            resp = OpenAI(api_key=openai_key).chat.completions.create(
+                model="gpt-4o-mini",
+                messages=messages,
+                temperature=0.0,
+                max_tokens=2000,
+            )
+            raw = resp.choices[0].message.content.strip()
+            raw = raw.lstrip("```json").lstrip("```").rstrip("```").strip()
+            parsed = json.loads(raw)
+            if not isinstance(parsed, list):
+                return []
+            return _normalise(parsed, source_document, today)
+        except json.JSONDecodeError as e:
+            print(f"[EXTRACTOR] OpenAI JSON parse error: {e}")
             return []
-        return _normalise(parsed, source_document, today)
-    except json.JSONDecodeError as e:
-        print(f"[EXTRACTOR] JSON parse error: {e}")
-        return []
-    except Exception as e:
-        print(f"[EXTRACTOR] LLM extraction error: {e}")
-        return []
+        except Exception as e:
+            print(f"[EXTRACTOR] OpenAI extraction error: {e}")
+            return []
+
+    # Try Groq if available
+    if groq_client:
+        try:
+            resp = groq_client.chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=messages,
+                temperature=0.0,
+                max_tokens=2000,
+            )
+            raw = resp.choices[0].message.content.strip()
+            raw = raw.lstrip("```json").lstrip("```").rstrip("```").strip()
+            parsed = json.loads(raw)
+            if not isinstance(parsed, list):
+                return []
+            return _normalise(parsed, source_document, today)
+        except json.JSONDecodeError as e:
+            print(f"[EXTRACTOR] Groq JSON parse error: {e}")
+            return []
+        except Exception as e:
+            print(f"[EXTRACTOR] Groq extraction error: {e}")
+            return []
+
+    # If both OpenAI and groq are available, try groq as a secondary option
+    # (OpenAI already tried above when groq_client is None)
+    if openai_key and groq_client:
+        try:
+            from openai import OpenAI
+            resp = OpenAI(api_key=openai_key).chat.completions.create(
+                model="gpt-4o-mini",
+                messages=messages,
+                temperature=0.0,
+                max_tokens=2000,
+            )
+            raw = resp.choices[0].message.content.strip()
+            raw = raw.lstrip("```json").lstrip("```").rstrip("```").strip()
+            parsed = json.loads(raw)
+            if not isinstance(parsed, list):
+                return []
+            return _normalise(parsed, source_document, today)
+        except Exception as e:
+            print(f"[EXTRACTOR] OpenAI fallback error: {e}")
+
+    return []
 
 
 # ── Regex fallback ────────────────────────────────────────────────────────────

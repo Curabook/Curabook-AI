@@ -7,8 +7,13 @@
  *  FIX-3  Nav items (My Health, Lab Reports) load real content
  *  FIX-4  Shield AUTO-loads today's behavioral logs — zero cognitive tax
  *  FIX-5  Chat + file upload works in any order (text first, then file; or file first)
- *  FIX-6  saveConsents() is fire-and-forget — never blocks UI
- *  FIX-7  createConversation() 403 auto-retries with consent resave
+ *  FIX-6  saveConsents() is fire-and-forget on login — never blocks UI
+ *  FIX-7  createConversation() awaits saveConsents() first to prevent 403 race.
+ *         The 403 was caused by the consent POST not completing before the
+ *         conversation/create POST fired. Now saveConsents is awaited inside
+ *         createConversation() rather than relying on the fire-and-forget in
+ *         onSignIn(). onSignIn still fires it in the background for speed,
+ *         and createConversation awaits it again as a guarantee.
  *  FIX-8  /analyze 403 auto-retries — file upload works even if consent row was missing
  *  FIX-9  Spinner auto-reset after 35s (stuck guard)
  *  FIX-10 cockpitCloseBtn visible in mobile drawer
@@ -32,6 +37,11 @@ let _sendStart    = 0;
 let _uploads      = [];
 let _goalWt       = parseFloat(localStorage.getItem("phi_goal_wt") || "165");
 let _proteinTarget = Math.round(_goalWt * 0.545 * 10) / 10;
+
+// FIX-7: Track whether consents have been saved this session to avoid
+// redundant calls while still guaranteeing they're saved before first use.
+let _consentsSaved = false;
+let _consentsPromise = null;  // single in-flight promise, deduplicates parallel calls
 
 // FIX-5: doc context now lives per-conversation, persists across messages
 let _docCtx = { text: null, hasDoc: false, filename: "" };
@@ -111,7 +121,8 @@ async function onSignIn(user) {
   const h = new Date().getHours();
   setText("timeGreeting", h < 12 ? "morning" : h < 17 ? "afternoon" : "evening");
 
-  // FIX-6: saveConsents is fire-and-forget — never blocks UI
+  // FIX-6: saveConsents fires in background for speed — but createConversation
+  // will also await it before the first conversation create to prevent 403.
   saveConsents().catch(() => {});
 
   await loadHistory();
@@ -171,13 +182,37 @@ async function apiJson(path, opts = {}) {
   return { ok: res.ok, status: res.status, data };
 }
 
+/**
+ * FIX-7: saveConsents is deduplicated — multiple callers in the same session
+ * share a single in-flight promise so we never fire parallel consent POSTs.
+ * Once saved successfully, subsequent calls return immediately.
+ */
 async function saveConsents() {
-  const h = await headers();
-  if (!h) return;
-  await apiFetch("/api/consent", {
-    method: "POST", headers: h,
-    body: JSON.stringify({ consents: ["data_processing","ai_processing","document_processing"] })
-  });
+  if (_consentsSaved) return;
+
+  // If already in-flight, reuse the same promise
+  if (_consentsPromise) return _consentsPromise;
+
+  _consentsPromise = (async () => {
+    try {
+      const h = await headers();
+      if (!h) return;
+      const res = await apiFetch("/api/consent", {
+        method: "POST", headers: h,
+        body: JSON.stringify({ consents: ["data_processing","ai_processing","document_processing"] })
+      });
+      if (res.ok || res.status === 200) {
+        _consentsSaved = true;
+        console.info("[PHI] Consents saved");
+      }
+    } catch (e) {
+      console.warn("[PHI] saveConsents non-fatal:", e);
+    } finally {
+      _consentsPromise = null;
+    }
+  })();
+
+  return _consentsPromise;
 }
 
 /* ═══════════════════ SIDEBAR ═══════════════════ */
@@ -495,10 +530,20 @@ function showChat() {
   el("chatDisplay")?.classList.remove("hidden");
 }
 
-/* ═══════════════════ CONVERSATION CREATE ═══════════════════ */
+/* ═══════════════════ CONVERSATION CREATE ═══════════════════
+ * FIX-7: Awaits saveConsents() before creating conversation.
+ * The original code called saveConsents() as fire-and-forget in onSignIn(),
+ * then createConversation() immediately after — the consent POST could
+ * easily lose the race against conversation/create, causing 403 on the
+ * first conversation. Now we await it here to guarantee consent exists.
+ */
 async function createConversation() {
   const h = await headers();
   if (!h) { toast("Session expired — please sign in.", "err"); location.href = "/login"; return null; }
+
+  // FIX-7: Guarantee consents are saved before creating a conversation.
+  // saveConsents() is deduplicated — if already in-flight or done, returns instantly.
+  await saveConsents().catch(() => {});
 
   const tryCreate = async () => {
     const { ok, status, data } = await apiJson("/conversation/create", { method:"POST", headers:h, body:JSON.stringify({}) });
@@ -507,7 +552,10 @@ async function createConversation() {
 
   let { ok, status, data } = await tryCreate();
 
+  // Secondary 403 retry in case consent propagation was slow (DB replication lag)
   if (!ok && status === 403) {
+    console.warn("[PHI] createConversation 403 — retrying after consent resave");
+    _consentsSaved = false;  // force re-save
     await saveConsents().catch(() => {});
     ({ ok, status, data } = await tryCreate());
   }
@@ -618,8 +666,10 @@ async function sendMessage(text) {
   try {
     let { ok, status, data } = await apiJson("/chat", { method:"POST", headers:h, body:JSON.stringify(payload) });
 
-    // FIX-7: 403 → consent retry
+    // 403 → consent retry
     if (!ok && status === 403) {
+      console.warn("[PHI] /chat 403 — retrying after consent resave");
+      _consentsSaved = false;
       await saveConsents().catch(() => {});
       ({ ok, status, data } = await apiJson("/chat", { method:"POST", headers:h, body:JSON.stringify(payload) }));
     }
@@ -711,6 +761,8 @@ async function processUpload(file) {
 
     // FIX-8: 403 → consent retry
     if (res.status === 403) {
+      console.warn("[PHI] /analyze 403 — retrying after consent resave");
+      _consentsSaved = false;
       await saveConsents().catch(() => {});
       const s2 = await session();
       if (s2) res = await doUpload(s2.access_token);
