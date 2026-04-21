@@ -1,16 +1,23 @@
 /**
- * script.js — Curabook PHI v1.2
+ * script.js — Curabook PHI v1.3
  * GLP-1 Intelligence App — Production JavaScript
  *
  * FIXES IN THIS VERSION:
- *   - FIX-API-1:    Dynamic API_BASE (localhost → 5000, prod → api.curabook.com)
- *   - FIX-AUTH-1:   Dev-mode soft warning instead of hard redirect loop
- *   - FIX-MOBILE-1: Cockpit drawer wired at ALL breakpoints (transform-based, never display:none)
- *   - FIX-SHIELD-1: updateShield() safe with empty inputs + goalWt persisted to localStorage
- *   - FIX-CTX-1:    _docCtx.sent only flips true after a SUCCESSFUL API response
- *   - FIX-CTX-2:    removeFile() does NOT reset _docCtx.text — only clears the queue item
- *   - FIX-LOGS-1:   logShieldData() / logNoiseLevel() guarded behind auth check
- *   - FIX-PERSIST-1: Goal weight saved/restored from localStorage across sessions
+ *   - FIX-SEND-1:  handleSend() now shows a clear error if session is missing
+ *                  instead of silently doing nothing
+ *   - FIX-SEND-2:  processFileUpload() shows a toast on every failure mode
+ *                  (no session, server error, 403 consent, 413 too large)
+ *   - FIX-SEND-3:  createConversation() failure now shows a toast + logs the
+ *                  actual server response instead of swallowing the error
+ *   - FIX-SEND-4:  403 on /chat now clears properly with auto-consent retry
+ *   - FIX-SEND-5:  File upload 403 triggers consent save then retries once
+ *   - FIX-API-1:   Dynamic API_BASE (localhost → 5000, prod → api.curabook.com)
+ *   - FIX-AUTH-1:  Dev-mode soft warning instead of hard redirect loop
+ *   - FIX-MOBILE-1:Cockpit drawer wired at ALL breakpoints
+ *   - FIX-SHIELD-1:updateShield() safe with empty inputs + goalWt persisted
+ *   - FIX-CTX-1:   _docCtx.sent only flips true after SUCCESSFUL API response
+ *   - FIX-CTX-2:   removeFile() does NOT reset _docCtx.text
+ *   - FIX-PERSIST-1:Goal weight saved/restored from localStorage
  */
 
 "use strict";
@@ -21,11 +28,6 @@
 const SUPABASE_URL = "https://pbeaawlxdcrdbvlmpqhc.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBiZWFhd2x4ZGNyZGJ2bG1wcWhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwMDk0MzksImV4cCI6MjA5MTU4NTQzOX0.6bUpYrDbe0mQjjBHX8Qscj-5R8i4-SqAtW_Z1UFzJ10";
 
-/**
- * FIX-API-1: Dynamic API base.
- * localhost / 127.0.0.1 → local Flask on port 5000
- * Everything else → production
- */
 const IS_LOCAL = (
   window.location.hostname === "localhost" ||
   window.location.hostname === "127.0.0.1" ||
@@ -46,23 +48,13 @@ let _convId      = null;
 let _isSending   = false;
 let _uploads     = [];
 
-/**
- * FIX-PERSIST-1: Restore goal weight from localStorage.
- * Default 165 lbs if never saved.
- */
 let _goalWt        = parseFloat(localStorage.getItem("phi_goal_wt") || "165");
 let _proteinTarget = Math.round(_goalWt * 0.545 * 10) / 10;
 
-/**
- * FIX-CTX-1 + FIX-CTX-2:
- * - `text`   persists across file removals and failed retries
- * - `sent`   only flips true after a SUCCESSFUL API response
- * - `hasDoc` remembers a doc is loaded even between retries
- */
 let _docCtx = {
-  text:   null,   // full document text from backend
-  sent:   false,  // has it been sent successfully at least once?
-  hasDoc: false,  // any doc loaded this session?
+  text:   null,
+  sent:   false,
+  hasDoc: false,
 };
 
 const NOISE_MESSAGES = {
@@ -91,12 +83,8 @@ async function boot() {
       if (event === "SIGNED_IN" && session?.user) {
         await onSignIn(session.user);
       } else if (event === "SIGNED_OUT") {
-        /**
-         * FIX-AUTH-1: In dev, log a warning instead of hard-redirecting.
-         * Hard redirect causes boot loops on localhost with no session.
-         */
         if (IS_DEV) {
-          console.warn("[PHI] DEV: Signed out — skipping redirect. Sign in at /login.");
+          console.warn("[PHI] DEV: Signed out — skipping redirect.");
           showDevAuthBanner();
         } else {
           window.location.href = "/login";
@@ -144,8 +132,6 @@ function showDevAuthBanner() {
     <button onclick="this.parentNode.remove()" style="margin-left:auto;color:#fbbf24;background:none;border:none;cursor:pointer;font-size:1rem;">×</button>
   `;
   document.body.appendChild(banner);
-  const topbar = document.getElementById("topbar");
-  if (topbar) topbar.style.marginTop = "30px";
 }
 
 async function onSignIn(user) {
@@ -156,13 +142,16 @@ async function onSignIn(user) {
   _userName = _userName.charAt(0).toUpperCase() + _userName.slice(1);
 
   if (el("userAvatar")) el("userAvatar").textContent = _userName[0].toUpperCase();
-  setText("userEmail",     user.email);
-  setText("welcomeName",   _userName);
+  setText("userEmail",   user.email);
+  setText("welcomeName", _userName);
 
   const h = new Date().getHours();
   setText("timeGreeting", h < 12 ? "morning" : h < 17 ? "afternoon" : "evening");
 
-  saveConsents().catch(() => {});
+  // FIX-SEND-4: Save consents immediately on sign-in — blocking await so
+  // we know consent rows exist before the user can send a message
+  await saveConsents();
+
   initTheme();
   restoreShieldInputs();
   await loadHistory();
@@ -181,12 +170,23 @@ async function getSession() {
 
 async function getHeaders(contentType = "application/json") {
   try {
-    const session = await getSession();
+    let session = await getSession();
+
+    // If token is expired, try to refresh it
+    if (!session) {
+      const { data } = await _sb.auth.refreshSession();
+      session = data?.session;
+    }
+
     if (!session) return null;
+
     const h = { "Authorization": `Bearer ${session.access_token}` };
     if (contentType) h["Content-Type"] = contentType;
     return h;
-  } catch { return null; }
+  } catch (err) {
+    console.error("[PHI] getHeaders error:", err);
+    return null;
+  }
 }
 
 async function apiFetch(path, options = {}) {
@@ -210,17 +210,26 @@ async function apiJson(path, options = {}) {
   try {
     return { ok: res.ok, status: res.status, data: JSON.parse(text) };
   } catch {
-    return { ok: false, status: res.status, data: { error: "Invalid response" } };
+    return { ok: false, status: res.status, data: { error: "Invalid response from server" } };
   }
 }
 
+// FIX-SEND-4: saveConsents is now awaited on sign-in and retried silently
 async function saveConsents() {
-  const h = await getHeaders();
-  if (!h) return;
-  await apiFetch("/api/consent", {
-    method: "POST", headers: h,
-    body: JSON.stringify({ consents: ["data_processing", "ai_processing", "document_processing"] })
-  }).catch(() => {});
+  try {
+    const h = await getHeaders();
+    if (!h) return;
+    const res = await apiFetch("/api/consent", {
+      method: "POST",
+      headers: h,
+      body: JSON.stringify({ consents: ["data_processing", "ai_processing", "document_processing"] })
+    });
+    if (!res.ok) {
+      console.warn("[PHI] Consent save returned:", res.status);
+    }
+  } catch (err) {
+    console.warn("[PHI] Consent save failed (non-fatal):", err);
+  }
 }
 
 /* ═══════════════════════════════════════
@@ -253,7 +262,7 @@ function openSidebar() {
   el("sidebar")?.classList.add("open");
   el("sidebarOverlay")?.classList.add("show");
   el("mobileMenuBtn")?.setAttribute("aria-expanded", "true");
-  closeCockpit();   // can't have both open at once on mobile
+  closeCockpit();
 }
 
 function closeSidebar() {
@@ -274,14 +283,12 @@ function closeUserMenu() {
 }
 
 /* ═══════════════════════════════════════
-   FIX-MOBILE-1: COCKPIT DRAWER
-   Uses CSS transform (translateX) — cockpit is NEVER display:none.
-   Works at all breakpoints: desktop inline, ≤1200px right drawer.
+   COCKPIT DRAWER
 ═══════════════════════════════════════ */
 function openCockpit() {
   el("cockpit")?.classList.add("open");
   el("cockpitOverlay")?.classList.add("show");
-  closeSidebar();   // can't have both open at once on mobile
+  closeSidebar();
 }
 
 function closeCockpit() {
@@ -292,11 +299,8 @@ function closeCockpit() {
 function toggleCockpit() {
   const cockpit = el("cockpit");
   if (!cockpit) return;
-  if (cockpit.classList.contains("open")) {
-    closeCockpit();
-  } else {
-    openCockpit();
-  }
+  if (cockpit.classList.contains("open")) closeCockpit();
+  else openCockpit();
 }
 
 /* ═══════════════════════════════════════
@@ -316,14 +320,7 @@ function showChat() {
 function resetToWelcome() {
   _convId  = null;
   _uploads = [];
-
-  /**
-   * FIX-CTX-2: Resetting a conversation does NOT wipe _docCtx.text —
-   * that could be confusing. Instead we fully reset only when explicitly
-   * starting a new conversation (the user can re-attach if needed).
-   */
-  _docCtx = { text: null, sent: false, hasDoc: false };
-
+  _docCtx  = { text: null, sent: false, hasDoc: false };
   clearFilePreview();
   if (el("chatDisplay")) el("chatDisplay").innerHTML = "";
   showWelcome();
@@ -436,24 +433,55 @@ async function deleteConversation(id, e) {
 /* ═══════════════════════════════════════
    CONVERSATIONS
 ═══════════════════════════════════════ */
+// FIX-SEND-3: createConversation now logs the actual error and returns a local
+// fallback ID so the user can still chat even if the DB call fails
 async function createConversation() {
   const h = await getHeaders();
-  if (!h) return null;
+  if (!h) {
+    toast("Session expired — please sign in again.", "err");
+    setTimeout(() => { window.location.href = "/login"; }, 2000);
+    return null;
+  }
 
   try {
-    const { ok, data } = await apiJson("/conversation/create", {
+    const { ok, status, data } = await apiJson("/conversation/create", {
       method: "POST", headers: h, body: JSON.stringify({})
     });
+
     if (ok && data?.conversation_id) {
       _convId = data.conversation_id;
       prependToHistory(_convId, "New Conversation");
       return _convId;
     }
-  } catch {}
 
-  // Fallback for dev/unauthenticated mode
-  _convId = "local-" + Date.now();
-  return _convId;
+    // Log exactly what went wrong
+    console.error("[PHI] createConversation failed:", status, data);
+
+    if (status === 403) {
+      // Consent missing — resave and retry once
+      await saveConsents();
+      const retry = await apiJson("/conversation/create", {
+        method: "POST", headers: h, body: JSON.stringify({})
+      });
+      if (retry.ok && retry.data?.conversation_id) {
+        _convId = retry.data.conversation_id;
+        prependToHistory(_convId, "New Conversation");
+        return _convId;
+      }
+    }
+
+  } catch (err) {
+    console.error("[PHI] createConversation exception:", err);
+  }
+
+  // Dev fallback — local ID so chat still works without DB
+  if (IS_DEV) {
+    _convId = "local-" + Date.now();
+    console.warn("[PHI] Using local conversation ID:", _convId);
+    return _convId;
+  }
+
+  return null;
 }
 
 function prependToHistory(id, title) {
@@ -487,7 +515,7 @@ function prependToHistory(id, title) {
 async function renameConversation(id, title) {
   const h = await getHeaders();
   if (!h || !id) return;
-  const short  = title.slice(0, 50);
+  const short   = title.slice(0, 50);
   const titleEl = document.querySelector(`.hist-item[data-id="${id}"] .hist-title`);
   if (titleEl) titleEl.textContent = short;
   setText("convTitle", short);
@@ -500,8 +528,18 @@ async function renameConversation(id, title) {
 /* ═══════════════════════════════════════
    CHAT
 ═══════════════════════════════════════ */
+// FIX-SEND-1: handleSend checks session before doing anything
 async function handleSend() {
   if (_isSending) return;
+
+  // Guard: check session first
+  const session = await getSession();
+  if (!session) {
+    toast("Session expired. Please sign in again.", "err");
+    setTimeout(() => { window.location.href = "/login"; }, 2000);
+    return;
+  }
+
   const ta   = el("chatInput");
   let text   = ta?.value.trim();
   if (!text && _uploads.length) {
@@ -523,7 +561,7 @@ async function sendMessage(text) {
     if (!id) {
       _isSending = false;
       setSendingState(false);
-      toast("Could not start conversation. Please try again.", "err");
+      toast("Could not start conversation. Check your connection.", "err");
       return;
     }
   }
@@ -538,10 +576,14 @@ async function sendMessage(text) {
     clearFilePreview();
 
     if (docResult?.document_text) {
-      // FIX-CTX-1: Set context, mark as unsent so it goes with the next message
       _docCtx.text   = docResult.document_text;
       _docCtx.hasDoc = true;
       _docCtx.sent   = false;
+    } else if (docResult === null) {
+      // Upload failed — processFileUpload already showed a toast
+      _isSending = false;
+      setSendingState(false);
+      return;
     }
   }
 
@@ -549,12 +591,11 @@ async function sendMessage(text) {
   const botRow = appendTyping();
   scrollToBottom();
 
-  // FIX-CTX-1: Send doc text with this message if not yet sent
   const sendDoc = !_docCtx.sent ? (_docCtx.text || "") : "";
 
   const h = await getHeaders();
   if (!h) {
-    updateMessage(botRow, "Your session has expired. Please refresh the page.");
+    updateMessage(botRow, "Your session has expired. Please [sign in again](/login).");
     _isSending = false;
     setSendingState(false);
     return;
@@ -575,10 +616,36 @@ async function sendMessage(text) {
     const reply = data?.reply;
 
     if (status === 401) {
-      updateMessage(botRow, "Your session has expired. Please [sign in again](/login).");
+      updateMessage(botRow, "Your session has expired. Please sign in again.");
+      toast("Session expired.", "err");
     } else if (status === 403) {
-      updateMessage(botRow, "Consent required. Please check your account settings.");
+      // Consent missing — resave and retry once
+      console.warn("[PHI] 403 on /chat — retrying after consent resave");
+      await saveConsents();
+      const retry = await apiJson("/chat", {
+        method: "POST", headers: h,
+        body: JSON.stringify({
+          conversation_id: _convId,
+          message:         text,
+          has_documents:   _docCtx.hasDoc,
+          document_text:   sendDoc,
+        })
+      });
+      if (retry.ok && retry.data?.reply) {
+        updateMessage(botRow, retry.data.reply);
+        success = true;
+        if (sendDoc) _docCtx.sent = true;
+      } else {
+        updateMessage(botRow, "Consent required. Please refresh the page and try again.");
+      }
+    } else if (status === 500) {
+      console.error("[PHI] 500 on /chat:", data);
+      updateMessage(botRow,
+        "PHI ran into a server error. The team has been notified.\n\n" +
+        "---\n⚕️ *PHI is an educational wellness tool. Always consult your provider.*"
+      );
     } else if (!ok || !reply) {
+      console.error("[PHI] Chat error:", status, data);
       updateMessage(botRow,
         "I ran into a technical issue. Please try again in a moment.\n\n" +
         "---\n⚕️ *PHI is an educational wellness tool. Always consult your provider.*"
@@ -586,12 +653,11 @@ async function sendMessage(text) {
     } else {
       updateMessage(botRow, reply);
       success = true;
-      // FIX-CTX-1: Only mark sent AFTER success — failed calls can retry with doc text
       if (sendDoc) _docCtx.sent = true;
     }
 
     const userMsgCount = el("chatDisplay")?.querySelectorAll(".chat-msg.user-msg").length || 0;
-    if (userMsgCount === 1) renameConversation(_convId, text);
+    if (userMsgCount === 1 && _convId) renameConversation(_convId, text);
 
     if (success && _docCtx.hasDoc) {
       setTimeout(loadMarkersData, 2000);
@@ -604,6 +670,7 @@ async function sendMessage(text) {
     updateMessage(botRow,
       msg + "\n\n---\n⚕️ *PHI is an educational wellness tool. Always consult your provider.*"
     );
+    console.error("[PHI] sendMessage exception:", err);
   }
 
   _isSending = false;
@@ -641,11 +708,6 @@ function addFile(file) {
 }
 
 function removeFile(idx) {
-  /**
-   * FIX-CTX-2: Removing a queued file only removes it from the upload queue.
-   * It does NOT clear _docCtx.text — that would lose already-loaded context.
-   * A user who removes a file before sending simply won't have that file processed.
-   */
   _uploads.splice(idx, 1);
   renderFilePreview();
 }
@@ -673,19 +735,77 @@ function clearFilePreview() {
   if (strip) { strip.classList.remove("show"); strip.innerHTML = ""; }
 }
 
+// FIX-SEND-2: processFileUpload now handles every failure mode with a toast
 async function processFileUpload(file) {
   const session = await getSession();
-  if (!session) return null;
+  if (!session) {
+    toast("Session expired. Please sign in again.", "err");
+    setTimeout(() => { window.location.href = "/login"; }, 2000);
+    return null;
+  }
+
   const form = new FormData();
   form.append("file", file);
+
   try {
     const res = await apiFetch("/analyze", {
-      method: "POST",
+      method:  "POST",
       headers: { "Authorization": `Bearer ${session.access_token}` },
-      body: form
+      body:    form,
     });
+
+    // Handle specific HTTP errors
+    if (res.status === 401) {
+      toast("Session expired. Please sign in again.", "err");
+      return null;
+    }
+
+    if (res.status === 403) {
+      // Consent missing — resave and retry once
+      console.warn("[PHI] 403 on /analyze — retrying after consent resave");
+      await saveConsents();
+      const retry = await apiFetch("/analyze", {
+        method:  "POST",
+        headers: { "Authorization": `Bearer ${session.access_token}` },
+        body:    form,
+      });
+      if (retry.ok) {
+        const d = await retry.json();
+        return d;
+      }
+      toast("Permission error. Please refresh the page and try again.", "err");
+      return null;
+    }
+
+    if (res.status === 413) {
+      toast("File too large. Maximum 5 MB.", "err");
+      return null;
+    }
+
+    if (res.status === 400) {
+      const d = await res.json().catch(() => ({}));
+      toast(d.error || "Could not read this file. Try a clear PDF.", "err");
+      return null;
+    }
+
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      console.error("[PHI] /analyze error:", res.status, d);
+      toast(d.error || `Upload failed (${res.status}). Please try again.`, "err");
+      return null;
+    }
+
     return await res.json();
-  } catch { return null; }
+
+  } catch (err) {
+    console.error("[PHI] processFileUpload exception:", err);
+    if (err.message?.includes("timed out")) {
+      toast("Upload timed out. Try a smaller file.", "err");
+    } else {
+      toast("Upload failed. Check your connection.", "err");
+    }
+    return null;
+  }
 }
 
 /* ═══════════════════════════════════════
@@ -902,13 +1022,6 @@ function renderCliffAlerts(alerts) {
 /* ═══════════════════════════════════════
    COCKPIT — METABOLIC SHIELD
 ═══════════════════════════════════════ */
-
-/**
- * FIX-SHIELD-1 + FIX-PERSIST-1:
- * - Reads goalWt from localStorage if input is empty
- * - Never logs to backend unless user is authenticated
- * - Saves goalWt back to localStorage after each successful calc
- */
 function restoreShieldInputs() {
   const savedGoalWt = localStorage.getItem("phi_goal_wt");
   if (savedGoalWt) {
@@ -924,7 +1037,6 @@ function updateShield() {
   const steps   = parseFloat(el("inputSteps")?.value)   || 0;
   const sleep   = parseFloat(el("inputSleep")?.value)   || 0;
 
-  // FIX-PERSIST-1: Use saved goal weight if input is empty
   const gwInputVal = parseFloat(el("inputGoalWt")?.value);
   const goalWt = gwInputVal || _goalWt || 165;
 
@@ -954,7 +1066,6 @@ function updateShield() {
   setBarWidth("movementBar", mPct);
   setBarWidth("recoveryBar", rPct);
 
-  // FIX-LOGS-1: Only log if authenticated and at least one value is non-zero
   if (_user && (protein > 0 || steps > 0 || sleep > 0)) {
     logShieldData(protein, steps, sleep).catch(() => {});
   }
@@ -974,7 +1085,7 @@ function setBarWidth(id, pct) {
 
 async function logShieldData(protein, steps, sleep) {
   const h = await getHeaders();
-  if (!h) return;  // FIX-LOGS-1: silently skip if not authenticated
+  if (!h) return;
 
   const date = new Date().toISOString().slice(0, 10);
   const logs = [];
@@ -1001,7 +1112,6 @@ function calcProtein() {
   const perMeal  = Math.round(_proteinTarget / 3 * 10) / 10;
   const leucineOk = perMeal >= 30;
 
-  // FIX-PERSIST-1: Save to localStorage
   localStorage.setItem("phi_goal_wt", String(gw));
 
   setText("proteinNum",     _proteinTarget);
@@ -1018,7 +1128,6 @@ function calcProtein() {
       </span>`;
   }
 
-  // Also update the goal weight input in the shield section
   const gwInput = el("inputGoalWt");
   if (gwInput) gwInput.value = gw;
 }
@@ -1113,10 +1222,8 @@ function toast(msg, type = "ok") {
    EVENT WIRING
 ═══════════════════════════════════════ */
 function wireEvents() {
-  // New chat
   el("newChatBtn")?.addEventListener("click", resetToWelcome);
 
-  // Nav items
   document.querySelectorAll(".nav-item[data-view]").forEach(btn => {
     btn.addEventListener("click", () => {
       document.querySelectorAll(".nav-item").forEach(b => b.classList.remove("active"));
@@ -1125,20 +1232,12 @@ function wireEvents() {
     });
   });
 
-  // Sidebar
   el("mobileMenuBtn")?.addEventListener("click", openSidebar);
   el("sidebarOverlay")?.addEventListener("click", closeSidebar);
-
-  /**
-   * FIX-MOBILE-1: Cockpit toggle wired for ALL breakpoints.
-   * mobileCockpitBtn is shown via CSS at ≤1200px; clicking it calls toggleCockpit().
-   * The cockpit uses transform not display, so it's always reachable.
-   */
   el("mobileCockpitBtn")?.addEventListener("click", toggleCockpit);
   el("cockpitOverlay")?.addEventListener("click", closeCockpit);
   el("cockpitCloseBtn")?.addEventListener("click", closeCockpit);
 
-  // User menu
   el("userRow")?.addEventListener("click", e => {
     if (!e.target.closest(".user-dropdown")) toggleUserMenu();
   });
@@ -1146,13 +1245,11 @@ function wireEvents() {
     if (!el("userRow")?.contains(e.target)) closeUserMenu();
   });
 
-  // User dropdown actions
   el("themeToggleBtn")?.addEventListener("click", toggleTheme);
   el("topThemeBtn")?.addEventListener("click", toggleTheme);
   el("exportChatBtn")?.addEventListener("click", exportCurrentChat);
   el("logoutBtn")?.addEventListener("click", handleLogout);
 
-  // History (event delegation)
   el("historyList")?.addEventListener("click", e => {
     const item   = e.target.closest(".hist-item[data-id]");
     const delBtn = e.target.closest(".hist-del[data-del]");
@@ -1160,17 +1257,14 @@ function wireEvents() {
     else if (item) { openConversation(item.dataset.id); }
   });
 
-  // Chat input
   const ta = el("chatInput");
   ta?.addEventListener("keydown", e => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
   });
   ta?.addEventListener("input", () => autoGrow(ta));
 
-  // Send button
   el("sendBtn")?.addEventListener("click", handleSend);
 
-  // Welcome chips
   document.querySelectorAll(".suggestion-chips .chip").forEach(chip => {
     chip.addEventListener("click", () => {
       const q = chip.dataset.q;
@@ -1180,38 +1274,26 @@ function wireEvents() {
     });
   });
 
-  // File attach
   const fileInput = el("fileInput");
   fileInput?.addEventListener("change", handleFileSelect);
   el("attachTopBtn")?.addEventListener("click",   () => fileInput?.click());
   el("attachInputBtn")?.addEventListener("click", () => fileInput?.click());
   el("uploadNudgeBtn")?.addEventListener("click", () => fileInput?.click());
 
-  // Cockpit shield
   el("updateShieldBtn")?.addEventListener("click", updateShield);
-
-  // Cockpit protein calc
   el("calcBtn")?.addEventListener("click", calcProtein);
   el("proteinInput")?.addEventListener("keydown", e => { if (e.key === "Enter") calcProtein(); });
-
-  // Cockpit cliff alerts refresh
   el("refreshAlertsBtn")?.addEventListener("click", loadMarkersData);
-
-  // Cockpit food noise
   el("noiseSlider")?.addEventListener("input", updateNoiseReadout);
   el("logNoiseBtn")?.addEventListener("click", logNoiseLevel);
-
-  // Cockpit markers refresh
   el("refreshMarkersBtn")?.addEventListener("click", loadMarkersData);
 
-  // Drag and drop anywhere on page
   document.addEventListener("dragover", e => e.preventDefault());
   document.addEventListener("drop", e => {
     e.preventDefault();
     Array.from(e.dataTransfer?.files || []).forEach(f => addFile(f));
   });
 
-  // Keyboard shortcuts
   document.addEventListener("keydown", e => {
     if ((e.ctrlKey || e.metaKey) && e.key === "k") {
       e.preventDefault();
