@@ -4,24 +4,177 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>PHI — GLP-1 Cliff Prevention</title>
-<meta name="description" content="PHI monitors your glucose, HbA1c, and body composition to detect GLP-1 metabolic rebound before it becomes a crisis.">
+<meta name="description" content="PHI monitors your glucose, HbA1c, and body composition to detect GLP-1 metabolic rebound.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Space+Grotesk:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 <link rel="stylesheet" href="style.css">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+/* ── View containers ── */
+.view { display:none; flex:1; flex-direction:column; overflow:hidden; min-height:0; }
+.view.active { display:flex; }
+.view-scroll { flex:1; overflow-y:auto; padding:24px 28px; scrollbar-width:thin; scrollbar-color:var(--surface-3) transparent; }
 
+/* ── Section headings ── */
+.hv-section { margin-bottom:28px; }
+.hv-heading {
+  font-size:.68rem; font-weight:700; color:var(--text-3);
+  text-transform:uppercase; letter-spacing:.1em;
+  margin-bottom:12px; display:flex; align-items:center; gap:7px;
+}
+.hv-heading i { color:var(--signal); font-size:.7rem; }
+
+/* ── Cliff risk card ── */
+.cliff-card {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--r-lg); padding:18px 20px;
+  display:flex; align-items:center; gap:18px;
+  margin-bottom:16px; position:relative; overflow:hidden;
+}
+.cliff-card::before {
+  content:''; position:absolute; top:0; left:0; right:0; height:3px;
+}
+.cliff-card.risk-none::before  { background:var(--ok); }
+.cliff-card.risk-warn::before  { background:var(--amber); }
+.cliff-card.risk-high::before  { background:var(--danger); }
+.cliff-num {
+  font-family:var(--mono); font-size:2.6rem; font-weight:500;
+  line-height:1; flex-shrink:0;
+}
+.cliff-num.risk-none   { color:var(--ok); }
+.cliff-num.risk-warn   { color:var(--amber); }
+.cliff-num.risk-high   { color:var(--danger); }
+.cliff-detail h3 { font-size:.92rem; font-weight:600; margin-bottom:4px; }
+.cliff-detail p  { font-size:.79rem; color:var(--text-2); line-height:1.55; }
+
+/* ── Marker trend grid ── */
+.trend-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:9px; }
+.trend-card {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--r); padding:13px 14px;
+}
+.trend-name  { font-size:.7rem; color:var(--text-3); margin-bottom:5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.trend-val   { font-family:var(--mono); font-size:1.15rem; font-weight:500; }
+.trend-val.hi { color:var(--danger); }
+.trend-val.lo { color:var(--amber); }
+.trend-val.ok { color:var(--ok); }
+.trend-unit  { font-size:.68rem; color:var(--text-3); margin-left:3px; }
+.trend-badge {
+  display:inline-flex; align-items:center; gap:3px;
+  font-size:.66rem; font-weight:700; padding:2px 7px;
+  border-radius:20px; margin-top:5px;
+}
+.trend-badge.bad  { background:var(--danger-dim); color:var(--danger); }
+.trend-badge.good { background:var(--ok-dim); color:var(--ok); }
+.trend-badge.flat { background:var(--surface-2); color:var(--text-3); }
+.trend-dates { font-size:.64rem; color:var(--text-3); margin-top:3px; }
+
+/* ── Alert feed ── */
+.alert-feed { display:flex; flex-direction:column; gap:9px; }
+.alert-item {
+  background:var(--surface); border:1px solid var(--border);
+  border-left:3px solid var(--border); border-radius:var(--r);
+  padding:12px 14px;
+}
+.alert-item.danger { border-left-color:var(--danger); background:var(--danger-dim); }
+.alert-item.warn   { border-left-color:var(--amber);  background:var(--amber-dim); }
+.alert-item.ok     { border-left-color:var(--ok);     background:var(--ok-dim); }
+.alert-title { font-size:.82rem; font-weight:600; margin-bottom:3px; }
+.alert-desc  { font-size:.75rem; color:var(--text-2); line-height:1.5; }
+.alert-cta {
+  margin-top:8px; display:inline-flex; align-items:center; gap:5px;
+  font-size:.72rem; font-weight:600; color:var(--signal);
+  background:var(--signal-dim); border:1px solid rgba(45,212,191,.2);
+  border-radius:20px; padding:3px 10px; cursor:pointer; font-family:var(--sans);
+  transition:all .15s;
+}
+.alert-cta:hover { background:var(--signal); color:#000; }
+
+/* ── Empty states ── */
+.hv-empty {
+  text-align:center; padding:48px 16px;
+  color:var(--text-3); font-size:.84rem; line-height:1.65;
+}
+.hv-empty i { font-size:2rem; margin-bottom:12px; display:block; opacity:.35; }
+.hv-cta-btn {
+  margin-top:14px; display:inline-flex; align-items:center; gap:7px;
+  padding:9px 20px; background:var(--signal); color:var(--bg);
+  border:none; border-radius:var(--r); font-size:.82rem; font-weight:600;
+  cursor:pointer; font-family:var(--sans); box-shadow:0 3px 12px var(--signal-glow);
+  transition:all .15s;
+}
+.hv-cta-btn:hover { background:var(--signal-2); }
+
+/* ── Lab Reports ── */
+.reports-header {
+  display:flex; align-items:center; justify-content:space-between; margin-bottom:18px;
+}
+.reports-title { font-family:var(--serif); font-size:1.15rem; font-weight:400; }
+.reports-upload-btn {
+  display:inline-flex; align-items:center; gap:6px;
+  padding:8px 16px; background:var(--signal); color:var(--bg);
+  border:none; border-radius:var(--r-sm); font-size:.8rem; font-weight:600;
+  cursor:pointer; font-family:var(--sans); box-shadow:0 2px 8px var(--signal-glow);
+  transition:all .15s;
+}
+.reports-upload-btn:hover { background:var(--signal-2); }
+
+.report-card {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--r); padding:14px 16px;
+  display:flex; align-items:flex-start; gap:12px;
+  margin-bottom:9px; transition:border-color .15s;
+}
+.report-card:hover { border-color:var(--border-2); }
+.report-icon {
+  width:36px; height:36px; border-radius:var(--r-sm);
+  background:var(--signal-dim); border:1px solid rgba(45,212,191,.15);
+  display:flex; align-items:center; justify-content:center;
+  color:var(--signal); font-size:.85rem; flex-shrink:0;
+}
+.report-meta { flex:1; min-width:0; }
+.report-name { font-size:.85rem; font-weight:600; margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.report-date { font-size:.71rem; color:var(--text-3); }
+.report-tags { display:flex; gap:4px; margin-top:5px; flex-wrap:wrap; }
+.report-tag {
+  font-size:.63rem; font-weight:700; padding:1px 6px;
+  border-radius:20px;
+}
+.report-tag.hi   { background:var(--danger-dim); color:var(--danger); }
+.report-tag.ok   { background:var(--ok-dim); color:var(--ok); }
+.report-tag.info { background:var(--signal-dim); color:var(--signal); }
+.report-ask-btn {
+  flex-shrink:0; padding:5px 11px;
+  background:var(--surface-2); border:1px solid var(--border);
+  border-radius:var(--r-sm); font-size:.73rem; font-weight:600;
+  color:var(--text-2); cursor:pointer; font-family:var(--sans);
+  transition:all .15s; align-self:center;
+}
+.report-ask-btn:hover { border-color:var(--signal); color:var(--signal); background:var(--signal-dim); }
+
+/* ── Shield AUTO badge ── */
+.shield-auto-label {
+  font-size:.62rem; font-weight:700; color:var(--signal);
+  background:var(--signal-dim); border:1px solid rgba(45,212,191,.2);
+  padding:1px 6px; border-radius:20px; letter-spacing:.04em;
+}
+.shield-last-logged {
+  font-size:.69rem; color:var(--text-3); text-align:center;
+  margin-top:4px; margin-bottom:2px;
+}
+</style>
 </head>
 <body>
 
 <div id="shell">
 
-  <!-- ─── SIDEBAR ─── -->
-  <aside id="sidebar" role="navigation" aria-label="Main navigation">
-
+  <!-- SIDEBAR -->
+  <aside id="sidebar" role="navigation">
     <div class="sb-brand">
-      <a href="/" class="sb-logo-link" title="Back to home">
+      <a href="/" class="sb-logo-link">
         <div class="sb-logo-mark">φ</div>
         <span class="sb-logo-name">Curabook</span>
       </a>
@@ -29,200 +182,187 @@
     </div>
 
     <div class="sb-actions">
-      <button id="newChatBtn" class="new-chat-btn" title="Start new conversation (Ctrl+K)">
+      <button id="newChatBtn" class="new-chat-btn" title="New conversation (Ctrl+K)">
         <i class="fa-solid fa-plus"></i>
         <span>New Conversation</span>
         <i class="fa-regular fa-pen-to-square ms-auto"></i>
       </button>
     </div>
 
-    <nav class="sb-nav" aria-label="App sections">
-      <button class="nav-item active" data-view="chat" id="navChat">
-        <i class="fa-solid fa-comments"></i>
-        <span>Chat with PHI</span>
+    <nav class="sb-nav">
+      <button class="nav-item active" id="navChat"    data-view="chat">
+        <i class="fa-solid fa-comments"></i><span>Chat with PHI</span>
       </button>
-      <button class="nav-item" data-view="health" id="navHealth">
-        <i class="fa-solid fa-gauge-high"></i>
-        <span>My Health</span>
+      <button class="nav-item"         id="navHealth" data-view="health">
+        <i class="fa-solid fa-gauge-high"></i><span>My Health</span>
       </button>
-      <button class="nav-item" data-view="reports" id="navReports">
-        <i class="fa-solid fa-file-medical"></i>
-        <span>Lab Reports</span>
+      <button class="nav-item"         id="navReports" data-view="reports">
+        <i class="fa-solid fa-file-medical"></i><span>Lab Reports</span>
       </button>
     </nav>
 
-    <div class="sb-divider" role="separator"></div>
-    <div class="sb-section-label" aria-label="Conversation history">Recent</div>
+    <div class="sb-divider"></div>
+    <div class="sb-section-label">Recent Conversations</div>
 
-    <div id="historyList" class="sb-history" aria-live="polite">
+    <div id="historyList" class="sb-history">
       <div class="sb-empty">No conversations yet</div>
     </div>
 
     <div class="sb-footer">
-      <div id="userRow" class="user-row" role="button" aria-haspopup="true" tabindex="0">
-        <div id="userAvatar" class="user-av" aria-hidden="true">U</div>
+      <div id="userRow" class="user-row" role="button" tabindex="0">
+        <div id="userAvatar" class="user-av">U</div>
         <div class="user-meta">
-          <div id="userEmail" class="user-email">Loading…</div>
-          <div id="userPlan" class="user-plan">PHI Free</div>
+          <div id="userEmail"  class="user-email">Loading…</div>
+          <div id="userPlan"   class="user-plan">PHI Free</div>
         </div>
-        <i class="fa-solid fa-ellipsis-vertical user-more-icon" aria-hidden="true"></i>
+        <i class="fa-solid fa-ellipsis-vertical user-more-icon"></i>
 
-        <div id="userDropdown" class="user-dropdown" role="menu" aria-hidden="true">
-          <button class="dd-item" id="themeToggleBtn" role="menuitem">
-            <i class="fa-solid fa-moon" id="themeIcon" aria-hidden="true"></i>
+        <div id="userDropdown" class="user-dropdown" aria-hidden="true">
+          <button class="dd-item" id="themeToggleBtn">
+            <i class="fa-solid fa-moon" id="themeIcon"></i>
             <span id="themeLabel">Light Mode</span>
           </button>
-          <button class="dd-item" id="exportChatBtn" role="menuitem">
-            <i class="fa-solid fa-download" aria-hidden="true"></i>
-            <span>Export Chat</span>
+          <button class="dd-item" id="exportChatBtn">
+            <i class="fa-solid fa-download"></i><span>Export Chat</span>
           </button>
-          <div class="dd-divider" role="separator"></div>
-          <button class="dd-item dd-danger" id="logoutBtn" role="menuitem">
-            <i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i>
-            <span>Sign Out</span>
+          <div class="dd-divider"></div>
+          <button class="dd-item dd-danger" id="logoutBtn">
+            <i class="fa-solid fa-right-from-bracket"></i><span>Sign Out</span>
           </button>
         </div>
       </div>
     </div>
-
   </aside>
 
-  <!-- ─── MAIN ─── -->
+  <!-- MAIN -->
   <main id="main" role="main">
 
-    <!-- Top Bar -->
-    <div id="topbar" role="banner">
+    <div id="topbar">
       <div class="topbar-left">
-        <button id="mobileMenuBtn" class="topbar-icon-btn" aria-label="Open menu" aria-expanded="false">
-          <i class="fa-solid fa-bars" aria-hidden="true"></i>
+        <button id="mobileMenuBtn" class="topbar-icon-btn" aria-label="Open menu">
+          <i class="fa-solid fa-bars"></i>
         </button>
-        <div class="status-badge" aria-live="polite">
-          <span class="status-dot" aria-hidden="true"></span>
+        <div class="status-badge">
+          <span class="status-dot"></span>
           <span id="convTitle" class="status-text">Ready</span>
         </div>
       </div>
       <div class="topbar-right">
-        <button id="topThemeBtn" class="topbar-icon-btn" aria-label="Toggle light/dark theme">
-          <i class="fa-solid fa-moon" id="topThemeIcon" aria-hidden="true"></i>
+        <button id="topThemeBtn"      class="topbar-icon-btn" aria-label="Toggle theme">
+          <i class="fa-solid fa-moon" id="topThemeIcon"></i>
         </button>
-        <button id="attachTopBtn" class="topbar-icon-btn" aria-label="Upload lab report">
-          <i class="fa-solid fa-paperclip" aria-hidden="true"></i>
+        <button id="attachTopBtn"     class="topbar-icon-btn" aria-label="Upload report" title="Upload lab report">
+          <i class="fa-solid fa-paperclip"></i>
         </button>
-        <button id="mobileCockpitBtn" class="topbar-icon-btn mobile-only" aria-label="Toggle health cockpit" title="Health Cockpit">
-          <i class="fa-solid fa-gauge-high" aria-hidden="true"></i>
+        <button id="mobileCockpitBtn" class="topbar-icon-btn mobile-only" aria-label="Health cockpit">
+          <i class="fa-solid fa-gauge-high"></i>
         </button>
       </div>
     </div>
 
-    <!-- Chat Area -->
-    <div id="chatArea">
-
-      <!-- Welcome Screen — GLP-1 Cliff Positioning -->
-      <div id="welcomeScreen" role="region" aria-label="Chat welcome">
-        <div class="welcome-inner">
-          <div class="welcome-orb" aria-hidden="true">φ</div>
-          <h1 class="welcome-headline">
-            Good <span id="timeGreeting">morning</span>,
-            <em id="welcomeName">there</em>
-          </h1>
-          <p class="welcome-sub">
-            Your GLP-1 cliff co-pilot. I watch your glucose rebound,
-            protect your lean mass, and build your insurance appeal — from your actual lab data.
-          </p>
-
-          <!-- GLP-1 focused chips -->
-          <div class="suggestion-chips" id="welcomeChips" role="list">
-            <button class="chip" role="listitem"
-              data-q="Run a cliff risk analysis on my stored health data. Show me my glucose trajectory, HbA1c trend, and any rebound signals.">
-              <i class="fa-solid fa-triangle-exclamation chip-icon"></i>
-              My cliff risk
-            </button>
-            <button class="chip" role="listitem"
-              data-q="Calculate my daily protein target using the Muscle Defense formula. My goal weight is stored in my profile.">
-              <i class="fa-solid fa-dumbbell chip-icon"></i>
-              Protein target
-            </button>
-            <button class="chip" role="listitem"
-              data-q="The food noise and hunger are coming back since I reduced my GLP-1 dose. Explain the biology — is this ghrelin rebound? What do I do?">
-              <i class="fa-solid fa-brain chip-icon"></i>
-              Food noise is back
-            </button>
-            <button class="chip" role="listitem"
-              data-q="Prepare me for my next provider appointment. What are my three most important data points to bring and what specific questions should I ask?">
-              <i class="fa-solid fa-stethoscope chip-icon"></i>
-              Doctor visit prep
-            </button>
-            <button class="chip" role="listitem"
-              data-q="Explain my options for tapering off a GLP-1: reduced-frequency dosing every 10-14 days, microdosing, and transitioning to generic AOMs. What does the evidence say?">
-              <i class="fa-solid fa-syringe chip-icon"></i>
-              Tapering options
-            </button>
-            <button class="chip" role="listitem"
-              data-q="Build me a GLP-1 prior authorization support packet from my lab data. I need clinical evidence for my insurance appeal.">
-              <i class="fa-solid fa-shield-halved chip-icon"></i>
-              Insurance PA appeal
-            </button>
+    <!-- VIEW: CHAT -->
+    <div id="viewChat" class="view active">
+      <div id="chatArea">
+        <div id="welcomeScreen">
+          <div class="welcome-inner">
+            <div class="welcome-orb">φ</div>
+            <h1 class="welcome-headline">
+              Good <span id="timeGreeting">morning</span>, <em id="welcomeName">there</em>
+            </h1>
+            <p class="welcome-sub">
+              Your GLP-1 cliff co-pilot. I watch your glucose rebound,
+              protect your lean mass, and build your insurance appeal — from your actual lab data.
+            </p>
+            <div class="suggestion-chips" id="welcomeChips">
+              <button class="chip" data-q="Run a cliff risk analysis on my stored health data. Show me my glucose trajectory, HbA1c trend, and any rebound signals.">
+                <i class="fa-solid fa-triangle-exclamation chip-icon"></i>My cliff risk
+              </button>
+              <button class="chip" data-q="Calculate my daily protein target using the Muscle Defense formula. My goal weight is stored in my profile.">
+                <i class="fa-solid fa-dumbbell chip-icon"></i>Protein target
+              </button>
+              <button class="chip" data-q="The food noise and hunger are coming back since I reduced my GLP-1 dose. Explain the biology — is this ghrelin rebound? What do I do?">
+                <i class="fa-solid fa-brain chip-icon"></i>Food noise is back
+              </button>
+              <button class="chip" data-q="Prepare me for my next provider appointment. What are my three most important data points and specific questions to ask?">
+                <i class="fa-solid fa-stethoscope chip-icon"></i>Doctor visit prep
+              </button>
+              <button class="chip" data-q="Explain tapering options: reduced-frequency dosing every 10-14 days, microdosing, and transitioning to generic AOMs. What does the evidence say?">
+                <i class="fa-solid fa-syringe chip-icon"></i>Tapering options
+              </button>
+              <button class="chip" data-q="Build me a GLP-1 prior authorization support packet from my lab data for my insurance appeal.">
+                <i class="fa-solid fa-shield-halved chip-icon"></i>Insurance PA appeal
+              </button>
+            </div>
+            <div class="welcome-upload-prompt">
+              <button id="uploadNudgeBtn" class="upload-nudge">
+                <i class="fa-solid fa-file-medical"></i>Upload a Lab Report
+              </button>
+              <p class="upload-hint">PDF from Quest, LabCorp, or any US lab</p>
+            </div>
           </div>
+        </div>
 
-          <div class="welcome-upload-prompt" id="uploadPrompt">
-            <button id="uploadNudgeBtn" class="upload-nudge">
-              <i class="fa-solid fa-file-medical" aria-hidden="true"></i>
-              Upload a Lab Report
-            </button>
-            <p class="upload-hint">PDF from Quest, LabCorp, or any US lab</p>
+        <div id="chatDisplay" class="chat-display hidden" role="log" aria-live="polite"></div>
+        <div id="filePreview" class="file-strip"></div>
+
+        <div id="inputWrap" class="input-wrap">
+          <div id="inputBar" class="input-bar">
+            <textarea id="chatInput" class="chat-ta"
+              placeholder="Ask PHI about your GLP-1 journey…"
+              rows="1" autocomplete="off" maxlength="4000"></textarea>
+            <div class="input-actions">
+              <button id="micBtn"         class="input-btn" aria-label="Voice input"><i class="fa-solid fa-microphone"></i></button>
+              <button id="attachInputBtn" class="input-btn" aria-label="Attach file"><i class="fa-solid fa-paperclip"></i></button>
+              <button id="sendBtn"        class="send-btn"  aria-label="Send"><i class="fa-solid fa-arrow-up"></i></button>
+            </div>
+          </div>
+          <p class="input-disclaimer">PHI is an educational wellness tool. Always consult your healthcare provider.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- VIEW: MY HEALTH -->
+    <div id="viewHealth" class="view">
+      <div class="view-scroll" id="healthContent">
+        <div class="hv-empty" id="healthLoading">
+          <i class="fa-solid fa-spinner fa-spin"></i>
+          Loading your health picture…
+        </div>
+      </div>
+    </div>
+
+    <!-- VIEW: LAB REPORTS -->
+    <div id="viewReports" class="view">
+      <div class="view-scroll">
+        <div class="reports-header">
+          <span class="reports-title">Lab Reports</span>
+          <button class="reports-upload-btn" id="reportsUploadBtn">
+            <i class="fa-solid fa-upload"></i> Upload Report
+          </button>
+        </div>
+        <div id="reportsList">
+          <div class="hv-empty" id="reportsLoading">
+            <i class="fa-solid fa-spinner fa-spin"></i>
+            Loading your reports…
           </div>
         </div>
       </div>
+    </div>
 
-      <!-- Chat Messages Display -->
-      <div id="chatDisplay" class="chat-display hidden" role="log" aria-label="Conversation" aria-live="polite"></div>
-
-      <!-- File Preview Strip -->
-      <div id="filePreview" class="file-strip" aria-label="Attached files"></div>
-
-      <!-- Input Bar -->
-      <div id="inputWrap" class="input-wrap">
-        <div id="inputBar" class="input-bar" role="form" aria-label="Send message">
-          <textarea
-            id="chatInput"
-            class="chat-ta"
-            placeholder="Ask PHI about your GLP-1 journey…"
-            rows="1"
-            autocomplete="off"
-            aria-label="Message input"
-            maxlength="4000"
-          ></textarea>
-          <div class="input-actions">
-            <button id="micBtn" class="input-btn" aria-label="Voice input" title="Voice input">
-              <i class="fa-solid fa-microphone" aria-hidden="true"></i>
-            </button>
-            <button id="attachInputBtn" class="input-btn" aria-label="Attach file" title="Attach lab report">
-              <i class="fa-solid fa-paperclip" aria-hidden="true"></i>
-            </button>
-            <button id="sendBtn" class="send-btn" aria-label="Send message" title="Send (Enter)">
-              <i class="fa-solid fa-arrow-up" aria-hidden="true"></i>
-            </button>
-          </div>
-        </div>
-        <p class="input-disclaimer">
-          PHI is an educational wellness tool — not a medical device. Always consult your healthcare provider.
-        </p>
-      </div>
-
-    </div><!-- /chatArea -->
   </main>
 
-  <!-- ─── COCKPIT PANEL ─── -->
-  <aside id="cockpit" aria-label="Health cockpit">
+  <!-- COCKPIT -->
+  <aside id="cockpit">
 
-    <button id="cockpitCloseBtn" class="cockpit-close-btn mobile-only" aria-label="Close cockpit">
-      <i class="fa-solid fa-xmark"></i>
+    <button id="cockpitCloseBtn" style="display:none;position:sticky;top:0;z-index:10;justify-content:flex-end;padding:10px 12px 0;background:var(--surface);border:none;width:100%;cursor:pointer;color:var(--text-2);" class="mobile-only">
+      <i class="fa-solid fa-xmark" style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;border-radius:8px;font-size:1rem;transition:all .15s;"></i>
     </button>
 
-    <!-- Metabolic Shield -->
-    <section class="cp-section" id="shieldSection">
+    <!-- Metabolic Shield — auto-loads from stored logs -->
+    <section class="cp-section">
       <div class="cp-section-hd">
         <h2 class="cp-section-title">Metabolic Shield</h2>
+        <span class="shield-auto-label">AUTO</span>
         <span class="cp-section-badge" id="shieldBadge">--%</span>
       </div>
 
@@ -241,7 +381,7 @@
             stroke="var(--ok)" stroke-dasharray="258" stroke-dashoffset="258"
             transform="rotate(-90 80 80)" class="ring-arc" id="ringRecovery"/>
         </svg>
-        <div class="shield-center" aria-live="polite">
+        <div class="shield-center">
           <div class="shield-score" id="shieldScore">--</div>
           <div class="shield-score-label">Shield %</div>
         </div>
@@ -252,7 +392,7 @@
           <span class="ring-dot" style="background:var(--signal)"></span>
           <div class="ring-info">
             <div class="ring-name">Protein</div>
-            <div class="ring-val" id="proteinLegend">Log below</div>
+            <div class="ring-val" id="proteinLegend">Loading…</div>
             <div class="ring-track-bar"><div class="ring-fill" id="proteinBar" style="background:var(--signal)"></div></div>
           </div>
         </div>
@@ -260,7 +400,7 @@
           <span class="ring-dot" style="background:var(--amber)"></span>
           <div class="ring-info">
             <div class="ring-name">Movement</div>
-            <div class="ring-val" id="movementLegend">Log below</div>
+            <div class="ring-val" id="movementLegend">Loading…</div>
             <div class="ring-track-bar"><div class="ring-fill" id="movementBar" style="background:var(--amber)"></div></div>
           </div>
         </div>
@@ -268,12 +408,13 @@
           <span class="ring-dot" style="background:var(--ok)"></span>
           <div class="ring-info">
             <div class="ring-name">Recovery</div>
-            <div class="ring-val" id="recoveryLegend">Log below</div>
+            <div class="ring-val" id="recoveryLegend">Loading…</div>
             <div class="ring-track-bar"><div class="ring-fill" id="recoveryBar" style="background:var(--ok)"></div></div>
           </div>
         </div>
       </div>
 
+      <div id="shieldLastLogged" class="shield-last-logged"></div>
       <div class="shield-log-grid">
         <div class="sl-group">
           <label class="sl-label" for="inputProtein">Protein (g)</label>
@@ -292,7 +433,7 @@
           <input type="number" id="inputGoalWt" class="sl-input" placeholder="165" min="80" max="400">
         </div>
       </div>
-      <button id="updateShieldBtn" class="cp-primary-btn">Update Shield</button>
+      <button id="updateShieldBtn" class="cp-primary-btn">Log Today's Data</button>
     </section>
 
     <!-- Protein Calculator -->
@@ -300,7 +441,7 @@
       <div class="cp-section-hd">
         <h2 class="cp-section-title">Muscle Defense Protocol</h2>
       </div>
-      <div class="protein-display" aria-live="polite">
+      <div class="protein-display">
         <span class="protein-num" id="proteinNum">--</span>
         <span class="protein-unit">g / day</span>
       </div>
@@ -309,44 +450,38 @@
         <input type="number" id="proteinInput" class="cp-input" placeholder="Goal weight (lbs)" min="80" max="400">
         <button id="calcBtn" class="cp-secondary-btn">Calc</button>
       </div>
-      <div id="proteinDetails" class="protein-details hidden" aria-live="polite"></div>
+      <div id="proteinDetails" class="protein-details hidden"></div>
     </section>
 
     <!-- Cliff Alerts -->
     <section class="cp-section">
       <div class="cp-section-hd">
         <h2 class="cp-section-title">Cliff Alert System</h2>
-        <button id="refreshAlertsBtn" class="cp-icon-btn" aria-label="Refresh alerts" title="Refresh">
-          <i class="fa-solid fa-rotate" aria-hidden="true"></i>
+        <button id="refreshAlertsBtn" class="cp-icon-btn" title="Refresh">
+          <i class="fa-solid fa-rotate"></i>
         </button>
       </div>
-      <div id="cliffAlerts" aria-live="polite">
+      <div id="cliffAlerts">
         <div class="ca-item ca-ok">
           <div class="ca-title">✅ No rebound signals</div>
-          <div class="ca-desc">Upload your Quest or LabCorp report to enable automatic cliff monitoring.</div>
+          <div class="ca-desc">Upload a Quest or LabCorp report to enable automatic cliff monitoring.</div>
         </div>
       </div>
     </section>
 
-    <!-- Ghrelin / Food Noise Log -->
+    <!-- Ghrelin Log -->
     <section class="cp-section">
       <div class="cp-section-hd">
         <h2 class="cp-section-title">Ghrelin Surge Log</h2>
       </div>
       <p class="cp-caption">Food noise is ghrelin biology — not a willpower score.</p>
       <div class="noise-wrap">
-        <div class="noise-labels" aria-hidden="true">
-          <span>Quiet</span>
-          <span>Relentless</span>
-        </div>
-        <input type="range" id="noiseSlider" class="noise-slider" min="1" max="10" value="5"
-          aria-label="Food noise level 1 to 10">
+        <div class="noise-labels"><span>Quiet</span><span>Relentless</span></div>
+        <input type="range" id="noiseSlider" class="noise-slider" min="1" max="10" value="5">
       </div>
-      <div id="noiseReadout" class="noise-readout" aria-live="polite">
-        Move the slider to log today's ghrelin surge level.
-      </div>
+      <div id="noiseReadout" class="noise-readout">Move the slider to log today's ghrelin surge level.</div>
       <button id="logNoiseBtn" class="cp-secondary-btn mt-8">
-        <i class="fa-solid fa-save" aria-hidden="true"></i> Log Level
+        <i class="fa-solid fa-save"></i> Log Level
       </button>
     </section>
 
@@ -354,23 +489,21 @@
     <section class="cp-section">
       <div class="cp-section-hd">
         <h2 class="cp-section-title">My Lab Markers</h2>
-        <button id="refreshMarkersBtn" class="cp-icon-btn" aria-label="Refresh markers" title="Refresh">
-          <i class="fa-solid fa-rotate" aria-hidden="true"></i>
+        <button id="refreshMarkersBtn" class="cp-icon-btn" title="Refresh">
+          <i class="fa-solid fa-rotate"></i>
         </button>
       </div>
-      <div id="markersGrid" class="markers-grid" aria-live="polite">
+      <div id="markersGrid" class="markers-grid">
         <div class="markers-empty">Upload a Quest or LabCorp PDF to see your markers</div>
       </div>
     </section>
 
   </aside>
+</div>
 
-</div><!-- /shell -->
-
-<div id="sidebarOverlay" class="sidebar-overlay" aria-hidden="true"></div>
-<div id="cockpitOverlay" class="cockpit-overlay" aria-hidden="true"></div>
-
-<input type="file" id="fileInput" accept=".pdf,.txt" multiple aria-hidden="true" style="display:none">
+<div id="sidebarOverlay" class="sidebar-overlay"></div>
+<div id="cockpitOverlay" class="cockpit-overlay"></div>
+<input type="file" id="fileInput" accept=".pdf,.txt" multiple style="display:none">
 <div id="toasts" role="status" aria-live="assertive" aria-atomic="true"></div>
 
 <script src="script.js"></script>

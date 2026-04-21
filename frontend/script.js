@@ -1,462 +1,445 @@
 /**
- * script.js — Curabook PHI v1.4  (FIXED)
+ * script.js — Curabook PHI v2.0
  *
- * ROOT CAUSE FIXES:
- *
- * FIX-LOCK-1: Multiple GoTrueClient instances were created — one in login.html
- *   and one here — fighting over "sb-pbeaawlxdcrdbvlmpqhc-auth-token" lock.
- *   Fix: reuse any existing GoTrueClient via window.__phiSb singleton.
- *   Never call supabase.createClient() more than once per page load.
- *
- * FIX-LOCK-2: boot() was crashing mid-execution due to the lock error,
- *   leaving _sb = null. Every subsequent getHeaders() call threw, causing
- *   ALL buttons (send, sign out, theme, history, cockpit) to silently fail.
- *
- * FIX-BOOT-1: Added window.__phiBooted guard so boot() can never run twice.
- *
- * FIX-SESSION-1: getSession() now has a hard fallback — if the lock errors,
- *   we attempt refreshSession() once before giving up.
- *
- * FIX-SEND-1: _isSending stuck-true is now auto-reset after 35 seconds
- *   and on tab visibility change.
- *
- * FIX-BUTTONS-1: All button listeners now have null-guards with console
- *   warnings instead of silent failures via optional chaining.
- *
- * FIX-HISTORY-1: loadHistory() failures now show a visible error state
- *   instead of silently leaving the sidebar empty.
+ * FIXES vs previous version:
+ *  FIX-1  Theme now applied at DOMContentLoaded — not blocked by auth/consent
+ *  FIX-2  Sign out redirects correctly to /login
+ *  FIX-3  Nav items (My Health, Lab Reports) load real content
+ *  FIX-4  Shield AUTO-loads today's behavioral logs — zero cognitive tax
+ *  FIX-5  Chat + file upload works in any order (text first, then file; or file first)
+ *  FIX-6  saveConsents() is fire-and-forget — never blocks UI
+ *  FIX-7  createConversation() 403 auto-retries with consent resave
+ *  FIX-8  /analyze 403 auto-retries — file upload works even if consent row was missing
+ *  FIX-9  Spinner auto-reset after 35s (stuck guard)
+ *  FIX-10 cockpitCloseBtn visible in mobile drawer
  */
-
 "use strict";
 
-/* ═══════════════════════════════════════
-   CONFIG
-═══════════════════════════════════════ */
+/* ═══════════════════ CONFIG ═══════════════════ */
 const SUPABASE_URL = "https://pbeaawlxdcrdbvlmpqhc.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBiZWFhd2x4ZGNyZGJ2bG1wcWhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwMDk0MzksImV4cCI6MjA5MTU4NTQzOX0.6bUpYrDbe0mQjjBHX8Qscj-5R8i4-SqAtW_Z1UFzJ10";
 
-const IS_LOCAL = (
-  window.location.hostname === "localhost" ||
-  window.location.hostname === "127.0.0.1" ||
-  window.location.hostname === "0.0.0.0"
-);
-const API_BASE = IS_LOCAL ? "http://localhost:5000" : "https://api.curabook.com";
-const IS_DEV   = IS_LOCAL || window.location.hostname.includes("staging");
+const IS_LOCAL = ["localhost","127.0.0.1","0.0.0.0"].includes(location.hostname);
+const API      = IS_LOCAL ? "http://localhost:5000" : "https://api.curabook.com";
 
-if (IS_DEV) console.info(`[PHI] DEV MODE — API: ${API_BASE}`);
-
-/* ═══════════════════════════════════════
-   STATE
-═══════════════════════════════════════ */
-let _sb          = null;
-let _user        = null;
-let _userName    = "";
-let _convId      = null;
-let _isSending   = false;
-let _uploads     = [];
-let _sendingTimer = null;  // FIX-SEND-1: auto-reset timer
-
-let _goalWt        = parseFloat(localStorage.getItem("phi_goal_wt") || "165");
+/* ═══════════════════ STATE ═══════════════════ */
+let _sb           = null;
+let _user         = null;
+let _userName     = "";
+let _convId       = null;
+let _isSending    = false;
+let _sendStart    = 0;
+let _uploads      = [];
+let _goalWt       = parseFloat(localStorage.getItem("phi_goal_wt") || "165");
 let _proteinTarget = Math.round(_goalWt * 0.545 * 10) / 10;
 
-let _docCtx = { text: null, sent: false, hasDoc: false };
+// FIX-5: doc context now lives per-conversation, persists across messages
+let _docCtx = { text: null, hasDoc: false, filename: "" };
 
-const NOISE_MESSAGES = {
-  1:  "Nearly silent — ghrelin well suppressed. Excellent maintenance state.",
-  2:  "Very low. Behavioral strategies alone may be sufficient.",
-  3:  "Mild. 35g+ protein at each meal typically resolves this level.",
-  4:  "Low-moderate. Check your daily protein — is it hitting your target?",
-  5:  "Moderate. A 20-minute post-meal walk reduces post-meal glucose 30–50 mg/dL.",
-  6:  "Elevated. Check sleep — each hour under 7h raises next-day ghrelin ~15%.",
-  7:  "High. This level often indicates the dose reduction was too fast.",
-  8:  "Very high. Classic ghrelin surge — this is physiology, not willpower.",
-  9:  "Intense rebound. Discuss urgently with provider.",
-  10: "🚨 Maximum. Severe ghrelin surge. Urgent provider conversation recommended."
+const NOISE_MSG = {
+  1:"Nearly silent — ghrelin well suppressed.", 2:"Very low. Behavioral strategies may suffice.",
+  3:"Mild. 35g+ protein per meal typically helps.", 4:"Low-moderate. Check your daily protein target.",
+  5:"Moderate. A 20-min post-meal walk helps.", 6:"Elevated. Sleep below 7h raises ghrelin ~15%.",
+  7:"High — dose reduction may have been too fast.", 8:"Very high. Classic ghrelin surge — not willpower.",
+  9:"Intense rebound. Discuss urgently with provider.", 10:"🚨 Maximum. Urgent provider conversation needed."
 };
 
-/* ═══════════════════════════════════════
-   FIX-LOCK-1: SUPABASE SINGLETON
-   Never create more than one GoTrueClient.
-   Reuse window.__phiSb if it already exists
-   (e.g. created by login.html on redirect).
-═══════════════════════════════════════ */
-function getOrCreateSupabaseClient() {
-  // Reuse existing client if already created on this page
-  if (window.__phiSb) {
-    console.info("[PHI] Reusing existing Supabase client");
-    return window.__phiSb;
-  }
-  if (typeof supabase === "undefined") {
-    throw new Error("Supabase SDK not loaded — check CDN script tag in index.html");
-  }
-  const client = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
-    auth: {
-      detectSessionInUrl:  true,
-      persistSession:      true,
-      autoRefreshToken:    true,
-      // FIX-LOCK-2: Use same storage key as login.html (default)
-      // Do NOT set a custom storageKey — must match login.html's client
-    }
-  });
-  window.__phiSb = client;
-  return client;
+/* ═══════════════════ FIX-1: THEME ═══════════════════
+   Apply immediately at DOMContentLoaded — never wait for auth */
+function initTheme() {
+  applyTheme(localStorage.getItem("phi_theme") || "dark");
+}
+function toggleTheme() {
+  applyTheme((document.documentElement.dataset.theme || "dark") === "dark" ? "light" : "dark");
+  closeUserMenu();
+}
+function applyTheme(t) {
+  document.documentElement.dataset.theme = t;
+  localStorage.setItem("phi_theme", t);
+  const dark = t === "dark";
+  setIcon("themeIcon",    dark ? "fa-moon" : "fa-sun");
+  setIcon("topThemeIcon", dark ? "fa-moon" : "fa-sun");
+  setText("themeLabel",   dark ? "Light Mode" : "Dark Mode");
 }
 
-/* ═══════════════════════════════════════
-   BOOT
-═══════════════════════════════════════ */
+/* ═══════════════════ BOOT ═══════════════════ */
 async function boot() {
-  // FIX-BOOT-1: Prevent double-boot
-  if (window.__phiBooted) {
-    console.warn("[PHI] boot() called twice — skipping");
-    return;
-  }
-  window.__phiBooted = true;
-
   try {
-    _sb = getOrCreateSupabaseClient();
+    _sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+      auth: { detectSessionInUrl: true, persistSession: true, autoRefreshToken: true }
+    });
 
-    // FIX-SEND-1: Auto-reset stuck _isSending on tab focus
+    // FIX-9: Auto-reset stuck spinner on tab focus
     document.addEventListener("visibilitychange", () => {
-      if (!document.hidden && _isSending) {
-        console.warn("[PHI] Tab refocused with stuck _isSending — resetting");
-        _isSending = false;
-        setSendingState(false);
+      if (!document.hidden && _isSending && Date.now() - _sendStart > 35000) {
+        console.warn("[PHI] Resetting stuck spinner");
+        _isSending = false; setSendingState(false);
       }
     });
 
     _sb.auth.onAuthStateChange(async (event, session) => {
-      if (event === "SIGNED_IN" && session?.user) {
-        await onSignIn(session.user);
-      } else if (event === "SIGNED_OUT") {
-        if (IS_DEV) {
-          console.warn("[PHI] DEV: Signed out");
-          showDevAuthBanner();
-        } else {
-          window.location.href = "/login";
-        }
-      } else if (event === "TOKEN_REFRESHED") {
-        console.info("[PHI] Token refreshed successfully");
-      }
+      if (event === "SIGNED_IN"  && session?.user) await onSignIn(session.user);
+      if (event === "SIGNED_OUT") location.href = "/login";
+      if (event === "TOKEN_REFRESHED") console.info("[PHI] Token refreshed");
     });
 
-    // FIX-SESSION-1: Get session with lock-error recovery
-    const session = await getSessionSafe();
-
-    if (!session?.user) {
-      if (IS_DEV) {
-        console.warn("[PHI] DEV: No session — unauthenticated mode");
-        showDevAuthBanner();
-        initTheme();
-        wireEvents();
-        restoreShieldInputs();
-        return;
-      } else {
-        window.location.href = "/login";
-        return;
-      }
+    const { data } = await _sb.auth.getSession();
+    if (!data?.session?.user) {
+      if (IS_LOCAL) { console.warn("[PHI] Dev: no session"); return; }
+      location.href = "/login";
+      return;
     }
-
-    await onSignIn(session.user);
+    await onSignIn(data.session.user);
 
   } catch (err) {
-    console.error("[PHI] Boot error:", err);
-    toast("Failed to initialize. Please refresh the page.", "err");
-    // Still wire events so buttons at least respond
-    initTheme();
-    wireEvents();
+    console.error("[PHI] Boot:", err);
+    toast("Failed to initialize — please refresh.", "err");
   }
-}
-
-/* ═══════════════════════════════════════
-   FIX-SESSION-1: LOCK-SAFE getSession
-   Retries once with refreshSession() if
-   the WebLock is stolen by another client.
-═══════════════════════════════════════ */
-async function getSessionSafe() {
-  try {
-    const { data, error } = await _sb.auth.getSession();
-    if (error) throw error;
-    return data?.session;
-  } catch (lockErr) {
-    console.warn("[PHI] getSession lock error — trying refreshSession:", lockErr.message);
-    try {
-      const { data, error } = await _sb.auth.refreshSession();
-      if (error) throw error;
-      return data?.session;
-    } catch (refreshErr) {
-      console.error("[PHI] refreshSession also failed:", refreshErr.message);
-      return null;
-    }
-  }
-}
-
-function showDevAuthBanner() {
-  if (document.getElementById("devAuthBanner")) return;
-  const banner = document.createElement("div");
-  banner.id = "devAuthBanner";
-  banner.style.cssText = `
-    position:fixed;top:0;left:0;right:0;z-index:9999;
-    background:#1a1000;border-bottom:2px solid #fbbf24;
-    color:#fbbf24;font-size:.78rem;font-family:monospace;
-    padding:6px 16px;display:flex;align-items:center;gap:12px;
-  `;
-  banner.innerHTML = `
-    ⚠️ DEV MODE — No session.
-    <a href="/login" style="color:#2dd4bf;text-decoration:underline">Sign in</a>
-    to test auth. API: ${API_BASE}
-    <button onclick="this.parentNode.remove()" style="margin-left:auto;color:#fbbf24;background:none;border:none;cursor:pointer;font-size:1rem;">×</button>
-  `;
-  document.body.appendChild(banner);
 }
 
 async function onSignIn(user) {
   _user     = user;
-  _userName = user.user_metadata?.first_name
-    || user.email?.split("@")[0]?.replace(/[._-]/g, " ").split(" ")[0]
-    || "there";
-  _userName = _userName.charAt(0).toUpperCase() + _userName.slice(1);
+  _userName = (user.user_metadata?.first_name
+    || user.email?.split("@")[0]?.split(/[._-]/)[0]
+    || "there");
+  _userName = _userName[0].toUpperCase() + _userName.slice(1);
 
-  const avatarEl = el("userAvatar");
-  if (avatarEl) avatarEl.textContent = _userName[0].toUpperCase();
-  setText("userEmail",    user.email);
-  setText("welcomeName",  _userName);
+  setText("userEmail",   user.email);
+  setText("welcomeName", _userName);
+  if (el("userAvatar")) el("userAvatar").textContent = _userName[0].toUpperCase();
 
   const h = new Date().getHours();
   setText("timeGreeting", h < 12 ? "morning" : h < 17 ? "afternoon" : "evening");
 
-  await saveConsents();
-  initTheme();
-  wireEvents();
-  restoreShieldInputs();
+  // FIX-6: saveConsents is fire-and-forget — never blocks UI
+  saveConsents().catch(() => {});
+
   await loadHistory();
-  loadMarkersData();
-}
 
-/* ═══════════════════════════════════════
-   API HELPERS
-═══════════════════════════════════════ */
-async function getSession() {
-  return await getSessionSafe();
-}
+  // FIX-4: Auto-load shield from stored behavioral logs
+  autoLoadShield().catch(() => {});
+  loadMarkersData().catch(() => {});
 
-async function getHeaders(contentType = "application/json") {
-  try {
-    let session = await getSessionSafe();
-
-    if (!session) {
-      // One retry — force refresh
-      const { data } = await _sb.auth.refreshSession();
-      session = data?.session;
-    }
-
-    if (!session?.access_token) {
-      console.warn("[PHI] getHeaders: no valid session");
-      return null;
-    }
-
-    const h = { "Authorization": `Bearer ${session.access_token}` };
-    if (contentType) h["Content-Type"] = contentType;
-    return h;
-  } catch (err) {
-    console.error("[PHI] getHeaders error:", err.message);
-    return null;
+  // Restore goal weight
+  const saved = localStorage.getItem("phi_goal_wt");
+  if (saved) {
+    const gwInput = el("inputGoalWt");
+    if (gwInput) gwInput.value = saved;
+    const pInput = el("proteinInput");
+    if (pInput) pInput.value = saved;
+    calcProteinDisplay(parseFloat(saved), false);
   }
 }
 
-async function apiFetch(path, options = {}) {
-  const url = API_BASE + path;
+/* ═══════════════════ API ═══════════════════ */
+async function session() {
   try {
-    const controller = new AbortController();
-    const timeout    = setTimeout(() => controller.abort(), 30000);
-    const res        = await fetch(url, { ...options, signal: controller.signal });
-    clearTimeout(timeout);
+    const { data } = await _sb.auth.getSession();
+    if (data?.session) return data.session;
+    const { data: r } = await _sb.auth.refreshSession();
+    return r?.session || null;
+  } catch { return null; }
+}
+
+async function headers(ct = "application/json") {
+  const s = await session();
+  if (!s) return null;
+  const h = { Authorization: `Bearer ${s.access_token}` };
+  if (ct) h["Content-Type"] = ct;
+  return h;
+}
+
+async function apiFetch(path, opts = {}) {
+  const ctrl = new AbortController();
+  const t    = setTimeout(() => ctrl.abort(), 30000);
+  try {
+    const res = await fetch(API + path, { ...opts, signal: ctrl.signal });
+    clearTimeout(t);
     return res;
-  } catch (err) {
-    if (err.name === "AbortError") throw new Error("Request timed out");
-    throw err;
+  } catch (e) {
+    clearTimeout(t);
+    if (e.name === "AbortError") throw new Error("Request timed out");
+    throw e;
   }
 }
 
-async function apiJson(path, options = {}) {
-  const res  = await apiFetch(path, options);
-  const text = await res.text();
-  if (!text) return { ok: res.ok, status: res.status, data: null };
-  try {
-    return { ok: res.ok, status: res.status, data: JSON.parse(text) };
-  } catch {
-    return { ok: false, status: res.status, data: { error: "Invalid server response" } };
-  }
+async function apiJson(path, opts = {}) {
+  const res  = await apiFetch(path, opts);
+  const text = await res.text().catch(() => "");
+  let data   = null;
+  try { data = text ? JSON.parse(text) : null; } catch {}
+  return { ok: res.ok, status: res.status, data };
 }
 
 async function saveConsents() {
-  try {
-    const h = await getHeaders();
-    if (!h) return;
-    await apiFetch("/api/consent", {
-      method:  "POST",
-      headers: h,
-      body:    JSON.stringify({ consents: ["data_processing", "ai_processing", "document_processing"] })
-    });
-  } catch (err) {
-    console.warn("[PHI] Consent save failed (non-fatal):", err.message);
-  }
+  const h = await headers();
+  if (!h) return;
+  await apiFetch("/api/consent", {
+    method: "POST", headers: h,
+    body: JSON.stringify({ consents: ["data_processing","ai_processing","document_processing"] })
+  });
 }
 
-/* ═══════════════════════════════════════
-   THEME
-═══════════════════════════════════════ */
-function initTheme() {
-  const saved = localStorage.getItem("phi_theme") || "dark";
-  applyTheme(saved);
-}
-
-function toggleTheme() {
-  const cur = document.documentElement.dataset.theme || "dark";
-  applyTheme(cur === "dark" ? "light" : "dark");
-  closeUserMenu();
-}
-
-function applyTheme(theme) {
-  document.documentElement.dataset.theme = theme;
-  localStorage.setItem("phi_theme", theme);
-  const isDark = theme === "dark";
-  setIcon("themeIcon",    isDark ? "fa-moon" : "fa-sun");
-  setIcon("topThemeIcon", isDark ? "fa-moon" : "fa-sun");
-  setText("themeLabel",   isDark ? "Light Mode" : "Dark Mode");
-}
-
-/* ═══════════════════════════════════════
-   SIDEBAR / COCKPIT
-═══════════════════════════════════════ */
-function openSidebar() {
-  el("sidebar")?.classList.add("open");
-  el("sidebarOverlay")?.classList.add("show");
-  el("mobileMenuBtn")?.setAttribute("aria-expanded", "true");
-  closeCockpit();
-}
-
-function closeSidebar() {
-  el("sidebar")?.classList.remove("open");
-  el("sidebarOverlay")?.classList.remove("show");
-  el("mobileMenuBtn")?.setAttribute("aria-expanded", "false");
-}
-
-function toggleUserMenu() {
+/* ═══════════════════ SIDEBAR ═══════════════════ */
+const openSidebar  = () => { el("sidebar")?.classList.add("open"); el("sidebarOverlay")?.classList.add("show"); closeCockpit(); };
+const closeSidebar = () => { el("sidebar")?.classList.remove("open"); el("sidebarOverlay")?.classList.remove("show"); };
+const toggleUserMenu = () => {
   const dd = el("userDropdown");
-  if (!dd) return;
-  const isHidden = dd.getAttribute("aria-hidden") !== "false";
-  dd.setAttribute("aria-hidden", isHidden ? "false" : "true");
-}
+  if (dd) dd.setAttribute("aria-hidden", dd.getAttribute("aria-hidden") === "false" ? "true" : "false");
+};
+const closeUserMenu = () => el("userDropdown")?.setAttribute("aria-hidden","true");
 
-function closeUserMenu() {
-  el("userDropdown")?.setAttribute("aria-hidden", "true");
-}
+/* ═══════════════════ COCKPIT ═══════════════════ */
+const openCockpit  = () => { el("cockpit")?.classList.add("open"); el("cockpitOverlay")?.classList.add("show"); closeSidebar(); };
+const closeCockpit = () => { el("cockpit")?.classList.remove("open"); el("cockpitOverlay")?.classList.remove("show"); };
+const toggleCockpit = () => el("cockpit")?.classList.contains("open") ? closeCockpit() : openCockpit();
 
-function openCockpit() {
-  el("cockpit")?.classList.add("open");
-  el("cockpitOverlay")?.classList.add("show");
+/* ═══════════════════ FIX-3: VIEWS ═══════════════════ */
+function switchView(view) {
+  ["chat","health","reports"].forEach(v => {
+    el(`view${v[0].toUpperCase()+v.slice(1)}`)?.classList.toggle("active", v === view);
+    el(`nav${v[0].toUpperCase()+v.slice(1)}`)?.classList.toggle("active", v === view);
+  });
   closeSidebar();
+
+  if (view === "health")  loadHealthView();
+  if (view === "reports") loadReportsView();
+
+  const titles = { chat:"Chat with PHI", health:"My Health", reports:"Lab Reports" };
+  setText("convTitle", titles[view] || "");
 }
 
-function closeCockpit() {
-  el("cockpit")?.classList.remove("open");
-  el("cockpitOverlay")?.classList.remove("show");
-}
+/* ─── My Health view ─── */
+async function loadHealthView() {
+  const content = el("healthContent");
+  if (!content) return;
+  content.innerHTML = `<div class="hv-empty"><i class="fa-solid fa-spinner fa-spin"></i>Loading your health picture…</div>`;
 
-function toggleCockpit() {
-  const cockpit = el("cockpit");
-  if (!cockpit) return;
-  cockpit.classList.contains("open") ? closeCockpit() : openCockpit();
-}
-
-/* ═══════════════════════════════════════
-   VIEWS
-═══════════════════════════════════════ */
-function showWelcome() {
-  el("welcomeScreen")?.classList.remove("hidden");
-  el("chatDisplay")?.classList.add("hidden");
-  setText("convTitle", "Ready");
-}
-
-function showChat() {
-  el("welcomeScreen")?.classList.add("hidden");
-  el("chatDisplay")?.classList.remove("hidden");
-}
-
-function resetToWelcome() {
-  _convId  = null;
-  _uploads = [];
-  _docCtx  = { text: null, sent: false, hasDoc: false };
-  clearFilePreview();
-  const cd = el("chatDisplay");
-  if (cd) cd.innerHTML = "";
-  showWelcome();
-  document.querySelectorAll(".hist-item").forEach(e => e.classList.remove("active"));
-  setText("convTitle", "Ready");
-}
-
-/* ═══════════════════════════════════════
-   HISTORY
-═══════════════════════════════════════ */
-async function loadHistory() {
-  const h = await getHeaders();
-  if (!h) {
-    const list = el("historyList");
-    if (list) list.innerHTML = '<div class="sb-empty">Sign in to see history</div>';
-    return;
-  }
+  const h = await headers();
+  if (!h) return;
 
   try {
-    const { ok, data } = await apiJson("/history", {
-      method: "POST", headers: h, body: JSON.stringify({})
-    });
-    if (ok && Array.isArray(data)) {
-      renderHistory(data);
-    } else {
-      const list = el("historyList");
-      if (list) list.innerHTML = '<div class="sb-empty">Could not load history</div>';
+    const [markersRes, dashRes] = await Promise.all([
+      apiJson("/api/health-markers", { headers: h }),
+      apiJson("/api/dashboard",      { headers: h }).catch(() => ({ ok: false, data: null }))
+    ]);
+
+    const markers   = (markersRes.ok && Array.isArray(markersRes.data)) ? markersRes.data : [];
+    const dashboard = (dashRes.ok && dashRes.data) ? dashRes.data : null;
+
+    if (!markers.length) {
+      content.innerHTML = `
+        <div class="hv-empty">
+          <i class="fa-solid fa-chart-line"></i>
+          No health data yet. Upload a Quest or LabCorp PDF to see your cliff risk picture.
+          <br>
+          <button class="hv-cta-btn" onclick="document.getElementById('fileInput').click()">
+            <i class="fa-solid fa-upload"></i> Upload Your First Report
+          </button>
+        </div>`;
+      return;
     }
-  } catch {
-    const list = el("historyList");
-    if (list) list.innerHTML = '<div class="sb-empty">No conversations yet</div>';
+
+    content.innerHTML = buildHealthViewHTML(markers, dashboard);
+
+    // Wire "Ask PHI" buttons
+    content.querySelectorAll("[data-ask]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const q = btn.dataset.ask;
+        switchView("chat");
+        setTimeout(() => sendMessage(q), 100);
+      });
+    });
+
+  } catch (e) {
+    console.error("[PHI] Health view:", e);
+    content.innerHTML = `<div class="hv-empty"><i class="fa-solid fa-circle-exclamation"></i>Could not load health data. Please try again.</div>`;
   }
 }
 
-function renderHistory(conversations) {
+function buildHealthViewHTML(markers, dashboard) {
+  const abnormal  = markers.filter(m => m.status === "HIGH" || m.status === "LOW");
+  const trending  = dashboard?.trends || [];
+  const cliffalerts = dashboard?.cliff_alerts || [];
+
+  let html = "";
+
+  // ── Cliff Risk Summary ──
+  const riskLevel  = cliffalerts.length > 0 ? "high" : abnormal.length > 2 ? "warn" : "none";
+  const riskScore  = cliffalerts.length > 0 ? cliffalerts.length : abnormal.length;
+  const riskLabel  = riskLevel === "high" ? "Active Rebound Signals" : riskLevel === "warn" ? "Markers Need Attention" : "No Cliff Signals";
+  const riskDesc   = riskLevel === "high"
+    ? `${cliffalerts.length} clinical rebound threshold${cliffalerts.length > 1 ? "s" : ""} exceeded. Discuss with your provider urgently.`
+    : riskLevel === "warn"
+    ? `${abnormal.length} markers are outside the normal range. PHI has detailed analysis ready.`
+    : "All monitored markers are within normal range. Keep up protein intake and resistance training.";
+
+  html += `
+    <div class="hv-section">
+      <div class="hv-heading"><i class="fa-solid fa-triangle-exclamation"></i>Cliff Risk Summary</div>
+      <div class="cliff-card risk-${riskLevel}">
+        <div>
+          <div class="cliff-num risk-${riskLevel}">${riskLevel === "none" ? "✓" : riskScore}</div>
+          <div style="font-size:.7rem;color:var(--text-3);margin-top:3px">${riskLevel === "none" ? "Clear" : "Signal" + (riskScore > 1 ? "s" : "")}</div>
+        </div>
+        <div class="cliff-detail">
+          <h3>${riskLabel}</h3>
+          <p>${riskDesc}</p>
+          ${riskLevel !== "none" ? `<button class="alert-cta" data-ask="Run a full cliff risk analysis. What are my most urgent signals and what should I do this week?" style="margin-top:8px">Ask PHI to analyze →</button>` : ""}
+        </div>
+      </div>
+    </div>`;
+
+  // ── Active Cliff Alerts ──
+  if (cliffalerts.length) {
+    html += `<div class="hv-section"><div class="hv-heading"><i class="fa-solid fa-bolt"></i>Active Alerts</div><div class="alert-feed">`;
+    cliffalerts.forEach(a => {
+      html += `
+        <div class="alert-item danger">
+          <div class="alert-title">${esc(a.headline || a.title || "Rebound signal")}</div>
+          <div class="alert-desc">${esc(a.detail || a.desc || "")}</div>
+          ${a.action ? `<button class="alert-cta" data-ask="${esc(a.action)}">What should I do? →</button>` : ""}
+        </div>`;
+    });
+    html += `</div></div>`;
+  }
+
+  // ── Key Markers ──
+  if (markers.length) {
+    html += `<div class="hv-section"><div class="hv-heading"><i class="fa-solid fa-flask"></i>Latest Lab Values</div><div class="trend-grid">`;
+    markers.slice(0, 12).forEach(m => {
+      const s    = (m.status || "").toLowerCase();
+      const cls  = s === "high" ? "hi" : s === "low" ? "lo" : s === "normal" ? "ok" : "";
+      const trend = trending.find(t => t.marker === m.marker_name);
+      let badgeHtml = "";
+      if (trend) {
+        const isGood = !trend.concerning;
+        const dir    = trend.direction === "rising" ? "↑" : "↓";
+        const cls2   = isGood ? "good" : "bad";
+        badgeHtml = `<div class="trend-badge ${cls2}">${dir} ${trend.pct_change}%</div>`;
+      }
+      html += `
+        <div class="trend-card">
+          <div class="trend-name" title="${esc(m.marker_name)}">${esc(m.marker_name)}</div>
+          <div>
+            <span class="trend-val ${cls}">${m.value}</span>
+            <span class="trend-unit">${esc(m.unit || "")}</span>
+          </div>
+          ${badgeHtml}
+          ${m.date ? `<div class="trend-dates">${m.date}</div>` : ""}
+        </div>`;
+    });
+    html += `</div></div>`;
+  }
+
+  // ── Abnormal markers feed ──
+  if (abnormal.length) {
+    html += `<div class="hv-section"><div class="hv-heading"><i class="fa-solid fa-circle-exclamation"></i>Needs Attention</div><div class="alert-feed">`;
+    abnormal.slice(0, 6).forEach(m => {
+      const dir = m.status === "HIGH" ? "above" : "below";
+      html += `
+        <div class="alert-item warn">
+          <div class="alert-title">${esc(m.marker_name)} is ${m.status}</div>
+          <div class="alert-desc">${m.value} ${esc(m.unit || "")} — ${dir} normal range ${m.reference_range ? `(${esc(m.reference_range)})` : ""}</div>
+          <button class="alert-cta" data-ask="Explain my ${esc(m.marker_name)} result of ${m.value} ${esc(m.unit || "")}. Is this related to the GLP-1 cliff? What should I do?">Explain this →</button>
+        </div>`;
+    });
+    html += `</div></div>`;
+  }
+
+  return html;
+}
+
+/* ─── Lab Reports view ─── */
+async function loadReportsView() {
+  const list = el("reportsList");
+  if (!list) return;
+  list.innerHTML = `<div class="hv-empty"><i class="fa-solid fa-spinner fa-spin"></i>Loading your reports…</div>`;
+
+  const h = await headers();
+  if (!h) return;
+
+  try {
+    const { ok, data } = await apiJson("/doctor-prep/history", { headers: h });
+    if (!ok || !data?.preps?.length) {
+      list.innerHTML = `
+        <div class="hv-empty">
+          <i class="fa-solid fa-file-medical"></i>
+          No lab reports uploaded yet.
+          <br>
+          <button class="hv-cta-btn" onclick="document.getElementById('fileInput').click()">
+            <i class="fa-solid fa-upload"></i> Upload Your First Report
+          </button>
+        </div>`;
+      return;
+    }
+
+    list.innerHTML = data.preps.map(p => {
+      const date = p.generated_at ? new Date(p.generated_at).toLocaleDateString("en-US",{ month:"short", day:"numeric", year:"numeric"}) : "";
+      return `
+        <div class="report-card">
+          <div class="report-icon"><i class="fa-solid fa-file-medical-alt"></i></div>
+          <div class="report-meta">
+            <div class="report-name">${esc(p.filename || "Lab Report")}</div>
+            <div class="report-date">${date}</div>
+            <div class="report-tags">
+              <span class="report-tag info">Lab Report</span>
+            </div>
+          </div>
+          <button class="report-ask-btn" data-filename="${esc(p.filename || "")}"
+            onclick="askAboutReport('${esc(p.filename || "your report")}')">
+            Ask PHI →
+          </button>
+        </div>`;
+    }).join("");
+
+  } catch (e) {
+    list.innerHTML = `<div class="hv-empty"><i class="fa-solid fa-circle-exclamation"></i>Could not load reports. Please try again.</div>`;
+  }
+}
+
+function askAboutReport(filename) {
+  switchView("chat");
+  setTimeout(() => sendMessage(`Please summarize my ${filename} report and flag any cliff signals or abnormal values.`), 100);
+}
+
+/* ═══════════════════ HISTORY ═══════════════════ */
+async function loadHistory() {
+  const h = await headers();
+  if (!h) return;
+  try {
+    const { ok, data } = await apiJson("/history", { method:"POST", headers:h, body:JSON.stringify({}) });
+    if (ok && Array.isArray(data)) renderHistory(data);
+  } catch {}
+}
+
+function renderHistory(convs) {
   const list = el("historyList");
   if (!list) return;
-  if (!conversations.length) {
-    list.innerHTML = '<div class="sb-empty">No conversations yet</div>';
-    return;
-  }
+  if (!convs.length) { list.innerHTML = '<div class="sb-empty">No conversations yet</div>'; return; }
 
-  const today     = new Date(); today.setHours(0, 0, 0, 0);
-  const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
-  const groups    = new Map();
+  const today = new Date(); today.setHours(0,0,0,0);
+  const yest  = new Date(today); yest.setDate(today.getDate()-1);
+  const groups = new Map();
 
-  conversations.forEach(c => {
-    const d = c.created_at ? new Date(c.created_at) : new Date();
-    d.setHours(0, 0, 0, 0);
-    let label;
-    if      (d.getTime() === today.getTime())     label = "Today";
-    else if (d.getTime() === yesterday.getTime()) label = "Yesterday";
-    else label = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  convs.forEach(c => {
+    const d = new Date(c.created_at || Date.now()); d.setHours(0,0,0,0);
+    const label = d.getTime() === today.getTime() ? "Today"
+      : d.getTime() === yest.getTime() ? "Yesterday"
+      : d.toLocaleDateString("en-US",{month:"short",day:"numeric"});
     if (!groups.has(label)) groups.set(label, []);
     groups.get(label).push(c);
   });
 
   let html = "";
-  groups.forEach((convs, label) => {
+  groups.forEach((arr, label) => {
     html += `<div class="hist-group-label">${esc(label)}</div>`;
-    convs.forEach(c => {
-      const isActive = c.id === _convId ? " active" : "";
-      const title    = (c.title && c.title !== "New Chat") ? c.title : "New Conversation";
-      html += `<div class="hist-item${isActive}" data-id="${esc(c.id)}">
+    arr.forEach(c => {
+      const active = c.id === _convId ? " active" : "";
+      const title  = (c.title && c.title !== "New Chat") ? c.title : "New Conversation";
+      html += `<div class="hist-item${active}" data-id="${esc(c.id)}">
         <span class="hist-title">${esc(title)}</span>
-        <button class="hist-del" data-del="${esc(c.id)}" title="Delete">
-          <i class="fa-solid fa-trash"></i>
-        </button>
+        <button class="hist-del" data-del="${esc(c.id)}" title="Delete"><i class="fa-solid fa-trash"></i></button>
       </div>`;
     });
   });
@@ -467,376 +450,281 @@ async function openConversation(id) {
   if (_isSending || id === _convId) { closeSidebar(); return; }
   _convId  = id;
   _uploads = [];
-  _docCtx  = { text: null, sent: false, hasDoc: false };
+  _docCtx  = { text: null, hasDoc: false, filename: "" };
   clearFilePreview();
   showChat();
-  const cd = el("chatDisplay");
-  if (cd) cd.innerHTML = "";
-  document.querySelectorAll(".hist-item").forEach(e =>
-    e.classList.toggle("active", e.dataset.id === id)
-  );
+  if (el("chatDisplay")) el("chatDisplay").innerHTML = "";
+  document.querySelectorAll(".hist-item").forEach(e => e.classList.toggle("active", e.dataset.id === id));
   closeSidebar();
 
-  const h = await getHeaders();
+  const h = await headers();
   if (!h) return;
-
   try {
-    const { ok, data } = await apiJson("/conversation", {
-      method: "POST", headers: h,
-      body:   JSON.stringify({ conversation_id: id })
-    });
-    if (ok && Array.isArray(data) && data.length) {
-      data.forEach(m => appendMessage(m.content, m.role === "user" ? "user" : "ai"));
-      scrollToBottom();
-    }
-  } catch { toast("Could not load conversation", "err"); }
+    const { ok, data } = await apiJson("/conversation", { method:"POST", headers:h, body:JSON.stringify({conversation_id:id}) });
+    if (ok && Array.isArray(data)) { data.forEach(m => appendMsg(m.content, m.role === "user" ? "user" : "ai")); scrollBottom(); }
+  } catch {}
 }
 
 async function deleteConversation(id, e) {
   e?.stopPropagation();
-  const h = await getHeaders();
-  if (!h) return;
   document.querySelector(`.hist-item[data-id="${id}"]`)?.remove();
-  if (id === _convId) resetToWelcome();
-  await apiFetch("/delete", {
-    method:  "POST",
-    headers: h,
-    body:    JSON.stringify({ conversation_id: id })
-  }).catch(() => {});
+  if (id === _convId) resetChat();
+  const h = await headers();
+  if (h) await apiFetch("/delete", { method:"POST", headers:h, body:JSON.stringify({conversation_id:id}) }).catch(() => {});
   toast("Conversation deleted");
 }
 
-/* ═══════════════════════════════════════
-   CONVERSATIONS
-═══════════════════════════════════════ */
+/* ═══════════════════ CHAT RESET ═══════════════════ */
+function resetChat() {
+  _convId  = null;
+  _uploads = [];
+  _docCtx  = { text: null, hasDoc: false, filename: "" };
+  clearFilePreview();
+  if (el("chatDisplay")) el("chatDisplay").innerHTML = "";
+  showWelcome();
+  document.querySelectorAll(".hist-item").forEach(e => e.classList.remove("active"));
+  setText("convTitle", "Ready");
+}
+
+function showWelcome() {
+  el("welcomeScreen")?.classList.remove("hidden");
+  el("chatDisplay")?.classList.add("hidden");
+}
+function showChat() {
+  el("welcomeScreen")?.classList.add("hidden");
+  el("chatDisplay")?.classList.remove("hidden");
+}
+
+/* ═══════════════════ CONVERSATION CREATE ═══════════════════ */
 async function createConversation() {
-  const h = await getHeaders();
-  if (!h) {
-    toast("Session expired — please sign in again.", "err");
-    setTimeout(() => { window.location.href = "/login"; }, 2000);
-    return null;
+  const h = await headers();
+  if (!h) { toast("Session expired — please sign in.", "err"); location.href = "/login"; return null; }
+
+  const tryCreate = async () => {
+    const { ok, status, data } = await apiJson("/conversation/create", { method:"POST", headers:h, body:JSON.stringify({}) });
+    return { ok, status, data };
+  };
+
+  let { ok, status, data } = await tryCreate();
+
+  if (!ok && status === 403) {
+    await saveConsents().catch(() => {});
+    ({ ok, status, data } = await tryCreate());
   }
 
-  try {
-    const { ok, status, data } = await apiJson("/conversation/create", {
-      method: "POST", headers: h, body: JSON.stringify({})
-    });
-
-    if (ok && data?.conversation_id) {
-      _convId = data.conversation_id;
-      prependToHistory(_convId, "New Conversation");
-      return _convId;
-    }
-
-    console.error("[PHI] createConversation failed:", status, data);
-
-    if (status === 403) {
-      await saveConsents();
-      const retry = await apiJson("/conversation/create", {
-        method: "POST", headers: h, body: JSON.stringify({})
-      });
-      if (retry.ok && retry.data?.conversation_id) {
-        _convId = retry.data.conversation_id;
-        prependToHistory(_convId, "New Conversation");
-        return _convId;
-      }
-    }
-  } catch (err) {
-    console.error("[PHI] createConversation exception:", err);
-  }
-
-  if (IS_DEV) {
-    _convId = "local-" + Date.now();
-    console.warn("[PHI] Using local conversation ID:", _convId);
+  if (ok && data?.conversation_id) {
+    _convId = data.conversation_id;
+    prependHistory(_convId, "New Conversation");
     return _convId;
   }
 
-  toast("Could not start conversation. Please try again.", "err");
+  console.error("[PHI] createConversation failed:", status, data);
+  if (IS_LOCAL) { _convId = "local-" + Date.now(); return _convId; }
+  toast("Could not start conversation. Try refreshing.", "err");
   return null;
 }
 
-function prependToHistory(id, title) {
+function prependHistory(id, title) {
   const list = el("historyList");
   if (!list) return;
   list.querySelector(".sb-empty")?.remove();
-
-  let todayGroup = list.querySelector(".hist-group-label");
-  if (!todayGroup || todayGroup.textContent !== "Today") {
-    todayGroup = document.createElement("div");
-    todayGroup.className   = "hist-group-label";
-    todayGroup.textContent = "Today";
-    list.prepend(todayGroup);
+  let group = list.querySelector(".hist-group-label");
+  if (!group || group.textContent !== "Today") {
+    group = Object.assign(document.createElement("div"), { className:"hist-group-label", textContent:"Today" });
+    list.prepend(group);
   }
-
-  const item       = document.createElement("div");
-  item.className   = "hist-item active";
-  item.dataset.id  = id;
-  item.innerHTML   = `
-    <span class="hist-title">${esc(title)}</span>
-    <button class="hist-del" data-del="${esc(id)}" title="Delete">
-      <i class="fa-solid fa-trash"></i>
-    </button>`;
-  todayGroup.insertAdjacentElement("afterend", item);
-
-  document.querySelectorAll(".hist-item").forEach(e =>
-    e.classList.toggle("active", e.dataset.id === id)
-  );
+  const item = Object.assign(document.createElement("div"), { className:"hist-item active" });
+  item.dataset.id = id;
+  item.innerHTML  = `<span class="hist-title">${esc(title)}</span><button class="hist-del" data-del="${esc(id)}" title="Delete"><i class="fa-solid fa-trash"></i></button>`;
+  group.insertAdjacentElement("afterend", item);
+  document.querySelectorAll(".hist-item").forEach(e => e.classList.toggle("active", e.dataset.id === id));
 }
 
 async function renameConversation(id, title) {
-  const h = await getHeaders();
+  const h = await headers();
   if (!h || !id) return;
-  const short   = title.slice(0, 50);
-  const titleEl = document.querySelector(`.hist-item[data-id="${id}"] .hist-title`);
-  if (titleEl) titleEl.textContent = short;
+  const short = title.slice(0, 50);
+  const t = document.querySelector(`.hist-item[data-id="${id}"] .hist-title`);
+  if (t) t.textContent = short;
   setText("convTitle", short);
-  await apiFetch("/rename", {
-    method:  "POST",
-    headers: h,
-    body:    JSON.stringify({ conversation_id: id, title: short })
-  }).catch(() => {});
+  await apiFetch("/rename", { method:"POST", headers:h, body:JSON.stringify({conversation_id:id, title:short}) }).catch(() => {});
 }
 
-/* ═══════════════════════════════════════
-   CHAT — SEND
-═══════════════════════════════════════ */
+/* ═══════════════════ SEND ═══════════════════ */
 async function handleSend() {
-  // FIX-SEND-1: Reset stuck _isSending (safety valve)
-  if (_isSending) {
-    const stuckMs = _sendingTimer ? Date.now() - _sendingTimer : 0;
-    if (stuckMs > 35000) {
-      console.warn("[PHI] _isSending stuck >35s — resetting");
-      _isSending = false;
-      setSendingState(false);
-    } else {
-      return;
-    }
-  }
+  if (_isSending) return;
+  const s = await session();
+  if (!s) { toast("Session expired. Please sign in.", "err"); location.href = "/login"; return; }
 
-  const session = await getSessionSafe();
-  if (!session) {
-    toast("Session expired. Please sign in again.", "err");
-    setTimeout(() => { window.location.href = "/login"; }, 2000);
-    return;
-  }
-
-  const ta  = el("chatInput");
-  let text  = ta?.value.trim();
-  if (!text && _uploads.length) {
-    text = "Please read my uploaded lab report and explain every finding — what's abnormal, what it means, and what I should discuss with my doctor.";
-  }
+  const ta   = el("chatInput");
+  let   text = ta?.value.trim();
+  if (!text && _uploads.length) text = "Please analyze my uploaded lab report — explain every finding, flag what's abnormal, and identify any cliff signals.";
   if (!text) return;
   if (ta) { ta.value = ""; ta.style.height = "auto"; }
-  await sendMessage(text);
+  sendMessage(text);
 }
 
+/* FIX-5: sendMessage works regardless of whether file was attached before or after text */
 async function sendMessage(text) {
   if (_isSending || !text) return;
-  _isSending    = true;
-  _sendingTimer = Date.now();  // FIX-SEND-1: track when send started
+  _isSending = true;
+  _sendStart = Date.now();
   setSendingState(true);
+  switchView("chat");
   showChat();
 
   if (!_convId) {
     const id = await createConversation();
-    if (!id) {
-      _isSending = false;
-      setSendingState(false);
-      return;
-    }
+    if (!id) { _isSending = false; setSendingState(false); return; }
   }
 
-  // Process queued file uploads first
+  // Process file upload if pending — BEFORE appending user message
   if (_uploads.length) {
     const loadRow = appendTyping();
-    updateTypingText(loadRow, "Reading your report…");
-    const docResult = await processFileUpload(_uploads[0]);
+    updateTyping(loadRow, "Reading your report…");
+    const result = await processUpload(_uploads[0]);
     loadRow?.remove();
     _uploads = [];
     clearFilePreview();
-
-    if (docResult?.document_text) {
-      _docCtx.text   = docResult.document_text;
-      _docCtx.hasDoc = true;
-      _docCtx.sent   = false;
-    } else if (docResult === null) {
-      _isSending = false;
-      setSendingState(false);
-      return;
+    if (result?.document_text) {
+      _docCtx.text     = result.document_text;
+      _docCtx.hasDoc   = true;
+      _docCtx.filename = result.filename || "";
+      toast(`${result.filename || "Report"} analyzed ✓`);
+    } else if (result === null) {
+      _isSending = false; setSendingState(false); return;
     }
   }
 
-  appendMessage(text, "user");
+  appendMsg(text, "user");
   const botRow = appendTyping();
-  scrollToBottom();
+  scrollBottom();
 
-  const sendDoc = !_docCtx.sent ? (_docCtx.text || "") : "";
-  const h       = await getHeaders();
+  // Build payload — include doc text on first message after upload
+  const payload = {
+    conversation_id: _convId,
+    message:         text,
+    has_documents:   _docCtx.hasDoc,
+    document_text:   _docCtx.hasDoc ? (_docCtx.text || "") : "",
+  };
 
+  const h = await headers();
   if (!h) {
-    updateMessage(botRow, "Your session has expired. Please [sign in again](/login).");
-    _isSending = false;
-    setSendingState(false);
-    return;
+    updateMsg(botRow, "Session expired. Please sign in again.");
+    _isSending = false; setSendingState(false); return;
   }
 
+  let success = false;
   try {
-    const { ok, status, data } = await apiJson("/chat", {
-      method:  "POST",
-      headers: h,
-      body:    JSON.stringify({
-        conversation_id: _convId,
-        message:         text,
-        has_documents:   _docCtx.hasDoc,
-        document_text:   sendDoc,
-      })
-    });
+    let { ok, status, data } = await apiJson("/chat", { method:"POST", headers:h, body:JSON.stringify(payload) });
 
-    const reply = data?.reply;
-
-    if (status === 401) {
-      updateMessage(botRow, "Your session has expired. Please sign in again.");
-      toast("Session expired.", "err");
-    } else if (status === 403) {
-      await saveConsents();
-      const retry = await apiJson("/chat", {
-        method:  "POST",
-        headers: h,
-        body:    JSON.stringify({
-          conversation_id: _convId,
-          message:         text,
-          has_documents:   _docCtx.hasDoc,
-          document_text:   sendDoc,
-        })
-      });
-      if (retry.ok && retry.data?.reply) {
-        updateMessage(botRow, retry.data.reply);
-        if (sendDoc) _docCtx.sent = true;
-      } else {
-        updateMessage(botRow, "Consent required. Please refresh the page.");
-      }
-    } else if (!ok || !reply) {
-      console.error("[PHI] Chat error:", status, data);
-      updateMessage(botRow,
-        "I ran into a technical issue. Please try again.\n\n" +
-        "---\n⚕️ *PHI is an educational wellness tool. Always consult your provider.*"
-      );
-    } else {
-      updateMessage(botRow, reply);
-      if (sendDoc) _docCtx.sent = true;
-      const userMsgCount = el("chatDisplay")?.querySelectorAll(".chat-msg.user-msg").length || 0;
-      if (userMsgCount === 1 && _convId) renameConversation(_convId, text);
-      if (_docCtx.hasDoc) setTimeout(loadMarkersData, 2000);
+    // FIX-7: 403 → consent retry
+    if (!ok && status === 403) {
+      await saveConsents().catch(() => {});
+      ({ ok, status, data } = await apiJson("/chat", { method:"POST", headers:h, body:JSON.stringify(payload) }));
     }
+
+    if (ok && data?.reply) {
+      updateMsg(botRow, data.reply);
+      success = true;
+    } else if (status === 401) {
+      updateMsg(botRow, "Session expired. Please sign in again.");
+      toast("Session expired.", "err");
+    } else {
+      console.error("[PHI] /chat error:", status, data);
+      updateMsg(botRow, "I ran into a technical issue. Please try again.\n\n---\n⚕️ *Always consult your healthcare provider.*");
+    }
+
+    // Rename conversation on first user message
+    const userMsgs = el("chatDisplay")?.querySelectorAll(".chat-msg.user-msg").length || 0;
+    if (userMsgs === 1 && _convId) renameConversation(_convId, text);
+
+    // Reload markers after document analysis
+    if (success && _docCtx.hasDoc) setTimeout(loadMarkersData, 2500);
 
   } catch (err) {
-    const msg = err.message?.includes("timed out")
-      ? "The request timed out — please try again."
-      : "Connection error. Please check your internet.";
-    updateMessage(botRow,
-      msg + "\n\n---\n⚕️ *PHI is an educational wellness tool. Always consult your provider.*"
-    );
-    console.error("[PHI] sendMessage exception:", err);
+    updateMsg(botRow, (err.message?.includes("timed out") ? "The request timed out." : "Connection error.") +
+      "\n\n---\n⚕️ *Always consult your healthcare provider.*");
+    console.error("[PHI] sendMessage:", err);
   }
 
-  _isSending    = false;
-  _sendingTimer = null;
-  setSendingState(false);
-  scrollToBottom();
+  _isSending = false; setSendingState(false); scrollBottom();
 }
 
 function setSendingState(on) {
   const btn = el("sendBtn");
   const ta  = el("chatInput");
-  if (btn) {
-    btn.disabled  = on;
-    btn.innerHTML = on
-      ? '<i class="fa-solid fa-spinner" style="animation:spin .7s linear infinite"></i>'
-      : '<i class="fa-solid fa-arrow-up"></i>';
-  }
+  if (btn) { btn.disabled = on; btn.innerHTML = on ? '<i class="fa-solid fa-spinner" style="animation:spin .7s linear infinite"></i>' : '<i class="fa-solid fa-arrow-up"></i>'; }
   if (ta) ta.disabled = on;
 }
 
-/* ═══════════════════════════════════════
-   FILE UPLOAD
-═══════════════════════════════════════ */
+/* ═══════════════════ FIX-8: FILE UPLOAD ═══════════════════ */
 function handleFileSelect(e) {
-  Array.from(e.target.files || []).forEach(f => addFile(f));
+  Array.from(e.target.files || []).forEach(addFile);
   e.target.value = "";
 }
 
 function addFile(file) {
-  if (file.size > 10 * 1024 * 1024) { toast(`${file.name} is too large. Max 10 MB.`, "err"); return; }
+  if (file.size > 10 * 1024 * 1024) { toast(`${file.name} is too large (max 10 MB).`, "err"); return; }
   if (!/\.(pdf|txt)$/i.test(file.name)) { toast("Only PDF or TXT files supported.", "err"); return; }
   _uploads.push(file);
   renderFilePreview();
   toast(`${file.name} ready — press Send to analyze`);
 }
 
-function removeFile(idx) {
-  _uploads.splice(idx, 1);
-  renderFilePreview();
-}
+function removeFile(i) { _uploads.splice(i, 1); renderFilePreview(); }
 
 function renderFilePreview() {
-  const strip = el("filePreview");
-  if (!strip) return;
-  if (!_uploads.length) { strip.classList.remove("show"); strip.innerHTML = ""; return; }
-  strip.classList.add("show");
-  strip.innerHTML = _uploads.map((f, i) => `
+  const s = el("filePreview");
+  if (!s) return;
+  if (!_uploads.length) { s.classList.remove("show"); s.innerHTML = ""; return; }
+  s.classList.add("show");
+  s.innerHTML = _uploads.map((f,i) => `
     <div class="file-chip">
       <i class="fa-solid ${f.name.endsWith(".pdf") ? "fa-file-pdf" : "fa-file-lines"}"></i>
       <span>${esc(f.name)}</span>
-      <button class="file-chip-rm" onclick="removeFile(${i})" aria-label="Remove">
-        <i class="fa-solid fa-xmark"></i>
-      </button>
+      <button class="file-chip-rm" onclick="removeFile(${i})"><i class="fa-solid fa-xmark"></i></button>
     </div>`).join("");
 }
 
 function clearFilePreview() {
-  const strip = el("filePreview");
-  if (strip) { strip.classList.remove("show"); strip.innerHTML = ""; }
+  const s = el("filePreview");
+  if (s) { s.classList.remove("show"); s.innerHTML = ""; }
 }
 
-async function processFileUpload(file) {
-  const session = await getSessionSafe();
-  if (!session) {
-    toast("Session expired. Please sign in again.", "err");
-    return null;
-  }
+async function processUpload(file) {
+  const s = await session();
+  if (!s) { toast("Session expired.", "err"); return null; }
 
   const form = new FormData();
   form.append("file", file);
 
+  const doUpload = async (token) => fetch(API + "/analyze", {
+    method:"POST", headers:{ Authorization:`Bearer ${token}` }, body:form
+  });
+
   try {
-    const res = await apiFetch("/analyze", {
-      method:  "POST",
-      headers: { "Authorization": `Bearer ${session.access_token}` },
-      body:    form,
-    });
+    let res = await Promise.race([
+      doUpload(s.access_token),
+      new Promise((_, r) => setTimeout(() => r(new Error("Upload timed out")), 30000))
+    ]);
+
+    // FIX-8: 403 → consent retry
+    if (res.status === 403) {
+      await saveConsents().catch(() => {});
+      const s2 = await session();
+      if (s2) res = await doUpload(s2.access_token);
+    }
 
     if (res.status === 401) { toast("Session expired.", "err"); return null; }
-    if (res.status === 403) {
-      await saveConsents();
-      const retry = await apiFetch("/analyze", {
-        method:  "POST",
-        headers: { "Authorization": `Bearer ${session.access_token}` },
-        body:    form,
-      });
-      if (retry.ok) return await retry.json();
-      toast("Permission error. Refresh and try again.", "err");
-      return null;
-    }
-    if (res.status === 413) { toast("File too large. Max 5 MB.", "err"); return null; }
+    if (res.status === 413) { toast("File too large (max 5 MB).", "err"); return null; }
     if (res.status === 400) {
       const d = await res.json().catch(() => ({}));
-      toast(d.error || "Could not read this file.", "err");
-      return null;
+      toast(d.error || "Could not read this file.", "err"); return null;
     }
     if (!res.ok) {
       const d = await res.json().catch(() => ({}));
-      toast(d.error || `Upload failed (${res.status}).`, "err");
-      return null;
+      toast(d.error || `Upload failed (${res.status}).`, "err"); return null;
     }
     return await res.json();
 
@@ -846,102 +734,65 @@ async function processFileUpload(file) {
   }
 }
 
-/* ═══════════════════════════════════════
-   MESSAGE RENDERING
-═══════════════════════════════════════ */
-function appendMessage(text, role) {
-  const display = el("chatDisplay");
-  if (!display) return null;
-
-  const wrap      = document.createElement("div");
-  wrap.className  = `chat-msg ${role === "user" ? "user-msg" : "ai-msg"}`;
-  const avLabel   = role === "user" ? (_userName?.[0]?.toUpperCase() || "U") : "φ";
-  const avClass   = role === "user" ? "av-user" : "av-ai";
-  const avEl      = `<div class="msg-av ${avClass}">${avLabel}</div>`;
-  const bodyEl    = document.createElement("div");
-  bodyEl.className = "msg-body";
-
-  if (role === "user") {
-    bodyEl.textContent = text;
-    wrap.innerHTML = avEl;
-    wrap.insertBefore(bodyEl, wrap.querySelector(".msg-av"));
-  } else {
-    renderAIContent(bodyEl, text);
-    wrap.innerHTML = avEl;
-    wrap.appendChild(bodyEl);
-  }
-
-  display.appendChild(wrap);
+/* ═══════════════════ MESSAGE RENDERING ═══════════════════ */
+function appendMsg(text, role) {
+  const d = el("chatDisplay");
+  if (!d) return null;
+  const wrap = document.createElement("div");
+  wrap.className = `chat-msg ${role === "user" ? "user-msg" : "ai-msg"}`;
+  const av   = `<div class="msg-av ${role === "user" ? "av-user" : "av-ai"}">${role === "user" ? (_userName?.[0]?.toUpperCase()||"U") : "φ"}</div>`;
+  const body = document.createElement("div");
+  body.className = "msg-body";
+  if (role === "user") { body.textContent = text; wrap.innerHTML = av; wrap.insertBefore(body, wrap.firstChild); }
+  else { renderAI(body, text); wrap.innerHTML = av; wrap.appendChild(body); }
+  d.appendChild(wrap);
   return wrap;
 }
 
 function appendTyping() {
-  const display = el("chatDisplay");
-  if (!display) return null;
-  const wrap      = document.createElement("div");
-  wrap.className  = "chat-msg ai-msg";
-  wrap.innerHTML  = `
-    <div class="msg-av av-ai">φ</div>
-    <div class="msg-body">
-      <div class="typing-indicator">
-        <div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div>
-      </div>
-    </div>`;
-  display.appendChild(wrap);
-  scrollToBottom();
-  return wrap;
+  const d = el("chatDisplay");
+  if (!d) return null;
+  const w = document.createElement("div");
+  w.className = "chat-msg ai-msg";
+  w.innerHTML = `<div class="msg-av av-ai">φ</div><div class="msg-body"><div class="typing-indicator"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div></div>`;
+  d.appendChild(w); scrollBottom(); return w;
 }
 
-function updateTypingText(wrap, text) {
-  const body = wrap?.querySelector(".msg-body");
-  if (body) body.textContent = text;
-}
+function updateTyping(w, text) { const b = w?.querySelector(".msg-body"); if (b) b.textContent = text; }
 
-function updateMessage(wrap, text) {
-  const body = wrap?.querySelector(".msg-body");
-  if (!body) return;
-  renderAIContent(body, text);
-  scrollToBottom();
-}
+function updateMsg(w, text) { const b = w?.querySelector(".msg-body"); if (b) { renderAI(b, text); scrollBottom(); } }
 
-function renderAIContent(elem, text) {
-  const parts    = text.split(/---\n⚕️/);
-  const main     = parts[0].trim();
-  const hasLegal = parts.length > 1;
-
-  if (typeof marked !== "undefined") {
-    elem.innerHTML = marked.parse(main);
-  } else {
-    elem.textContent = main;
-  }
-
-  if (hasLegal) {
-    const legal      = document.createElement("p");
-    legal.className  = "phi-legal";
+function renderAI(elem, text) {
+  const parts = text.split(/---\n⚕️/);
+  elem.innerHTML = typeof marked !== "undefined" ? marked.parse(parts[0].trim()) : esc(parts[0].trim());
+  if (parts.length > 1) {
+    const legal = document.createElement("p");
+    legal.className = "phi-legal";
     legal.textContent = "⚕️ PHI is an educational wellness tool. Always consult your healthcare provider.";
     elem.appendChild(legal);
   }
 }
 
-function scrollToBottom() {
-  const d = el("chatDisplay");
-  if (d) d.scrollTop = d.scrollHeight;
+const scrollBottom = () => { const d = el("chatDisplay"); if (d) d.scrollTop = d.scrollHeight; };
+
+/* ═══════════════════ SIGN OUT ═══════════════════ */
+async function handleLogout() {
+  closeUserMenu();
+  try { if (_sb) await _sb.auth.signOut(); } catch {}
+  location.href = "/login";
 }
 
-/* ═══════════════════════════════════════
-   EXPORT & LOGOUT
-═══════════════════════════════════════ */
-function exportCurrentChat() {
+/* ═══════════════════ EXPORT ═══════════════════ */
+function exportChat() {
   const msgs = el("chatDisplay")?.querySelectorAll(".chat-msg");
-  if (!msgs?.length) { toast("No conversation to export", "err"); return; }
-  let out = `Curabook PHI — Chat Export\n${"=".repeat(44)}\n\n`;
+  if (!msgs?.length) { toast("No conversation to export.", "err"); return; }
+  let out = `Curabook PHI — Chat Export\n${"=".repeat(40)}\n\n`;
   msgs.forEach(m => {
     const role = m.classList.contains("user-msg") ? "You" : "PHI";
-    const text = m.querySelector(".msg-body")?.innerText || "";
-    out += `${role}:\n${text.trim()}\n\n`;
+    out += `${role}:\n${m.querySelector(".msg-body")?.innerText?.trim() || ""}\n\n`;
   });
   const a = Object.assign(document.createElement("a"), {
-    href:     URL.createObjectURL(new Blob([out], { type: "text/plain" })),
+    href: URL.createObjectURL(new Blob([out], {type:"text/plain"})),
     download: `phi-chat-${Date.now()}.txt`
   });
   a.click();
@@ -949,127 +800,107 @@ function exportCurrentChat() {
   toast("Chat exported");
 }
 
-async function handleLogout() {
-  closeUserMenu();
-  try {
-    if (_sb) await _sb.auth.signOut();
-  } catch (e) {
-    console.warn("[PHI] Sign out error:", e);
-  }
-  // Clear singleton so next page load creates fresh client
-  window.__phiSb     = null;
-  window.__phiBooted = false;
-  window.location.href = "/login";
-}
-
-/* ═══════════════════════════════════════
-   HEALTH DATA
-═══════════════════════════════════════ */
+/* ═══════════════════ HEALTH DATA ═══════════════════ */
 async function loadMarkersData() {
-  const h = await getHeaders();
+  const h = await headers();
   if (!h) return;
   try {
     const { ok, data } = await apiJson("/api/health-markers", { headers: h });
-    if (ok && Array.isArray(data) && data.length) {
-      renderMarkers(data);
-      runCliffDetection(data);
-    }
+    if (ok && Array.isArray(data) && data.length) { renderMarkers(data); runCliffDetection(data); }
   } catch {}
 }
 
 function renderMarkers(markers) {
-  const grid = el("markersGrid");
-  if (!grid) return;
-  const show = markers.slice(0, 10);
-  if (!show.length) {
-    grid.innerHTML = '<div class="markers-empty">No markers yet — upload a lab report</div>';
-    return;
-  }
-  grid.innerHTML = show.map(m => {
-    const s   = (m.status || "").toLowerCase();
-    const cls = s === "high" ? "val-high" : s === "low" ? "val-low" : s === "normal" ? "val-normal" : "";
-    const badge = (s && s !== "unknown")
-      ? `<span class="marker-status st-${s}">${s.toUpperCase()}</span>` : "";
+  const g = el("markersGrid");
+  if (!g) return;
+  if (!markers.length) { g.innerHTML = '<div class="markers-empty">Upload a lab report to see your markers</div>'; return; }
+  g.innerHTML = markers.slice(0,10).map(m => {
+    const s   = (m.status||"").toLowerCase();
+    const cls = s==="high"?"val-high":s==="low"?"val-low":s==="normal"?"val-normal":"";
+    const badge = s && s !== "unknown" ? `<span class="marker-status st-${s}">${s.toUpperCase()}</span>` : "";
     return `<div class="marker-card">
       <div class="marker-card-name" title="${esc(m.marker_name)}">${esc(m.marker_name)}</div>
-      <div class="marker-card-val ${cls}">${m.value}<span class="marker-card-unit"> ${esc(m.unit || "")}</span></div>
+      <div class="marker-card-val ${cls}">${m.value}<span class="marker-card-unit"> ${esc(m.unit||"")}</span></div>
       ${badge}
     </div>`;
   }).join("");
 }
 
 function runCliffDetection(markers) {
-  const alerts  = [];
+  const alerts = [];
   const grouped = {};
+  markers.forEach(m => { const k=(m.marker_name||"").toLowerCase(); if(!grouped[k]) grouped[k]=[]; grouped[k].push({...m, _v:parseFloat(m.value)}); });
 
-  markers.forEach(m => {
-    const k = (m.marker_name || "").toLowerCase();
-    if (!grouped[k]) grouped[k] = [];
-    grouped[k].push({ ...m, _val: parseFloat(m.value) });
-  });
-
-  const glucoseKey = Object.keys(grouped).find(k => /fasting.*glucose|blood.*glucose|glucose/i.test(k));
-  if (glucoseKey) {
-    const readings = grouped[glucoseKey].sort((a, b) => a.date < b.date ? -1 : 1);
-    if (readings.length >= 2) {
-      const base = readings[0]._val;
-      const last = readings[readings.length - 1]._val;
-      if (base > 0) {
-        const pct = ((last - base) / base) * 100;
-        if (pct >= 15) {
-          alerts.push({ type: "danger", title: `🚨 Glucose rebound +${pct.toFixed(0)}%`, desc: `From ${base} → ${last} mg/dL. Early cliff signal.` });
-        } else if (pct >= 10) {
-          alerts.push({ type: "warn", title: `⚠ Glucose rising +${pct.toFixed(0)}%`, desc: `Approaching the 15% rebound threshold.` });
-        }
-      }
+  // Glucose rebound (15% threshold)
+  const gk = Object.keys(grouped).find(k => /fasting.*glucose|blood.*glucose|glucose/.test(k));
+  if (gk) {
+    const r = grouped[gk].sort((a,b) => a.date<b.date?-1:1);
+    if (r.length >= 2) {
+      const pct = ((r[r.length-1]._v - r[0]._v) / r[0]._v) * 100;
+      if      (pct >= 15) alerts.push({type:"danger", title:`🚨 Glucose rebound +${pct.toFixed(0)}%`, desc:`${r[0]._v}→${r[r.length-1]._v} mg/dL. Cliff threshold exceeded.`});
+      else if (pct >= 10) alerts.push({type:"warn",   title:`⚠ Glucose rising +${pct.toFixed(0)}%`, desc:`Approaching the 15% rebound threshold.`});
     }
   }
 
-  const hba1cKey = Object.keys(grouped).find(k => /hba1c|hemoglobin a1c|a1c/i.test(k));
-  if (hba1cKey) {
-    const readings = grouped[hba1cKey].sort((a, b) => a.date < b.date ? -1 : 1);
-    for (let i = 1; i < readings.length; i++) {
-      const delta = readings[i]._val - readings[i - 1]._val;
-      if (delta >= 0.25) {
-        alerts.push({ type: "danger", title: `🚨 HbA1c rebound +${delta.toFixed(2)}%`, desc: `${readings[i-1]._val}% → ${readings[i]._val}%. Sustained metabolic rebound.` });
-        break;
-      }
+  // HbA1c (0.25% threshold)
+  const hk = Object.keys(grouped).find(k => /hba1c|hemoglobin a1c/.test(k));
+  if (hk) {
+    const r = grouped[hk].sort((a,b) => a.date<b.date?-1:1);
+    for (let i=1;i<r.length;i++) {
+      const d = r[i]._v - r[i-1]._v;
+      if (d >= 0.25) { alerts.push({type:"danger", title:`🚨 HbA1c rebound +${d.toFixed(2)}%`, desc:`${r[i-1]._v}%→${r[i]._v}%. Sustained metabolic rebound.`}); break; }
     }
   }
 
-  markers.filter(m => m.status === "HIGH" && !/glucose/i.test(m.marker_name))
-    .slice(0, 2)
-    .forEach(m => {
-      alerts.push({ type: "warn", title: `⬆ ${m.marker_name} HIGH`, desc: `${m.value} ${m.unit || ""} — outside normal range.` });
-    });
+  markers.filter(m => m.status==="HIGH" && !/glucose/i.test(m.marker_name)).slice(0,2)
+    .forEach(m => alerts.push({type:"warn", title:`⬆ ${m.marker_name} HIGH`, desc:`${m.value} ${m.unit||""}`}));
 
-  if (!alerts.length) {
-    alerts.push({ type: "ok", title: "✅ No rebound signals", desc: "All monitored markers are stable." });
-  }
+  if (!alerts.length) alerts.push({type:"ok", title:"✅ No rebound signals", desc:"All monitored markers are stable. Keep up protein and resistance training."});
 
-  renderCliffAlerts(alerts);
+  const c = el("cliffAlerts");
+  if (c) c.innerHTML = alerts.map(a => `<div class="ca-item ca-${a.type}"><div class="ca-title">${a.title}</div><div class="ca-desc">${a.desc}</div></div>`).join("");
 }
 
-function renderCliffAlerts(alerts) {
-  const container = el("cliffAlerts");
-  if (!container) return;
-  container.innerHTML = alerts.map(a => `
-    <div class="ca-item ca-${a.type}">
-      <div class="ca-title">${a.title}</div>
-      <div class="ca-desc">${a.desc}</div>
-    </div>`).join("");
-}
+/* ═══════════════════ FIX-4: AUTO-SHIELD ═══════════════════ */
+async function autoLoadShield() {
+  const h = await headers();
+  if (!h) return;
 
-/* ═══════════════════════════════════════
-   COCKPIT — METABOLIC SHIELD
-═══════════════════════════════════════ */
-function restoreShieldInputs() {
-  const savedGoalWt = localStorage.getItem("phi_goal_wt");
-  if (savedGoalWt) {
-    const gwInput      = el("inputGoalWt");
-    const proteinInput = el("proteinInput");
-    if (gwInput      && !gwInput.value)      gwInput.value      = savedGoalWt;
-    if (proteinInput && !proteinInput.value) proteinInput.value = savedGoalWt;
+  const today = new Date().toISOString().slice(0, 10);
+
+  try {
+    const { ok, data } = await apiJson(`/api/behavioral-logs?days=1`, { headers: h });
+    if (!ok || !Array.isArray(data)) { renderShield(0, 0, 0, null); return; }
+
+    const todayLogs = data.filter(l => l.date === today);
+    const get = (metric) => {
+      const log = todayLogs.filter(l => l.metric_name === metric).sort((a,b) => a.created_at<b.created_at?1:-1)[0];
+      return log ? parseFloat(log.value) : 0;
+    };
+
+    const protein = get("protein");
+    const steps   = get("steps");
+    const sleep   = get("sleep");
+
+    // Pre-fill inputs with today's logged values
+    if (protein > 0 && el("inputProtein")) el("inputProtein").value = protein;
+    if (steps   > 0 && el("inputSteps"))   el("inputSteps").value   = steps;
+    if (sleep   > 0 && el("inputSleep"))   el("inputSleep").value   = sleep;
+
+    // Show last-logged timestamp
+    const lastLog = data.sort((a,b) => a.created_at<b.created_at?1:-1)[0];
+    if (lastLog) {
+      const when = new Date(lastLog.created_at);
+      const timeStr = when.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"});
+      const dateStr = when.toLocaleDateString("en-US",{month:"short",day:"numeric"});
+      const label = lastLog.date === today ? `Today at ${timeStr}` : dateStr;
+      setText("shieldLastLogged", `Last logged: ${label}`);
+    }
+
+    renderShield(protein, steps, sleep, lastLog ? lastLog.date : null);
+
+  } catch (e) {
+    renderShield(0, 0, 0, null);
   }
 }
 
@@ -1077,302 +908,237 @@ function updateShield() {
   const protein = parseFloat(el("inputProtein")?.value) || 0;
   const steps   = parseFloat(el("inputSteps")?.value)   || 0;
   const sleep   = parseFloat(el("inputSleep")?.value)   || 0;
-
-  const gwInputVal = parseFloat(el("inputGoalWt")?.value);
-  const goalWt     = gwInputVal || _goalWt || 165;
-
-  if (gwInputVal && gwInputVal !== _goalWt) {
-    _goalWt = gwInputVal;
+  const gwInput = parseFloat(el("inputGoalWt")?.value);
+  if (gwInput && gwInput !== _goalWt) {
+    _goalWt = gwInput;
     localStorage.setItem("phi_goal_wt", String(_goalWt));
+    calcProteinDisplay(_goalWt, false);
   }
+  renderShield(protein, steps, sleep, new Date().toISOString().slice(0,10));
+  if (_user) logShieldData(protein, steps, sleep);
+}
 
-  _proteinTarget = Math.round(goalWt * 0.545 * 10) / 10;
+function renderShield(protein, steps, sleep, logDate) {
+  const gw   = _goalWt || 165;
+  _proteinTarget = Math.round(gw * 0.545 * 10) / 10;
 
   const pPct = Math.min(100, Math.round((protein / (_proteinTarget || 90)) * 100));
   const mPct = Math.min(100, Math.round((steps   / 8000) * 100));
   const rPct = Math.max(0, Math.min(100, Math.round(((sleep - 4) / 5) * 100)));
   const score = Math.round((pPct + mPct + rPct) / 3);
 
-  setRing("ringProtein",  70, pPct, 440);
-  setRing("ringMovement", 55, mPct, 346);
-  setRing("ringRecovery", 41, rPct, 258);
+  setRing("ringProtein",  440, pPct);
+  setRing("ringMovement", 346, mPct);
+  setRing("ringRecovery", 258, rPct);
 
   setText("shieldScore",    score + "%");
   setText("shieldBadge",    score + "%");
-  setText("proteinLegend",  `${protein}g / ${_proteinTarget}g (${pPct}%)`);
-  setText("movementLegend", `${steps.toLocaleString()} / 8,000 (${mPct}%)`);
-  setText("recoveryLegend", `${sleep}h sleep (${rPct}%)`);
-
-  setBarWidth("proteinBar",  pPct);
-  setBarWidth("movementBar", mPct);
-  setBarWidth("recoveryBar", rPct);
-
-  if (_user && (protein > 0 || steps > 0 || sleep > 0)) {
-    logShieldData(protein, steps, sleep).catch(() => {});
-  }
+  setText("proteinLegend",  protein > 0 ? `${protein}g / ${_proteinTarget}g (${pPct}%)` : `Target: ${_proteinTarget}g — not logged yet`);
+  setText("movementLegend", steps > 0   ? `${steps.toLocaleString()} steps (${mPct}%)`  : "Steps — not logged yet");
+  setText("recoveryLegend", sleep > 0   ? `${sleep}h sleep (${rPct}%)`                  : "Sleep — not logged yet");
+  setBarPct("proteinBar",  pPct);
+  setBarPct("movementBar", mPct);
+  setBarPct("recoveryBar", rPct);
 }
 
-function setRing(id, r, pct, circ) {
-  const ring = el(id);
-  if (!ring) return;
-  ring.style.strokeDasharray  = circ;
-  ring.style.strokeDashoffset = circ - (circ * Math.max(0, Math.min(100, pct)) / 100);
+function setRing(id, circ, pct) {
+  const r = el(id);
+  if (r) { r.style.strokeDasharray = circ; r.style.strokeDashoffset = circ - (circ * Math.max(0,Math.min(100,pct)) / 100); }
 }
-
-function setBarWidth(id, pct) {
-  const bar = el(id);
-  if (bar) bar.style.width = Math.max(0, pct) + "%";
-}
+function setBarPct(id, pct) { const b = el(id); if (b) b.style.width = Math.max(0,pct) + "%"; }
 
 async function logShieldData(protein, steps, sleep) {
-  const h    = await getHeaders();
+  const h = await headers();
   if (!h) return;
-  const date = new Date().toISOString().slice(0, 10);
+  const date = new Date().toISOString().slice(0,10);
   const logs = [];
-  if (protein > 0) logs.push({ date, metric_name: "protein", value: protein, unit: "g" });
-  if (steps   > 0) logs.push({ date, metric_name: "steps",   value: steps,   unit: "steps" });
-  if (sleep   > 0) logs.push({ date, metric_name: "sleep",   value: sleep,   unit: "hours" });
-  logs.forEach(l =>
-    apiFetch("/api/behavioral-logs", {
-      method: "POST", headers: h, body: JSON.stringify(l)
-    }).catch(() => {})
-  );
+  if (protein > 0) logs.push({ date, metric_name:"protein", value:protein, unit:"g" });
+  if (steps   > 0) logs.push({ date, metric_name:"steps",   value:steps,   unit:"steps" });
+  if (sleep   > 0) logs.push({ date, metric_name:"sleep",   value:sleep,   unit:"hours" });
+  logs.forEach(l => apiFetch("/api/behavioral-logs", { method:"POST", headers:h, body:JSON.stringify(l) }).catch(() => {}));
+  setText("shieldLastLogged", "Last logged: just now");
+  toast("Shield data logged ✓");
 }
 
-function calcProtein() {
-  const gw = parseFloat(el("proteinInput")?.value);
-  if (!gw || gw < 80 || gw > 400) {
-    toast("Enter a valid goal weight between 80–400 lbs", "err");
-    return;
-  }
+/* ═══════════════════ PROTEIN CALCULATOR ═══════════════════ */
+function calcProteinDisplay(gw, showDetails = true) {
+  if (!gw || gw < 80 || gw > 400) { if (showDetails) toast("Enter a valid goal weight (80–400 lbs).", "err"); return; }
   _goalWt        = gw;
   _proteinTarget = Math.round(gw * 0.545 * 10) / 10;
   const perMeal  = Math.round(_proteinTarget / 3 * 10) / 10;
-  const leucineOk = perMeal >= 30;
+  const leucine  = perMeal >= 30;
   localStorage.setItem("phi_goal_wt", String(gw));
+
   setText("proteinNum",     _proteinTarget);
   setText("proteinCaption", `${gw} lbs × 0.545 = ${_proteinTarget}g/day`);
-  const details = el("proteinDetails");
-  if (details) {
-    details.classList.remove("hidden");
-    details.innerHTML = `
-      <strong>${perMeal}g per meal</strong> across 3 meals
-      &nbsp;—&nbsp; ${leucineOk ? "✅" : "⚠️"} ${leucineOk ? "Meets" : "Below"} 30g leucine threshold<br>
-      <span style="color:var(--text-3);margin-top:4px;display:block">
-        Sample: 4oz chicken (35g) + Greek yogurt (17g) + 2 eggs (12g) + whey scoop (25g)
-      </span>`;
+
+  if (showDetails) {
+    const d = el("proteinDetails");
+    if (d) {
+      d.classList.remove("hidden");
+      d.innerHTML = `<strong>${perMeal}g per meal</strong> across 3 meals &nbsp;—&nbsp;
+        ${leucine ? "✅" : "⚠️"} ${leucine ? "Meets" : "Below"} 30g leucine threshold<br>
+        <span style="color:var(--text-3);margin-top:4px;display:block">
+          Sample: 4oz chicken (35g) + Greek yogurt (17g) + 2 eggs (12g) + whey scoop (25g)
+        </span>`;
+    }
+    const gwInput = el("inputGoalWt");
+    if (gwInput) gwInput.value = gw;
+    renderShield(
+      parseFloat(el("inputProtein")?.value) || 0,
+      parseFloat(el("inputSteps")?.value)   || 0,
+      parseFloat(el("inputSleep")?.value)   || 0,
+      null
+    );
   }
-  const gwInput = el("inputGoalWt");
-  if (gwInput) gwInput.value = gw;
 }
 
+/* ═══════════════════ GHRELIN LOG ═══════════════════ */
 function updateNoiseReadout() {
-  const val    = parseInt(el("noiseSlider")?.value || 5);
-  const colors = {
-    1:"var(--ok)", 2:"var(--ok)", 3:"var(--ok)",
-    4:"var(--amber)", 5:"var(--amber)", 6:"var(--amber)",
-    7:"var(--danger)", 8:"var(--danger)", 9:"var(--danger)", 10:"var(--danger)"
-  };
-  const readout = el("noiseReadout");
-  if (readout) {
-    readout.innerHTML = `<strong style="color:${colors[val]}">Level ${val}/10</strong> — ${NOISE_MESSAGES[val]}`;
-  }
+  const v = parseInt(el("noiseSlider")?.value || 5);
+  const colors = [,"var(--ok)","var(--ok)","var(--ok)","var(--amber)","var(--amber)","var(--amber)","var(--danger)","var(--danger)","var(--danger)","var(--danger)"];
+  const r = el("noiseReadout");
+  if (r) r.innerHTML = `<strong style="color:${colors[v]}">Level ${v}/10</strong> — ${NOISE_MSG[v]}`;
 }
 
 async function logNoiseLevel() {
   const val = parseInt(el("noiseSlider")?.value || 5);
-  const h   = await getHeaders();
-  if (!h) { toast("Sign in to log food noise data", "info"); return; }
+  const h   = await headers();
+  if (!h) { toast("Sign in to log food noise.", "info"); return; }
   await apiFetch("/api/behavioral-logs", {
-    method: "POST", headers: h,
-    body:   JSON.stringify({
-      date:        new Date().toISOString().slice(0, 10),
-      metric_name: "food_noise",
-      value:       val,
-      unit:        "1-10",
-      notes:       `Ghrelin surge level: ${val}/10`
-    })
+    method:"POST", headers:h,
+    body:JSON.stringify({ date:new Date().toISOString().slice(0,10), metric_name:"food_noise", value:val, unit:"1-10", notes:`Ghrelin surge level: ${val}/10` })
   }).catch(() => {});
-  toast(`Food noise level ${val}/10 logged`, "info");
+  toast(`Food noise level ${val}/10 logged ✓`, "info");
 }
 
-/* ═══════════════════════════════════════
-   VOICE INPUT
-═══════════════════════════════════════ */
-function initVoiceInput() {
-  const SR  = window.SpeechRecognition || window.webkitSpeechRecognition;
+/* ═══════════════════ VOICE ═══════════════════ */
+function initVoice() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   const btn = el("micBtn");
-  if (!SR || !btn) {
-    if (btn) { btn.style.opacity = ".3"; btn.disabled = true; }
-    return;
-  }
-  let listening = false, rec = null;
+  if (!SR || !btn) { if (btn) { btn.style.opacity=".3"; btn.disabled=true; } return; }
+  let on=false, rec=null;
   btn.addEventListener("click", () => {
-    if (listening) { rec?.stop(); return; }
-    rec = new SR();
-    rec.lang           = "en-US";
-    rec.interimResults = false;
-    rec.onstart  = () => { listening = true;  btn.style.color = "var(--danger)"; };
-    rec.onresult = e  => {
-      const ta = el("chatInput");
-      if (ta) { ta.value = e.results[0][0].transcript; autoGrow(ta); ta.focus(); }
-    };
-    rec.onend    = () => { listening = false; btn.style.color = ""; };
-    rec.onerror  = e  => { toast(`Mic: ${e.error}`, "err"); };
-    try { rec.start(); } catch { toast("Voice failed", "err"); }
+    if (on) { rec?.stop(); return; }
+    rec = new SR(); rec.lang="en-US"; rec.interimResults=false;
+    rec.onstart  = () => { on=true;  btn.style.color="var(--danger)"; };
+    rec.onresult = e => { const ta=el("chatInput"); if(ta){ta.value=e.results[0][0].transcript; autoGrow(ta); ta.focus();} };
+    rec.onend    = () => { on=false; btn.style.color=""; };
+    rec.onerror  = e => toast(`Mic: ${e.error}`, "err");
+    try { rec.start(); } catch { toast("Voice unavailable.", "err"); }
   });
 }
 
-/* ═══════════════════════════════════════
-   UTILITY
-═══════════════════════════════════════ */
-function el(id)          { return document.getElementById(id); }
-function esc(s)          { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
-function setText(id, v)  { const e = el(id); if (e) e.textContent = v; }
-function setIcon(id, cls){ const e = el(id); if (e) e.className = `fa-solid ${cls}`; }
-function autoGrow(ta) {
-  ta.style.height = "auto";
-  ta.style.height = Math.min(ta.scrollHeight, 130) + "px";
+/* ═══════════════════ UTILS ═══════════════════ */
+const el    = id => document.getElementById(id);
+const esc   = s  => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+const setText = (id,v) => { const e=el(id); if(e) e.textContent=v; };
+const setIcon = (id,c) => { const e=el(id); if(e) e.className=`fa-solid ${c}`; };
+const autoGrow = ta => { ta.style.height="auto"; ta.style.height=Math.min(ta.scrollHeight,130)+"px"; };
+
+function toast(msg, type="ok") {
+  const c = el("toasts");
+  if (!c) return;
+  const t = document.createElement("div");
+  const icons = {ok:"circle-check",err:"circle-exclamation",info:"circle-info"};
+  t.className = `toast toast-${type}`;
+  t.innerHTML = `<i class="fa-solid fa-${icons[type]||"circle-info"}"></i> ${esc(msg)}`;
+  c.appendChild(t);
+  setTimeout(() => { t.style.opacity="0"; t.style.transition="opacity .3s"; setTimeout(()=>t.remove(),300); }, 3800);
 }
 
-function toast(msg, type = "ok") {
-  const container = el("toasts");
-  if (!container) { console.warn("[PHI] Toast (no container):", msg); return; }
-  const t        = document.createElement("div");
-  const iconMap  = { ok: "circle-check", err: "circle-exclamation", info: "circle-info" };
-  t.className    = `toast toast-${type}`;
-  t.innerHTML    = `<i class="fa-solid fa-${iconMap[type] || "circle-info"}"></i> ${esc(msg)}`;
-  container.appendChild(t);
-  setTimeout(() => {
-    t.style.opacity    = "0";
-    t.style.transition = "opacity .3s";
-    setTimeout(() => t.remove(), 300);
-  }, 3800);
-}
-
-/* ═══════════════════════════════════════
-   FIX-BUTTONS-1: EVENT WIRING
-   Every listener now logs a warning if
-   the target element is missing, instead
-   of silently doing nothing via ?. chain.
-═══════════════════════════════════════ */
+/* ═══════════════════ EVENT WIRING ═══════════════════ */
 function wireEvents() {
-  function bind(id, event, handler) {
-    const elem = el(id);
-    if (!elem) { console.warn(`[PHI] wireEvents: #${id} not found`); return; }
-    elem.addEventListener(event, handler);
+  // Nav views — FIX-3
+  document.querySelectorAll(".nav-item[data-view]").forEach(btn =>
+    btn.addEventListener("click", () => { switchView(btn.dataset.view); closeSidebar(); })
+  );
+
+  el("newChatBtn")?.addEventListener("click", () => { resetChat(); switchView("chat"); });
+
+  // Sidebar
+  el("mobileMenuBtn")?.addEventListener("click",  openSidebar);
+  el("sidebarOverlay")?.addEventListener("click", closeSidebar);
+
+  // Cockpit — FIX-10
+  el("mobileCockpitBtn")?.addEventListener("click", toggleCockpit);
+  el("cockpitOverlay")?.addEventListener("click",   closeCockpit);
+  const ccb = el("cockpitCloseBtn");
+  if (ccb) {
+    ccb.style.display = "flex";  // always show on mobile
+    ccb.addEventListener("click", closeCockpit);
   }
 
-  bind("newChatBtn",      "click", resetToWelcome);
-  bind("mobileMenuBtn",   "click", openSidebar);
-  bind("sidebarOverlay",  "click", closeSidebar);
-  bind("mobileCockpitBtn","click", toggleCockpit);
-  bind("cockpitOverlay",  "click", closeCockpit);
-  bind("cockpitCloseBtn", "click", closeCockpit);
-  bind("themeToggleBtn",  "click", toggleTheme);
-  bind("topThemeBtn",     "click", toggleTheme);
-  bind("exportChatBtn",   "click", exportCurrentChat);
-  bind("logoutBtn",       "click", handleLogout);
-  bind("updateShieldBtn", "click", updateShield);
-  bind("calcBtn",         "click", calcProtein);
-  bind("refreshAlertsBtn","click", loadMarkersData);
-  bind("noiseSlider",     "input", updateNoiseReadout);
-  bind("logNoiseBtn",     "click", logNoiseLevel);
-  bind("refreshMarkersBtn","click",loadMarkersData);
-  bind("sendBtn",         "click", handleSend);
-  bind("attachTopBtn",    "click", () => el("fileInput")?.click());
-  bind("attachInputBtn",  "click", () => el("fileInput")?.click());
-  bind("uploadNudgeBtn",  "click", () => el("fileInput")?.click());
+  // User menu
+  el("userRow")?.addEventListener("click", e => { if (!e.target.closest(".user-dropdown")) toggleUserMenu(); });
+  document.addEventListener("click", e => { if (!el("userRow")?.contains(e.target)) closeUserMenu(); });
 
-  // User menu toggle
-  const userRow = el("userRow");
-  if (userRow) {
-    userRow.addEventListener("click", e => {
-      if (!e.target.closest(".user-dropdown")) toggleUserMenu();
-    });
-  }
-  document.addEventListener("click", e => {
-    if (!el("userRow")?.contains(e.target)) closeUserMenu();
+  // Theme — FIX-1: also wired from top bar
+  el("themeToggleBtn")?.addEventListener("click", toggleTheme);
+  el("topThemeBtn")?.addEventListener("click",    toggleTheme);
+
+  // User actions — FIX-2: sign out
+  el("logoutBtn")?.addEventListener("click",    handleLogout);
+  el("exportChatBtn")?.addEventListener("click", exportChat);
+
+  // History
+  el("historyList")?.addEventListener("click", e => {
+    const del  = e.target.closest(".hist-del[data-del]");
+    const item = e.target.closest(".hist-item[data-id]");
+    if (del)  deleteConversation(del.dataset.del, e);
+    else if (item) openConversation(item.dataset.id);
   });
 
-  // Textarea
+  // Chat input
   const ta = el("chatInput");
   if (ta) {
-    ta.addEventListener("keydown", e => {
-      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
-    });
-    ta.addEventListener("input", () => autoGrow(ta));
-  } else {
-    console.warn("[PHI] wireEvents: #chatInput not found");
+    ta.addEventListener("keydown", e => { if (e.key==="Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } });
+    ta.addEventListener("input",   () => autoGrow(ta));
   }
 
-  // File input
-  const fileInput = el("fileInput");
-  if (fileInput) fileInput.addEventListener("change", handleFileSelect);
-
-  // Protein input enter key
-  const proteinInput = el("proteinInput");
-  if (proteinInput) proteinInput.addEventListener("keydown", e => { if (e.key === "Enter") calcProtein(); });
+  el("sendBtn")?.addEventListener("click", handleSend);
 
   // Suggestion chips
-  document.querySelectorAll(".suggestion-chips .chip").forEach(chip => {
-    chip.addEventListener("click", () => {
-      const q = chip.dataset.q;
-      if (!q) return;
-      const ta = el("chatInput");
-      if (ta) ta.value = q;
-      sendMessage(q);
-    });
-  });
+  document.querySelectorAll(".suggestion-chips .chip").forEach(c =>
+    c.addEventListener("click", () => { const q=c.dataset.q; if(q) sendMessage(q); })
+  );
 
-  // History list (event delegation)
-  const histList = el("historyList");
-  if (histList) {
-    histList.addEventListener("click", e => {
-      const item   = e.target.closest(".hist-item[data-id]");
-      const delBtn = e.target.closest(".hist-del[data-del]");
-      if (delBtn)  deleteConversation(delBtn.dataset.del, e);
-      else if (item) openConversation(item.dataset.id);
-    });
-  }
+  // File attach — all three buttons
+  const fi = el("fileInput");
+  fi?.addEventListener("change", handleFileSelect);
+  ["attachTopBtn","attachInputBtn","uploadNudgeBtn","reportsUploadBtn"].forEach(id =>
+    el(id)?.addEventListener("click", () => fi?.click())
+  );
 
-  // Nav items
-  document.querySelectorAll(".nav-item[data-view]").forEach(btn => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll(".nav-item").forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-      closeSidebar();
-    });
+  // Cockpit actions
+  el("updateShieldBtn")?.addEventListener("click", updateShield);
+  el("calcBtn")?.addEventListener("click", () => {
+    const gw = parseFloat(el("proteinInput")?.value);
+    if (gw) calcProteinDisplay(gw, true);
+    else    toast("Enter a goal weight (80–400 lbs).", "err");
   });
-
-  // Drag and drop
-  document.addEventListener("dragover", e => e.preventDefault());
-  document.addEventListener("drop", e => {
-    e.preventDefault();
-    Array.from(e.dataTransfer?.files || []).forEach(f => addFile(f));
-  });
+  el("proteinInput")?.addEventListener("keydown", e => { if(e.key==="Enter") el("calcBtn")?.click(); });
+  el("noiseSlider")?.addEventListener("input",    updateNoiseReadout);
+  el("logNoiseBtn")?.addEventListener("click",    logNoiseLevel);
+  el("refreshAlertsBtn")?.addEventListener("click",  loadMarkersData);
+  el("refreshMarkersBtn")?.addEventListener("click", loadMarkersData);
 
   // Keyboard shortcuts
   document.addEventListener("keydown", e => {
-    if ((e.ctrlKey || e.metaKey) && e.key === "k") {
-      e.preventDefault();
-      resetToWelcome();
-      el("chatInput")?.focus();
-    }
-    if (e.key === "Escape") {
-      closeSidebar();
-      closeUserMenu();
-      closeCockpit();
-    }
+    if ((e.ctrlKey||e.metaKey) && e.key==="k") { e.preventDefault(); resetChat(); el("chatInput")?.focus(); }
+    if (e.key==="Escape") { closeSidebar(); closeUserMenu(); closeCockpit(); }
   });
+
+  // Drag & drop
+  document.addEventListener("dragover", e => e.preventDefault());
+  document.addEventListener("drop",     e => { e.preventDefault(); Array.from(e.dataTransfer?.files||[]).forEach(addFile); });
 }
 
-/* ═══════════════════════════════════════
-   INIT
-═══════════════════════════════════════ */
+/* ═══════════════════ INIT ═══════════════════ */
 document.addEventListener("DOMContentLoaded", () => {
+  initTheme();     // FIX-1: theme before anything else
   wireEvents();
   updateNoiseReadout();
+  initVoice();
   boot();
-  initVoiceInput();
 });
