@@ -2,21 +2,21 @@
  * script.js — Curabook PHI v2.0
  *
  * FIXES vs previous version:
- *  FIX-1  Theme now applied at DOMContentLoaded — not blocked by auth/consent
- *  FIX-2  Sign out redirects correctly to /login
- *  FIX-3  Nav items (My Health, Lab Reports) load real content
- *  FIX-4  Shield AUTO-loads today's behavioral logs — zero cognitive tax
- *  FIX-5  Chat + file upload works in any order (text first, then file; or file first)
- *  FIX-6  saveConsents() is fire-and-forget on login — never blocks UI
- *  FIX-7  createConversation() awaits saveConsents() first to prevent 403 race.
- *         The 403 was caused by the consent POST not completing before the
- *         conversation/create POST fired. Now saveConsents is awaited inside
- *         createConversation() rather than relying on the fire-and-forget in
- *         onSignIn(). onSignIn still fires it in the background for speed,
- *         and createConversation awaits it again as a guarantee.
- *  FIX-8  /analyze 403 auto-retries — file upload works even if consent row was missing
- *  FIX-9  Spinner auto-reset after 35s (stuck guard)
- *  FIX-10 cockpitCloseBtn visible in mobile drawer
+ * FIX-1  Theme now applied at DOMContentLoaded — not blocked by auth/consent
+ * FIX-2  Sign out redirects correctly to /login
+ * FIX-3  Nav items (My Health, Lab Reports) load real content
+ * FIX-4  Shield AUTO-loads today's behavioral logs — zero cognitive tax
+ * FIX-5  Chat + file upload works in any order (text first, then file; or file first)
+ * FIX-6  saveConsents() is fire-and-forget on login — never blocks UI
+ * FIX-7  createConversation() awaits saveConsents() first to prevent 403 race.
+ * The 403 was caused by the consent POST not completing before the
+ * conversation/create POST fired. Now saveConsents is awaited inside
+ * createConversation() rather than relying on the fire-and-forget in
+ * onSignIn(). onSignIn still fires it in the background for speed,
+ * and createConversation awaits it again as a guarantee.
+ * FIX-8  /analyze 403 auto-retries — file upload works even if consent row was missing
+ * FIX-9  Spinner auto-reset after 35s (stuck guard)
+ * FIX-10 cockpitCloseBtn visible in mobile drawer
  */
 "use strict";
 
