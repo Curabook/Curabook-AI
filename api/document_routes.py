@@ -1,36 +1,40 @@
-# api/document_routes.py — FULLY FIXED VERSION
+# api/document_routes.py — v2.0 Vision Edition
 #
-# FIXES APPLIED IN THIS VERSION:
+# NEW IN THIS VERSION:
 #
-# FIX-A: unit_normalizer NOT WIRED — the biggest silent bug.
-#   OLD: Markers stored in whatever unit the lab used (mmol/L, g/L, etc.)
-#   NEW: force_us_units_batch() called on all markers before storage and
-#        before returning to frontend. US users always see lbs, mg/dL, °F.
+# FIX-VISION-1: Photo lab report support (.jpg, .jpeg, .png, .webp, .heic)
+#   Uses GPT-4o-mini Vision to extract text from photographed paper reports.
+#   Falls back to pytesseract if OPENAI_API_KEY is unavailable.
+#   Zero-Tax entry for mobile users who can't scan PDFs.
 #
-# FIX-B: groq_client=None crash (original FIX-2, strengthened)
-#   OLD: extract_health_markers(text, None) → AttributeError on LLM call
-#   NEW: Hard check for any AI availability before attempting extraction.
-#        Returns graceful empty list with log message.
+# FIX-MOBILE-2: File size limit raised to 20MB for high-res phone photos.
+#   PDF limit remains 5MB. Image limit is 20MB (compressed before Vision API).
 #
-# FIX-C: Unhandled exception → 500 with no CORS headers (original FIX-5)
-#   NEW: Outer try/except on every route, returns 500 JSON with CORS via
-#        Flask errorhandler in app.py.
-#
-# FIX-D: pypdf ImportError → 500 (original FIX-1, preserved)
-#   NEW: Returns HTTP 400 with human-readable install instructions.
-#
-# FIX-E: persona cache invalidation after marker storage
-#   NEW: _invalidate_caches() sets marker_count to -1 so the 6-hour
-#        persona cache is immediately invalidated after a new upload.
+# PRESERVED FIXES FROM v1.0:
+#   FIX-A: force_us_units_batch() on all markers before storage (US unit enforcement)
+#   FIX-B: groq_client=None crash guard + OpenAI fallback
+#   FIX-C: Unhandled exception → JSON 500 with CORS
+#   FIX-D: pypdf ImportError → HTTP 400
+#   FIX-E: Persona cache invalidation after marker storage
 
 from flask import Blueprint, request, jsonify
 import traceback
 import uuid
+import os
 
 document_bp = Blueprint("documents", __name__)
 
-MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
+# ── File size limits ──────────────────────────────────────────────────────────
+_PDF_SIZE_LIMIT   = 5  * 1024 * 1024   # 5 MB — PDF text extraction
+_IMAGE_SIZE_LIMIT = 20 * 1024 * 1024   # 20 MB — phone photos can be large
 
+# ── Accepted file extensions ──────────────────────────────────────────────────
+_PDF_EXTS   = {".pdf"}
+_TEXT_EXTS  = {".txt"}
+_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".heic"}
+_ALL_EXTS   = _PDF_EXTS | _TEXT_EXTS | _IMAGE_EXTS
+
+# ── Radiology detection (unchanged from v1.0) ─────────────────────────────────
 _RADIOLOGY_STRONG = [
     "mammograph", "radiology report", "ultrasound report", "mri report",
     "ct scan report", "x-ray report", "radio-diagnosis", "sonograph",
@@ -57,11 +61,15 @@ def _detect_radiology(text: str) -> bool:
     return any(k in lower for k in secondary) and not has_lab_data
 
 
+def _get_extension(filename: str) -> str:
+    return os.path.splitext((filename or "").lower())[1]
+
+
 # ── Diagnostic endpoint ───────────────────────────────────────────────────────
 
 @document_bp.route("/diagnose", methods=["GET"])
 def diagnose():
-    """Health check for all optional dependencies."""
+    """Health check for all optional dependencies including Vision."""
     results = {}
 
     def _try(label, fn):
@@ -71,21 +79,29 @@ def diagnose():
         except Exception as e:
             results[label] = {"ok": False, "error": f"{type(e).__name__}: {e}"}
 
-    for mod in ["pypdf", "pdf2image", "pytesseract", "groq", "openai", "supabase"]:
+    for mod in ["pypdf", "pdf2image", "pytesseract", "groq", "openai",
+                "supabase", "PIL", "pillow_heif"]:
         _try(mod, lambda m=mod: __import__(m))
 
     for mod, sym in [
-        ("document_processing.extractor",  "extract_text_from_file"),
-        ("health_memory.extractor",         "extract_health_markers"),
-        ("health_memory.memory",            "store_health_markers"),
-        ("ai.chat",                         "generate_doctor_prep"),
-        ("ai.explainer",                    "explain_markers"),
-        ("services.compliance",             "audit_log"),
-        ("services.unit_normalizer",        "force_us_units_batch"),  # NEW
+        ("document_processing.extractor",        "extract_text_from_file"),
+        ("document_processing.vision_extractor",  "extract_text_from_image"),
+        ("health_memory.extractor",               "extract_health_markers"),
+        ("health_memory.memory",                  "store_health_markers"),
+        ("ai.chat",                               "generate_doctor_prep"),
+        ("ai.explainer",                          "explain_markers"),
+        ("services.compliance",                   "audit_log"),
+        ("services.unit_normalizer",              "force_us_units_batch"),
     ]:
         _try(mod, lambda m=mod, s=sym: getattr(__import__(m, fromlist=[s]), s))
 
-    all_ok = all(v["ok"] for v in results.values())
+    # Check vision capability
+    results["vision_ai"] = {
+        "ok":      bool(os.getenv("OPENAI_API_KEY")),
+        "method":  "gpt-4o-mini vision" if os.getenv("OPENAI_API_KEY") else "pytesseract fallback",
+    }
+
+    all_ok = all(v["ok"] for v in results.values() if isinstance(v, dict) and "ok" in v)
     return jsonify({"status": "all_ok" if all_ok else "some_failed", "imports": results}), (200 if all_ok else 500)
 
 
@@ -93,7 +109,14 @@ def diagnose():
 
 @document_bp.route("/analyze", methods=["POST"])
 def analyze():
-    """Process an uploaded medical document."""
+    """
+    Process an uploaded medical document.
+
+    Accepted formats:
+      - PDF  (.pdf)  — digital or scanned (with OCR fallback)
+      - Text (.txt)  — plain-text lab reports
+      - Image (.jpg, .jpeg, .png, .webp, .heic) — phone photos of paper reports
+    """
     try:
         return _analyze_inner()
     except Exception as e:
@@ -120,7 +143,7 @@ def _analyze_inner():
         if not verify_user_consent(supabase, user.id, "document_processing"):
             return jsonify({"error": "Document processing consent required"}), 403
     except Exception as e:
-        print(f"[ANALYZE] Consent check failed (non-fatal): {e}")
+        print(f"[ANALYZE] Consent check non-fatal: {e}")
 
     # ── File validation ───────────────────────────────────────────────────────
     file = request.files.get("file")
@@ -131,27 +154,63 @@ def _analyze_inner():
     if not filename:
         return jsonify({"error": "File has no name."}), 400
 
-    if not filename.lower().endswith((".pdf", ".txt")):
-        return jsonify({"error": "Unsupported file type. Please upload a PDF or TXT file."}), 400
+    ext = _get_extension(filename)
+    if ext not in _ALL_EXTS:
+        return jsonify({
+            "error": (
+                f"Unsupported file type '{ext}'. "
+                "Please upload a PDF, TXT, or photo (JPG, PNG, WebP, HEIC)."
+            )
+        }), 400
+
+    # ── Determine file type category ──────────────────────────────────────────
+    is_image = ext in _IMAGE_EXTS
+    size_limit = _IMAGE_SIZE_LIMIT if is_image else _PDF_SIZE_LIMIT
 
     file.seek(0, 2)
     file_size = file.tell()
     file.seek(0)
 
-    if file_size > MAX_FILE_SIZE:
+    if file_size > size_limit:
+        limit_mb = size_limit / 1024 / 1024
+        actual_mb = file_size / 1024 / 1024
         return jsonify({
-            "error": f"File too large. Max 5 MB. Yours is {file_size / 1024 / 1024:.1f} MB."
+            "error": f"File too large ({actual_mb:.1f} MB). Max {limit_mb:.0f} MB for {'photos' if is_image else 'documents'}."
         }), 413
 
     if file_size == 0:
         return jsonify({"error": "The uploaded file is empty."}), 400
 
-    # ── Text extraction ───────────────────────────────────────────────────────
-    raw_text = _extract_text_safe(file, filename)
+    # ── Image quality pre-check (non-blocking) ────────────────────────────────
+    quality_hints = {}
+    if is_image:
+        try:
+            from document_processing.vision_extractor import extract_image_quality_hints
+            quality_hints = extract_image_quality_hints(file)
+            file.seek(0)  # Reset after quality check
+        except Exception:
+            pass
+
+    # ── Text extraction — route by file type ──────────────────────────────────
+    if is_image:
+        raw_text = _extract_image_text_safe(file, filename)
+    else:
+        raw_text = _extract_text_safe(file, filename)
+
     if isinstance(raw_text, tuple):
         return raw_text  # error response tuple
 
     if len(raw_text.strip()) < 20:
+        if is_image:
+            return jsonify({
+                "error": (
+                    "No readable text found in this photo. "
+                    "Tips: ensure good lighting, hold the camera steady, "
+                    "make sure the entire report is visible, and avoid glare. "
+                    "A PDF scan will give the best results."
+                ),
+                "quality_hints": quality_hints,
+            }), 400
         return jsonify({
             "error": "No readable text found. Try a clearer PDF or a plain-text file."
         }), 400
@@ -159,19 +218,19 @@ def _analyze_inner():
     # ── Audit + anonymize ─────────────────────────────────────────────────────
     try:
         from services.compliance import audit_log, anonymize_for_llm
-        audit_log(supabase, user.id, "DOCUMENT_UPLOADED",
+        source = "PHOTO" if is_image else "DOCUMENT"
+        audit_log(supabase, user.id, f"{source}_UPLOADED",
                   f"file:{filename} chars:{len(raw_text)} size:{file_size}", "PHI")
         anonymized = anonymize_for_llm(raw_text, user.id)
     except Exception as e:
         print(f"[ANALYZE] Audit/anonymize non-fatal: {e}")
         anonymized = raw_text
 
-    user_name    = _get_user_name_safe(supabase, user.id)
+    user_name     = _get_user_name_safe(supabase, user.id)
     _is_radiology = _detect_radiology(anonymized)
-    print(f"[ANALYZE] {'Radiology' if _is_radiology else 'Lab report'} detected: {filename}")
+    print(f"[ANALYZE] {'Radiology' if _is_radiology else 'Lab report'} detected from {'photo' if is_image else 'document'}: {filename}")
 
     # ── Marker extraction + US unit normalization ─────────────────────────────
-    # FIX-A: unit normalization now happens here, before storage
     active_markers: list = []
     report_date: str = ""
 
@@ -195,18 +254,20 @@ def _analyze_inner():
     abnormal = [m for m in active_markers if m.get("status") in ("HIGH", "LOW")]
     normal   = [m for m in active_markers if m.get("status") == "NORMAL"]
     prefix   = f"{user_name}, your" if user_name else "Your"
+    method   = "photo was scanned" if is_image else "report has been read"
 
     if active_markers:
+        vision_note = " (extracted from photo via Vision AI)" if is_image else ""
         summary = (
-            f"{prefix} report has been read and **{len(active_markers)} markers stored**. "
-            f"{len(abnormal)} need attention — all values displayed in US units. "
+            f"{prefix} {method} and **{len(active_markers)} markers stored**{vision_note}. "
+            f"{len(abnormal)} need attention — all values in US units. "
             "Ask any questions below."
         )
     elif _is_radiology:
-        summary = f"{prefix} report has been read. Ask PHI any questions about it below."
+        summary = f"{prefix} {method}. Ask PHI any questions about it below."
     else:
         summary = (
-            f"{prefix} report has been read. No lab values detected — "
+            f"{prefix} {method}. No lab values detected — "
             "ask PHI about it below."
         )
 
@@ -227,7 +288,9 @@ def _analyze_inner():
         "job_id":                job_id,
         "persona_refresh":       bool(active_markers),
         "requires_confirmation": False,
-        "units":                 "US",  # Confirm to frontend that values are normalized
+        "units":                 "US",
+        "extraction_method":     "vision_ai" if is_image else "text",
+        "quality_hints":         quality_hints,
     })
 
 
@@ -238,8 +301,48 @@ def _today_iso() -> str:
     return date.today().isoformat()
 
 
+def _extract_image_text_safe(file, filename: str):
+    """
+    FIX-VISION-1: Extract text from a photo of a lab report.
+    Uses GPT-4o-mini Vision API with pytesseract fallback.
+    """
+    try:
+        from document_processing.vision_extractor import extract_text_from_image
+        return extract_text_from_image(file)
+    except ImportError:
+        # Module not found — try direct tesseract
+        try:
+            import pytesseract
+            from PIL import Image
+            import io
+            file.seek(0)
+            data = file.read()
+            img  = Image.open(io.BytesIO(data))
+            text = pytesseract.image_to_string(img, lang="eng")
+            return text.strip()
+        except ImportError:
+            return jsonify({
+                "error": (
+                    "Photo OCR requires OPENAI_API_KEY (recommended) or pytesseract. "
+                    "Please configure your environment or upload a PDF instead."
+                )
+            }), 400
+        except Exception as e:
+            return jsonify({"error": f"Could not read this photo: {e}"}), 400
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        print(f"[ANALYZE] Image extraction error: {type(e).__name__}: {e}")
+        return jsonify({
+            "error": (
+                f"Could not process this photo ({type(e).__name__}). "
+                "Ensure good lighting, a flat document, and try PDF upload for best results."
+            )
+        }), 400
+
+
 def _extract_text_safe(file, filename: str):
-    """FIX-B: Catch ImportError from pypdf and return HTTP 400 not 500."""
+    """Extract text from PDF or TXT files."""
     file.seek(0)
 
     for module_path in ["document_processing.extractor", "extractor"]:
@@ -266,19 +369,20 @@ def _extract_text_safe(file, filename: str):
         except ImportError:
             continue
 
-    # Fallback: try pypdf directly
-    if filename.lower().endswith(".pdf"):
+    # Direct pypdf fallback
+    ext = _get_extension(filename)
+    if ext == ".pdf":
         try:
             from pypdf import PdfReader
             import io
             file.seek(0)
-            data = file.read()
+            data   = file.read()
             reader = PdfReader(io.BytesIO(data))
             pages  = [page.extract_text() or "" for page in reader.pages]
             text   = "\n".join(pages).strip()
             if text:
                 return text
-            return jsonify({"error": "No text found in this PDF. It may be a scanned image — OCR is required."}), 400
+            return jsonify({"error": "No text found in this PDF. It may be a scanned image — try uploading a photo instead."}), 400
         except ImportError:
             return jsonify({
                 "error": "pypdf is not installed. Add 'pypdf' to requirements.txt and redeploy."
@@ -286,7 +390,7 @@ def _extract_text_safe(file, filename: str):
         except Exception as e:
             return jsonify({"error": f"Could not read PDF: {e}"}), 400
 
-    if filename.lower().endswith(".txt"):
+    if ext == ".txt":
         try:
             file.seek(0)
             return file.read().decode("utf-8", errors="replace").strip()
@@ -310,29 +414,18 @@ def _extract_and_store_markers_safe(
     user_id: str, user_name: str,
 ) -> tuple:
     """
-    FIX-A + FIX-B: Extract markers, normalize to US units, then store.
+    Extract markers, normalize to US units (FIX-A), then store.
 
-    US unit normalization (force_us_units_batch) converts:
-      - mmol/L glucose  → mg/dL
-      - g/L hemoglobin  → g/dL
-      - nmol/L Vitamin D → ng/mL
-      - pmol/L B12       → pg/mL
-      - µmol/L creatinine → mg/dL
-      - kg weight        → lbs
-      - °C               → °F
-
-    This happens BEFORE explain_markers and BEFORE store_health_markers so
-    that everything downstream (frontend, memory, insights engine) always
-    works in US units.
+    Supports both text-extracted and vision-extracted content.
+    The Vision AI output is already human-readable text — the same
+    marker extractor works for both sources.
     """
     markers, report_date = [], ""
 
-    # FIX-B: Guard — need at least one AI backend
-    import os
+    # Guard: need at least one AI backend
     has_ai = bool(groq_client) or bool(os.getenv("OPENAI_API_KEY"))
     if not has_ai:
-        print("[ANALYZE] No AI client available — skipping marker extraction. "
-              "Set OPENAI_API_KEY or GROQ_API_KEY in .env")
+        print("[ANALYZE] No AI client available — skipping marker extraction.")
         return [], ""
 
     try:
@@ -361,7 +454,7 @@ def _extract_and_store_markers_safe(
     # Step 2: FIX-A — Normalize to US units BEFORE anything else
     try:
         from services.unit_normalizer import force_us_units_batch
-        markers = force_us_units_batch(markers)
+        markers   = force_us_units_batch(markers)
         converted = sum(1 for m in markers if m.get("us_converted"))
         if converted:
             print(f"[ANALYZE] US unit normalization: {converted}/{len(markers)} markers converted")
@@ -400,7 +493,7 @@ def _invalidate_caches(supabase, user_id: str) -> None:
     """Invalidate the 6-hour persona cache and insights cache after new upload."""
     try:
         supabase.table("user_profiles").update({
-            "health_persona_marker_count": -1,  # Forces persona regeneration
+            "health_persona_marker_count": -1,
         }).eq("user_id", user_id).execute()
     except Exception as e:
         print(f"[ANALYZE] Persona cache invalidate non-fatal: {e}")
@@ -463,7 +556,7 @@ def _generate_and_store_doctor_prep_safe(
         traceback.print_exc()
 
 
-# ── Doctor prep fetch ─────────────────────────────────────────────────────────
+# ── Doctor prep fetch endpoints ───────────────────────────────────────────────
 
 @document_bp.route("/doctor-prep/<job_id>", methods=["GET"])
 def get_doctor_prep(job_id: str):

@@ -23,3 +23,46 @@ pypdf
 
 # Optional: Redis-backed rate limiting (required for multi-worker production)
 # redis
+
+# ── Core Web Framework ────────────────────────────────────────────────────────
+Flask
+flask-cors
+gunicorn
+requests
+python-dotenv
+
+# ── Database ───────────────────────────────────────────────────────────────────
+supabase
+
+# ── AI Backends ────────────────────────────────────────────────────────────────
+groq
+openai            # Required for Vision OCR (photo lab reports) + GPT-4o-mini fallback
+
+# ── PDF Extraction — REQUIRED for /analyze to work at all ────────────────────
+# Without pypdf, every PDF upload returns 500
+pypdf
+
+# ── Image Processing — REQUIRED for photo lab report support ─────────────────
+# Enables JPG/PNG/WebP lab report photos + image quality analysis
+Pillow            # PIL — image resize before Vision API (cost control)
+
+# ── Vision OCR Fallback — OPTIONAL but recommended ───────────────────────────
+# Used when OPENAI_API_KEY is not set, or as a secondary OCR pass
+# Requires Tesseract system binary: apt-get install tesseract-ocr
+# pdf2image and pytesseract
+# pdf2image
+# pytesseract
+
+# ── HEIC Support — OPTIONAL (iOS camera photos) ──────────────────────────────
+# Enables direct upload of iPhone HEIC photos without conversion
+# pip install pillow-heif
+# pillow-heif
+
+# ── Semantic Search / RAG ─────────────────────────────────────────────────────
+# sentence-transformers  # 384-dim embeddings for RAG search
+
+# ── Payments ─────────────────────────────────────────────────────────────────
+# stripe
+
+# ── Redis Rate Limiting — Required for multi-worker production ────────────────
+# redis
