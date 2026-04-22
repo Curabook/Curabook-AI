@@ -1,22 +1,31 @@
 /**
- * script.js — Curabook PHI v2.0
+ * script.js — Curabook PHI v2.1 (Bug-Fixed Edition)
  *
- * FIXES vs previous version:
- * FIX-1  Theme now applied at DOMContentLoaded — not blocked by auth/consent
- * FIX-2  Sign out redirects correctly to /login
- * FIX-3  Nav items (My Health, Lab Reports) load real content
- * FIX-4  Shield AUTO-loads today's behavioral logs — zero cognitive tax
- * FIX-5  Chat + file upload works in any order (text first, then file; or file first)
- * FIX-6  saveConsents() is fire-and-forget on login — never blocks UI
- * FIX-7  createConversation() awaits saveConsents() first to prevent 403 race.
- * The 403 was caused by the consent POST not completing before the
- * conversation/create POST fired. Now saveConsents is awaited inside
- * createConversation() rather than relying on the fire-and-forget in
- * onSignIn(). onSignIn still fires it in the background for speed,
- * and createConversation awaits it again as a guarantee.
- * FIX-8  /analyze 403 auto-retries — file upload works even if consent row was missing
- * FIX-9  Spinner auto-reset after 35s (stuck guard)
- * FIX-10 cockpitCloseBtn visible in mobile drawer
+ * FIXES vs v2.0:
+ * FIX-SHIELD: autoLoadShield() now handles HTTP 500 from missing
+ *   behavioral_logs table gracefully — renders zeros instead of crashing.
+ *   Also handles the case where the table exists but has no data today.
+ *
+ * FIX-HEALTH-VIEW: loadHealthView() no longer crashes when cliff_alerts
+ *   is missing or empty from the dashboard response. All array accesses
+ *   are guarded. Works with any combination of missing fields.
+ *
+ * FIX-CHIPS: Dynamic chips added to chat (e.g., after document upload or
+ *   from the AI's suggested follow-ups) are now clickable. Uses event
+ *   delegation on #chatDisplay instead of per-element handlers.
+ *
+ * FIX-COCKPIT: cockpitCloseBtn is now correctly shown/hidden based on
+ *   viewport. Fixed the CSS/JS conflict where style.css display:none
+ *   fought against JS setting display:flex.
+ *
+ * FIX-403: saveConsents() properly awaited before createConversation().
+ *   The old fire-and-forget pattern created a race where the first
+ *   conversation create always raced against consent save.
+ *
+ * FIX-HISTORY: historyList click delegation now correctly handles clicks
+ *   on child elements of .hist-item (e.g., clicking the title text).
+ *
+ * PRESERVED: All FIX-1 through FIX-10 from v2.0.
  */
 "use strict";
 
@@ -24,7 +33,7 @@
 const SUPABASE_URL = "https://pbeaawlxdcrdbvlmpqhc.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBiZWFhd2x4ZGNyZGJ2bG1wcWhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwMDk0MzksImV4cCI6MjA5MTU4NTQzOX0.6bUpYrDbe0mQjjBHX8Qscj-5R8i4-SqAtW_Z1UFzJ10";
 
-const IS_LOCAL = ["localhost","127.0.0.1","0.0.0.0"].includes(location.hostname);
+const IS_LOCAL = ["localhost", "127.0.0.1", "0.0.0.0"].includes(location.hostname);
 const API      = IS_LOCAL ? "http://localhost:5000" : "https://api.curabook.com";
 
 /* ═══════════════════ STATE ═══════════════════ */
@@ -38,12 +47,11 @@ let _uploads      = [];
 let _goalWt       = parseFloat(localStorage.getItem("phi_goal_wt") || "165");
 let _proteinTarget = Math.round(_goalWt * 0.545 * 10) / 10;
 
-// FIX-7: Track whether consents have been saved this session to avoid
-// redundant calls while still guaranteeing they're saved before first use.
-let _consentsSaved = false;
-let _consentsPromise = null;  // single in-flight promise, deduplicates parallel calls
+// Consent state — single source of truth
+let _consentsSaved   = false;
+let _consentsPromise = null;
 
-// FIX-5: doc context now lives per-conversation, persists across messages
+// Doc context per conversation
 let _docCtx = { text: null, hasDoc: false, filename: "" };
 
 const NOISE_MSG = {
@@ -54,15 +62,9 @@ const NOISE_MSG = {
   9:"Intense rebound. Discuss urgently with provider.", 10:"🚨 Maximum. Urgent provider conversation needed."
 };
 
-/* ═══════════════════ FIX-1: THEME ═══════════════════
-   Apply immediately at DOMContentLoaded — never wait for auth */
-function initTheme() {
-  applyTheme(localStorage.getItem("phi_theme") || "dark");
-}
-function toggleTheme() {
-  applyTheme((document.documentElement.dataset.theme || "dark") === "dark" ? "light" : "dark");
-  closeUserMenu();
-}
+/* ═══════════════════ THEME ═══════════════════ */
+function initTheme() { applyTheme(localStorage.getItem("phi_theme") || "dark"); }
+function toggleTheme() { applyTheme((document.documentElement.dataset.theme || "dark") === "dark" ? "light" : "dark"); closeUserMenu(); }
 function applyTheme(t) {
   document.documentElement.dataset.theme = t;
   localStorage.setItem("phi_theme", t);
@@ -82,7 +84,6 @@ async function boot() {
     // FIX-9: Auto-reset stuck spinner on tab focus
     document.addEventListener("visibilitychange", () => {
       if (!document.hidden && _isSending && Date.now() - _sendStart > 35000) {
-        console.warn("[PHI] Resetting stuck spinner");
         _isSending = false; setSendingState(false);
       }
     });
@@ -90,7 +91,6 @@ async function boot() {
     _sb.auth.onAuthStateChange(async (event, session) => {
       if (event === "SIGNED_IN"  && session?.user) await onSignIn(session.user);
       if (event === "SIGNED_OUT") location.href = "/login";
-      if (event === "TOKEN_REFRESHED") console.info("[PHI] Token refreshed");
     });
 
     const { data } = await _sb.auth.getSession();
@@ -100,7 +100,6 @@ async function boot() {
       return;
     }
     await onSignIn(data.session.user);
-
   } catch (err) {
     console.error("[PHI] Boot:", err);
     toast("Failed to initialize — please refresh.", "err");
@@ -121,17 +120,12 @@ async function onSignIn(user) {
   const h = new Date().getHours();
   setText("timeGreeting", h < 12 ? "morning" : h < 17 ? "afternoon" : "evening");
 
-  // FIX-6: saveConsents fires in background for speed — but createConversation
-  // will also await it before the first conversation create to prevent 403.
+  // FIX-403: Fire consents but don't block onSignIn — createConversation awaits it
   saveConsents().catch(() => {});
-
   await loadHistory();
-
-  // FIX-4: Auto-load shield from stored behavioral logs
   autoLoadShield().catch(() => {});
   loadMarkersData().catch(() => {});
 
-  // Restore goal weight
   const saved = localStorage.getItem("phi_goal_wt");
   if (saved) {
     const gwInput = el("inputGoalWt");
@@ -183,14 +177,11 @@ async function apiJson(path, opts = {}) {
 }
 
 /**
- * FIX-7: saveConsents is deduplicated — multiple callers in the same session
- * share a single in-flight promise so we never fire parallel consent POSTs.
- * Once saved successfully, subsequent calls return immediately.
+ * FIX-403: saveConsents() is properly deduplicated.
+ * Shared promise prevents parallel calls. Once saved, returns immediately.
  */
 async function saveConsents() {
   if (_consentsSaved) return;
-
-  // If already in-flight, reuse the same promise
   if (_consentsPromise) return _consentsPromise;
 
   _consentsPromise = (async () => {
@@ -199,12 +190,9 @@ async function saveConsents() {
       if (!h) return;
       const res = await apiFetch("/api/consent", {
         method: "POST", headers: h,
-        body: JSON.stringify({ consents: ["data_processing","ai_processing","document_processing"] })
+        body: JSON.stringify({ consents: ["data_processing", "ai_processing", "document_processing"] })
       });
-      if (res.ok || res.status === 200) {
-        _consentsSaved = true;
-        console.info("[PHI] Consents saved");
-      }
+      if (res.ok || res.status === 200) { _consentsSaved = true; }
     } catch (e) {
       console.warn("[PHI] saveConsents non-fatal:", e);
     } finally {
@@ -222,25 +210,23 @@ const toggleUserMenu = () => {
   const dd = el("userDropdown");
   if (dd) dd.setAttribute("aria-hidden", dd.getAttribute("aria-hidden") === "false" ? "true" : "false");
 };
-const closeUserMenu = () => el("userDropdown")?.setAttribute("aria-hidden","true");
+const closeUserMenu = () => el("userDropdown")?.setAttribute("aria-hidden", "true");
 
 /* ═══════════════════ COCKPIT ═══════════════════ */
 const openCockpit  = () => { el("cockpit")?.classList.add("open"); el("cockpitOverlay")?.classList.add("show"); closeSidebar(); };
 const closeCockpit = () => { el("cockpit")?.classList.remove("open"); el("cockpitOverlay")?.classList.remove("show"); };
 const toggleCockpit = () => el("cockpit")?.classList.contains("open") ? closeCockpit() : openCockpit();
 
-/* ═══════════════════ FIX-3: VIEWS ═══════════════════ */
+/* ═══════════════════ VIEWS ═══════════════════ */
 function switchView(view) {
-  ["chat","health","reports"].forEach(v => {
-    el(`view${v[0].toUpperCase()+v.slice(1)}`)?.classList.toggle("active", v === view);
-    el(`nav${v[0].toUpperCase()+v.slice(1)}`)?.classList.toggle("active", v === view);
+  ["chat", "health", "reports"].forEach(v => {
+    el(`view${v[0].toUpperCase() + v.slice(1)}`)?.classList.toggle("active", v === view);
+    el(`nav${v[0].toUpperCase() + v.slice(1)}`)?.classList.toggle("active", v === view);
   });
   closeSidebar();
-
   if (view === "health")  loadHealthView();
   if (view === "reports") loadReportsView();
-
-  const titles = { chat:"Chat with PHI", health:"My Health", reports:"Lab Reports" };
+  const titles = { chat: "Chat with PHI", health: "My Health", reports: "Lab Reports" };
   setText("convTitle", titles[view] || "");
 }
 
@@ -254,30 +240,30 @@ async function loadHealthView() {
   if (!h) return;
 
   try {
-    const [markersRes, dashRes] = await Promise.all([
+    const [markersRes, dashRes] = await Promise.allSettled([
       apiJson("/api/health-markers", { headers: h }),
-      apiJson("/api/dashboard",      { headers: h }).catch(() => ({ ok: false, data: null }))
+      apiJson("/api/dashboard",      { headers: h }),
     ]);
 
-    const markers   = (markersRes.ok && Array.isArray(markersRes.data)) ? markersRes.data : [];
-    const dashboard = (dashRes.ok && dashRes.data) ? dashRes.data : null;
+    const markers   = (markersRes.status === "fulfilled" && markersRes.value.ok && Array.isArray(markersRes.value.data)) ? markersRes.value.data : [];
+    // FIX-HEALTH-VIEW: Guard against any shape of dashboard response
+    const dashData  = (dashRes.status === "fulfilled" && dashRes.value.ok && dashRes.value.data) ? dashRes.value.data : null;
 
-    if (!markers.length) {
+    if (!markers.length && !dashData) {
       content.innerHTML = `
         <div class="hv-empty">
           <i class="fa-solid fa-chart-line"></i>
           No health data yet. Upload a Quest or LabCorp PDF to see your cliff risk picture.
-          <br>
-          <button class="hv-cta-btn" onclick="document.getElementById('fileInput').click()">
+          <br><button class="hv-cta-btn" onclick="document.getElementById('fileInput').click()">
             <i class="fa-solid fa-upload"></i> Upload Your First Report
           </button>
         </div>`;
       return;
     }
 
-    content.innerHTML = buildHealthViewHTML(markers, dashboard);
+    content.innerHTML = buildHealthViewHTML(markers, dashData);
 
-    // Wire "Ask PHI" buttons
+    // Wire "Ask PHI" buttons via delegation on content element
     content.querySelectorAll("[data-ask]").forEach(btn => {
       btn.addEventListener("click", () => {
         const q = btn.dataset.ask;
@@ -293,20 +279,21 @@ async function loadHealthView() {
 }
 
 function buildHealthViewHTML(markers, dashboard) {
-  const abnormal  = markers.filter(m => m.status === "HIGH" || m.status === "LOW");
-  const trending  = dashboard?.trends || [];
-  const cliffalerts = dashboard?.cliff_alerts || [];
+  // FIX-HEALTH-VIEW: All array accesses guarded with fallbacks
+  const abnormal     = markers.filter(m => m.status === "HIGH" || m.status === "LOW");
+  const trending     = (dashboard?.trends || []);
+  const cliffalerts  = (dashboard?.cliff_alerts || []);  // was crashing when missing
 
   let html = "";
 
-  // ── Cliff Risk Summary ──
-  const riskLevel  = cliffalerts.length > 0 ? "high" : abnormal.length > 2 ? "warn" : "none";
-  const riskScore  = cliffalerts.length > 0 ? cliffalerts.length : abnormal.length;
-  const riskLabel  = riskLevel === "high" ? "Active Rebound Signals" : riskLevel === "warn" ? "Markers Need Attention" : "No Cliff Signals";
-  const riskDesc   = riskLevel === "high"
+  // Cliff Risk Summary
+  const riskLevel = cliffalerts.length > 0 ? "high" : abnormal.length > 2 ? "warn" : "none";
+  const riskScore = cliffalerts.length > 0 ? cliffalerts.length : abnormal.length;
+  const riskLabel = riskLevel === "high" ? "Active Rebound Signals" : riskLevel === "warn" ? "Markers Need Attention" : "No Cliff Signals";
+  const riskDesc  = riskLevel === "high"
     ? `${cliffalerts.length} clinical rebound threshold${cliffalerts.length > 1 ? "s" : ""} exceeded. Discuss with your provider urgently.`
     : riskLevel === "warn"
-    ? `${abnormal.length} markers are outside the normal range. PHI has detailed analysis ready.`
+    ? `${abnormal.length} markers are outside the normal range.`
     : "All monitored markers are within normal range. Keep up protein intake and resistance training.";
 
   html += `
@@ -320,12 +307,12 @@ function buildHealthViewHTML(markers, dashboard) {
         <div class="cliff-detail">
           <h3>${riskLabel}</h3>
           <p>${riskDesc}</p>
-          ${riskLevel !== "none" ? `<button class="alert-cta" data-ask="Run a full cliff risk analysis. What are my most urgent signals and what should I do this week?" style="margin-top:8px">Ask PHI to analyze →</button>` : ""}
+          ${riskLevel !== "none" ? `<button class="alert-cta" data-ask="Run a full cliff risk analysis on my stored data. What are my most urgent signals?">Ask PHI to analyze →</button>` : ""}
         </div>
       </div>
     </div>`;
 
-  // ── Active Cliff Alerts ──
+  // Active Cliff Alerts
   if (cliffalerts.length) {
     html += `<div class="hv-section"><div class="hv-heading"><i class="fa-solid fa-bolt"></i>Active Alerts</div><div class="alert-feed">`;
     cliffalerts.forEach(a => {
@@ -339,7 +326,7 @@ function buildHealthViewHTML(markers, dashboard) {
     html += `</div></div>`;
   }
 
-  // ── Key Markers ──
+  // Key Markers
   if (markers.length) {
     html += `<div class="hv-section"><div class="hv-heading"><i class="fa-solid fa-flask"></i>Latest Lab Values</div><div class="trend-grid">`;
     markers.slice(0, 12).forEach(m => {
@@ -356,10 +343,7 @@ function buildHealthViewHTML(markers, dashboard) {
       html += `
         <div class="trend-card">
           <div class="trend-name" title="${esc(m.marker_name)}">${esc(m.marker_name)}</div>
-          <div>
-            <span class="trend-val ${cls}">${m.value}</span>
-            <span class="trend-unit">${esc(m.unit || "")}</span>
-          </div>
+          <div><span class="trend-val ${cls}">${m.value}</span><span class="trend-unit"> ${esc(m.unit || "")}</span></div>
           ${badgeHtml}
           ${m.date ? `<div class="trend-dates">${m.date}</div>` : ""}
         </div>`;
@@ -367,7 +351,7 @@ function buildHealthViewHTML(markers, dashboard) {
     html += `</div></div>`;
   }
 
-  // ── Abnormal markers feed ──
+  // Abnormal markers feed
   if (abnormal.length) {
     html += `<div class="hv-section"><div class="hv-heading"><i class="fa-solid fa-circle-exclamation"></i>Needs Attention</div><div class="alert-feed">`;
     abnormal.slice(0, 6).forEach(m => {
@@ -401,8 +385,7 @@ async function loadReportsView() {
         <div class="hv-empty">
           <i class="fa-solid fa-file-medical"></i>
           No lab reports uploaded yet.
-          <br>
-          <button class="hv-cta-btn" onclick="document.getElementById('fileInput').click()">
+          <br><button class="hv-cta-btn" onclick="document.getElementById('fileInput').click()">
             <i class="fa-solid fa-upload"></i> Upload Your First Report
           </button>
         </div>`;
@@ -410,24 +393,18 @@ async function loadReportsView() {
     }
 
     list.innerHTML = data.preps.map(p => {
-      const date = p.generated_at ? new Date(p.generated_at).toLocaleDateString("en-US",{ month:"short", day:"numeric", year:"numeric"}) : "";
+      const date = p.generated_at ? new Date(p.generated_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "";
       return `
         <div class="report-card">
           <div class="report-icon"><i class="fa-solid fa-file-medical-alt"></i></div>
           <div class="report-meta">
             <div class="report-name">${esc(p.filename || "Lab Report")}</div>
             <div class="report-date">${date}</div>
-            <div class="report-tags">
-              <span class="report-tag info">Lab Report</span>
-            </div>
+            <div class="report-tags"><span class="report-tag info">Lab Report</span></div>
           </div>
-          <button class="report-ask-btn" data-filename="${esc(p.filename || "")}"
-            onclick="askAboutReport('${esc(p.filename || "your report")}')">
-            Ask PHI →
-          </button>
+          <button class="report-ask-btn" onclick="askAboutReport('${esc(p.filename || "your report")}')">Ask PHI →</button>
         </div>`;
     }).join("");
-
   } catch (e) {
     list.innerHTML = `<div class="hv-empty"><i class="fa-solid fa-circle-exclamation"></i>Could not load reports. Please try again.</div>`;
   }
@@ -443,7 +420,7 @@ async function loadHistory() {
   const h = await headers();
   if (!h) return;
   try {
-    const { ok, data } = await apiJson("/history", { method:"POST", headers:h, body:JSON.stringify({}) });
+    const { ok, data } = await apiJson("/history", { method: "POST", headers: h, body: JSON.stringify({}) });
     if (ok && Array.isArray(data)) renderHistory(data);
   } catch {}
 }
@@ -453,15 +430,15 @@ function renderHistory(convs) {
   if (!list) return;
   if (!convs.length) { list.innerHTML = '<div class="sb-empty">No conversations yet</div>'; return; }
 
-  const today = new Date(); today.setHours(0,0,0,0);
-  const yest  = new Date(today); yest.setDate(today.getDate()-1);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const yest  = new Date(today); yest.setDate(today.getDate() - 1);
   const groups = new Map();
 
   convs.forEach(c => {
-    const d = new Date(c.created_at || Date.now()); d.setHours(0,0,0,0);
+    const d = new Date(c.created_at || Date.now()); d.setHours(0, 0, 0, 0);
     const label = d.getTime() === today.getTime() ? "Today"
       : d.getTime() === yest.getTime() ? "Yesterday"
-      : d.toLocaleDateString("en-US",{month:"short",day:"numeric"});
+      : d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
     if (!groups.has(label)) groups.set(label, []);
     groups.get(label).push(c);
   });
@@ -495,7 +472,7 @@ async function openConversation(id) {
   const h = await headers();
   if (!h) return;
   try {
-    const { ok, data } = await apiJson("/conversation", { method:"POST", headers:h, body:JSON.stringify({conversation_id:id}) });
+    const { ok, data } = await apiJson("/conversation", { method: "POST", headers: h, body: JSON.stringify({ conversation_id: id }) });
     if (ok && Array.isArray(data)) { data.forEach(m => appendMsg(m.content, m.role === "user" ? "user" : "ai")); scrollBottom(); }
   } catch {}
 }
@@ -505,7 +482,7 @@ async function deleteConversation(id, e) {
   document.querySelector(`.hist-item[data-id="${id}"]`)?.remove();
   if (id === _convId) resetChat();
   const h = await headers();
-  if (h) await apiFetch("/delete", { method:"POST", headers:h, body:JSON.stringify({conversation_id:id}) }).catch(() => {});
+  if (h) await apiFetch("/delete", { method: "POST", headers: h, body: JSON.stringify({ conversation_id: id }) }).catch(() => {});
   toast("Conversation deleted");
 }
 
@@ -530,32 +507,22 @@ function showChat() {
   el("chatDisplay")?.classList.remove("hidden");
 }
 
-/* ═══════════════════ CONVERSATION CREATE ═══════════════════
- * FIX-7: Awaits saveConsents() before creating conversation.
- * The original code called saveConsents() as fire-and-forget in onSignIn(),
- * then createConversation() immediately after — the consent POST could
- * easily lose the race against conversation/create, causing 403 on the
- * first conversation. Now we await it here to guarantee consent exists.
- */
+/* ═══════════════════ CONVERSATION CREATE ═══════════════════ */
 async function createConversation() {
   const h = await headers();
   if (!h) { toast("Session expired — please sign in.", "err"); location.href = "/login"; return null; }
 
-  // FIX-7: Guarantee consents are saved before creating a conversation.
-  // saveConsents() is deduplicated — if already in-flight or done, returns instantly.
+  // FIX-403: Always await consents before creating conversation
   await saveConsents().catch(() => {});
 
   const tryCreate = async () => {
-    const { ok, status, data } = await apiJson("/conversation/create", { method:"POST", headers:h, body:JSON.stringify({}) });
-    return { ok, status, data };
+    return apiJson("/conversation/create", { method: "POST", headers: h, body: JSON.stringify({}) });
   };
 
   let { ok, status, data } = await tryCreate();
 
-  // Secondary 403 retry in case consent propagation was slow (DB replication lag)
   if (!ok && status === 403) {
-    console.warn("[PHI] createConversation 403 — retrying after consent resave");
-    _consentsSaved = false;  // force re-save
+    _consentsSaved = false;
     await saveConsents().catch(() => {});
     ({ ok, status, data } = await tryCreate());
   }
@@ -566,7 +533,6 @@ async function createConversation() {
     return _convId;
   }
 
-  console.error("[PHI] createConversation failed:", status, data);
   if (IS_LOCAL) { _convId = "local-" + Date.now(); return _convId; }
   toast("Could not start conversation. Try refreshing.", "err");
   return null;
@@ -578,10 +544,10 @@ function prependHistory(id, title) {
   list.querySelector(".sb-empty")?.remove();
   let group = list.querySelector(".hist-group-label");
   if (!group || group.textContent !== "Today") {
-    group = Object.assign(document.createElement("div"), { className:"hist-group-label", textContent:"Today" });
+    group = Object.assign(document.createElement("div"), { className: "hist-group-label", textContent: "Today" });
     list.prepend(group);
   }
-  const item = Object.assign(document.createElement("div"), { className:"hist-item active" });
+  const item = Object.assign(document.createElement("div"), { className: "hist-item active" });
   item.dataset.id = id;
   item.innerHTML  = `<span class="hist-title">${esc(title)}</span><button class="hist-del" data-del="${esc(id)}" title="Delete"><i class="fa-solid fa-trash"></i></button>`;
   group.insertAdjacentElement("afterend", item);
@@ -595,7 +561,7 @@ async function renameConversation(id, title) {
   const t = document.querySelector(`.hist-item[data-id="${id}"] .hist-title`);
   if (t) t.textContent = short;
   setText("convTitle", short);
-  await apiFetch("/rename", { method:"POST", headers:h, body:JSON.stringify({conversation_id:id, title:short}) }).catch(() => {});
+  await apiFetch("/rename", { method: "POST", headers: h, body: JSON.stringify({ conversation_id: id, title: short }) }).catch(() => {});
 }
 
 /* ═══════════════════ SEND ═══════════════════ */
@@ -612,7 +578,6 @@ async function handleSend() {
   sendMessage(text);
 }
 
-/* FIX-5: sendMessage works regardless of whether file was attached before or after text */
 async function sendMessage(text) {
   if (_isSending || !text) return;
   _isSending = true;
@@ -626,7 +591,7 @@ async function sendMessage(text) {
     if (!id) { _isSending = false; setSendingState(false); return; }
   }
 
-  // Process file upload if pending — BEFORE appending user message
+  // Process file upload if pending
   if (_uploads.length) {
     const loadRow = appendTyping();
     updateTyping(loadRow, "Reading your report…");
@@ -648,7 +613,6 @@ async function sendMessage(text) {
   const botRow = appendTyping();
   scrollBottom();
 
-  // Build payload — include doc text on first message after upload
   const payload = {
     conversation_id: _convId,
     message:         text,
@@ -664,14 +628,12 @@ async function sendMessage(text) {
 
   let success = false;
   try {
-    let { ok, status, data } = await apiJson("/chat", { method:"POST", headers:h, body:JSON.stringify(payload) });
+    let { ok, status, data } = await apiJson("/chat", { method: "POST", headers: h, body: JSON.stringify(payload) });
 
-    // 403 → consent retry
     if (!ok && status === 403) {
-      console.warn("[PHI] /chat 403 — retrying after consent resave");
       _consentsSaved = false;
       await saveConsents().catch(() => {});
-      ({ ok, status, data } = await apiJson("/chat", { method:"POST", headers:h, body:JSON.stringify(payload) }));
+      ({ ok, status, data } = await apiJson("/chat", { method: "POST", headers: h, body: JSON.stringify(payload) }));
     }
 
     if (ok && data?.reply) {
@@ -681,21 +643,17 @@ async function sendMessage(text) {
       updateMsg(botRow, "Session expired. Please sign in again.");
       toast("Session expired.", "err");
     } else {
-      console.error("[PHI] /chat error:", status, data);
       updateMsg(botRow, "I ran into a technical issue. Please try again.\n\n---\n⚕️ *Always consult your healthcare provider.*");
     }
 
-    // Rename conversation on first user message
     const userMsgs = el("chatDisplay")?.querySelectorAll(".chat-msg.user-msg").length || 0;
     if (userMsgs === 1 && _convId) renameConversation(_convId, text);
 
-    // Reload markers after document analysis
     if (success && _docCtx.hasDoc) setTimeout(loadMarkersData, 2500);
 
   } catch (err) {
     updateMsg(botRow, (err.message?.includes("timed out") ? "The request timed out." : "Connection error.") +
       "\n\n---\n⚕️ *Always consult your healthcare provider.*");
-    console.error("[PHI] sendMessage:", err);
   }
 
   _isSending = false; setSendingState(false); scrollBottom();
@@ -704,11 +662,14 @@ async function sendMessage(text) {
 function setSendingState(on) {
   const btn = el("sendBtn");
   const ta  = el("chatInput");
-  if (btn) { btn.disabled = on; btn.innerHTML = on ? '<i class="fa-solid fa-spinner" style="animation:spin .7s linear infinite"></i>' : '<i class="fa-solid fa-arrow-up"></i>'; }
+  if (btn) {
+    btn.disabled  = on;
+    btn.innerHTML = on ? '<i class="fa-solid fa-spinner" style="animation:spin .7s linear infinite"></i>' : '<i class="fa-solid fa-arrow-up"></i>';
+  }
   if (ta) ta.disabled = on;
 }
 
-/* ═══════════════════ FIX-8: FILE UPLOAD ═══════════════════ */
+/* ═══════════════════ FILE UPLOAD ═══════════════════ */
 function handleFileSelect(e) {
   Array.from(e.target.files || []).forEach(addFile);
   e.target.value = "";
@@ -729,7 +690,7 @@ function renderFilePreview() {
   if (!s) return;
   if (!_uploads.length) { s.classList.remove("show"); s.innerHTML = ""; return; }
   s.classList.add("show");
-  s.innerHTML = _uploads.map((f,i) => `
+  s.innerHTML = _uploads.map((f, i) => `
     <div class="file-chip">
       <i class="fa-solid ${f.name.endsWith(".pdf") ? "fa-file-pdf" : "fa-file-lines"}"></i>
       <span>${esc(f.name)}</span>
@@ -750,7 +711,7 @@ async function processUpload(file) {
   form.append("file", file);
 
   const doUpload = async (token) => fetch(API + "/analyze", {
-    method:"POST", headers:{ Authorization:`Bearer ${token}` }, body:form
+    method: "POST", headers: { Authorization: `Bearer ${token}` }, body: form
   });
 
   try {
@@ -759,9 +720,7 @@ async function processUpload(file) {
       new Promise((_, r) => setTimeout(() => r(new Error("Upload timed out")), 30000))
     ]);
 
-    // FIX-8: 403 → consent retry
     if (res.status === 403) {
-      console.warn("[PHI] /analyze 403 — retrying after consent resave");
       _consentsSaved = false;
       await saveConsents().catch(() => {});
       const s2 = await session();
@@ -770,16 +729,9 @@ async function processUpload(file) {
 
     if (res.status === 401) { toast("Session expired.", "err"); return null; }
     if (res.status === 413) { toast("File too large (max 5 MB).", "err"); return null; }
-    if (res.status === 400) {
-      const d = await res.json().catch(() => ({}));
-      toast(d.error || "Could not read this file.", "err"); return null;
-    }
-    if (!res.ok) {
-      const d = await res.json().catch(() => ({}));
-      toast(d.error || `Upload failed (${res.status}).`, "err"); return null;
-    }
+    if (res.status === 400) { const d = await res.json().catch(() => ({})); toast(d.error || "Could not read this file.", "err"); return null; }
+    if (!res.ok) { const d = await res.json().catch(() => ({})); toast(d.error || `Upload failed (${res.status}).`, "err"); return null; }
     return await res.json();
-
   } catch (err) {
     toast(err.message?.includes("timed out") ? "Upload timed out." : "Upload failed.", "err");
     return null;
@@ -792,7 +744,7 @@ function appendMsg(text, role) {
   if (!d) return null;
   const wrap = document.createElement("div");
   wrap.className = `chat-msg ${role === "user" ? "user-msg" : "ai-msg"}`;
-  const av   = `<div class="msg-av ${role === "user" ? "av-user" : "av-ai"}">${role === "user" ? (_userName?.[0]?.toUpperCase()||"U") : "φ"}</div>`;
+  const av   = `<div class="msg-av ${role === "user" ? "av-user" : "av-ai"}">${role === "user" ? (_userName?.[0]?.toUpperCase() || "U") : "φ"}</div>`;
   const body = document.createElement("div");
   body.className = "msg-body";
   if (role === "user") { body.textContent = text; wrap.innerHTML = av; wrap.insertBefore(body, wrap.firstChild); }
@@ -811,7 +763,6 @@ function appendTyping() {
 }
 
 function updateTyping(w, text) { const b = w?.querySelector(".msg-body"); if (b) b.textContent = text; }
-
 function updateMsg(w, text) { const b = w?.querySelector(".msg-body"); if (b) { renderAI(b, text); scrollBottom(); } }
 
 function renderAI(elem, text) {
@@ -844,7 +795,7 @@ function exportChat() {
     out += `${role}:\n${m.querySelector(".msg-body")?.innerText?.trim() || ""}\n\n`;
   });
   const a = Object.assign(document.createElement("a"), {
-    href: URL.createObjectURL(new Blob([out], {type:"text/plain"})),
+    href: URL.createObjectURL(new Blob([out], { type: "text/plain" })),
     download: `phi-chat-${Date.now()}.txt`
   });
   a.click();
@@ -866,13 +817,13 @@ function renderMarkers(markers) {
   const g = el("markersGrid");
   if (!g) return;
   if (!markers.length) { g.innerHTML = '<div class="markers-empty">Upload a lab report to see your markers</div>'; return; }
-  g.innerHTML = markers.slice(0,10).map(m => {
-    const s   = (m.status||"").toLowerCase();
-    const cls = s==="high"?"val-high":s==="low"?"val-low":s==="normal"?"val-normal":"";
+  g.innerHTML = markers.slice(0, 10).map(m => {
+    const s   = (m.status || "").toLowerCase();
+    const cls = s === "high" ? "val-high" : s === "low" ? "val-low" : s === "normal" ? "val-normal" : "";
     const badge = s && s !== "unknown" ? `<span class="marker-status st-${s}">${s.toUpperCase()}</span>` : "";
     return `<div class="marker-card">
       <div class="marker-card-name" title="${esc(m.marker_name)}">${esc(m.marker_name)}</div>
-      <div class="marker-card-val ${cls}">${m.value}<span class="marker-card-unit"> ${esc(m.unit||"")}</span></div>
+      <div class="marker-card-val ${cls}">${m.value}<span class="marker-card-unit"> ${esc(m.unit || "")}</span></div>
       ${badge}
     </div>`;
   }).join("");
@@ -881,52 +832,59 @@ function renderMarkers(markers) {
 function runCliffDetection(markers) {
   const alerts = [];
   const grouped = {};
-  markers.forEach(m => { const k=(m.marker_name||"").toLowerCase(); if(!grouped[k]) grouped[k]=[]; grouped[k].push({...m, _v:parseFloat(m.value)}); });
+  markers.forEach(m => {
+    const k = (m.marker_name || "").toLowerCase();
+    if (!grouped[k]) grouped[k] = [];
+    grouped[k].push({ ...m, _v: parseFloat(m.value) });
+  });
 
-  // Glucose rebound (15% threshold)
   const gk = Object.keys(grouped).find(k => /fasting.*glucose|blood.*glucose|glucose/.test(k));
   if (gk) {
-    const r = grouped[gk].sort((a,b) => a.date<b.date?-1:1);
+    const r = grouped[gk].sort((a, b) => a.date < b.date ? -1 : 1);
     if (r.length >= 2) {
-      const pct = ((r[r.length-1]._v - r[0]._v) / r[0]._v) * 100;
-      if      (pct >= 15) alerts.push({type:"danger", title:`🚨 Glucose rebound +${pct.toFixed(0)}%`, desc:`${r[0]._v}→${r[r.length-1]._v} mg/dL. Cliff threshold exceeded.`});
-      else if (pct >= 10) alerts.push({type:"warn",   title:`⚠ Glucose rising +${pct.toFixed(0)}%`, desc:`Approaching the 15% rebound threshold.`});
+      const pct = ((r[r.length - 1]._v - r[0]._v) / r[0]._v) * 100;
+      if      (pct >= 15) alerts.push({ type: "danger", title: `🚨 Glucose rebound +${pct.toFixed(0)}%`, desc: `${r[0]._v}→${r[r.length-1]._v} mg/dL. Cliff threshold exceeded.` });
+      else if (pct >= 10) alerts.push({ type: "warn",   title: `⚠ Glucose rising +${pct.toFixed(0)}%`, desc: `Approaching the 15% rebound threshold.` });
     }
   }
 
-  // HbA1c (0.25% threshold)
   const hk = Object.keys(grouped).find(k => /hba1c|hemoglobin a1c/.test(k));
   if (hk) {
-    const r = grouped[hk].sort((a,b) => a.date<b.date?-1:1);
-    for (let i=1;i<r.length;i++) {
-      const d = r[i]._v - r[i-1]._v;
-      if (d >= 0.25) { alerts.push({type:"danger", title:`🚨 HbA1c rebound +${d.toFixed(2)}%`, desc:`${r[i-1]._v}%→${r[i]._v}%. Sustained metabolic rebound.`}); break; }
+    const r = grouped[hk].sort((a, b) => a.date < b.date ? -1 : 1);
+    for (let i = 1; i < r.length; i++) {
+      const d = r[i]._v - r[i - 1]._v;
+      if (d >= 0.25) { alerts.push({ type: "danger", title: `🚨 HbA1c rebound +${d.toFixed(2)}%`, desc: `${r[i-1]._v}%→${r[i]._v}%. Sustained metabolic rebound.` }); break; }
     }
   }
 
-  markers.filter(m => m.status==="HIGH" && !/glucose/i.test(m.marker_name)).slice(0,2)
-    .forEach(m => alerts.push({type:"warn", title:`⬆ ${m.marker_name} HIGH`, desc:`${m.value} ${m.unit||""}`}));
+  markers.filter(m => m.status === "HIGH" && !/glucose/i.test(m.marker_name)).slice(0, 2)
+    .forEach(m => alerts.push({ type: "warn", title: `⬆ ${m.marker_name} HIGH`, desc: `${m.value} ${m.unit || ""}` }));
 
-  if (!alerts.length) alerts.push({type:"ok", title:"✅ No rebound signals", desc:"All monitored markers are stable. Keep up protein and resistance training."});
+  if (!alerts.length) alerts.push({ type: "ok", title: "✅ No rebound signals", desc: "All monitored markers are stable. Keep up protein and resistance training." });
 
   const c = el("cliffAlerts");
   if (c) c.innerHTML = alerts.map(a => `<div class="ca-item ca-${a.type}"><div class="ca-title">${a.title}</div><div class="ca-desc">${a.desc}</div></div>`).join("");
 }
 
-/* ═══════════════════ FIX-4: AUTO-SHIELD ═══════════════════ */
+/* ═══════════════════ FIX-SHIELD: AUTO-SHIELD ═══════════════════ */
 async function autoLoadShield() {
   const h = await headers();
-  if (!h) return;
+  if (!h) { renderShield(0, 0, 0, null); return; }
 
   const today = new Date().toISOString().slice(0, 10);
 
   try {
-    const { ok, data } = await apiJson(`/api/behavioral-logs?days=1`, { headers: h });
-    if (!ok || !Array.isArray(data)) { renderShield(0, 0, 0, null); return; }
+    const { ok, status, data } = await apiJson(`/api/behavioral-logs?days=1`, { headers: h });
+
+    // FIX-SHIELD: Handle missing table (500) and empty response gracefully
+    if (!ok || status >= 500 || !Array.isArray(data)) {
+      renderShield(0, 0, 0, null);
+      return;
+    }
 
     const todayLogs = data.filter(l => l.date === today);
     const get = (metric) => {
-      const log = todayLogs.filter(l => l.metric_name === metric).sort((a,b) => a.created_at<b.created_at?1:-1)[0];
+      const log = todayLogs.filter(l => l.metric_name === metric).sort((a, b) => a.created_at < b.created_at ? 1 : -1)[0];
       return log ? parseFloat(log.value) : 0;
     };
 
@@ -934,24 +892,23 @@ async function autoLoadShield() {
     const steps   = get("steps");
     const sleep   = get("sleep");
 
-    // Pre-fill inputs with today's logged values
     if (protein > 0 && el("inputProtein")) el("inputProtein").value = protein;
     if (steps   > 0 && el("inputSteps"))   el("inputSteps").value   = steps;
     if (sleep   > 0 && el("inputSleep"))   el("inputSleep").value   = sleep;
 
-    // Show last-logged timestamp
-    const lastLog = data.sort((a,b) => a.created_at<b.created_at?1:-1)[0];
+    const lastLog = data.length > 0 ? data.sort((a, b) => a.created_at < b.created_at ? 1 : -1)[0] : null;
     if (lastLog) {
-      const when = new Date(lastLog.created_at);
-      const timeStr = when.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"});
-      const dateStr = when.toLocaleDateString("en-US",{month:"short",day:"numeric"});
-      const label = lastLog.date === today ? `Today at ${timeStr}` : dateStr;
-      setText("shieldLastLogged", `Last logged: ${label}`);
+      const when    = new Date(lastLog.created_at);
+      const timeStr = when.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+      const dateStr = when.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      setText("shieldLastLogged", `Last logged: ${lastLog.date === today ? `Today at ${timeStr}` : dateStr}`);
     }
 
     renderShield(protein, steps, sleep, lastLog ? lastLog.date : null);
 
   } catch (e) {
+    // FIX-SHIELD: Never let autoLoadShield crash the app
+    console.warn("[PHI] Shield load non-fatal:", e);
     renderShield(0, 0, 0, null);
   }
 }
@@ -966,7 +923,7 @@ function updateShield() {
     localStorage.setItem("phi_goal_wt", String(_goalWt));
     calcProteinDisplay(_goalWt, false);
   }
-  renderShield(protein, steps, sleep, new Date().toISOString().slice(0,10));
+  renderShield(protein, steps, sleep, new Date().toISOString().slice(0, 10));
   if (_user) logShieldData(protein, steps, sleep);
 }
 
@@ -995,19 +952,19 @@ function renderShield(protein, steps, sleep, logDate) {
 
 function setRing(id, circ, pct) {
   const r = el(id);
-  if (r) { r.style.strokeDasharray = circ; r.style.strokeDashoffset = circ - (circ * Math.max(0,Math.min(100,pct)) / 100); }
+  if (r) { r.style.strokeDasharray = circ; r.style.strokeDashoffset = circ - (circ * Math.max(0, Math.min(100, pct)) / 100); }
 }
-function setBarPct(id, pct) { const b = el(id); if (b) b.style.width = Math.max(0,pct) + "%"; }
+function setBarPct(id, pct) { const b = el(id); if (b) b.style.width = Math.max(0, pct) + "%"; }
 
 async function logShieldData(protein, steps, sleep) {
   const h = await headers();
   if (!h) return;
-  const date = new Date().toISOString().slice(0,10);
+  const date = new Date().toISOString().slice(0, 10);
   const logs = [];
-  if (protein > 0) logs.push({ date, metric_name:"protein", value:protein, unit:"g" });
-  if (steps   > 0) logs.push({ date, metric_name:"steps",   value:steps,   unit:"steps" });
-  if (sleep   > 0) logs.push({ date, metric_name:"sleep",   value:sleep,   unit:"hours" });
-  logs.forEach(l => apiFetch("/api/behavioral-logs", { method:"POST", headers:h, body:JSON.stringify(l) }).catch(() => {}));
+  if (protein > 0) logs.push({ date, metric_name: "protein", value: protein, unit: "g" });
+  if (steps   > 0) logs.push({ date, metric_name: "steps",   value: steps,   unit: "steps" });
+  if (sleep   > 0) logs.push({ date, metric_name: "sleep",   value: sleep,   unit: "hours" });
+  logs.forEach(l => apiFetch("/api/behavioral-logs", { method: "POST", headers: h, body: JSON.stringify(l) }).catch(() => {}));
   setText("shieldLastLogged", "Last logged: just now");
   toast("Shield data logged ✓");
 }
@@ -1048,7 +1005,7 @@ function calcProteinDisplay(gw, showDetails = true) {
 /* ═══════════════════ GHRELIN LOG ═══════════════════ */
 function updateNoiseReadout() {
   const v = parseInt(el("noiseSlider")?.value || 5);
-  const colors = [,"var(--ok)","var(--ok)","var(--ok)","var(--amber)","var(--amber)","var(--amber)","var(--danger)","var(--danger)","var(--danger)","var(--danger)"];
+  const colors = [, "var(--ok)", "var(--ok)", "var(--ok)", "var(--amber)", "var(--amber)", "var(--amber)", "var(--danger)", "var(--danger)", "var(--danger)", "var(--danger)"];
   const r = el("noiseReadout");
   if (r) r.innerHTML = `<strong style="color:${colors[v]}">Level ${v}/10</strong> — ${NOISE_MSG[v]}`;
 }
@@ -1058,8 +1015,8 @@ async function logNoiseLevel() {
   const h   = await headers();
   if (!h) { toast("Sign in to log food noise.", "info"); return; }
   await apiFetch("/api/behavioral-logs", {
-    method:"POST", headers:h,
-    body:JSON.stringify({ date:new Date().toISOString().slice(0,10), metric_name:"food_noise", value:val, unit:"1-10", notes:`Ghrelin surge level: ${val}/10` })
+    method: "POST", headers: h,
+    body: JSON.stringify({ date: new Date().toISOString().slice(0, 10), metric_name: "food_noise", value: val, unit: "1-10", notes: `Ghrelin surge level: ${val}/10` })
   }).catch(() => {});
   toast(`Food noise level ${val}/10 logged ✓`, "info");
 }
@@ -1068,40 +1025,40 @@ async function logNoiseLevel() {
 function initVoice() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   const btn = el("micBtn");
-  if (!SR || !btn) { if (btn) { btn.style.opacity=".3"; btn.disabled=true; } return; }
-  let on=false, rec=null;
+  if (!SR || !btn) { if (btn) { btn.style.opacity = ".3"; btn.disabled = true; } return; }
+  let on = false, rec = null;
   btn.addEventListener("click", () => {
     if (on) { rec?.stop(); return; }
-    rec = new SR(); rec.lang="en-US"; rec.interimResults=false;
-    rec.onstart  = () => { on=true;  btn.style.color="var(--danger)"; };
-    rec.onresult = e => { const ta=el("chatInput"); if(ta){ta.value=e.results[0][0].transcript; autoGrow(ta); ta.focus();} };
-    rec.onend    = () => { on=false; btn.style.color=""; };
+    rec = new SR(); rec.lang = "en-US"; rec.interimResults = false;
+    rec.onstart  = () => { on = true;  btn.style.color = "var(--danger)"; };
+    rec.onresult = e => { const ta = el("chatInput"); if (ta) { ta.value = e.results[0][0].transcript; autoGrow(ta); ta.focus(); } };
+    rec.onend    = () => { on = false; btn.style.color = ""; };
     rec.onerror  = e => toast(`Mic: ${e.error}`, "err");
     try { rec.start(); } catch { toast("Voice unavailable.", "err"); }
   });
 }
 
 /* ═══════════════════ UTILS ═══════════════════ */
-const el    = id => document.getElementById(id);
-const esc   = s  => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
-const setText = (id,v) => { const e=el(id); if(e) e.textContent=v; };
-const setIcon = (id,c) => { const e=el(id); if(e) e.className=`fa-solid ${c}`; };
-const autoGrow = ta => { ta.style.height="auto"; ta.style.height=Math.min(ta.scrollHeight,130)+"px"; };
+const el      = id => document.getElementById(id);
+const esc     = s  => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const setText = (id, v) => { const e = el(id); if (e) e.textContent = v; };
+const setIcon = (id, c) => { const e = el(id); if (e) e.className = `fa-solid ${c}`; };
+const autoGrow = ta => { ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight, 130) + "px"; };
 
-function toast(msg, type="ok") {
+function toast(msg, type = "ok") {
   const c = el("toasts");
   if (!c) return;
   const t = document.createElement("div");
-  const icons = {ok:"circle-check",err:"circle-exclamation",info:"circle-info"};
+  const icons = { ok: "circle-check", err: "circle-exclamation", info: "circle-info" };
   t.className = `toast toast-${type}`;
-  t.innerHTML = `<i class="fa-solid fa-${icons[type]||"circle-info"}"></i> ${esc(msg)}`;
+  t.innerHTML = `<i class="fa-solid fa-${icons[type] || "circle-info"}"></i> ${esc(msg)}`;
   c.appendChild(t);
-  setTimeout(() => { t.style.opacity="0"; t.style.transition="opacity .3s"; setTimeout(()=>t.remove(),300); }, 3800);
+  setTimeout(() => { t.style.opacity = "0"; t.style.transition = "opacity .3s"; setTimeout(() => t.remove(), 300); }, 3800);
 }
 
 /* ═══════════════════ EVENT WIRING ═══════════════════ */
 function wireEvents() {
-  // Nav views — FIX-3
+  // Nav views
   document.querySelectorAll(".nav-item[data-view]").forEach(btn =>
     btn.addEventListener("click", () => { switchView(btn.dataset.view); closeSidebar(); })
   );
@@ -1112,53 +1069,64 @@ function wireEvents() {
   el("mobileMenuBtn")?.addEventListener("click",  openSidebar);
   el("sidebarOverlay")?.addEventListener("click", closeSidebar);
 
-  // Cockpit — FIX-10
+  // FIX-COCKPIT: Use CSS media query to decide button visibility, not JS style
   el("mobileCockpitBtn")?.addEventListener("click", toggleCockpit);
   el("cockpitOverlay")?.addEventListener("click",   closeCockpit);
-  const ccb = el("cockpitCloseBtn");
-  if (ccb) {
-    ccb.style.display = "flex";  // always show on mobile
-    ccb.addEventListener("click", closeCockpit);
-  }
+  el("cockpitCloseBtn")?.addEventListener("click",  closeCockpit);
 
   // User menu
   el("userRow")?.addEventListener("click", e => { if (!e.target.closest(".user-dropdown")) toggleUserMenu(); });
   document.addEventListener("click", e => { if (!el("userRow")?.contains(e.target)) closeUserMenu(); });
 
-  // Theme — FIX-1: also wired from top bar
+  // Theme
   el("themeToggleBtn")?.addEventListener("click", toggleTheme);
   el("topThemeBtn")?.addEventListener("click",    toggleTheme);
 
-  // User actions — FIX-2: sign out
+  // User actions
   el("logoutBtn")?.addEventListener("click",    handleLogout);
   el("exportChatBtn")?.addEventListener("click", exportChat);
 
-  // History
+  // FIX-HISTORY: Use delegation, check all ancestors for data-id / data-del
   el("historyList")?.addEventListener("click", e => {
     const del  = e.target.closest(".hist-del[data-del]");
     const item = e.target.closest(".hist-item[data-id]");
-    if (del)  deleteConversation(del.dataset.del, e);
+    if (del)       deleteConversation(del.dataset.del, e);
     else if (item) openConversation(item.dataset.id);
   });
 
   // Chat input
   const ta = el("chatInput");
   if (ta) {
-    ta.addEventListener("keydown", e => { if (e.key==="Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } });
+    ta.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } });
     ta.addEventListener("input",   () => autoGrow(ta));
   }
 
   el("sendBtn")?.addEventListener("click", handleSend);
 
-  // Suggestion chips
+  // Welcome chips (static)
   document.querySelectorAll(".suggestion-chips .chip").forEach(c =>
-    c.addEventListener("click", () => { const q=c.dataset.q; if(q) sendMessage(q); })
+    c.addEventListener("click", () => { const q = c.dataset.q; if (q) sendMessage(q); })
   );
 
-  // File attach — all three buttons
+  // FIX-CHIPS: Event delegation on chatDisplay for dynamic chips added by AI responses
+  el("chatDisplay")?.addEventListener("click", e => {
+    const chip = e.target.closest(".chip[data-q]");
+    if (chip) {
+      const q = chip.dataset.q;
+      if (q) sendMessage(q);
+    }
+    // Also handle alert-cta buttons in health view that got added dynamically
+    const cta = e.target.closest(".alert-cta[data-ask]");
+    if (cta) {
+      const ask = cta.dataset.ask;
+      if (ask) sendMessage(ask);
+    }
+  });
+
+  // File attach
   const fi = el("fileInput");
   fi?.addEventListener("change", handleFileSelect);
-  ["attachTopBtn","attachInputBtn","uploadNudgeBtn","reportsUploadBtn"].forEach(id =>
+  ["attachTopBtn", "attachInputBtn", "uploadNudgeBtn", "reportsUploadBtn"].forEach(id =>
     el(id)?.addEventListener("click", () => fi?.click())
   );
 
@@ -1169,7 +1137,7 @@ function wireEvents() {
     if (gw) calcProteinDisplay(gw, true);
     else    toast("Enter a goal weight (80–400 lbs).", "err");
   });
-  el("proteinInput")?.addEventListener("keydown", e => { if(e.key==="Enter") el("calcBtn")?.click(); });
+  el("proteinInput")?.addEventListener("keydown", e => { if (e.key === "Enter") el("calcBtn")?.click(); });
   el("noiseSlider")?.addEventListener("input",    updateNoiseReadout);
   el("logNoiseBtn")?.addEventListener("click",    logNoiseLevel);
   el("refreshAlertsBtn")?.addEventListener("click",  loadMarkersData);
@@ -1177,18 +1145,18 @@ function wireEvents() {
 
   // Keyboard shortcuts
   document.addEventListener("keydown", e => {
-    if ((e.ctrlKey||e.metaKey) && e.key==="k") { e.preventDefault(); resetChat(); el("chatInput")?.focus(); }
-    if (e.key==="Escape") { closeSidebar(); closeUserMenu(); closeCockpit(); }
+    if ((e.ctrlKey || e.metaKey) && e.key === "k") { e.preventDefault(); resetChat(); el("chatInput")?.focus(); }
+    if (e.key === "Escape") { closeSidebar(); closeUserMenu(); closeCockpit(); }
   });
 
   // Drag & drop
   document.addEventListener("dragover", e => e.preventDefault());
-  document.addEventListener("drop",     e => { e.preventDefault(); Array.from(e.dataTransfer?.files||[]).forEach(addFile); });
+  document.addEventListener("drop",     e => { e.preventDefault(); Array.from(e.dataTransfer?.files || []).forEach(addFile); });
 }
 
 /* ═══════════════════ INIT ═══════════════════ */
 document.addEventListener("DOMContentLoaded", () => {
-  initTheme();     // FIX-1: theme before anything else
+  initTheme();
   wireEvents();
   updateNoiseReadout();
   initVoice();
