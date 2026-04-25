@@ -1,68 +1,42 @@
 /**
- * performance_patch.js — Curabook PHI v5 (STALE-WHILE-REVALIDATE)
+ * performance_patch.js — Curabook PHI v6 (SHIELD-SYNC & MOBILE FIXED)
  *
- * FIXES:
- * 1. Cache has infinite TTL to guarantee instant renders even after hours.
- * 2. Skips polling entirely; reads token synchronously and fires fetch instantly.
- * 3. Detects 401s from expired local tokens and signals script.js to take over.
+ * FIXES: 
+ * 1. Shield network fetch moved natively into the patch to bypass Supabase boot delays.
+ * 2. Caches Shield data instantly for zero-latency mobile reloads.
  */
 "use strict";
 
-// 1. Cache (Stale-While-Revalidate pattern)
 const Cache = {
-  set(key, data) {
-    try { localStorage.setItem("phi_cache_" + key, JSON.stringify(data)); } catch(e) {}
-  },
-  get(key) {
-    try {
-      const raw = localStorage.getItem("phi_cache_" + key);
-      return raw ? JSON.parse(raw) : null;
-    } catch(e) { return null; }
-  },
+  set(key, data) { try { localStorage.setItem("phi_cache_" + key, JSON.stringify(data)); } catch(e) {} },
+  get(key) { try { const raw = localStorage.getItem("phi_cache_" + key); return raw ? JSON.parse(raw) : null; } catch(e) { return null; } },
   clear(key) { try { localStorage.removeItem("phi_cache_" + key); } catch(e) {} },
-  clearAll() {
-    try {
-      Object.keys(localStorage).filter(k => k.startsWith("phi_cache_")).forEach(k => localStorage.removeItem(k));
-    } catch(e) {}
-  }
+  clearAll() { try { Object.keys(localStorage).filter(k => k.startsWith("phi_cache_")).forEach(k => localStorage.removeItem(k)); } catch(e) {} }
 };
 window.Cache = Cache;
 
-// 2. API & Utility
-function _api() {
-  return ["localhost","127.0.0.1","0.0.0.0"].includes(location.hostname)
-    ? "http://localhost:5000"
-    : "https://api.curabook.com";
-}
+function _api() { return ["localhost","127.0.0.1","0.0.0.0"].includes(location.hostname) ? "http://localhost:5000" : "https://api.curabook.com"; }
 
 function _when(condition, fn, maxMs = 8000) {
   if (condition()) { try { fn(); } catch(e) {} return; }
   const start = Date.now();
   const id = setInterval(() => {
-    if (condition()) {
-      clearInterval(id);
-      try { fn(); } catch(e) {}
-      return;
-    }
+    if (condition()) { clearInterval(id); try { fn(); } catch(e) {} return; }
     if (Date.now() - start > maxMs) clearInterval(id);
   }, 30);
 }
 
-// 3. Extract Session Synchronously
 function _getAuthSync() {
   try {
     const keys = Object.keys(localStorage).filter(k => k.startsWith("sb-") && k.endsWith("-auth-token"));
     for (const key of keys) {
       const parsed = JSON.parse(localStorage.getItem(key) || "{}");
-      if (parsed?.user?.id && parsed?.access_token) {
-        return { userId: parsed.user.id, token: parsed.access_token };
-      }
+      if (parsed?.user?.id && parsed?.access_token) return { userId: parsed.user.id, token: parsed.access_token };
     }
   } catch(e) {}
   return null;
 }
 
-// 4. Render the Cache Instantly
 function _renderCache(userId) {
   window._perf_patch_active = true;
 
@@ -71,15 +45,11 @@ function _renderCache(userId) {
   const cachedGw      = Cache.get("goal_wt_"  + userId);
   const cachedShield  = Cache.get("shield_" + userId);
 
-  if (cachedHistory?.length) {
-    _when(() => typeof renderHistory === "function", () => renderHistory(cachedHistory));
-  }
-  if (cachedMarkers?.length) {
-    _when(() => typeof renderMarkers === "function", () => {
-      renderMarkers(cachedMarkers);
-      if (typeof runCliffDetection === "function") runCliffDetection(cachedMarkers);
-    });
-  }
+  if (cachedHistory?.length) _when(() => typeof renderHistory === "function", () => renderHistory(cachedHistory));
+  if (cachedMarkers?.length) _when(() => typeof renderMarkers === "function", () => {
+    renderMarkers(cachedMarkers);
+    if (typeof runCliffDetection === "function") runCliffDetection(cachedMarkers);
+  });
   if (cachedGw) {
     localStorage.setItem("phi_goal_wt", String(cachedGw));
     _when(() => typeof calcProteinDisplay === "function", () => {
@@ -91,13 +61,10 @@ function _renderCache(userId) {
     });
   }
   if (cachedShield) {
-    _when(() => typeof renderShield === "function", () => {
-      renderShield(cachedShield.protein || 0, cachedShield.steps || 0, cachedShield.sleep || 0, null);
-    });
+    _when(() => typeof renderShield === "function", () => renderShield(cachedShield.protein || 0, cachedShield.steps || 0, cachedShield.sleep || 0, null));
   }
 }
 
-// 5. Fetch Fresh Data (Background Sync)
 async function _fetchFresh(userId, token) {
   const hdrs = { Authorization: "Bearer " + token };
   let data = null;
@@ -110,12 +77,10 @@ async function _fetchFresh(userId, token) {
     if (res.ok) data = await res.json();
   } catch(e) {}
 
-  // Fallback if batch endpoint unavailable
   if (!data) {
     try {
       const hRes = await fetch(_api() + "/history", { method: "POST", headers: { ...hdrs, "Content-Type": "application/json" }, body: "{}" });
       if (hRes.status === 401) { window._perf_patch_failed_auth = true; return; }
-      
       const mRes = await fetch(_api() + "/api/health-markers", { headers: hdrs });
       data = {
         history: hRes.ok ? await hRes.json() : [],
@@ -125,7 +90,6 @@ async function _fetchFresh(userId, token) {
     } catch(e) { return; }
   }
 
-  // Update Caches and DOM
   if (Array.isArray(data.history) && data.history.length) {
     Cache.set("history_" + userId, data.history);
     _when(() => typeof renderHistory === "function", () => renderHistory(data.history));
@@ -153,15 +117,37 @@ async function _fetchFresh(userId, token) {
     });
   }
 
-  _when(() => typeof autoLoadShield === "function", async () => {
-    try {
-      await autoLoadShield();
-      const p  = parseFloat(document.getElementById("inputProtein")?.value) || 0;
-      const s  = parseFloat(document.getElementById("inputSteps")?.value)   || 0;
-      const sl = parseFloat(document.getElementById("inputSleep")?.value)   || 0;
-      if (p || s || sl) Cache.set("shield_" + userId, { protein:p, steps:s, sleep:sl });
-    } catch(e) {}
-  });
+  // ── NEW DIRECT SHIELD FETCH ──
+  try {
+    const sRes = await fetch(_api() + "/api/behavioral-logs?days=1", { headers: hdrs });
+    if (sRes.ok) {
+      const sData = await sRes.json();
+      const today = new Date().toISOString().slice(0, 10);
+      const tl = sData.filter(l => l.date === today);
+      const get = m => {
+        const l = tl.filter(x => x.metric_name === m).sort((a,b)=>a.created_at<b.created_at?1:-1)[0];
+        return l ? parseFloat(l.value) : 0;
+      };
+      const p = get("protein"), s = get("steps"), sl = get("sleep");
+      
+      Cache.set("shield_" + userId, { protein: p, steps: s, sleep: sl });
+
+      _when(() => typeof renderShield === "function", () => {
+        const ep = document.getElementById("inputProtein"); if (ep && p>0) ep.value = p;
+        const es = document.getElementById("inputSteps");   if (es && s>0) es.value = s;
+        const esl = document.getElementById("inputSleep");  if (esl && sl>0) esl.value = sl;
+        renderShield(p, s, sl, today);
+        
+        if (sData.length > 0) {
+          const last = sData.sort((a, b) => a.created_at < b.created_at ? 1 : -1)[0];
+          const w = new Date(last.created_at);
+          const text = `Last logged: ${last.date === today ? `Today at ${w.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}` : w.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+          const el = document.getElementById("shieldLastLogged");
+          if(el) el.textContent = text;
+        }
+      });
+    }
+  } catch(e) { console.warn("[PERF] Shield fetch failed:", e); }
 }
 
 function _renderAlerts(alerts) {
@@ -180,15 +166,12 @@ function _renderAlerts(alerts) {
   }).join("");
 }
 
-// 6. EXECUTE INSTANTLY ON SCRIPT PARSE
 const authSync = _getAuthSync();
 if (authSync) {
   _renderCache(authSync.userId);
-  // Fire network fetch in parallel (non-blocking)
   setTimeout(() => _fetchFresh(authSync.userId, authSync.token), 0);
 }
 
-// 7. Clear Cache on Action
 document.addEventListener("DOMContentLoaded", () => {
   _when(() => typeof processUpload === "function", () => {
     const _orig = processUpload;

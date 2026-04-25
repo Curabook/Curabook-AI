@@ -165,13 +165,28 @@
   font-size:.69rem; color:var(--text-3); text-align:center;
   margin-top:4px; margin-bottom:2px;
 }
+
+/* ── MOBILE UI FIXES (Blur & Chatbar Offset) ── */
+html, body, #shell { 
+  height: 100dvh !important; 
+  min-height: 100dvh !important; 
+}
+#sidebar, #cockpit {
+  -webkit-transform: translateZ(0); 
+  transform: translateZ(0);
+  -webkit-backface-visibility: hidden; 
+  backface-visibility: hidden;
+  will-change: transform;
+}
+#inputWrap { 
+  padding-bottom: max(16px, env(safe-area-inset-bottom)) !important; 
+}
 </style>
 </head>
 <body>
 
 <div id="shell">
 
-  <!-- SIDEBAR -->
   <aside id="sidebar" role="navigation">
     <div class="sb-brand">
       <a href="/" class="sb-logo-link">
@@ -234,7 +249,6 @@
     </div>
   </aside>
 
-  <!-- MAIN -->
   <main id="main" role="main">
 
     <div id="topbar">
@@ -260,7 +274,6 @@
       </div>
     </div>
 
-    <!-- VIEW: CHAT -->
     <div id="viewChat" class="view active">
       <div id="chatArea">
         <div id="welcomeScreen">
@@ -321,7 +334,6 @@
       </div>
     </div>
 
-    <!-- VIEW: MY HEALTH -->
     <div id="viewHealth" class="view">
       <div class="view-scroll" id="healthContent">
         <div class="hv-empty" id="healthLoading">
@@ -331,7 +343,6 @@
       </div>
     </div>
 
-    <!-- VIEW: LAB REPORTS -->
     <div id="viewReports" class="view">
       <div class="view-scroll">
         <div class="reports-header">
@@ -351,14 +362,12 @@
 
   </main>
 
-  <!-- COCKPIT -->
   <aside id="cockpit">
 
     <button id="cockpitCloseBtn" style="display:none;position:sticky;top:0;z-index:10;justify-content:flex-end;padding:10px 12px 0;background:var(--surface);border:none;width:100%;cursor:pointer;color:var(--text-2);" class="mobile-only">
       <i class="fa-solid fa-xmark" style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;border-radius:8px;font-size:1rem;transition:all .15s;"></i>
     </button>
 
-    <!-- Metabolic Shield — auto-loads from stored logs -->
     <section class="cp-section">
       <div class="cp-section-hd">
         <h2 class="cp-section-title">Metabolic Shield</h2>
@@ -436,7 +445,6 @@
       <button id="updateShieldBtn" class="cp-primary-btn">Log Today's Data</button>
     </section>
 
-    <!-- Protein Calculator -->
     <section class="cp-section">
       <div class="cp-section-hd">
         <h2 class="cp-section-title">Muscle Defense Protocol</h2>
@@ -453,7 +461,6 @@
       <div id="proteinDetails" class="protein-details hidden"></div>
     </section>
 
-    <!-- Cliff Alerts -->
     <section class="cp-section">
       <div class="cp-section-hd">
         <h2 class="cp-section-title">Cliff Alert System</h2>
@@ -469,7 +476,6 @@
       </div>
     </section>
 
-    <!-- Ghrelin Log -->
     <section class="cp-section">
       <div class="cp-section-hd">
         <h2 class="cp-section-title">Ghrelin Surge Log</h2>
@@ -485,7 +491,6 @@
       </button>
     </section>
 
-    <!-- Lab Markers -->
     <section class="cp-section">
       <div class="cp-section-hd">
         <h2 class="cp-section-title">My Lab Markers</h2>
