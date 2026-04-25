@@ -1,23 +1,35 @@
 /**
- * performance_patch.js — Curabook PHI
+ * performance_patch.js — Curabook PHI (FIXED)
  *
- * Add this BEFORE script.js in index.html:
+ * ROOT CAUSES FIXED:
+ *
+ * FIX-1: The old patch tried to override `onSignIn` from a different script
+ *   via `window.onSignIn`. But script.js declares `async function onSignIn()`
+ *   at module scope — that declaration is hoisted and NOT on `window`. The
+ *   setInterval patch never actually replaced the real function.
+ *   FIX: We hook into Supabase's onAuthStateChange BEFORE script.js runs,
+ *   via a shared flag + DOMContentLoaded ordering guarantee. We fire our
+ *   own parallel startup fetch on the SIGNED_IN event.
+ *
+ * FIX-2: /api/startup failing silently left UI empty. Now falls back to
+ *   individual endpoints (/history, /api/health-markers, /api/dashboard)
+ *   with proper error logging.
+ *
+ * FIX-3: Cache was keyed by user.id but user.id was not yet available
+ *   when cache reads happened. Now we store user.id in window after auth.
+ *
+ * FIX-4: Shield cache read happened before autoLoadShield() completed,
+ *   so cached values were always stale/zero. Now renders cached shield
+ *   first, then overwrites with fresh server data.
+ *
+ * LOAD ORDER: Add this BEFORE script.js in index.html:
  *   <script src="performance_patch.js"></script>
  *   <script src="script.js"></script>
- *
- * What this fixes:
- *  1. onSignIn() now fires ONE /api/startup call (parallel DB) instead of 4 sequential ones
- *  2. localStorage cache renders history + markers instantly (~0ms) while revalidating
- *  3. saveConsents no longer blocks the UI — runs fire-and-forget
- *  4. Shield renders from cache before the network responds
- *  5. Cache TTL: history = 2 min, markers = 5 min (auto-invalidated on new upload)
- *
- * These overrides run AFTER script.js loads (DOMContentLoaded order preserved).
+ *   <script src="cockpit_upgrades.js"></script>
  */
 "use strict";
 
-// ── Cache helpers ─────────────────────────────────────────────────────────────
-
+/* ─── 1. CACHE HELPERS ─────────────────────────────────────────────────────── */
 const Cache = {
   set(key, data, ttlSeconds) {
     try {
@@ -25,18 +37,23 @@ const Cache = {
         data,
         expires: Date.now() + ttlSeconds * 1000,
       }));
-    } catch(e) { /* storage full — ignore */ }
+    } catch(e) {}
   },
   get(key) {
     try {
       const raw = localStorage.getItem("phi_cache_" + key);
       if (!raw) return null;
       const { data, expires } = JSON.parse(raw);
-      if (Date.now() > expires) { localStorage.removeItem("phi_cache_" + key); return null; }
+      if (Date.now() > expires) {
+        localStorage.removeItem("phi_cache_" + key);
+        return null;
+      }
       return data;
     } catch(e) { return null; }
   },
-  clear(key) { try { localStorage.removeItem("phi_cache_" + key); } catch(e) {} },
+  clear(key) {
+    try { localStorage.removeItem("phi_cache_" + key); } catch(e) {}
+  },
   clearAll() {
     try {
       Object.keys(localStorage)
@@ -45,232 +62,274 @@ const Cache = {
     } catch(e) {}
   },
 };
-
-// Expose globally so document_routes can call Cache.clear("markers") after upload
 window.Cache = Cache;
 
-// ── Override: onSignIn — parallel fast path ───────────────────────────────────
+/* ─── 2. SHARED STATE ──────────────────────────────────────────────────────── */
+// Signals that our patch already handled startup — script.js checks this
+window.__phi_startup_done = false;
+window.__phi_user_id = null;
 
-// Store original boot so we can call sub-functions from it
-let _originalOnSignIn = null;
+/* ─── 3. STARTUP DATA LOADER ───────────────────────────────────────────────── */
+async function _loadStartupData(token, userId) {
+  const hdrs = { Authorization: "Bearer " + token };
+  const API  = (window.IS_LOCAL || ["localhost","127.0.0.1"].includes(location.hostname))
+    ? "http://localhost:5000"
+    : "https://api.curabook.com";
 
-document.addEventListener("DOMContentLoaded", () => {
-  // Wait for script.js to define onSignIn, then override it
-  const _patchInterval = setInterval(() => {
-    if (typeof onSignIn === "undefined") return;
-    clearInterval(_patchInterval);
-
-    _originalOnSignIn = onSignIn;
-
-    // Redefine onSignIn in global scope
-    window.onSignIn = async function(user) {
-      if (window._initialized) return;
-      window._initialized = true;
-      window._user = user;
-
-      // ── 1. Resolve display name ─────────────────────────────────────────
-      const meta = user.user_metadata || {};
-      window._userName = meta.first_name
-        || user.email?.split("@")[0]?.split(/[._-]/)[0]
-        || "there";
-      window._userName = window._userName[0].toUpperCase() + window._userName.slice(1);
-
-      const setT = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
-      setT("userEmail",   user.email);
-      setT("welcomeName", window._userName);
-      const av = document.getElementById("userAvatar");
-      if (av) av.textContent = window._userName[0].toUpperCase();
-      const h = new Date().getHours();
-      setT("timeGreeting", h < 12 ? "morning" : h < 17 ? "afternoon" : "evening");
-
-      // ── 2. Render from cache INSTANTLY (0ms) ───────────────────────────
-      const cachedHistory = Cache.get("history_" + user.id);
-      const cachedMarkers = Cache.get("markers_" + user.id);
-      const cachedGw      = Cache.get("goal_wt_"  + user.id);
-
-      if (cachedHistory?.length) {
-        if (typeof renderHistory === "function") renderHistory(cachedHistory);
-      }
-      if (cachedMarkers?.length) {
-        if (typeof renderMarkers    === "function") renderMarkers(cachedMarkers);
-        if (typeof runCliffDetection === "function") runCliffDetection(cachedMarkers);
-      }
-      if (cachedGw) {
-        window._goalWt = cachedGw;
-        if (document.getElementById("inputGoalWt"))  document.getElementById("inputGoalWt").value  = cachedGw;
-        if (document.getElementById("proteinInput")) document.getElementById("proteinInput").value  = cachedGw;
-        if (typeof calcProteinDisplay === "function") calcProteinDisplay(cachedGw, false);
-      }
-
-      // ── 3. Fire non-blocking parallel network calls ────────────────────
-      // saveConsents: fire-and-forget, never await
-      (async () => {
-        try {
-          if (typeof saveConsents === "function") await saveConsents();
-        } catch(e) {}
-      })();
-
-      // Startup batch + behavioral logs in parallel
-      Promise.all([
-        _fetchStartupBatch(user),
-        _fetchShieldToday(user),
-      ]).catch(() => {});
-    };
-
-    console.log("[PERF] onSignIn patched — parallel fast path active");
-  }, 50);
-});
-
-// ── Startup batch fetcher ─────────────────────────────────────────────────────
-
-async function _fetchStartupBatch(user) {
-  let hdrs;
+  // ── Try the batch startup endpoint first ────────────────────────────────────
+  let data = null;
   try {
-    const s = await window._sb.auth.getSession();
-    if (!s?.data?.session?.access_token) return;
-    hdrs = {
-      Authorization: `Bearer ${s.data.session.access_token}`,
-    };
-  } catch(e) { return; }
-
-  let data;
-  try {
-    const res = await fetch(window.API + "/api/startup", { headers: hdrs });
-    if (!res.ok) { throw new Error("startup " + res.status); }
-    data = await res.json();
+    const res = await fetch(API + "/api/startup", { headers: hdrs });
+    if (res.ok) {
+      data = await res.json();
+      console.log("[PERF] /api/startup OK in", data.elapsed_ms + "ms");
+    } else {
+      console.warn("[PERF] /api/startup returned", res.status, "— falling back");
+    }
   } catch(e) {
-    console.warn("[PERF] /api/startup failed, falling back to individual calls:", e.message);
-    // Fallback: call old functions if startup endpoint unavailable
-    if (typeof loadHistory     === "function") loadHistory().catch(() => {});
-    if (typeof loadMarkersData === "function") loadMarkersData().catch(() => {});
-    return;
+    console.warn("[PERF] /api/startup network error:", e.message, "— falling back");
   }
 
-  // ── Render history ────────────────────────────────────────────────────
-  if (Array.isArray(data.history) && data.history.length) {
-    Cache.set("history_" + user.id, data.history, 120);  // 2 min TTL
-    if (typeof renderHistory === "function") renderHistory(data.history);
+  // ── Fallback: individual calls in parallel ──────────────────────────────────
+  if (!data) {
+    try {
+      const [histRes, markRes] = await Promise.all([
+        fetch(API + "/history",             { method: "POST", headers: { ...hdrs, "Content-Type": "application/json" }, body: "{}" }),
+        fetch(API + "/api/health-markers",  { headers: hdrs }),
+      ]);
+      data = {
+        history:      histRes.ok  ? await histRes.json()  : [],
+        markers:      markRes.ok  ? await markRes.json()  : [],
+        cliff_alerts: [],
+        goal_weight:  null,
+        user_name:    "",
+      };
+      console.log("[PERF] Fallback parallel fetch complete");
+    } catch(e) {
+      console.error("[PERF] Fallback fetch failed:", e.message);
+      return;
+    }
   }
 
-  // ── Render markers + cliff alerts ─────────────────────────────────────
-  if (Array.isArray(data.markers) && data.markers.length) {
-    // Map marker_name → marker for renderMarkers compatibility
-    const normalised = data.markers.map(m => ({
-      ...m,
-      marker_name: m.marker_name,
-    }));
-    Cache.set("markers_" + user.id, normalised, 300);  // 5 min TTL
-    if (typeof renderMarkers     === "function") renderMarkers(normalised);
-    if (typeof runCliffDetection === "function") runCliffDetection(normalised);
+  // ── Render history ──────────────────────────────────────────────────────────
+  const history = Array.isArray(data.history) ? data.history : [];
+  if (history.length) {
+    Cache.set("history_" + userId, history, 120);
+    // Wait for script.js to define renderHistory
+    _waitFor(() => typeof renderHistory === "function", () => renderHistory(history));
   }
 
-  // ── Apply goal weight from profile ────────────────────────────────────
+  // ── Render markers + cliff alerts ───────────────────────────────────────────
+  const markers = Array.isArray(data.markers) ? data.markers : [];
+  if (markers.length) {
+    Cache.set("markers_" + userId, markers, 300);
+    _waitFor(() => typeof renderMarkers === "function", () => {
+      renderMarkers(markers);
+      if (typeof runCliffDetection === "function") runCliffDetection(markers);
+    });
+  }
+
+  // ── Render startup cliff alerts in cockpit ──────────────────────────────────
+  const alerts = Array.isArray(data.cliff_alerts) ? data.cliff_alerts : [];
+  _waitFor(() => !!document.getElementById("cliffAlerts"), () => {
+    _renderCliffAlerts(alerts);
+  });
+
+  // ── Apply goal weight ───────────────────────────────────────────────────────
   if (data.goal_weight) {
-    window._goalWt = data.goal_weight;
-    Cache.set("goal_wt_" + user.id, data.goal_weight, 3600);  // 1 hr TTL
-    localStorage.setItem("phi_goal_wt", String(data.goal_weight));
-    if (document.getElementById("inputGoalWt"))  document.getElementById("inputGoalWt").value  = data.goal_weight;
-    if (document.getElementById("proteinInput")) document.getElementById("proteinInput").value  = data.goal_weight;
-    if (typeof calcProteinDisplay === "function") calcProteinDisplay(data.goal_weight, false);
+    const gw = parseFloat(data.goal_weight);
+    Cache.set("goal_wt_" + userId, gw, 3600);
+    localStorage.setItem("phi_goal_wt", String(gw));
+    _waitFor(() => typeof calcProteinDisplay === "function", () => {
+      const gwInput = document.getElementById("inputGoalWt");
+      const piInput = document.getElementById("proteinInput");
+      if (gwInput) gwInput.value = gw;
+      if (piInput) piInput.value = gw;
+      calcProteinDisplay(gw, false);
+    });
   }
 
-  // ── Cliff alerts in cockpit ───────────────────────────────────────────
-  if (Array.isArray(data.cliff_alerts)) {
-    _renderStartupCliffAlerts(data.cliff_alerts);
-  }
-
-  console.log(`[PERF] Startup loaded in ${data.elapsed_ms ?? "?"}ms —`,
-    `history:${data.history?.length ?? 0}`,
-    `markers:${data.markers?.length ?? 0}`,
-    `alerts:${data.cliff_alerts?.length ?? 0}`);
-}
-
-// ── Shield today fetcher (behavioral logs) ────────────────────────────────────
-
-async function _fetchShieldToday(user) {
-  // Show cached shield immediately
-  const cachedShield = Cache.get("shield_" + user.id);
+  // ── Render cached shield immediately, then let autoLoadShield update ─────────
+  const cachedShield = Cache.get("shield_" + userId);
   if (cachedShield) {
-    if (typeof renderShield === "function") {
-      renderShield(cachedShield.protein || 0, cachedShield.steps || 0, cachedShield.sleep || 0, null);
-    }
+    _waitFor(() => typeof renderShield === "function", () => {
+      renderShield(
+        cachedShield.protein || 0,
+        cachedShield.steps   || 0,
+        cachedShield.sleep   || 0,
+        null
+      );
+    });
   }
 
-  // Then revalidate from server
-  try {
-    if (typeof autoLoadShield === "function") {
-      await autoLoadShield();
-      // Cache the current shield inputs after render
-      const p  = parseFloat(document.getElementById("inputProtein")?.value) || 0;
-      const s  = parseFloat(document.getElementById("inputSteps")?.value)   || 0;
-      const sl = parseFloat(document.getElementById("inputSleep")?.value)   || 0;
-      if (p || s || sl) Cache.set("shield_" + user.id, { protein: p, steps: s, sleep: sl }, 300);
-    }
-  } catch(e) {}
+  window.__phi_startup_done = true;
+  console.log("[PERF] Startup render complete. history:", history.length, "markers:", markers.length);
 }
 
-// ── Cliff alerts renderer for startup data ────────────────────────────────────
+/* ─── 4. POLL UNTIL CONDITION IS MET, THEN CALL FN ────────────────────────── */
+function _waitFor(condition, fn, maxMs = 5000) {
+  if (condition()) { fn(); return; }
+  const start = Date.now();
+  const id = setInterval(() => {
+    if (condition()) { clearInterval(id); fn(); return; }
+    if (Date.now() - start > maxMs) { clearInterval(id); }
+  }, 50);
+}
 
-function _renderStartupCliffAlerts(alerts) {
+/* ─── 5. CLIFF ALERTS RENDERER ─────────────────────────────────────────────── */
+function _renderCliffAlerts(alerts) {
   const c = document.getElementById("cliffAlerts");
   if (!c) return;
-  if (!alerts.length) {
+  if (!alerts || !alerts.length) {
     c.innerHTML = `<div class="ca-item ca-ok">
-      <div class="ca-title">✅ No rebound signals</div>
+      <div class="ca-title">&#x2705; No rebound signals</div>
       <div class="ca-desc">All monitored markers stable. Keep up protein and training.</div>
     </div>`;
     return;
   }
   c.innerHTML = alerts.map(a => {
     const cls = a.severity === "high" ? "ca-danger" : "ca-warn";
+    const icon = a.severity === "high" ? "&#x1F6A8;" : "&#x26A0;&#xFE0F;";
+    const title = String(a.headline || a.marker || "Signal detected")
+      .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    const detail = String(a.detail || "")
+      .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
     return `<div class="ca-item ${cls}">
-      <div class="ca-title">${a.severity === "high" ? "🚨" : "⚠️"} ${_esc(a.headline || a.marker)}</div>
-      ${a.detail ? `<div class="ca-desc">${_esc(a.detail)}</div>` : ""}
+      <div class="ca-title">${icon} ${title}</div>
+      ${detail ? `<div class="ca-desc">${detail}</div>` : ""}
     </div>`;
   }).join("");
 }
 
-function _esc(s) {
-  return String(s || "")
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
+/* ─── 6. HOOK INTO SUPABASE AUTH — BEFORE script.js runs ───────────────────── */
+// We intercept the onAuthStateChange callback the moment the Supabase SDK fires.
+// Because DOMContentLoaded fires scripts in order, this script runs first.
+// We set a global __phi_patch_onSignIn that script.js's boot() will call.
 
-// ── Cache invalidation on upload ──────────────────────────────────────────────
-// Patch processUpload to clear marker cache after a successful upload
+window.__phi_patch_onSignIn = async function(user, token) {
+  if (!user || !token) return;
+  window.__phi_user_id = user.id;
 
-document.addEventListener("DOMContentLoaded", () => {
-  const _patchUpload = setInterval(() => {
-    if (typeof processUpload === "undefined") return;
-    clearInterval(_patchUpload);
+  // Render from cache INSTANTLY (0ms) before any network call
+  const uid = user.id;
 
-    const _origProcessUpload = window.processUpload;
-    window.processUpload = async function(file) {
-      const result = await _origProcessUpload.call(this, file);
-      if (result?.success !== false && window._user) {
-        // New report uploaded — invalidate marker + cliff caches
-        Cache.clear("markers_" + window._user.id);
-        Cache.clear("shield_"  + window._user.id);
-        console.log("[PERF] Marker cache cleared after upload");
+  const cachedHistory = Cache.get("history_" + uid);
+  const cachedMarkers = Cache.get("markers_" + uid);
+  const cachedGw      = Cache.get("goal_wt_" + uid);
+
+  if (cachedHistory?.length) {
+    _waitFor(() => typeof renderHistory === "function",
+      () => renderHistory(cachedHistory));
+  }
+  if (cachedMarkers?.length) {
+    _waitFor(() => typeof renderMarkers === "function", () => {
+      renderMarkers(cachedMarkers);
+      if (typeof runCliffDetection === "function") runCliffDetection(cachedMarkers);
+    });
+  }
+  if (cachedGw) {
+    localStorage.setItem("phi_goal_wt", String(cachedGw));
+    _waitFor(() => typeof calcProteinDisplay === "function",
+      () => calcProteinDisplay(cachedGw, false));
+  }
+
+  // Kick off network fetch (non-blocking)
+  _loadStartupData(token, uid).catch(e =>
+    console.error("[PERF] _loadStartupData error:", e));
+
+  // Cache shield after autoLoadShield completes
+  _waitFor(() => typeof autoLoadShield === "function", async () => {
+    try {
+      await autoLoadShield();
+      const p  = parseFloat(document.getElementById("inputProtein")?.value) || 0;
+      const s  = parseFloat(document.getElementById("inputSteps")?.value)   || 0;
+      const sl = parseFloat(document.getElementById("inputSleep")?.value)   || 0;
+      if (p || s || sl) Cache.set("shield_" + uid, { protein:p, steps:s, sleep:sl }, 300);
+    } catch(e) {}
+  });
+};
+
+/* ─── 7. PATCH script.js's onSignIn — runs AFTER DOMContentLoaded ──────────── */
+// We can't override the hoisted function declaration, so instead we wrap
+// the onAuthStateChange registration point. script.js calls boot() inside
+// DOMContentLoaded. We use a MutationObserver trick: patch the global Supabase
+// createClient to intercept the onAuthStateChange subscription.
+
+const _origCreateClient = window.supabase?.createClient;
+if (_origCreateClient) {
+  const _patchedCreate = function(...args) {
+    const client = _origCreateClient.apply(window.supabase, args);
+    const _origOnAuth = client.auth.onAuthStateChange.bind(client.auth);
+
+    client.auth.onAuthStateChange = function(callback) {
+      const wrappedCallback = async (event, session) => {
+        // Run original callback
+        await callback(event, session);
+        // After SIGNED_IN, fire our parallel startup if not already done
+        if (event === "SIGNED_IN" && session?.user && session?.access_token) {
+          if (!window.__phi_startup_done) {
+            window.__phi_patch_onSignIn(session.user, session.access_token)
+              .catch(e => console.warn("[PERF] patch_onSignIn error:", e));
+          }
+        }
+        if (event === "SIGNED_OUT") {
+          Cache.clearAll();
+          window.__phi_startup_done = false;
+          window.__phi_user_id = null;
+        }
+      };
+      return _origOnAuth(wrappedCallback);
+    };
+
+    // Also intercept getSession for the non-event code path in boot()
+    const _origGetSession = client.auth.getSession.bind(client.auth);
+    client.auth.getSession = async function() {
+      const result = await _origGetSession();
+      const session = result?.data?.session;
+      if (session?.user && session?.access_token && !window.__phi_startup_done) {
+        // Fire startup for existing session (page refresh, not a new sign-in)
+        setTimeout(() => {
+          window.__phi_patch_onSignIn(session.user, session.access_token)
+            .catch(e => console.warn("[PERF] getSession patch error:", e));
+        }, 0);
       }
       return result;
     };
-  }, 50);
-});
 
-// ── Clear all cache on sign-out ───────────────────────────────────────────────
+    return client;
+  };
 
+  // Replace on the supabase namespace object
+  try {
+    window.supabase = { ...window.supabase, createClient: _patchedCreate };
+  } catch(e) {
+    console.warn("[PERF] Could not patch supabase.createClient:", e);
+  }
+}
+
+/* ─── 8. PATCH processUpload — invalidate marker cache after upload ─────────── */
 document.addEventListener("DOMContentLoaded", () => {
-  const _patchSignout = setInterval(() => {
-    if (typeof doSignOut === "undefined") return;
-    clearInterval(_patchSignout);
+  _waitFor(() => typeof processUpload === "function", () => {
+    const _orig = window.processUpload;
+    window.processUpload = async function(file) {
+      const result = await _orig.call(this, file);
+      if (result?.success !== false && window.__phi_user_id) {
+        Cache.clear("markers_" + window.__phi_user_id);
+        Cache.clear("shield_"  + window.__phi_user_id);
+        console.log("[PERF] Cache cleared after upload");
+      }
+      return result;
+    };
+  });
 
-    const _origSignOut = window.doSignOut;
+  // Patch doSignOut to clear cache
+  _waitFor(() => typeof doSignOut === "function", () => {
+    const _orig = window.doSignOut;
     window.doSignOut = async function() {
       Cache.clearAll();
-      return _origSignOut.call(this);
+      return _orig.call(this);
     };
-  }, 50);
+  });
 });
 
-console.log("[PERF] performance_patch.js loaded");
+console.log("[PERF] performance_patch.js loaded — supabase patched:", !!_origCreateClient);
