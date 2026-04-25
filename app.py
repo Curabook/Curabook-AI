@@ -239,6 +239,7 @@ from api.compliance_routes   import compliance_bp
 from api.profile_routes      import profile_bp
 from api.intelligence_routes import intelligence_bp
 from api.cron_routes         import cron_bp
+from api.startup_routes import startup_bp
 
 # Register blueprints ONCE — no url_prefix duplicates.
 # FIX #FIX-BP-SHADOW: The original code re-registered the same blueprint
@@ -253,6 +254,7 @@ app.register_blueprint(compliance_bp)
 app.register_blueprint(profile_bp)
 app.register_blueprint(intelligence_bp)
 app.register_blueprint(cron_bp)
+app.register_blueprint(startup_bp)
 
 try:
     from api.demo_routes import demo_bp
