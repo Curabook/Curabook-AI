@@ -1,29 +1,9 @@
 /**
- * script.js — Curabook PHI v2.3
+ * script.js — Curabook PHI v2.4
  *
- * FIXES vs v2.2:
- *
- * FIX-SIGNOUT-1 (PRIMARY):
- *   OLD: location.href="/login" would sometimes fail or race with onAuthStateChange.
- *   NEW: Clear ALL storage immediately → don't await signOut → window.location.replace("/login")
- *        This is instant and bulletproof. The Supabase signOut fires async in background.
- *
- * FIX-SIGNOUT-2:
- *   Added _redirecting flag to prevent double redirect from both doSignOut()
- *   AND onAuthStateChange SIGNED_OUT event firing simultaneously.
- *
- * FIX-DOUBLE-INIT (preserved):
- *   onAuthStateChange fires SIGNED_IN on initial load AND token refresh.
- *   _initialized flag ensures onSignIn() runs exactly once per page load.
- *
- * FIX-STUCK-SEND (preserved):
- *   try/finally ensures _isSending resets even on errors.
- *
- * FIX-SESSION-EXPIRY (preserved):
- *   On 401, refresh session once before redirecting to login.
- *
- * UPLOAD-UX:
- *   Better loading messages during PDF processing so user knows it's working.
+ * FIX: Replaced duplicate loading fetch calls with `window._perf_patch_active` 
+ * guard. Prevents race conditions and loading spinners if the cache has 
+ * already populated the UI via performance_patch.js.
  */
 "use strict";
 
@@ -48,7 +28,7 @@ let _docCtx        = { text: null, hasDoc: false, filename: "" };
 let _initialized     = false;
 let _consentsSaved   = false;
 let _consentsPromise = null;
-let _redirecting     = false;   // FIX-SIGNOUT-2: prevent double redirect
+let _redirecting     = false;
 
 const NOISE_MSG = {
   1:"Nearly silent.",2:"Very low.",3:"Mild.",4:"Low-moderate.",5:"Moderate.",
@@ -72,7 +52,7 @@ function applyTheme(t) {
   setText("themeLabel",  d ? "Light Mode" : "Dark Mode");
 }
 
-/* ═══ SIGN OUT — FIX-SIGNOUT-1 ═══ */
+/* ═══ SIGN OUT ═══ */
 async function doSignOut() {
   if (_redirecting) return;
   _redirecting   = true;
@@ -83,7 +63,6 @@ async function doSignOut() {
   _consentsSaved = false;
   setSendingState(false);
 
-  // Step 1: Clear ALL local storage immediately (before any async ops)
   try {
     const keysToRemove = Object.keys(localStorage).filter(k =>
       k.startsWith("sb-")        ||
@@ -93,14 +72,12 @@ async function doSignOut() {
     );
     keysToRemove.forEach(k => localStorage.removeItem(k));
     sessionStorage.clear();
-  } catch(e) { /* ignore storage errors */ }
+  } catch(e) {}
 
-  // Step 2: Fire signOut async — don't await, we redirect immediately
   try {
     if (_sb) _sb.auth.signOut({ scope: "global" }).catch(() => {});
-  } catch(e) { /* ignore */ }
+  } catch(e) {}
 
-  // Step 3: Hard redirect — this always works
   window.location.replace("/login");
 }
 
@@ -120,14 +97,12 @@ async function boot() {
       }
     });
 
-    // Stuck send guard (visibility change)
     document.addEventListener("visibilitychange", () => {
       if (!document.hidden && _isSending && Date.now() - _sendStart > 30000) {
         _isSending = false; setSendingState(false);
       }
     });
 
-    // FIX-DOUBLE-INIT + FIX-SIGNOUT-2
     _sb.auth.onAuthStateChange(async (event, session) => {
       if (event === "SIGNED_IN" && session?.user && !_initialized) {
         await onSignIn(session.user);
@@ -149,7 +124,6 @@ async function boot() {
       if (!_initialized) await onSignIn(data.session.user);
     } else {
       if (!IS_LOCAL) {
-        // No session — redirect to login immediately
         window.location.replace("/login");
       }
     }
@@ -160,11 +134,10 @@ async function boot() {
 }
 
 async function onSignIn(user) {
-  if (_initialized) return;  // FIX-DOUBLE-INIT
+  if (_initialized) return; 
   _initialized = true;
   _user = user;
 
-  // Build display name
   const meta = user.user_metadata || {};
   _userName = meta.first_name
     || user.email?.split("@")[0]?.split(/[._-]/)[0]
@@ -176,15 +149,18 @@ async function onSignIn(user) {
   const av = el("userAvatar");
   if (av) av.textContent = _userName[0].toUpperCase();
 
-  // Greeting
   const h = new Date().getHours();
   setText("timeGreeting", h < 12 ? "morning" : h < 17 ? "afternoon" : "evening");
 
   // Parallel boot tasks
   await saveConsents().catch(() => {});
-  await loadHistory();
-  autoLoadShield().catch(() => {});
-  loadMarkersData().catch(() => {});
+  
+  // FIX: Only fetch if the performance patch hasn't already handled it
+  if (!window._perf_patch_active) {
+    await loadHistory();
+    autoLoadShield().catch(() => {});
+    loadMarkersData().catch(() => {});
+  }
 
   // Restore goal weight
   const gw = localStorage.getItem("phi_goal_wt");
@@ -234,7 +210,6 @@ async function apiJson(path, opts = {}) {
   return { ok: res.ok, status: res.status, data };
 }
 
-// FIX-SESSION-EXPIRY: try refresh once then redirect
 async function handleUnauthorized() {
   try {
     const { data } = await _sb.auth.refreshSession();
@@ -293,7 +268,12 @@ function switchView(view) {
 
 async function loadHealthView() {
   const content = el("healthContent"); if (!content) return;
-  content.innerHTML = `<div class="hv-empty"><i class="fa-solid fa-spinner fa-spin"></i>Loading your health picture…</div>`;
+  
+  // FIX: Only show spinner if the cache hasn't loaded elements
+  if (!content.querySelector(".cliff-card") && !content.querySelector(".trend-card")) {
+    content.innerHTML = `<div class="hv-empty"><i class="fa-solid fa-spinner fa-spin"></i>Loading your health picture…</div>`;
+  }
+  
   const h = await headers(); if (!h) return;
   try {
     const [mR, dR] = await Promise.allSettled([
@@ -547,7 +527,6 @@ async function handleSend() {
   await sendMessage(text);
 }
 
-// FIX-STUCK-SEND: try/finally guarantees _isSending ALWAYS resets
 async function sendMessage(text) {
   if (_isSending || !text) return;
   _isSending = true; _sendStart = Date.now();
@@ -558,7 +537,6 @@ async function sendMessage(text) {
       if (!id) return;
     }
 
-    // Handle file upload with better UX messages
     if (_uploads.length) {
       const lr = appendTyping(); updateTyping(lr, "📄 Reading your lab report…");
       const result = await processUpload(_uploads[0]);
@@ -583,7 +561,6 @@ async function sendMessage(text) {
       document_text:   _docCtx.hasDoc ? (_docCtx.text || "") : ""
     };
 
-    // Animate typing message during wait
     let dotCount = 0;
     const typingInterval = setInterval(() => {
       dotCount = (dotCount + 1) % 4;
@@ -632,7 +609,6 @@ async function sendMessage(text) {
       }
     }
   } finally {
-    // FIX-STUCK-SEND: ALWAYS runs
     _isSending = false; setSendingState(false); scrollBottom();
   }
 }
@@ -690,7 +666,7 @@ async function processUpload(file) {
   try {
     let res = await Promise.race([
       doUp(s.access_token),
-      new Promise((_, r) => setTimeout(() => r(new Error("timed out")), 60000)) // 60s for large PDFs
+      new Promise((_, r) => setTimeout(() => r(new Error("timed out")), 60000)) 
     ]);
     if (res.status === 401) { await handleUnauthorized(); return null; }
     if (res.status === 403) {
@@ -788,7 +764,6 @@ function runCliffDetection(markers) {
     if (!grouped[k]) grouped[k] = [];
     grouped[k].push({ ...m, _v: parseFloat(m.value) });
   });
-  // Glucose rebound
   const gk = Object.keys(grouped).find(k => /fasting.*glucose|blood.*glucose|^glucose/.test(k));
   if (gk) {
     const r = grouped[gk].sort((a, b) => a.date < b.date ? -1 : 1);
@@ -798,7 +773,6 @@ function runCliffDetection(markers) {
       else if (pct >= 10) alerts.push({ type: "warn", title: `⚠ Glucose rising +${pct.toFixed(0)}%`, desc: "Approaching 15% threshold." });
     }
   }
-  // HbA1c rebound
   const hk = Object.keys(grouped).find(k => /hba1c/.test(k));
   if (hk) {
     const r = grouped[hk].sort((a, b) => a.date < b.date ? -1 : 1);
@@ -990,20 +964,17 @@ function toast(msg, type = "ok") {
 
 /* ═══ EVENTS ═══ */
 function wireEvents() {
-  // Nav
   document.querySelectorAll(".nav-item[data-view]").forEach(btn =>
     btn.addEventListener("click", () => { switchView(btn.dataset.view); closeSidebar(); })
   );
   el("newChatBtn")?.addEventListener("click", () => { resetChat(); switchView("chat"); });
 
-  // Mobile toggles
   el("mobileMenuBtn")?.addEventListener("click", openSidebar);
   el("sidebarOverlay")?.addEventListener("click", closeSidebar);
   el("mobileCockpitBtn")?.addEventListener("click", toggleCockpit);
   el("cockpitOverlay")?.addEventListener("click", closeCockpit);
   el("cockpitCloseBtn")?.addEventListener("click", closeCockpit);
 
-  // User menu
   el("userRow")?.addEventListener("click", e => { if (!e.target.closest(".user-dropdown")) toggleUserMenu(); });
   document.addEventListener("click", e => { if (!el("userRow")?.contains(e.target)) closeUserMenu(); });
   el("themeToggleBtn")?.addEventListener("click", toggleTheme);
@@ -1011,7 +982,6 @@ function wireEvents() {
   el("logoutBtn")?.addEventListener("click", handleLogout);
   el("exportChatBtn")?.addEventListener("click", exportChat);
 
-  // History delegation
   el("historyList")?.addEventListener("click", e => {
     const del  = e.target.closest(".hist-del[data-del]");
     const item = e.target.closest(".hist-item[data-id]");
@@ -1019,7 +989,6 @@ function wireEvents() {
     else if (item) openConversation(item.dataset.id);
   });
 
-  // Chat input
   const ta = el("chatInput");
   if (ta) {
     ta.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } });
@@ -1027,12 +996,10 @@ function wireEvents() {
   }
   el("sendBtn")?.addEventListener("click", handleSend);
 
-  // Suggestion chips
   document.querySelectorAll(".suggestion-chips .chip").forEach(c =>
     c.addEventListener("click", () => { if (c.dataset.q) sendMessage(c.dataset.q); })
   );
 
-  // Dynamic chips + alert CTAs in chat
   el("chatDisplay")?.addEventListener("click", e => {
     const chip = e.target.closest(".chip[data-q]");
     if (chip?.dataset.q) { sendMessage(chip.dataset.q); return; }
@@ -1040,13 +1007,11 @@ function wireEvents() {
     if (cta?.dataset.ask) sendMessage(cta.dataset.ask);
   });
 
-  // File upload
   const fi = el("fileInput"); fi?.addEventListener("change", handleFileSelect);
   ["attachTopBtn", "attachInputBtn", "uploadNudgeBtn", "reportsUploadBtn"].forEach(id =>
     el(id)?.addEventListener("click", () => fi?.click())
   );
 
-  // Cockpit controls
   el("updateShieldBtn")?.addEventListener("click", updateShield);
   el("calcBtn")?.addEventListener("click", () => {
     const gw = parseFloat(el("proteinInput")?.value);
@@ -1058,13 +1023,11 @@ function wireEvents() {
   el("refreshAlertsBtn")?.addEventListener("click", loadMarkersData);
   el("refreshMarkersBtn")?.addEventListener("click", loadMarkersData);
 
-  // Keyboard shortcuts
   document.addEventListener("keydown", e => {
     if ((e.ctrlKey || e.metaKey) && e.key === "k") { e.preventDefault(); resetChat(); el("chatInput")?.focus(); }
     if (e.key === "Escape") { closeSidebar(); closeUserMenu(); closeCockpit(); }
   });
 
-  // Drag & drop
   document.addEventListener("dragover", e => e.preventDefault());
   document.addEventListener("drop", e => { e.preventDefault(); Array.from(e.dataTransfer?.files || []).forEach(addFile); });
 }
