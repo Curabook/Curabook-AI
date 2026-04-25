@@ -1,9 +1,9 @@
 /**
- * script.js — Curabook PHI v2.4
+ * script.js — Curabook PHI v2.5
  *
- * FIX: Replaced duplicate loading fetch calls with `window._perf_patch_active` 
- * guard. Prevents race conditions and loading spinners if the cache has 
- * already populated the UI via performance_patch.js.
+ * FIXES: Honors window._perf_patch_failed_auth. If the patch hits an expired 
+ * local token, script.js handles the Supabase token refresh and safely executes
+ * the fallback data load.
  */
 "use strict";
 
@@ -24,7 +24,6 @@ let _goalWt       = parseFloat(localStorage.getItem("phi_goal_wt") || "165");
 let _proteinTarget = Math.round(_goalWt * 0.545 * 10) / 10;
 let _docCtx        = { text: null, hasDoc: false, filename: "" };
 
-// Auth state guards
 let _initialized     = false;
 let _consentsSaved   = false;
 let _consentsPromise = null;
@@ -58,6 +57,7 @@ async function doSignOut() {
   _redirecting   = true;
   _initialized   = false;
   _user          = null;
+  window._user   = null;
   _convId        = null;
   _isSending     = false;
   _consentsSaved = false;
@@ -109,11 +109,13 @@ async function boot() {
       }
       if (event === "TOKEN_REFRESHED" && session?.user) {
         _user = session.user;
+        window._user = session.user;
       }
       if (event === "SIGNED_OUT" && !_redirecting) {
         _redirecting = true;
         _initialized = false;
         _user = null;
+        window._user = null;
         _convId = null;
         window.location.replace("/login");
       }
@@ -137,6 +139,7 @@ async function onSignIn(user) {
   if (_initialized) return; 
   _initialized = true;
   _user = user;
+  window._user = user; // Expose globally to eliminate scope bugs
 
   const meta = user.user_metadata || {};
   _userName = meta.first_name
@@ -152,17 +155,16 @@ async function onSignIn(user) {
   const h = new Date().getHours();
   setText("timeGreeting", h < 12 ? "morning" : h < 17 ? "afternoon" : "evening");
 
-  // Parallel boot tasks
   await saveConsents().catch(() => {});
   
-  // FIX: Only fetch if the performance patch hasn't already handled it
-  if (!window._perf_patch_active) {
+  // FIX: Fetch if cache mechanism is inactive OR if it failed due to an expired token 
+  // (which Supabase just seamlessly refreshed behind the scenes).
+  if (!window._perf_patch_active || window._perf_patch_failed_auth) {
     await loadHistory();
     autoLoadShield().catch(() => {});
     loadMarkersData().catch(() => {});
   }
 
-  // Restore goal weight
   const gw = localStorage.getItem("phi_goal_wt");
   if (gw) {
     if (el("inputGoalWt")) el("inputGoalWt").value = gw;
@@ -213,7 +215,11 @@ async function apiJson(path, opts = {}) {
 async function handleUnauthorized() {
   try {
     const { data } = await _sb.auth.refreshSession();
-    if (data?.session) { _user = data.session.user; return true; }
+    if (data?.session) { 
+      _user = data.session.user; 
+      window._user = data.session.user;
+      return true; 
+    }
   } catch {}
   await doSignOut();
   return false;
@@ -269,7 +275,6 @@ function switchView(view) {
 async function loadHealthView() {
   const content = el("healthContent"); if (!content) return;
   
-  // FIX: Only show spinner if the cache hasn't loaded elements
   if (!content.querySelector(".cliff-card") && !content.querySelector(".trend-card")) {
     content.innerHTML = `<div class="hv-empty"><i class="fa-solid fa-spinner fa-spin"></i>Loading your health picture…</div>`;
   }

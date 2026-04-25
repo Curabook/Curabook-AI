@@ -1,57 +1,40 @@
 /**
- * performance_patch.js — Curabook PHI v4 (SYNC-CACHE SAFE)
+ * performance_patch.js — Curabook PHI v5 (STALE-WHILE-REVALIDATE)
  *
- * FIX: Reads localStorage synchronously on script parse to render the cached
- * UI instantly. Prevents script.js from showing loading spinners or double-fetching.
- *
- * LOAD ORDER: Must be the FIRST script in index.html, before script.js.
+ * FIXES:
+ * 1. Cache has infinite TTL to guarantee instant renders even after hours.
+ * 2. Skips polling entirely; reads token synchronously and fires fetch instantly.
+ * 3. Detects 401s from expired local tokens and signals script.js to take over.
  */
 "use strict";
 
-/* ─── 1. CACHE ─────────────────────────────────────────────────────────────── */
+// 1. Cache (Stale-While-Revalidate pattern)
 const Cache = {
-  set(key, data, ttlSeconds) {
-    try {
-      localStorage.setItem("phi_cache_" + key, JSON.stringify({
-        data, expires: Date.now() + ttlSeconds * 1000
-      }));
-    } catch(e) {}
+  set(key, data) {
+    try { localStorage.setItem("phi_cache_" + key, JSON.stringify(data)); } catch(e) {}
   },
   get(key) {
     try {
       const raw = localStorage.getItem("phi_cache_" + key);
-      if (!raw) return null;
-      const { data, expires } = JSON.parse(raw);
-      if (Date.now() > expires) {
-        localStorage.removeItem("phi_cache_" + key);
-        return null;
-      }
-      return data;
+      return raw ? JSON.parse(raw) : null;
     } catch(e) { return null; }
   },
   clear(key) { try { localStorage.removeItem("phi_cache_" + key); } catch(e) {} },
   clearAll() {
     try {
-      Object.keys(localStorage)
-        .filter(k => k.startsWith("phi_cache_"))
-        .forEach(k => localStorage.removeItem(k));
+      Object.keys(localStorage).filter(k => k.startsWith("phi_cache_")).forEach(k => localStorage.removeItem(k));
     } catch(e) {}
-  },
+  }
 };
 window.Cache = Cache;
 
-/* ─── 2. STATE ─────────────────────────────────────────────────────────────── */
-let _started = false;
-let _userId  = null;
-
-/* ─── 3. API BASE ──────────────────────────────────────────────────────────── */
+// 2. API & Utility
 function _api() {
   return ["localhost","127.0.0.1","0.0.0.0"].includes(location.hostname)
     ? "http://localhost:5000"
     : "https://api.curabook.com";
 }
 
-/* ─── 4. WAIT FOR CONDITION, THEN CALL FN ──────────────────────────────────── */
 function _when(condition, fn, maxMs = 8000) {
   if (condition()) { try { fn(); } catch(e) {} return; }
   const start = Date.now();
@@ -65,63 +48,24 @@ function _when(condition, fn, maxMs = 8000) {
   }, 30);
 }
 
-/* ─── 5. GET AUTH TOKEN ────────────────────────────────────────────────────── */
-async function _getToken() {
-  if (window._sb) {
-    try {
-      const { data } = await window._sb.auth.getSession();
-      if (data?.session?.access_token) return data.session.access_token;
-    } catch(e) {}
-  }
-  try {
-    const keys = Object.keys(localStorage)
-      .filter(k => k.startsWith("sb-") && k.endsWith("-auth-token"));
-    for (const key of keys) {
-      const parsed = JSON.parse(localStorage.getItem(key) || "{}");
-      if (parsed?.access_token) return parsed.access_token;
-    }
-  } catch(e) {}
-  return null;
-}
-
-/* ─── 6. RENDER CLIFF ALERTS ───────────────────────────────────────────────── */
-function _renderAlerts(alerts) {
-  const c = document.getElementById("cliffAlerts");
-  if (!c) return;
-  if (!alerts?.length) {
-    c.innerHTML = `<div class="ca-item ca-ok">
-      <div class="ca-title">✅ No rebound signals</div>
-      <div class="ca-desc">All monitored markers stable.</div>
-    </div>`;
-    return;
-  }
-  c.innerHTML = alerts.map(a => {
-    const cls   = a.severity === "high" ? "ca-danger" : "ca-warn";
-    const icon  = a.severity === "high" ? "🚨" : "⚠️";
-    const title  = String(a.headline || a.marker || "").replace(/</g,"&lt;");
-    const detail = String(a.detail   || "").replace(/</g,"&lt;");
-    return `<div class="ca-item ${cls}">
-      <div class="ca-title">${icon} ${title}</div>
-      ${detail ? `<div class="ca-desc">${detail}</div>` : ""}
-    </div>`;
-  }).join("");
-}
-
-/* ─── 7. INSTANT CACHE RENDERER ────────────────────────────────────────────── */
-function _getUserIdSync() {
+// 3. Extract Session Synchronously
+function _getAuthSync() {
   try {
     const keys = Object.keys(localStorage).filter(k => k.startsWith("sb-") && k.endsWith("-auth-token"));
     for (const key of keys) {
       const parsed = JSON.parse(localStorage.getItem(key) || "{}");
-      if (parsed?.user?.id) return parsed.user.id;
+      if (parsed?.user?.id && parsed?.access_token) {
+        return { userId: parsed.user.id, token: parsed.access_token };
+      }
     }
   } catch(e) {}
   return null;
 }
 
+// 4. Render the Cache Instantly
 function _renderCache(userId) {
-  window._perf_patch_active = true; // Signal to script.js to skip double-fetching
-  
+  window._perf_patch_active = true;
+
   const cachedHistory = Cache.get("history_" + userId);
   const cachedMarkers = Cache.get("markers_" + userId);
   const cachedGw      = Cache.get("goal_wt_"  + userId);
@@ -153,27 +97,8 @@ function _renderCache(userId) {
   }
 }
 
-// EXECUTE INSTANTLY ON SCRIPT LOAD:
-const syncUserId = _getUserIdSync();
-if (syncUserId) {
-  _userId = syncUserId;
-  _renderCache(syncUserId);
-}
-
-/* ─── 8. BACKGROUND NETWORK FETCH ──────────────────────────────────────────── */
-async function _fetchFresh(userId) {
-  if (_started) return;
-  _started = true;
-  _userId  = userId;
-
-  let token = null;
-  for (let i = 0; i < 30; i++) {
-    token = await _getToken();
-    if (token) break;
-    await new Promise(r => setTimeout(r, 100));
-  }
-  if (!token) return;
-
+// 5. Fetch Fresh Data (Background Sync)
+async function _fetchFresh(userId, token) {
   const hdrs = { Authorization: "Bearer " + token };
   let data = null;
 
@@ -181,46 +106,43 @@ async function _fetchFresh(userId) {
     const controller = new AbortController();
     setTimeout(() => controller.abort(), 6000);
     const res = await fetch(_api() + "/api/startup", { headers: hdrs, signal: controller.signal });
+    if (res.status === 401) { window._perf_patch_failed_auth = true; return; }
     if (res.ok) data = await res.json();
   } catch(e) {}
 
-  // Fallback if batch endpoint fails
+  // Fallback if batch endpoint unavailable
   if (!data) {
     try {
-      const [hRes, mRes] = await Promise.allSettled([
-        fetch(_api() + "/history", { method: "POST", headers: { ...hdrs, "Content-Type": "application/json" }, body: "{}" }),
-        fetch(_api() + "/api/health-markers", { headers: hdrs })
-      ]);
+      const hRes = await fetch(_api() + "/history", { method: "POST", headers: { ...hdrs, "Content-Type": "application/json" }, body: "{}" });
+      if (hRes.status === 401) { window._perf_patch_failed_auth = true; return; }
+      
+      const mRes = await fetch(_api() + "/api/health-markers", { headers: hdrs });
       data = {
-        history: (hRes.status === "fulfilled" && hRes.value.ok) ? await hRes.value.json() : [],
-        markers: (mRes.status === "fulfilled" && mRes.value.ok) ? await mRes.value.json() : [],
+        history: hRes.ok ? await hRes.json() : [],
+        markers: mRes.ok ? await mRes.json() : [],
         cliff_alerts: []
       };
     } catch(e) { return; }
   }
 
-  // Update caches and DOM with fresh data
-  const history = Array.isArray(data.history) ? data.history : [];
-  if (history.length) {
-    Cache.set("history_" + userId, history, 120);
-    _when(() => typeof renderHistory === "function", () => renderHistory(history));
+  // Update Caches and DOM
+  if (Array.isArray(data.history) && data.history.length) {
+    Cache.set("history_" + userId, data.history);
+    _when(() => typeof renderHistory === "function", () => renderHistory(data.history));
   }
-
-  const markers = Array.isArray(data.markers) ? data.markers : [];
-  if (markers.length) {
-    Cache.set("markers_" + userId, markers, 300);
+  if (Array.isArray(data.markers) && data.markers.length) {
+    Cache.set("markers_" + userId, data.markers);
     _when(() => typeof renderMarkers === "function", () => {
-      renderMarkers(markers);
-      if (typeof runCliffDetection === "function") runCliffDetection(markers);
+      renderMarkers(data.markers);
+      if (typeof runCliffDetection === "function") runCliffDetection(data.markers);
     });
   }
-
-  const alerts = Array.isArray(data.cliff_alerts) ? data.cliff_alerts : [];
-  _when(() => !!document.getElementById("cliffAlerts"), () => _renderAlerts(alerts));
-  
+  if (Array.isArray(data.cliff_alerts)) {
+    _when(() => !!document.getElementById("cliffAlerts"), () => _renderAlerts(data.cliff_alerts));
+  }
   if (data.goal_weight) {
     const gw = parseFloat(data.goal_weight);
-    Cache.set("goal_wt_" + userId, gw, 3600);
+    Cache.set("goal_wt_" + userId, gw);
     localStorage.setItem("phi_goal_wt", String(gw));
     _when(() => typeof calcProteinDisplay === "function", () => {
       const gwEl = document.getElementById("inputGoalWt");
@@ -230,42 +152,51 @@ async function _fetchFresh(userId) {
       calcProteinDisplay(gw, false);
     });
   }
-  
+
   _when(() => typeof autoLoadShield === "function", async () => {
     try {
       await autoLoadShield();
       const p  = parseFloat(document.getElementById("inputProtein")?.value) || 0;
       const s  = parseFloat(document.getElementById("inputSteps")?.value)   || 0;
       const sl = parseFloat(document.getElementById("inputSleep")?.value)   || 0;
-      if (p || s || sl) Cache.set("shield_" + userId, { protein:p, steps:s, sleep:sl }, 300);
+      if (p || s || sl) Cache.set("shield_" + userId, { protein:p, steps:s, sleep:sl });
     } catch(e) {}
   });
 }
 
-/* ─── 9. POLL FOR FULL BOOT ────────────────────────────────────────────────── */
-(function() {
-  let checks = 0;
-  const id = setInterval(() => {
-    checks++;
-    if (checks > 600 || _started) { clearInterval(id); return; }
+function _renderAlerts(alerts) {
+  const c = document.getElementById("cliffAlerts");
+  if (!c) return;
+  if (!alerts?.length) {
+    c.innerHTML = `<div class="ca-item ca-ok"><div class="ca-title">✅ No rebound signals</div><div class="ca-desc">All monitored markers stable.</div></div>`;
+    return;
+  }
+  c.innerHTML = alerts.map(a => {
+    const cls   = a.severity === "high" ? "ca-danger" : "ca-warn";
+    const icon  = a.severity === "high" ? "🚨" : "⚠️";
+    const title  = String(a.headline || a.marker || "").replace(/</g,"&lt;");
+    const detail = String(a.detail   || "").replace(/</g,"&lt;");
+    return `<div class="ca-item ${cls}"><div class="ca-title">${icon} ${title}</div>${detail ? `<div class="ca-desc">${detail}</div>` : ""}</div>`;
+  }).join("");
+}
 
-    const user = window._user;
-    if (!user?.id) return;
+// 6. EXECUTE INSTANTLY ON SCRIPT PARSE
+const authSync = _getAuthSync();
+if (authSync) {
+  _renderCache(authSync.userId);
+  // Fire network fetch in parallel (non-blocking)
+  setTimeout(() => _fetchFresh(authSync.userId, authSync.token), 0);
+}
 
-    clearInterval(id);
-    _fetchFresh(user.id).catch(() => {});
-  }, 30);
-})();
-
-/* ─── 10. INVALIDATE CACHE AFTER UPLOAD ────────────────────────────────────── */
+// 7. Clear Cache on Action
 document.addEventListener("DOMContentLoaded", () => {
   _when(() => typeof processUpload === "function", () => {
     const _orig = processUpload;
     window.processUpload = async function(file) {
       const result = await _orig.call(this, file);
-      if (result?.success !== false && _userId) {
-        Cache.clear("markers_" + _userId);
-        Cache.clear("shield_"  + _userId);
+      if (result?.success !== false && authSync?.userId) {
+        Cache.clear("markers_" + authSync.userId);
+        Cache.clear("shield_"  + authSync.userId);
       }
       return result;
     };
@@ -275,11 +206,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const _orig = doSignOut;
     window.doSignOut = async function() {
       Cache.clearAll();
-      _started = false;
-      _userId  = null;
       return _orig.call(this);
     };
   });
 });
-
-console.log("[PERF] performance_patch.js v4 loaded");
