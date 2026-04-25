@@ -1,9 +1,9 @@
 /**
- * script.js — Curabook PHI v2.5
+ * script.js — Curabook PHI v2.7
  *
- * FIXES: Honors window._perf_patch_failed_auth. If the patch hits an expired 
- * local token, script.js handles the Supabase token refresh and safely executes
- * the fallback data load.
+ * FIXES: 
+ * 1. Added smooth handoff animations to prevent mobile sidebars from overlapping.
+ * 2. Unlocked image uploads (camera/gallery) to support vision_extractor.py.
  */
 "use strict";
 
@@ -139,7 +139,7 @@ async function onSignIn(user) {
   if (_initialized) return; 
   _initialized = true;
   _user = user;
-  window._user = user; // Expose globally to eliminate scope bugs
+  window._user = user;
 
   const meta = user.user_metadata || {};
   _userName = meta.first_name
@@ -157,8 +157,6 @@ async function onSignIn(user) {
 
   await saveConsents().catch(() => {});
   
-  // FIX: Fetch if cache mechanism is inactive OR if it failed due to an expired token 
-  // (which Supabase just seamlessly refreshed behind the scenes).
   if (!window._perf_patch_active || window._perf_patch_failed_auth) {
     await loadHistory();
     autoLoadShield().catch(() => {});
@@ -248,12 +246,29 @@ async function saveConsents() {
   return _consentsPromise;
 }
 
-/* ═══ SIDEBAR & COCKPIT ═══ */
-const openSidebar  = () => { el("sidebar")?.classList.add("open");    el("sidebarOverlay")?.classList.add("show");    closeCockpit(); };
+/* ═══ SIDEBAR & COCKPIT (MOBILE SMOOTH FIX) ═══ */
 const closeSidebar = () => { el("sidebar")?.classList.remove("open"); el("sidebarOverlay")?.classList.remove("show"); };
-const openCockpit  = () => { el("cockpit")?.classList.add("open");    el("cockpitOverlay")?.classList.add("show");    closeSidebar(); };
 const closeCockpit = () => { el("cockpit")?.classList.remove("open"); el("cockpitOverlay")?.classList.remove("show"); };
-const toggleCockpit  = () => el("cockpit")?.classList.contains("open") ? closeCockpit() : openCockpit();
+
+const openSidebar = () => {
+  if (el("cockpit")?.classList.contains("open")) { 
+    closeCockpit(); 
+    setTimeout(() => { el("sidebar")?.classList.add("open"); el("sidebarOverlay")?.classList.add("show"); }, 200); 
+  } else { 
+    el("sidebar")?.classList.add("open"); el("sidebarOverlay")?.classList.add("show"); 
+  }
+};
+
+const openCockpit = () => {
+  if (el("sidebar")?.classList.contains("open")) { 
+    closeSidebar(); 
+    setTimeout(() => { el("cockpit")?.classList.add("open"); el("cockpitOverlay")?.classList.add("show"); }, 200); 
+  } else { 
+    el("cockpit")?.classList.add("open"); el("cockpitOverlay")?.classList.add("show"); 
+  }
+};
+
+const toggleCockpit = () => el("cockpit")?.classList.contains("open") ? closeCockpit() : openCockpit();
 const toggleUserMenu = () => {
   const dd = el("userDropdown");
   if (dd) dd.setAttribute("aria-hidden", dd.getAttribute("aria-hidden") === "false" ? "true" : "false");
@@ -629,12 +644,17 @@ function setSendingState(on) {
   if (ta) ta.disabled = on;
 }
 
-/* ═══ FILE UPLOAD ═══ */
+/* ═══ FILE UPLOAD (IMAGE SUPPORT FIX) ═══ */
 function handleFileSelect(e) { Array.from(e.target.files || []).forEach(addFile); e.target.value = ""; }
 
 function addFile(file) {
   if (file.size > 10 * 1024 * 1024) { toast(`${file.name} too large (max 10MB).`, "err"); return; }
-  if (!/\.(pdf|txt)$/i.test(file.name)) { toast("Only PDF or TXT supported.", "err"); return; }
+  
+  const isImg = file.type.startsWith("image/") || /\.(png|jpe?g|webp|heic)$/i.test(file.name);
+  const isDoc = /\.(pdf|txt)$/i.test(file.name);
+  
+  if (!isDoc && !isImg) { toast("Only PDF, TXT, or Images supported.", "err"); return; }
+  
   _uploads.push(file);
   renderFilePreview();
   toast(`${file.name} ready — press Send to analyze`);
@@ -646,12 +666,18 @@ function renderFilePreview() {
   const s = el("filePreview"); if (!s) return;
   if (!_uploads.length) { s.classList.remove("show"); s.innerHTML = ""; return; }
   s.classList.add("show");
-  s.innerHTML = _uploads.map((f, i) => `
-    <div class="file-chip">
-      <i class="fa-solid ${f.name.endsWith(".pdf") ? "fa-file-pdf" : "fa-file-lines"}"></i>
-      <span>${esc(f.name)}</span>
-      <button class="file-chip-rm" onclick="removeFile(${i})"><i class="fa-solid fa-xmark"></i></button>
-    </div>`).join("");
+  
+  s.innerHTML = _uploads.map((f, i) => {
+    const isImg = f.type.startsWith("image/") || /\.(png|jpe?g|webp|heic)$/i.test(f.name);
+    const iconClass = f.name.endsWith(".pdf") ? "fa-file-pdf" : isImg ? "fa-file-image" : "fa-file-lines";
+    
+    return `
+      <div class="file-chip">
+        <i class="fa-solid ${iconClass}"></i>
+        <span>${esc(f.name)}</span>
+        <button class="file-chip-rm" onclick="removeFile(${i})"><i class="fa-solid fa-xmark"></i></button>
+      </div>`;
+  }).join("");
 }
 
 function clearFilePreview() {
@@ -688,7 +714,7 @@ async function processUpload(file) {
     }
     return await res.json();
   } catch(err) {
-    toast(err.message?.includes("timed out") ? "Upload timed out — try a smaller PDF." : "Upload failed.", "err");
+    toast(err.message?.includes("timed out") ? "Upload timed out — try a smaller file." : "Upload failed.", "err");
     return null;
   }
 }
@@ -820,7 +846,17 @@ function updateShield() {
   const s  = parseFloat(el("inputSteps")?.value)   || 0;
   const sl = parseFloat(el("inputSleep")?.value)   || 0;
   const gw = parseFloat(el("inputGoalWt")?.value);
-  if (gw && gw !== _goalWt) { _goalWt = gw; localStorage.setItem("phi_goal_wt", String(gw)); calcProteinDisplay(gw, false); }
+  
+  if (gw && gw !== _goalWt) { 
+    _goalWt = gw; 
+    localStorage.setItem("phi_goal_wt", String(gw)); 
+    calcProteinDisplay(gw, false); 
+  }
+
+  if (window.Cache && window._user?.id) {
+    window.Cache.set("shield_" + window._user.id, { protein: p, steps: s, sleep: sl });
+  }
+
   renderShield(p, s, sl, new Date().toISOString().slice(0, 10));
   if (_user) logShieldData(p, s, sl);
 }

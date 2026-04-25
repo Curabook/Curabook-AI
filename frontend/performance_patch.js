@@ -1,8 +1,8 @@
 /**
- * performance_patch.js — Curabook PHI v6 (SHIELD-SYNC & MOBILE FIXED)
+ * performance_patch.js — Curabook PHI v7 (SHIELD FAILSAFE)
  *
  * FIXES: 
- * 1. Shield network fetch moved natively into the patch to bypass Supabase boot delays.
+ * 1. Shield network fetch has a fallback to script.js if the fetch drops.
  * 2. Caches Shield data instantly for zero-latency mobile reloads.
  */
 "use strict";
@@ -117,37 +117,43 @@ async function _fetchFresh(userId, token) {
     });
   }
 
-  // ── NEW DIRECT SHIELD FETCH ──
+  // ── FAILSAFE DIRECT SHIELD FETCH ──
   try {
     const sRes = await fetch(_api() + "/api/behavioral-logs?days=1", { headers: hdrs });
-    if (sRes.ok) {
-      const sData = await sRes.json();
-      const today = new Date().toISOString().slice(0, 10);
-      const tl = sData.filter(l => l.date === today);
-      const get = m => {
-        const l = tl.filter(x => x.metric_name === m).sort((a,b)=>a.created_at<b.created_at?1:-1)[0];
-        return l ? parseFloat(l.value) : 0;
-      };
-      const p = get("protein"), s = get("steps"), sl = get("sleep");
-      
-      Cache.set("shield_" + userId, { protein: p, steps: s, sleep: sl });
+    if (!sRes.ok) throw new Error("HTTP " + sRes.status);
+    const sData = await sRes.json();
+    if (!Array.isArray(sData)) throw new Error("API did not return an array");
 
-      _when(() => typeof renderShield === "function", () => {
-        const ep = document.getElementById("inputProtein"); if (ep && p>0) ep.value = p;
-        const es = document.getElementById("inputSteps");   if (es && s>0) es.value = s;
-        const esl = document.getElementById("inputSleep");  if (esl && sl>0) esl.value = sl;
-        renderShield(p, s, sl, today);
-        
-        if (sData.length > 0) {
-          const last = sData.sort((a, b) => a.created_at < b.created_at ? 1 : -1)[0];
-          const w = new Date(last.created_at);
-          const text = `Last logged: ${last.date === today ? `Today at ${w.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}` : w.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
-          const el = document.getElementById("shieldLastLogged");
-          if(el) el.textContent = text;
-        }
-      });
-    }
-  } catch(e) { console.warn("[PERF] Shield fetch failed:", e); }
+    const today = new Date().toISOString().slice(0, 10);
+    const tl = sData.filter(l => l.date === today);
+    const get = m => {
+      const l = tl.filter(x => x.metric_name === m).sort((a,b)=>a.created_at<b.created_at?1:-1)[0];
+      return l ? parseFloat(l.value) : 0;
+    };
+    const p = get("protein"), s = get("steps"), sl = get("sleep");
+    
+    Cache.set("shield_" + userId, { protein: p, steps: s, sleep: sl });
+
+    _when(() => typeof renderShield === "function", () => {
+      const ep = document.getElementById("inputProtein"); if (ep && p>0) ep.value = p;
+      const es = document.getElementById("inputSteps");   if (es && s>0) es.value = s;
+      const esl = document.getElementById("inputSleep");  if (esl && sl>0) esl.value = sl;
+      renderShield(p, s, sl, today);
+      
+      if (tl.length > 0) {
+        const last = tl.sort((a, b) => a.created_at < b.created_at ? 1 : -1)[0];
+        const w = new Date(last.created_at);
+        const text = `Last logged: Today at ${w.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+        const el = document.getElementById("shieldLastLogged");
+        if(el) el.textContent = text;
+      }
+    });
+  } catch(e) { 
+    console.warn("[PERF] Shield fast-fetch failed, safely delegating to script.js", e.message); 
+    _when(() => typeof autoLoadShield === "function", () => {
+        autoLoadShield().catch(()=>{});
+    });
+  }
 }
 
 function _renderAlerts(alerts) {
