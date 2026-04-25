@@ -193,7 +193,13 @@ body::before {
   display: flex;
   flex-direction: column;
   z-index: 80;
-  transform: translateX(-100%);
+  
+  /* MOBILE UI FIX: Hardware acceleration to prevent text blur */
+  -webkit-transform: translate3d(-100%, 0, 0);
+  transform: translate3d(-100%, 0, 0);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  
   transition: transform .28s cubic-bezier(.4,0,.2,1);
   will-change: transform;
   /* Safe area for notched phones */
@@ -202,7 +208,8 @@ body::before {
   overflow: hidden;
 }
 #sidebar.open {
-  transform: translateX(0);
+  -webkit-transform: translate3d(0, 0, 0);
+  transform: translate3d(0, 0, 0);
   box-shadow: var(--shadow);
 }
 
@@ -618,11 +625,14 @@ body::before {
 .file-chip-rm:hover { opacity: 1; }
 
 /* ══════════════════════════════════════════════════════════
-   10. INPUT BAR
+   10. INPUT BAR (MOBILE UI CHATBAR FIX)
 ══════════════════════════════════════════════════════════ */
 .input-wrap {
   flex-shrink: 0;
-  padding: 6px 12px 10px;
+  
+  /* Adds dynamic padding to account for phone bottom indicator */
+  padding: 6px 12px calc(10px + env(safe-area-inset-bottom));
+  
   padding-left: calc(12px + var(--sal));
   padding-right: calc(12px + var(--sar));
   max-width: 860px; width: 100%; margin: 0 auto;
@@ -719,7 +729,13 @@ body::before {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   z-index: 75;
-  transform: translateX(100%);
+  
+  /* MOBILE UI FIX: Hardware acceleration to prevent text blur */
+  -webkit-transform: translate3d(100%, 0, 0);
+  transform: translate3d(100%, 0, 0);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+
   transition: transform .28s cubic-bezier(.4,0,.2,1);
   will-change: transform;
   padding-top: var(--sat);
@@ -730,7 +746,8 @@ body::before {
   scrollbar-color: var(--surface-3) transparent;
 }
 #cockpit.open {
-  transform: translateX(0);
+  -webkit-transform: translate3d(0, 0, 0);
+  transform: translate3d(0, 0, 0);
   box-shadow: var(--shadow);
 }
 
