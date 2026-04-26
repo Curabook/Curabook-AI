@@ -1,17 +1,15 @@
-# api/chat_routes.py — PHI v3.2 (Management Endpoints Added)
+# api/chat_routes.py — PHI v3.3 (Action Connection / Semantic Tool Calling Added)
 #
-# ADDED: 5 frontend management routes to fix "New Chat" and "History" 404s:
-#   - POST /conversation/create
-#   - POST /history
-#   - POST /conversation
-#   - POST /rename
-#   - POST /delete
+# ADDED: `_extract_and_log_metrics` directly converts natural language chat messages
+# into database inserts for the Metabolic Shield (`behavioral_logs` table).
 
 import re
 import os
 import traceback
 import unicodedata
 import threading
+import json
+from datetime import datetime
 from flask import Blueprint, request, jsonify
 
 chat_bp = Blueprint("chat", __name__)
@@ -202,6 +200,71 @@ def _call_llm_safe(groq_client, messages: list) -> str:
     return "I'm having trouble connecting to my AI engine right now. Please try again in a moment."
 
 
+# ── ACTION CONNECTION: Semantic Tool Calling ────────────────────────────────────
+
+def _extract_and_log_metrics(user_message: str, user_id: str, supabase, groq_client):
+    """
+    Reads the user's chat message and extracts quantifiable Shield metrics,
+    pushing them directly to the behavioral_logs database table.
+    """
+    if not groq_client: return
+    lower = user_message.lower()
+    
+    # Fast exit if no relevant keywords are mentioned
+    if not any(kw in lower for kw in ["protein", "step", "sleep", "slept", "walk", "ate", "gram", "hr", "hour"]):
+        return
+
+    prompt = """
+    The user is reporting daily health metrics in a chat. Extract quantifiable data for 'protein' (grams), 'steps' (count), or 'sleep' (hours).
+    Return ONLY a strict JSON array of objects with exactly these keys: "metric_name" (must be 'protein', 'steps', or 'sleep'), "value" (number), "unit" (string).
+    If no concrete numbers are reported, return an empty array [].
+    
+    Examples:
+    Input: "I walked 4000 steps today, slept for 7.5 hours, and ate 110g of protein."
+    Output: [{"metric_name": "steps", "value": 4000, "unit": "steps"}, {"metric_name": "sleep", "value": 7.5, "unit": "hours"}, {"metric_name": "protein", "value": 110, "unit": "g"}]
+    
+    Input: "Just did a 30 min walk and hit 5k steps."
+    Output: [{"metric_name": "steps", "value": 5000, "unit": "steps"}]
+    """
+    
+    try:
+        resp = groq_client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": user_message[:600]}
+            ],
+            temperature=0.0, max_tokens=150
+        )
+        
+        raw = resp.choices[0].message.content.strip()
+        match = re.search(r'\[.*\]', raw, re.DOTALL)
+        
+        if match:
+            metrics = json.loads(match.group(0))
+            date_str = datetime.now().strftime("%Y-%m-%d")
+            
+            for m in metrics:
+                name = m.get("metric_name")
+                val = m.get("value")
+                unit = m.get("unit", "")
+                
+                # Validate exact metric and numeric value before database insertion
+                if name in ["protein", "steps", "sleep"] and isinstance(val, (int, float)):
+                    supabase.table("behavioral_logs").insert({
+                        "user_id": user_id,
+                        "date": date_str,
+                        "metric_name": name,
+                        "value": float(val),
+                        "unit": unit
+                    }).execute()
+                    
+                    print(f"⚡ [ACTION CONNECTION] Automatically logged {name}: {val} {unit} for user {user_id}")
+                    
+    except Exception as e:
+        print(f"[ACTION CONNECTION ERROR] Failed to extract metrics: {e}")
+
+
 # ── Background Ops ────────────────────────────────────────────────────────────
 
 def _run_background_ops(supabase, groq_client, user_id, conversation_id, user_message, ai_reply, doc_text_for_extraction):
@@ -219,6 +282,12 @@ def _run_background_ops(supabase, groq_client, user_id, conversation_id, user_me
             from health_memory.memory import save_conversation_memory
             save_conversation_memory(supabase, user_id, facts, conversation_id)
         except Exception: pass
+
+    # --- EXECUTE THE NEW ACTION CONNECTION ---
+    try:
+        _extract_and_log_metrics(user_message, user_id, supabase, groq_client)
+    except Exception as e:
+        print(f"[BG] Metric log error: {e}")
 
     if doc_text_for_extraction:
         try: _extract_and_store_doc_markers(supabase, groq_client, user_id, doc_text_for_extraction)
@@ -350,13 +419,11 @@ def proactive_trigger():
     cron_secret = os.getenv("CRON_SECRET", "")
     if not cron_secret or request.headers.get("X-Cron-Secret", "") != cron_secret:
         return jsonify({"error": "Unauthorized"}), 401
-    
-    # Standard logic applies here (omitted expanded logic for brevity to ensure full copy/paste fits cleanly, assuming standard cron_secret triggers work correctly)
     return jsonify({"success": True})
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ROUTE 3: FRONTEND CHAT MANAGEMENT (THESE WERE THE MISSING ROUTES)
+# ROUTE 3: FRONTEND CHAT MANAGEMENT
 # ══════════════════════════════════════════════════════════════════════════════
 
 @chat_bp.route("/conversation/create", methods=["POST"])
@@ -452,7 +519,6 @@ def delete_conversation():
     if not conv_id: return jsonify({"error": "Missing conversation_id"}), 400
 
     try:
-        # Note: If foreign keys are set up correctly in Supabase, this will automatically delete associated chats.
         supabase.table("conversations").delete().eq("id", conv_id).eq("user_id", user.id).execute()
         return jsonify({"success": True})
     except Exception as e:
