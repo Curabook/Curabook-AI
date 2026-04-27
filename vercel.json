@@ -28,6 +28,11 @@
     { "source": "/cockpit_upgrades.js", "destination": "/frontend/cockpit_upgrades.js" },
     { "source": "/sitemap.xml", "destination": "/frontend/sitemap.xml" },
     { "source": "/robots.txt", "destination": "/frontend/robots.txt" },
+    
+    { "source": "/symptom-checker", "destination": "/frontend/symptom-checker/index.html" },
+    { "source": "/health-ai", "destination": "/frontend/health-ai/index.html" },
+    { "source": "/ai-medical-analysis", "destination": "/frontend/ai-medical-analysis/index.html" },
+    
     { "source": "/", "destination": "/frontend/index.html" },
     
     { "source": "/(.*)", "destination": "/app.py" }

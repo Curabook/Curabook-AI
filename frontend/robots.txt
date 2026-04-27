@@ -1,4 +1,12 @@
 User-agent: *
 Allow: /
+Allow: /demo
+Allow: /ai-medical-analysis
+Allow: /health-ai
+Allow: /symptom-checker
+
+# Protect the secure application and API from being indexed
+Disallow: /app
+Disallow: /api/
 
 Sitemap: https://curabook.com/sitemap.xml

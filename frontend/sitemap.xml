@@ -1,157 +1,35 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
-        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-        xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9
-        http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+   <url>
+      <loc>https://curabook.com/</loc>
+      <changefreq>weekly</changefreq>
+      <priority>1.0</priority>
+   </url>
+   <url>
+      <loc>https://curabook.com/demo</loc>
+      <changefreq>monthly</changefreq>
+      <priority>0.8</priority>
+   </url>
+   
+   <url>
+      <loc>https://curabook.com/ai-medical-analysis</loc>
+      <changefreq>monthly</changefreq>
+      <priority>0.9</priority>
+   </url>
+   <url>
+      <loc>https://curabook.com/health-ai</loc>
+      <changefreq>monthly</changefreq>
+      <priority>0.8</priority>
+   </url>
+   <url>
+      <loc>https://curabook.com/symptom-checker</loc>
+      <changefreq>monthly</changefreq>
+      <priority>0.7</priority>
+   </url>
 
-  <!-- ═══════════════════════════════════════════
-       TIER 1 — Core Product (highest priority)
-  ═══════════════════════════════════════════ -->
-
-  <url>
-    <loc>https://curabook.com/</loc>
-    <lastmod>2026-04-10</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>1.0</priority>
-  </url>
-
-  <url>
-    <loc>https://curabook.com/demo</loc>
-    <lastmod>2026-04-10</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.95</priority>
-  </url>
-
-  <url>
-    <loc>https://curabook.com/signup</loc>
-    <lastmod>2026-04-10</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.90</priority>
-  </url>
-
-  <url>
-    <loc>https://curabook.com/login</loc>
-    <lastmod>2026-04-10</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.70</priority>
-  </url>
-
-  <!-- ═══════════════════════════════════════════
-       TIER 2 — SEO Feature Landing Pages
-  ═══════════════════════════════════════════ -->
-
-  <url>
-    <loc>https://curabook.com/ai-medical-analysis</loc>
-    <lastmod>2026-04-10</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.90</priority>
-  </url>
-
-  <url>
-    <loc>https://curabook.com/health-ai</loc>
-    <lastmod>2026-04-10</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.88</priority>
-  </url>
-
-  <url>
-    <loc>https://curabook.com/symptom-checker</loc>
-    <lastmod>2026-04-10</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.85</priority>
-  </url>
-
-  <url>
-    <loc>https://curabook.com/ai-lab-report-analyzer</loc>
-    <lastmod>2026-04-10</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.85</priority>
-  </url>
-
-  <url>
-    <loc>https://curabook.com/how-it-works</loc>
-    <lastmod>2026-04-10</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.80</priority>
-  </url>
-
-  <!-- ═══════════════════════════════════════════
-       TIER 3 — Condition / Marker Landing Pages
-       High-intent organic search traffic
-  ═══════════════════════════════════════════ -->
-
-  <url>
-    <loc>https://curabook.com/diabetes-tracker-ai</loc>
-    <lastmod>2026-04-10</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.85</priority>
-  </url>
-
-  <url>
-    <loc>https://curabook.com/cholesterol-analysis</loc>
-    <lastmod>2026-04-10</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.82</priority>
-  </url>
-
-  <url>
-    <loc>https://curabook.com/hba1c-explained</loc>
-    <lastmod>2026-04-10</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.78</priority>
-  </url>
-
-  <url>
-    <loc>https://curabook.com/vitamin-d-deficiency</loc>
-    <lastmod>2026-04-10</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.75</priority>
-  </url>
-
-  <url>
-    <loc>https://curabook.com/thyroid-tsh-levels</loc>
-    <lastmod>2026-04-10</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.75</priority>
-  </url>
-
-  <url>
-    <loc>https://curabook.com/blood-test-results-explained</loc>
-    <lastmod>2026-04-10</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.82</priority>
-  </url>
-
-  <url>
-    <loc>https://curabook.com/doctor-visit-preparation</loc>
-    <lastmod>2026-04-10</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.78</priority>
-  </url>
-
-  <url>
-    <loc>https://curabook.com/health-trend-tracking</loc>
-    <lastmod>2026-04-10</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.75</priority>
-  </url>
-
-  <!-- ═══════════════════════════════════════════
-       TIER 4 — Legal & Trust Pages
-  ═══════════════════════════════════════════ -->
-
-  <url>
-    <loc>https://curabook.com/privacy</loc>
-    <lastmod>2026-04-10</lastmod>
-    <changefreq>yearly</changefreq>
-    <priority>0.35</priority>
-  </url>
-
-  <url>
-    <loc>https://curabook.com/terms</loc>
-    <lastmod>2026-04-10</lastmod>
-    <changefreq>yearly</changefreq>
-    <priority>0.30</priority>
-  </url>
-
+   <url>
+      <loc>https://curabook.com/signup</loc>
+      <changefreq>monthly</changefreq>
+      <priority>0.6</priority>
+   </url>
 </urlset>
