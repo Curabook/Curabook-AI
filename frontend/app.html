@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+
+<title>Curabook PHI — GLP-1 Cliff Prevention</title>
+<meta name="description" content="PHI monitors your glucose, HbA1c, and body composition to detect GLP-1 metabolic rebound.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+
+<link rel="stylesheet" href="style.css?v=13">
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+
+<div id="shell">
+
+  <aside id="sidebar" role="navigation">
+    <div class="sb-brand">
+      <a href="/" class="sb-logo-link">
+        <div class="sb-logo-mark">φ</div>
+        <span class="sb-logo-name">Curabook</span>
+      </a>
+      <span class="sb-version-tag" style="margin-left:auto; margin-right:8px;">PHI</span>
+      <button id="sidebarCloseBtn" class="mobile-only" aria-label="Close menu" style="background:none; border:none; color:var(--text-3); font-size:1.3rem; padding:4px 8px; cursor:pointer;">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+
+    <div class="sb-actions">
+      <button id="newChatBtn" class="new-chat-btn" title="New conversation (Ctrl+K)">
+        <i class="fa-solid fa-plus"></i>
+        <span>New Conversation</span>
+        <i class="fa-regular fa-pen-to-square ms-auto"></i>
+      </button>
+    </div>
+
+    <nav class="sb-nav">
+      <button class="nav-item active" id="navChat"    data-view="chat">
+        <i class="fa-solid fa-comments"></i><span>Chat with PHI</span>
+      </button>
+      <button class="nav-item"         id="navHealth" data-view="health">
+        <i class="fa-solid fa-gauge-high"></i><span>My Health</span>
+      </button>
+      <button class="nav-item"         id="navReports" data-view="reports">
+        <i class="fa-solid fa-file-medical"></i><span>Lab Reports</span>
+      </button>
+    </nav>
+
+    <div class="sb-divider"></div>
+    <div class="sb-section-label">Recent Conversations</div>
+
+    <div id="historyList" class="sb-history">
+      <div class="sb-empty">No conversations yet</div>
+    </div>
+
+    <div class="sb-footer">
+      <div id="userRow" class="user-row" role="button" tabindex="0">
+        <div id="userAvatar" class="user-av">U</div>
+        <div class="user-meta">
+          <div id="userEmail"  class="user-email">Loading…</div>
+          <div id="userPlan"   class="user-plan">PHI Free</div>
+        </div>
+        <i class="fa-solid fa-ellipsis-vertical user-more-icon"></i>
+
+        <div id="userDropdown" class="user-dropdown" aria-hidden="true">
+          <button class="dd-item" id="themeToggleBtn">
+            <i class="fa-solid fa-moon" id="themeIcon"></i>
+            <span id="themeLabel">Light Mode</span>
+          </button>
+          <div class="dd-divider"></div>
+          <button class="dd-item dd-danger" id="logoutBtn">
+            <i class="fa-solid fa-right-from-bracket"></i><span>Sign Out</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <main id="main" role="main">
+
+    <div id="topbar">
+      <div class="topbar-left">
+        <button id="mobileMenuBtn" class="topbar-icon-btn" aria-label="Open menu">
+          <i class="fa-solid fa-bars"></i>
+        </button>
+        <div class="status-badge">
+          <span class="status-dot"></span>
+          <span id="convTitle" class="status-text">Ready</span>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button id="topThemeBtn"      class="topbar-icon-btn" aria-label="Toggle theme">
+          <i class="fa-solid fa-moon" id="topThemeIcon"></i>
+        </button>
+        <button id="attachTopBtn"     class="topbar-icon-btn" aria-label="Upload report" title="Upload lab report">
+          <i class="fa-solid fa-paperclip"></i>
+        </button>
+        <button id="mobileCockpitBtn" class="topbar-icon-btn mobile-only" aria-label="Health cockpit">
+          <i class="fa-solid fa-gauge-high"></i>
+        </button>
+      </div>
+    </div>
+
+    <div id="viewChat" class="view active">
+      <div id="chatArea">
+        <div id="welcomeScreen">
+          <div class="welcome-inner">
+            <div class="welcome-orb">φ</div>
+            <h1 class="welcome-headline">
+              Good <span id="timeGreeting">morning</span>, <em id="welcomeName">there</em>
+            </h1>
+            <p class="welcome-sub">
+              Your GLP-1 cliff co-pilot. I watch your glucose rebound,
+              protect your lean mass, and build your insurance appeal — from your actual lab data.
+            </p>
+            <div class="suggestion-chips" id="welcomeChips">
+              <button class="chip" data-q="Run a cliff risk analysis on my stored health data. Show me my glucose trajectory, HbA1c trend, and any rebound signals.">
+                <i class="fa-solid fa-triangle-exclamation chip-icon"></i>My cliff risk
+              </button>
+              <button class="chip" data-q="Calculate my daily protein target using the Muscle Defense formula. My goal weight is stored in my profile.">
+                <i class="fa-solid fa-dumbbell chip-icon"></i>Protein target
+              </button>
+              <button class="chip" data-q="The food noise and hunger are coming back since I reduced my GLP-1 dose. Explain the biology — is this ghrelin rebound? What do I do?">
+                <i class="fa-solid fa-brain chip-icon"></i>Food noise is back
+              </button>
+              <button class="chip" data-q="Prepare me for my next provider appointment. What are my three most important data points and specific questions to ask?">
+                <i class="fa-solid fa-stethoscope chip-icon"></i>Doctor visit prep
+              </button>
+              <button class="chip" data-q="Explain tapering options: reduced-frequency dosing every 10-14 days, microdosing, and transitioning to generic AOMs. What does the evidence say?">
+                <i class="fa-solid fa-syringe chip-icon"></i>Tapering options
+              </button>
+              <button class="chip" data-q="Build me a GLP-1 prior authorization support packet from my lab data for my insurance appeal.">
+                <i class="fa-solid fa-shield-halved chip-icon"></i>Insurance PA appeal
+              </button>
+            </div>
+            <div class="welcome-upload-prompt">
+              <button id="uploadNudgeBtn" class="upload-nudge">
+                <i class="fa-solid fa-file-medical"></i>Upload a Lab Report
+              </button>
+              <p class="upload-hint">PDF, TXT, or Image from any US lab</p>
+            </div>
+          </div>
+        </div>
+
+        <div id="chatDisplay" class="chat-display hidden" role="log" aria-live="polite"></div>
+        <div id="filePreview" class="file-strip"></div>
+
+        <div id="inputWrap" class="input-wrap">
+          <div id="inputBar" class="input-bar">
+            <textarea id="chatInput" class="chat-ta"
+              placeholder="Ask PHI about your GLP-1 journey…"
+              rows="1" autocomplete="off" maxlength="4000"></textarea>
+            <div class="input-actions">
+              <button id="micBtn"         class="input-btn" aria-label="Voice input"><i class="fa-solid fa-microphone"></i></button>
+              <button id="attachInputBtn" class="input-btn" aria-label="Attach file"><i class="fa-solid fa-paperclip"></i></button>
+              <button id="sendBtn"        class="send-btn"  aria-label="Send"><i class="fa-solid fa-arrow-up"></i></button>
+            </div>
+          </div>
+          <p class="input-disclaimer">PHI is an educational wellness tool. Always consult your healthcare provider.</p>
+        </div>
+      </div>
+    </div>
+
+    <div id="viewHealth" class="view">
+      <div class="view-scroll" id="healthContent">
+        <div class="hv-empty" id="healthLoading">
+          <i class="fa-solid fa-spinner fa-spin"></i>
+          Loading your health picture…
+        </div>
+      </div>
+    </div>
+
+    <div id="viewReports" class="view">
+      <div class="view-scroll">
+        <div class="reports-header">
+          <span class="reports-title">Lab Reports</span>
+          <button class="reports-upload-btn" id="reportsUploadBtn">
+            <i class="fa-solid fa-upload"></i> Upload Report
+          </button>
+        </div>
+        <div id="reportsList">
+          <div class="hv-empty" id="reportsLoading">
+            <i class="fa-solid fa-spinner fa-spin"></i>
+            Loading your reports…
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <aside id="cockpit">
+
+    <button id="cockpitCloseBtn" style="display:none;position:sticky;top:0;z-index:10;justify-content:flex-end;padding:10px 12px 0;background:var(--surface);border:none;width:100%;cursor:pointer;color:var(--text-2);" class="mobile-only">
+      <i class="fa-solid fa-xmark" style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;border-radius:8px;font-size:1rem;transition:all .15s;"></i>
+    </button>
+
+    <section class="cp-section">
+      <div class="cp-section-hd">
+        <h2 class="cp-section-title">Metabolic Shield</h2>
+        <span class="shield-auto-label">AUTO</span>
+        <span class="cp-section-badge" id="shieldBadge">--%</span>
+      </div>
+
+      <div class="shield-wrap">
+        <svg width="160" height="160" viewBox="0 0 160 160" aria-hidden="true">
+          <circle cx="80" cy="80" r="70" fill="none" stroke-width="12" class="ring-track"/>
+          <circle cx="80" cy="80" r="70" fill="none" stroke-width="12" stroke-linecap="round"
+            stroke="var(--signal)" stroke-dasharray="440" stroke-dashoffset="440"
+            transform="rotate(-90 80 80)" class="ring-arc" id="ringProtein"/>
+          <circle cx="80" cy="80" r="55" fill="none" stroke-width="11" class="ring-track"/>
+          <circle cx="80" cy="80" r="55" fill="none" stroke-width="11" stroke-linecap="round"
+            stroke="var(--amber)" stroke-dasharray="346" stroke-dashoffset="346"
+            transform="rotate(-90 80 80)" class="ring-arc" id="ringMovement"/>
+          <circle cx="80" cy="80" r="41" fill="none" stroke-width="10" class="ring-track"/>
+          <circle cx="80" cy="80" r="41" fill="none" stroke-width="10" stroke-linecap="round"
+            stroke="var(--ok)" stroke-dasharray="258" stroke-dashoffset="258"
+            transform="rotate(-90 80 80)" class="ring-arc" id="ringRecovery"/>
+        </svg>
+        <div class="shield-center">
+          <div class="shield-score" id="shieldScore">--</div>
+          <div class="shield-score-label">Shield %</div>
+        </div>
+      </div>
+
+      <div class="ring-legend">
+        <div class="ring-row">
+          <span class="ring-dot" style="background:var(--signal)"></span>
+          <div class="ring-info">
+            <div class="ring-name">Protein</div>
+            <div class="ring-val" id="proteinLegend">Loading…</div>
+            <div class="ring-track-bar"><div class="ring-fill" id="proteinBar" style="background:var(--signal)"></div></div>
+          </div>
+        </div>
+        <div class="ring-row">
+          <span class="ring-dot" style="background:var(--amber)"></span>
+          <div class="ring-info">
+            <div class="ring-name">Movement</div>
+            <div class="ring-val" id="movementLegend">Loading…</div>
+            <div class="ring-track-bar"><div class="ring-fill" id="movementBar" style="background:var(--amber)"></div></div>
+          </div>
+        </div>
+        <div class="ring-row">
+          <span class="ring-dot" style="background:var(--ok)"></span>
+          <div class="ring-info">
+            <div class="ring-name">Recovery</div>
+            <div class="ring-val" id="recoveryLegend">Loading…</div>
+            <div class="ring-track-bar"><div class="ring-fill" id="recoveryBar" style="background:var(--ok)"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="shieldLastLogged" class="shield-last-logged"></div>
+      <div class="shield-log-grid">
+        <div class="sl-group">
+          <label class="sl-label" for="inputProtein">Protein (g)</label>
+          <input type="number" id="inputProtein" class="sl-input" placeholder="0" min="0" max="400">
+        </div>
+        <div class="sl-group">
+          <label class="sl-label" for="inputSteps">Steps</label>
+          <input type="number" id="inputSteps" class="sl-input" placeholder="0" min="0">
+        </div>
+        <div class="sl-group">
+          <label class="sl-label" for="inputSleep">Sleep (h)</label>
+          <input type="number" id="inputSleep" class="sl-input" placeholder="0" min="0" max="14" step=".5">
+        </div>
+        <div class="sl-group">
+          <label class="sl-label" for="inputGoalWt">Goal Wt (lbs)</label>
+          <input type="number" id="inputGoalWt" class="sl-input" placeholder="165" min="80" max="400">
+        </div>
+      </div>
+      <button id="updateShieldBtn" class="cp-primary-btn">Log Today's Data</button>
+      
+      <button id="syncWearableBtn" class="cp-secondary-btn mt-8" style="width: 100%; justify-content: center; background: var(--surface-3); border: 1px dashed var(--signal);">
+        <i class="fa-solid fa-camera" style="color: var(--signal);"></i> Sync Watch Screenshot
+      </button>
+
+    </section>
+
+    <section class="cp-section">
+      <div class="cp-section-hd">
+        <h2 class="cp-section-title">Muscle Defense Protocol</h2>
+      </div>
+      <div class="protein-display">
+        <span class="protein-num" id="proteinNum">--</span>
+        <span class="protein-unit">g / day</span>
+      </div>
+      <p class="cp-caption" id="proteinCaption">Goal Weight × 0.545 = daily protein target</p>
+      <div class="protein-row">
+        <input type="number" id="proteinInput" class="cp-input" placeholder="Goal weight (lbs)" min="80" max="400">
+        <button id="calcBtn" class="cp-secondary-btn">Calc</button>
+      </div>
+      <div id="proteinDetails" class="protein-details hidden"></div>
+    </section>
+
+    <section class="cp-section">
+      <div class="cp-section-hd">
+        <h2 class="cp-section-title">Cliff Alert System</h2>
+        <button id="refreshAlertsBtn" class="cp-icon-btn" title="Refresh">
+          <i class="fa-solid fa-rotate"></i>
+        </button>
+      </div>
+      <div id="cliffAlerts">
+        <div class="ca-item ca-ok">
+          <div class="ca-title">✅ No rebound signals</div>
+          <div class="ca-desc">Upload a Quest or LabCorp report to enable automatic cliff monitoring.</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="cp-section">
+      <div class="cp-section-hd">
+        <h2 class="cp-section-title">Ghrelin Surge Log</h2>
+      </div>
+      <p class="cp-caption">Food noise is ghrelin biology — not a willpower score.</p>
+      <div class="noise-wrap">
+        <div class="noise-labels"><span>Quiet</span><span>Relentless</span></div>
+        <input type="range" id="noiseSlider" class="noise-slider" min="1" max="10" value="5">
+      </div>
+      <div id="noiseReadout" class="noise-readout">Move the slider to log today's ghrelin surge level.</div>
+      <button id="logNoiseBtn" class="cp-secondary-btn mt-8">
+        <i class="fa-solid fa-save"></i> Log Level
+      </button>
+    </section>
+
+    <section class="cp-section">
+      <div class="cp-section-hd">
+        <h2 class="cp-section-title">My Lab Markers</h2>
+        <button id="refreshMarkersBtn" class="cp-icon-btn" title="Refresh">
+          <i class="fa-solid fa-rotate"></i>
+        </button>
+      </div>
+      <div id="markersGrid" class="markers-grid">
+        <div class="markers-empty">Upload a Quest or LabCorp PDF to see your markers</div>
+      </div>
+    </section>
+
+  </aside>
+
+  <div id="sidebarOverlay" class="sidebar-overlay"></div>
+  <div id="cockpitOverlay" class="cockpit-overlay"></div>
+
+</div> 
+<input type="file" id="fileInput" accept=".pdf,.txt,image/*" multiple style="display:none">
+<div id="toasts" role="status" aria-live="assertive" aria-atomic="true"></div>
+
+<script src="performance_patch.js?v=13"></script>
+<script src="script.js?v=13"></script>
+<script src="cockpit_upgrades.js?v=13"></script>
+</body>
+</html>

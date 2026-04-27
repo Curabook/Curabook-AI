@@ -6,7 +6,6 @@
     <title>Sign In — Curabook PHI</title>
     <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Single pinned Supabase CDN — never load twice -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -125,23 +124,6 @@
 </div>
 
 <script>
-/**
- * login.html — FIX: Auth race condition resolved
- *
- * ROOT CAUSE: The original code called history.replaceState() to strip the
- * #access_token hash BEFORE onAuthStateChange had processed it. Supabase
- * reads the hash internally — stripping it early causes the OAuth session
- * to never be established, leaving the user on the login page forever.
- *
- * FIX STRATEGY:
- *   1. Register onAuthStateChange FIRST, before any other async work.
- *   2. NEVER call history.replaceState() manually — let Supabase handle
- *      hash cleanup internally after it confirms the session.
- *   3. Use a _redirected flag + _termsShowing flag to prevent double-fires.
- *   4. Only check getSession() when there is NO hash (returning users).
- *   5. Google Terms modal is shown via onAuthStateChange, not a side effect.
- */
-
 const API_BASE     = "https://api.curabook.com";
 const SUPABASE_URL = "https://pbeaawlxdcrdbvlmpqhc.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBiZWFhd2x4ZGNyZGJ2bG1wcWhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwMDk0MzksImV4cCI6MjA5MTU4NTQzOX0.6bUpYrDbe0mQjjBHX8Qscj-5R8i4-SqAtW_Z1UFzJ10";
@@ -150,7 +132,6 @@ let _supabase     = null;
 let _redirected   = false;
 let _termsShowing = false;
 
-// ── Utility: sanitize localStorage of corrupt Supabase keys ────────────────
 function sanitizeLocalStorage() {
     try {
         Object.keys(localStorage)
@@ -175,15 +156,14 @@ function setLoading(btn, loading) {
     btn.innerHTML = loading ? '<span class="spinner"></span> Signing in…' : "Sign In";
 }
 
-// ── FIX: redirect once, guard against double-fires ─────────────────────────
+// ── FIX: Redirects directly to /app ─────────────────────────
 function doRedirect() {
     if (_redirected || _termsShowing) return;
     _redirected = true;
     setStatus("Signing you in…", "success");
-    window.location.href = "https://curabook.com/";
+    window.location.href = "/app";
 }
 
-// ── Consent save (non-blocking, best-effort) ───────────────────────────────
 async function saveConsentToBackend(accessToken) {
     try {
         const resp = await fetch(`${API_BASE}/api/consent`, {
@@ -195,12 +175,9 @@ async function saveConsentToBackend(accessToken) {
     } catch (err) { console.warn("[CONSENT] Non-fatal:", err); }
 }
 
-// ── Google Terms Modal ─────────────────────────────────────────────────────
 function showGoogleTermsModal(user, session) {
     if (_termsShowing) return;
     _termsShowing = true;
-
-    // Remove any stale modal
     document.querySelector(".terms-modal-overlay")?.remove();
 
     const overlay = document.createElement("div");
@@ -243,7 +220,6 @@ function showGoogleTermsModal(user, session) {
         btn.disabled  = true;
         btn.innerHTML = '<span class="spinner"></span> Saving…';
 
-        // Persist locally first — user proceeds even if API is slow
         localStorage.setItem(`phi_terms_${user.id}`, Date.now().toString());
 
         if (session?.access_token) {
@@ -256,7 +232,6 @@ function showGoogleTermsModal(user, session) {
     });
 }
 
-// ── Email / password login ─────────────────────────────────────────────────
 document.getElementById("loginBtn").addEventListener("click", async () => {
     const email    = document.getElementById("email").value.trim();
     const password = document.getElementById("password").value;
@@ -266,7 +241,6 @@ document.getElementById("loginBtn").addEventListener("click", async () => {
     try {
         const { data, error } = await _supabase.auth.signInWithPassword({ email, password });
         if (error) { setStatus(error.message, "error"); setLoading(btn, false); return; }
-        // onAuthStateChange will fire SIGNED_IN and call doRedirect()
     } catch (err) {
         console.error("[LOGIN]", err);
         setStatus("Something went wrong. Please try again.", "error");
@@ -274,58 +248,46 @@ document.getElementById("loginBtn").addEventListener("click", async () => {
     }
 });
 
-// Enter key shortcut
 document.addEventListener("keydown", e => {
     if (e.key === "Enter" && !document.querySelector(".terms-modal-overlay")) {
         document.getElementById("loginBtn").click();
     }
 });
 
-// ── Forgot password ────────────────────────────────────────────────────────
 document.getElementById("forgotLink").addEventListener("click", async e => {
     e.preventDefault();
     const email = document.getElementById("email").value.trim();
     if (!email) { setStatus("Enter your email address first.", "error"); return; }
     try {
         const { error } = await _supabase.auth.resetPasswordForEmail(email, {
-            redirectTo: "https://curabook.com/login",
+            redirectTo: `${window.location.origin}/login`,
         });
         if (error) { setStatus(error.message, "error"); return; }
         setStatus("Password reset email sent. Check your inbox.", "success");
     } catch { setStatus("Could not send reset email. Try again.", "error"); }
 });
 
-// ── Google OAuth ───────────────────────────────────────────────────────────
 document.getElementById("googleBtn").addEventListener("click", async () => {
     try {
         await _supabase.auth.signInWithOAuth({
             provider: "google",
-            options: { redirectTo: `${window.location.origin}/login` },
+            options: { redirectTo: `${window.location.origin}/app` },
         });
     } catch { setStatus("Google sign-in unavailable. Try email instead.", "error"); }
 });
 
-// ── BOOT ───────────────────────────────────────────────────────────────────
 (async function boot() {
     try {
         sanitizeLocalStorage();
 
         _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
             auth: {
-                detectSessionInUrl: true,   // Let Supabase parse the hash itself
+                detectSessionInUrl: true, 
                 persistSession:     true,
                 flowType:           "implicit",
             },
         });
 
-        /**
-         * FIX #RACE-1: Register onAuthStateChange FIRST.
-         *
-         * Supabase processes the #access_token hash internally when
-         * detectSessionInUrl=true. Our listener fires AFTER that processing,
-         * so the session is always fully established by the time we receive
-         * the SIGNED_IN event. We must NOT touch the hash manually.
-         */
         const { data: { subscription } } = _supabase.auth.onAuthStateChange(async (event, session) => {
             console.log("[AUTH]", event, session?.user?.email);
 
@@ -335,23 +297,13 @@ document.getElementById("googleBtn").addEventListener("click", async () => {
                 const termsKey  = `phi_terms_${user.id}`;
 
                 if (isGoogle && !localStorage.getItem(termsKey)) {
-                    // FIX #TERMS-1: Show modal via auth event — not a timer or side-effect.
-                    // The session is valid; we just need consent before redirecting.
                     showGoogleTermsModal(user, session);
                     return;
                 }
-
-                // Email/password or Google with existing consent → redirect
                 doRedirect();
             }
         });
 
-        /**
-         * FIX #RACE-2: Only call getSession() when there is NO OAuth hash.
-         * If there IS a hash, onAuthStateChange will handle it — calling
-         * getSession() in parallel creates a race where the session might
-         * not exist yet and we incorrectly show nothing.
-         */
         const hasOAuthHash = window.location.hash.includes("access_token");
         if (!hasOAuthHash) {
             const { data: { session } } = await _supabase.auth.getSession();

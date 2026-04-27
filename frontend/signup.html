@@ -143,7 +143,6 @@
 <div class="right-panel">
     <div class="form-container">
 
-        <!-- STEP 1: Account creation -->
         <div id="signupStep">
             <div class="form-header">
                 <h2 class="form-title">Create your account</h2>
@@ -186,7 +185,6 @@
             </div>
         </div>
 
-        <!-- STEP 2: GLP-1 Onboarding -->
         <div id="onboardingStep">
             <div class="onboarding-progress">
                 <div class="op-dot active" id="dot1"></div>
@@ -196,7 +194,6 @@
                 <div class="op-dot" id="dot5"></div>
             </div>
 
-            <!-- Panel A: GLP-1 status -->
             <div id="panelA">
                 <div class="onboarding-header">
                     <h2>One last thing</h2>
@@ -230,7 +227,6 @@
                 </div>
             </div>
 
-            <!-- Panel B: Medication name -->
             <div id="panelB" style="display:none">
                 <div class="onboarding-header">
                     <h2>Which medication?</h2>
@@ -256,7 +252,6 @@
                 </div>
             </div>
 
-            <!-- Panel C: Goal weight -->
             <div id="panelC" style="display:none">
                 <div class="onboarding-header">
                     <h2>What's your goal weight?</h2>
@@ -276,7 +271,6 @@
                 </div>
             </div>
 
-            <!-- Panel D: Primary concern -->
             <div id="panelD" style="display:none">
                 <div class="onboarding-header">
                     <h2>Biggest concern right now?</h2>
@@ -311,7 +305,6 @@
             </div>
         </div>
 
-        <!-- SUCCESS STATE -->
         <div id="successState" class="success-state">
             <div class="success-icon"><i class="fa-solid fa-envelope-open-text"></i></div>
             <h2 class="success-title" id="successTitle">Almost there!</h2>
@@ -332,7 +325,6 @@ let supabaseClient = null;
 let _userId = null;
 let _accessToken = null;
 
-// Onboarding state
 const ob = { glp1Status: null, medName: null, goalWeight: null, concern: null };
 
 function initSupabase() {
@@ -349,7 +341,6 @@ function setStatus(msg, type='') {
     el.className = 'status-msg ' + type;
 }
 
-// ── Onboarding panel navigation ───────────────────────────────────────────────
 function goToPanel(panel) {
     ['A','B','C','D'].forEach(p => {
         document.getElementById('panel' + p).style.display = p === panel ? 'block' : 'none';
@@ -361,17 +352,14 @@ function goToPanel(panel) {
 }
 
 function selectOption(btn, field) {
-    // Deselect siblings
     btn.closest('.glp1-option-grid, .concern-list')
        .querySelectorAll('.glp1-option, .concern-item')
        .forEach(el => el.classList.remove('selected'));
     btn.classList.add('selected');
     ob[field] = btn.dataset.val;
 
-    // Enable next button
     if (field === 'glp1Status') {
         document.getElementById('nextA').disabled = false;
-        // Skip med panel for 'never'
         if (ob.glp1Status === 'never') ob.medName = 'none';
     }
     if (field === 'concern') {
@@ -379,7 +367,6 @@ function selectOption(btn, field) {
     }
 }
 
-// Goal weight live calculation
 document.addEventListener('DOMContentLoaded', () => {
     const gwInput = document.getElementById('goalWeight');
     if (gwInput) {
@@ -411,13 +398,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-// ── Finish onboarding ─────────────────────────────────────────────────────────
 async function finishOnboarding() {
     const btn = document.getElementById('nextD');
     btn.disabled = true;
     btn.textContent = 'Setting up PHI…';
 
-    // Save consents
     if (_accessToken) {
         try {
             await fetch(`${API_BASE}/api/consent`, {
@@ -428,10 +413,8 @@ async function finishOnboarding() {
         } catch(e) {}
     }
 
-    // Save onboarding answers to DB
     if (_userId && _accessToken) {
         try {
-            // Save to glp1_onboarding table
             await supabaseClient.from('glp1_onboarding').upsert({
                 user_id:         _userId,
                 glp1_status:     ob.glp1Status,
@@ -440,7 +423,6 @@ async function finishOnboarding() {
                 primary_concern: ob.concern,
             }, {onConflict:'user_id'});
 
-            // Save goal weight to user_profiles
             if (ob.goalWeight) {
                 await supabaseClient.from('user_profiles').upsert({
                     user_id:         _userId,
@@ -449,7 +431,6 @@ async function finishOnboarding() {
                 }, {onConflict:'user_id'});
             }
 
-            // Save as conversation memory so PHI knows immediately
             const facts = [];
             if (ob.glp1Status !== 'never' && ob.medName && ob.medName !== 'none') {
                 facts.push(`User is on/was on ${ob.medName} — GLP-1 status: ${ob.glp1Status}`);
@@ -478,10 +459,10 @@ async function finishOnboarding() {
     }
 
     localStorage.setItem('phi_goal_wt', String(ob.goalWeight || 165));
-    setTimeout(() => { window.location.href = 'https://curabook.com/'; }, 400);
+    // ── FIX: Redirects directly to /app ─────────────────────────
+    setTimeout(() => { window.location.href = '/app'; }, 400);
 }
 
-// ── Signup ────────────────────────────────────────────────────────────────────
 document.getElementById('signupBtn').addEventListener('click', async () => {
     if (!supabaseClient) { setStatus("Loading… please wait", "error"); return; }
     const firstName = document.getElementById('firstName').value.trim();
@@ -503,7 +484,7 @@ document.getElementById('signupBtn').addEventListener('click', async () => {
             email, password,
             options: {
                 data: { first_name: firstName, last_name: lastName },
-                redirectTo: "https://curabook.com/login",
+                redirectTo: `${window.location.origin}/login`,
             },
         });
 
@@ -523,11 +504,9 @@ document.getElementById('signupBtn').addEventListener('click', async () => {
         }
 
         if (data.session) {
-            // Email confirmation off — go straight to onboarding
             document.getElementById('signupStep').style.display = 'none';
             document.getElementById('onboardingStep').style.display = 'block';
         } else {
-            // Email confirmation required — show success state
             document.getElementById('signupStep').style.display = 'none';
             document.getElementById('successState').style.display = 'block';
             if (firstName) document.getElementById('successTitle').textContent = `Almost there, ${firstName}!`;
@@ -545,7 +524,7 @@ document.getElementById('googleBtn').addEventListener('click', async () => {
     if (!supabaseClient) return;
     await supabaseClient.auth.signInWithOAuth({
         provider: 'google',
-        options: { redirectTo: "https://curabook.com/login" },
+        options: { redirectTo: `${window.location.origin}/app` },
     });
 });
 

@@ -1,45 +1,24 @@
 {
-  "cleanUrls": true,
-  "rewrites": [
-    { "source": "/sitemap.xml", "destination": "/sitemap.xml" },
-    { "source": "/robots.txt",  "destination": "/robots.txt"  },
-    { "source": "/signup",  "destination": "/signup.html"  },
-    { "source": "/login",   "destination": "/login.html"   },
-    { "source": "/demo",    "destination": "/demo.html"    },
-    { "source": "/privacy", "destination": "/privacy.html" },
-    { "source": "/terms",   "destination": "/terms.html"   },
-    { "source": "/",        "destination": "/index.html"   }
-  ],
-  "headers": [
+  "version": 2,
+  "builds": [
     {
-      "source": "/sitemap.xml",
-      "headers": [
-        { "key": "Content-Type",  "value": "application/xml" },
-        { "key": "Cache-Control", "value": "public, max-age=86400" }
-      ]
+      "src": "app.py",
+      "use": "@vercel/python"
     },
     {
-      "source": "/robots.txt",
-      "headers": [
-        { "key": "Content-Type",  "value": "text/plain" },
-        { "key": "Cache-Control", "value": "public, max-age=86400" }
-      ]
-    },
-    {
-      "source": "/(.*)",
-      "headers": [
-        { "key": "X-Content-Type-Options",  "value": "nosniff" },
-        { "key": "X-Frame-Options",          "value": "DENY" },
-        { "key": "Referrer-Policy",           "value": "strict-origin-when-cross-origin" }
-      ]
-    },
-    {
-      "source": "/script.js",
-      "headers": [{ "key": "Cache-Control", "value": "public, max-age=300" }]
-    },
-    {
-      "source": "/style.css",
-      "headers": [{ "key": "Cache-Control", "value": "public, max-age=300" }]
+      "src": "frontend/**",
+      "use": "@vercel/static"
     }
+  ],
+  "routes": [
+    { "src": "/", "dest": "/frontend/index.html" },
+    { "src": "/app", "dest": "/frontend/app.html" },
+    { "src": "/login", "dest": "/frontend/login.html" },
+    { "src": "/signup", "dest": "/frontend/signup.html" },
+    { "src": "/demo", "dest": "/frontend/demo.html" },
+    { "src": "/privacy", "dest": "/frontend/privacy.html" },
+    { "src": "/terms", "dest": "/frontend/terms.html" },
+    { "src": "/(.*\\.(css|js|png|jpg|jpeg|svg|ico|pdf|txt|webmanifest))", "dest": "/frontend/$1" },
+    { "src": "/(.*)", "dest": "/app.py" }
   ]
 }

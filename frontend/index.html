@@ -2,357 +2,141 @@
 <html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Curabook PHI | The GLP-1 Metabolic Co-Pilot</title>
+<meta name="description" content="Protect your metabolism and stop the GLP-1 weight regain cliff. Curabook PHI monitors your lab data, defends your muscle mass, and decodes the ghrelin surge.">
 
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="keywords" content="GLP-1 cliff, stop Wegovy weight regain, Zepbound muscle loss, Ozempic food noise, ghrelin surge, sarcopenic obesity, GLP-1 tapering companion">
 
-<title>Curabook PHI — GLP-1 Cliff Prevention</title>
-<meta name="description" content="PHI monitors your glucose, HbA1c, and body composition to detect GLP-1 metabolic rebound.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 
-<link rel="stylesheet" href="style.css?v=13">
+<style>
+  /* ─── BASE STYLES ─── */
+  :root {
+    --bg: #0a0b0e; --surface: #111318; --surface-2: #1a1d24;
+    --text: #f0f2f5; --text-2: #9aa3b0; --signal: #00d4c8;
+    --signal-glow: rgba(0,212,200,.2); --border: rgba(255,255,255,.07);
+    --sans: 'Plus Jakarta Sans', sans-serif; --serif: 'Playfair Display', serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: var(--sans); background: var(--bg); color: var(--text); line-height: 1.6; -webkit-font-smoothing: antialiased; }
+  a { text-decoration: none; color: inherit; }
+  
+  /* ─── NAVIGATION ─── */
+  nav { display: flex; justify-content: space-between; align-items: center; padding: 20px 5%; border-bottom: 1px solid var(--border); background: rgba(10,11,14,0.8); backdrop-filter: blur(10px); position: sticky; top: 0; z-index: 100; }
+  .logo { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 1.2rem; }
+  .logo-mark { width: 36px; height: 36px; background: linear-gradient(135deg, var(--signal), #00a89e); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-family: var(--serif); color: #000; box-shadow: 0 4px 12px var(--signal-glow); }
+  .nav-links a { margin-left: 24px; font-size: 0.9rem; color: var(--text-2); transition: color 0.2s; font-weight: 500; }
+  .nav-links a:hover { color: var(--text); }
+  .btn-primary { background: var(--signal); color: #000; padding: 10px 20px; border-radius: 8px; font-weight: 700; font-size: 0.9rem; transition: all 0.2s; box-shadow: 0 4px 16px var(--signal-glow); display: inline-block; }
+  .btn-primary:hover { transform: translateY(-2px); background: #00a89e; }
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  /* ─── HERO SECTION ─── */
+  .hero { padding: 100px 5% 80px; text-align: center; max-width: 900px; margin: 0 auto; }
+  .pill { display: inline-block; background: rgba(0,212,200,.1); border: 1px solid rgba(0,212,200,.2); color: var(--signal); padding: 6px 14px; border-radius: 20px; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 24px; }
+  h1 { font-family: var(--serif); font-size: clamp(2.5rem, 6vw, 4rem); font-weight: 400; line-height: 1.1; margin-bottom: 24px; letter-spacing: -0.02em; }
+  h1 em { font-style: italic; color: var(--signal); }
+  .hero-sub { font-size: 1.15rem; color: var(--text-2); margin-bottom: 40px; max-width: 700px; margin-inline: auto; }
+  
+  /* ─── VALUE PROPS (THE SCIENCE) ─── */
+  .features { padding: 60px 5%; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; max-width: 1200px; margin: 0 auto; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 32px; transition: transform 0.2s; }
+  .card:hover { transform: translateY(-5px); border-color: rgba(255,255,255,.15); }
+  .card i { font-size: 2rem; color: var(--signal); margin-bottom: 20px; }
+  .card h3 { font-size: 1.2rem; margin-bottom: 12px; font-weight: 600; }
+  .card p { color: var(--text-2); font-size: 0.95rem; line-height: 1.6; }
+
+  /* ─── UI MOCKUP ─── */
+  .mockup-container { padding: 40px 5% 100px; text-align: center; }
+  .mockup { max-width: 800px; width: 100%; border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 20px 60px rgba(0,0,0,0.6); }
+
+  /* ─── PRICING ─── */
+  .pricing { text-align: center; padding: 80px 5%; background: var(--surface-2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+  .price-box { background: var(--bg); border: 1px solid var(--signal); border-radius: 16px; padding: 40px; max-width: 400px; margin: 40px auto 0; position: relative; box-shadow: 0 8px 32px var(--signal-glow); }
+  .price-tag { font-size: 3rem; font-weight: 700; color: var(--text); font-family: var(--sans); }
+  .price-tag span { font-size: 1rem; color: var(--text-2); font-weight: 500; }
+  .price-list { list-style: none; margin: 24px 0; text-align: left; }
+  .price-list li { margin-bottom: 12px; font-size: 0.95rem; color: var(--text-2); display: flex; gap: 10px; }
+  .price-list i { color: var(--signal); margin-top: 4px; }
+
+  /* ─── FOOTER ─── */
+  footer { text-align: center; padding: 40px 5%; color: var(--text-3); font-size: 0.85rem; }
+  
+  @media (max-width: 768px) {
+    .nav-links { display: none; }
+  }
+</style>
 </head>
 <body>
 
-<div id="shell">
-
-  <aside id="sidebar" role="navigation">
-    <div class="sb-brand">
-      <a href="/" class="sb-logo-link">
-        <div class="sb-logo-mark">φ</div>
-        <span class="sb-logo-name">Curabook</span>
-      </a>
-      <span class="sb-version-tag" style="margin-left:auto; margin-right:8px;">PHI</span>
-      <button id="sidebarCloseBtn" class="mobile-only" aria-label="Close menu" style="background:none; border:none; color:var(--text-3); font-size:1.3rem; padding:4px 8px; cursor:pointer;">
-        <i class="fa-solid fa-xmark"></i>
-      </button>
+  <nav>
+    <div class="logo">
+      <div class="logo-mark">φ</div>
+      Curabook PHI
     </div>
-
-    <div class="sb-actions">
-      <button id="newChatBtn" class="new-chat-btn" title="New conversation (Ctrl+K)">
-        <i class="fa-solid fa-plus"></i>
-        <span>New Conversation</span>
-        <i class="fa-regular fa-pen-to-square ms-auto"></i>
-      </button>
+    <div class="nav-links">
+      <a href="#science">The Science</a>
+      <a href="#features">How it Works</a>
+      <a href="/login" class="btn-primary" style="margin-left: 20px; color: #000;">Sign In</a>
     </div>
+  </nav>
 
-    <nav class="sb-nav">
-      <button class="nav-item active" id="navChat"    data-view="chat">
-        <i class="fa-solid fa-comments"></i><span>Chat with PHI</span>
-      </button>
-      <button class="nav-item"         id="navHealth" data-view="health">
-        <i class="fa-solid fa-gauge-high"></i><span>My Health</span>
-      </button>
-      <button class="nav-item"         id="navReports" data-view="reports">
-        <i class="fa-solid fa-file-medical"></i><span>Lab Reports</span>
-      </button>
-    </nav>
+  <section class="hero">
+    <div class="pill">THE GLP-1 METABOLIC CO-PILOT</div>
+    <h1>Don't fall off the <em>metabolic cliff.</em></h1>
+    <p class="hero-sub">
+      70% of patients regain the weight when they stop GLP-1 medications. Curabook PHI is the AI companion that reads your lab reports, defends your muscle mass, and decodes the "food noise" biology so you land safely.
+    </p>
+    <a href="/signup" class="btn-primary" style="font-size: 1.1rem; padding: 14px 32px;">Start Your $20/mo Protection</a>
+    <p style="font-size: 0.8rem; color: var(--text-3); margin-top: 16px;">Cancel anytime. Secure your data.</p>
+  </section>
 
-    <div class="sb-divider"></div>
-    <div class="sb-section-label">Recent Conversations</div>
+  <section class="mockup-container">
+    <img src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=1600&q=80" alt="Curabook PHI Dashboard" class="mockup" style="opacity: 0.5; filter: grayscale(100%);">
+  </section>
 
-    <div id="historyList" class="sb-history">
-      <div class="sb-empty">No conversations yet</div>
+  <section id="science" class="features">
+    <div class="card">
+      <i class="fa-solid fa-dumbbell"></i>
+      <h3>Defend Against Muscle Loss</h3>
+      <p>Up to 39% of GLP-1 weight loss is metabolically active muscle (Sarcopenic Obesity). PHI's <strong>Metabolic Shield</strong> tracks your daily protein and leucine thresholds to ensure your metabolism survives the taper.</p>
     </div>
-
-    <div class="sb-footer">
-      <div id="userRow" class="user-row" role="button" tabindex="0">
-        <div id="userAvatar" class="user-av">U</div>
-        <div class="user-meta">
-          <div id="userEmail"  class="user-email">Loading…</div>
-          <div id="userPlan"   class="user-plan">PHI Free</div>
-        </div>
-        <i class="fa-solid fa-ellipsis-vertical user-more-icon"></i>
-
-        <div id="userDropdown" class="user-dropdown" aria-hidden="true">
-          <button class="dd-item" id="themeToggleBtn">
-            <i class="fa-solid fa-moon" id="themeIcon"></i>
-            <span id="themeLabel">Light Mode</span>
-          </button>
-          <div class="dd-divider"></div>
-          <button class="dd-item dd-danger" id="logoutBtn">
-            <i class="fa-solid fa-right-from-bracket"></i><span>Sign Out</span>
-          </button>
-        </div>
-      </div>
+    <div class="card">
+      <i class="fa-solid fa-file-medical"></i>
+      <h3>AI Lab Report Extraction</h3>
+      <p>Stop typing numbers into clunky trackers. Just upload a PDF or screenshot of your Quest or LabCorp results. PHI instantly reads the data and flags any glycemic rebound signals before your doctor does.</p>
     </div>
-  </aside>
-
-  <main id="main" role="main">
-
-    <div id="topbar">
-      <div class="topbar-left">
-        <button id="mobileMenuBtn" class="topbar-icon-btn" aria-label="Open menu">
-          <i class="fa-solid fa-bars"></i>
-        </button>
-        <div class="status-badge">
-          <span class="status-dot"></span>
-          <span id="convTitle" class="status-text">Ready</span>
-        </div>
-      </div>
-      <div class="topbar-right">
-        <button id="topThemeBtn"      class="topbar-icon-btn" aria-label="Toggle theme">
-          <i class="fa-solid fa-moon" id="topThemeIcon"></i>
-        </button>
-        <button id="attachTopBtn"     class="topbar-icon-btn" aria-label="Upload report" title="Upload lab report">
-          <i class="fa-solid fa-paperclip"></i>
-        </button>
-        <button id="mobileCockpitBtn" class="topbar-icon-btn mobile-only" aria-label="Health cockpit">
-          <i class="fa-solid fa-gauge-high"></i>
-        </button>
-      </div>
+    <div class="card">
+      <i class="fa-solid fa-brain"></i>
+      <h3>Validate the "Ghrelin Surge"</h3>
+      <p>When you lower your dose, the hunger hormone ghrelin violently returns. PHI tracks your "Food Noise" score to validate that your cravings are neurobiology, not a failure of willpower.</p>
     </div>
+  </section>
 
-    <div id="viewChat" class="view active">
-      <div id="chatArea">
-        <div id="welcomeScreen">
-          <div class="welcome-inner">
-            <div class="welcome-orb">φ</div>
-            <h1 class="welcome-headline">
-              Good <span id="timeGreeting">morning</span>, <em id="welcomeName">there</em>
-            </h1>
-            <p class="welcome-sub">
-              Your GLP-1 cliff co-pilot. I watch your glucose rebound,
-              protect your lean mass, and build your insurance appeal — from your actual lab data.
-            </p>
-            <div class="suggestion-chips" id="welcomeChips">
-              <button class="chip" data-q="Run a cliff risk analysis on my stored health data. Show me my glucose trajectory, HbA1c trend, and any rebound signals.">
-                <i class="fa-solid fa-triangle-exclamation chip-icon"></i>My cliff risk
-              </button>
-              <button class="chip" data-q="Calculate my daily protein target using the Muscle Defense formula. My goal weight is stored in my profile.">
-                <i class="fa-solid fa-dumbbell chip-icon"></i>Protein target
-              </button>
-              <button class="chip" data-q="The food noise and hunger are coming back since I reduced my GLP-1 dose. Explain the biology — is this ghrelin rebound? What do I do?">
-                <i class="fa-solid fa-brain chip-icon"></i>Food noise is back
-              </button>
-              <button class="chip" data-q="Prepare me for my next provider appointment. What are my three most important data points and specific questions to ask?">
-                <i class="fa-solid fa-stethoscope chip-icon"></i>Doctor visit prep
-              </button>
-              <button class="chip" data-q="Explain tapering options: reduced-frequency dosing every 10-14 days, microdosing, and transitioning to generic AOMs. What does the evidence say?">
-                <i class="fa-solid fa-syringe chip-icon"></i>Tapering options
-              </button>
-              <button class="chip" data-q="Build me a GLP-1 prior authorization support packet from my lab data for my insurance appeal.">
-                <i class="fa-solid fa-shield-halved chip-icon"></i>Insurance PA appeal
-              </button>
-            </div>
-            <div class="welcome-upload-prompt">
-              <button id="uploadNudgeBtn" class="upload-nudge">
-                <i class="fa-solid fa-file-medical"></i>Upload a Lab Report
-              </button>
-              <p class="upload-hint">PDF, TXT, or Image from any US lab</p>
-            </div>
-          </div>
-        </div>
-
-        <div id="chatDisplay" class="chat-display hidden" role="log" aria-live="polite"></div>
-        <div id="filePreview" class="file-strip"></div>
-
-        <div id="inputWrap" class="input-wrap">
-          <div id="inputBar" class="input-bar">
-            <textarea id="chatInput" class="chat-ta"
-              placeholder="Ask PHI about your GLP-1 journey…"
-              rows="1" autocomplete="off" maxlength="4000"></textarea>
-            <div class="input-actions">
-              <button id="micBtn"         class="input-btn" aria-label="Voice input"><i class="fa-solid fa-microphone"></i></button>
-              <button id="attachInputBtn" class="input-btn" aria-label="Attach file"><i class="fa-solid fa-paperclip"></i></button>
-              <button id="sendBtn"        class="send-btn"  aria-label="Send"><i class="fa-solid fa-arrow-up"></i></button>
-            </div>
-          </div>
-          <p class="input-disclaimer">PHI is an educational wellness tool. Always consult your healthcare provider.</p>
-        </div>
-      </div>
+  <section id="features" class="pricing">
+    <h2>An insurance policy for your physiology.</h2>
+    <p style="color: var(--text-2); margin-top: 10px;">Costing 75% less than Noom or WeightWatchers.</p>
+    
+    <div class="price-box">
+      <div class="price-tag">$20<span>/month</span></div>
+      <ul class="price-list">
+        <li><i class="fa-solid fa-check"></i> Automated Metabolic Shield</li>
+        <li><i class="fa-solid fa-check"></i> AI "Responsive Listening" Chat</li>
+        <li><i class="fa-solid fa-check"></i> Unlimited Lab Report Uploads</li>
+        <li><i class="fa-solid fa-check"></i> Wearable Sync via Screenshots</li>
+        <li><i class="fa-solid fa-check"></i> Clinical Prior Authorization Generation</li>
+      </ul>
+      <a href="/signup" class="btn-primary" style="width: 100%; display: block; text-align: center;">Get Started Now</a>
     </div>
+  </section>
 
-    <div id="viewHealth" class="view">
-      <div class="view-scroll" id="healthContent">
-        <div class="hv-empty" id="healthLoading">
-          <i class="fa-solid fa-spinner fa-spin"></i>
-          Loading your health picture…
-        </div>
-      </div>
-    </div>
+  <footer>
+    <p>⚕️ Curabook PHI is an educational wellness tool. It does not provide medical diagnoses or prescriptions. Always consult your healthcare provider before making any medical decisions or stopping medication.</p>
+    <p style="margin-top: 16px;">&copy; 2026 Curabook Inc. All rights reserved.</p>
+  </footer>
 
-    <div id="viewReports" class="view">
-      <div class="view-scroll">
-        <div class="reports-header">
-          <span class="reports-title">Lab Reports</span>
-          <button class="reports-upload-btn" id="reportsUploadBtn">
-            <i class="fa-solid fa-upload"></i> Upload Report
-          </button>
-        </div>
-        <div id="reportsList">
-          <div class="hv-empty" id="reportsLoading">
-            <i class="fa-solid fa-spinner fa-spin"></i>
-            Loading your reports…
-          </div>
-        </div>
-      </div>
-    </div>
-
-  </main>
-
-  <aside id="cockpit">
-
-    <button id="cockpitCloseBtn" style="display:none;position:sticky;top:0;z-index:10;justify-content:flex-end;padding:10px 12px 0;background:var(--surface);border:none;width:100%;cursor:pointer;color:var(--text-2);" class="mobile-only">
-      <i class="fa-solid fa-xmark" style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;border-radius:8px;font-size:1rem;transition:all .15s;"></i>
-    </button>
-
-    <section class="cp-section">
-      <div class="cp-section-hd">
-        <h2 class="cp-section-title">Metabolic Shield</h2>
-        <span class="shield-auto-label">AUTO</span>
-        <span class="cp-section-badge" id="shieldBadge">--%</span>
-      </div>
-
-      <div class="shield-wrap">
-        <svg width="160" height="160" viewBox="0 0 160 160" aria-hidden="true">
-          <circle cx="80" cy="80" r="70" fill="none" stroke-width="12" class="ring-track"/>
-          <circle cx="80" cy="80" r="70" fill="none" stroke-width="12" stroke-linecap="round"
-            stroke="var(--signal)" stroke-dasharray="440" stroke-dashoffset="440"
-            transform="rotate(-90 80 80)" class="ring-arc" id="ringProtein"/>
-          <circle cx="80" cy="80" r="55" fill="none" stroke-width="11" class="ring-track"/>
-          <circle cx="80" cy="80" r="55" fill="none" stroke-width="11" stroke-linecap="round"
-            stroke="var(--amber)" stroke-dasharray="346" stroke-dashoffset="346"
-            transform="rotate(-90 80 80)" class="ring-arc" id="ringMovement"/>
-          <circle cx="80" cy="80" r="41" fill="none" stroke-width="10" class="ring-track"/>
-          <circle cx="80" cy="80" r="41" fill="none" stroke-width="10" stroke-linecap="round"
-            stroke="var(--ok)" stroke-dasharray="258" stroke-dashoffset="258"
-            transform="rotate(-90 80 80)" class="ring-arc" id="ringRecovery"/>
-        </svg>
-        <div class="shield-center">
-          <div class="shield-score" id="shieldScore">--</div>
-          <div class="shield-score-label">Shield %</div>
-        </div>
-      </div>
-
-      <div class="ring-legend">
-        <div class="ring-row">
-          <span class="ring-dot" style="background:var(--signal)"></span>
-          <div class="ring-info">
-            <div class="ring-name">Protein</div>
-            <div class="ring-val" id="proteinLegend">Loading…</div>
-            <div class="ring-track-bar"><div class="ring-fill" id="proteinBar" style="background:var(--signal)"></div></div>
-          </div>
-        </div>
-        <div class="ring-row">
-          <span class="ring-dot" style="background:var(--amber)"></span>
-          <div class="ring-info">
-            <div class="ring-name">Movement</div>
-            <div class="ring-val" id="movementLegend">Loading…</div>
-            <div class="ring-track-bar"><div class="ring-fill" id="movementBar" style="background:var(--amber)"></div></div>
-          </div>
-        </div>
-        <div class="ring-row">
-          <span class="ring-dot" style="background:var(--ok)"></span>
-          <div class="ring-info">
-            <div class="ring-name">Recovery</div>
-            <div class="ring-val" id="recoveryLegend">Loading…</div>
-            <div class="ring-track-bar"><div class="ring-fill" id="recoveryBar" style="background:var(--ok)"></div></div>
-          </div>
-        </div>
-      </div>
-
-      <div id="shieldLastLogged" class="shield-last-logged"></div>
-      <div class="shield-log-grid">
-        <div class="sl-group">
-          <label class="sl-label" for="inputProtein">Protein (g)</label>
-          <input type="number" id="inputProtein" class="sl-input" placeholder="0" min="0" max="400">
-        </div>
-        <div class="sl-group">
-          <label class="sl-label" for="inputSteps">Steps</label>
-          <input type="number" id="inputSteps" class="sl-input" placeholder="0" min="0">
-        </div>
-        <div class="sl-group">
-          <label class="sl-label" for="inputSleep">Sleep (h)</label>
-          <input type="number" id="inputSleep" class="sl-input" placeholder="0" min="0" max="14" step=".5">
-        </div>
-        <div class="sl-group">
-          <label class="sl-label" for="inputGoalWt">Goal Wt (lbs)</label>
-          <input type="number" id="inputGoalWt" class="sl-input" placeholder="165" min="80" max="400">
-        </div>
-      </div>
-      <button id="updateShieldBtn" class="cp-primary-btn">Log Today's Data</button>
-      
-      <button id="syncWearableBtn" class="cp-secondary-btn mt-8" style="width: 100%; justify-content: center; background: var(--surface-3); border: 1px dashed var(--signal);">
-        <i class="fa-solid fa-camera" style="color: var(--signal);"></i> Sync Watch Screenshot
-      </button>
-
-    </section>
-
-    <section class="cp-section">
-      <div class="cp-section-hd">
-        <h2 class="cp-section-title">Muscle Defense Protocol</h2>
-      </div>
-      <div class="protein-display">
-        <span class="protein-num" id="proteinNum">--</span>
-        <span class="protein-unit">g / day</span>
-      </div>
-      <p class="cp-caption" id="proteinCaption">Goal Weight × 0.545 = daily protein target</p>
-      <div class="protein-row">
-        <input type="number" id="proteinInput" class="cp-input" placeholder="Goal weight (lbs)" min="80" max="400">
-        <button id="calcBtn" class="cp-secondary-btn">Calc</button>
-      </div>
-      <div id="proteinDetails" class="protein-details hidden"></div>
-    </section>
-
-    <section class="cp-section">
-      <div class="cp-section-hd">
-        <h2 class="cp-section-title">Cliff Alert System</h2>
-        <button id="refreshAlertsBtn" class="cp-icon-btn" title="Refresh">
-          <i class="fa-solid fa-rotate"></i>
-        </button>
-      </div>
-      <div id="cliffAlerts">
-        <div class="ca-item ca-ok">
-          <div class="ca-title">✅ No rebound signals</div>
-          <div class="ca-desc">Upload a Quest or LabCorp report to enable automatic cliff monitoring.</div>
-        </div>
-      </div>
-    </section>
-
-    <section class="cp-section">
-      <div class="cp-section-hd">
-        <h2 class="cp-section-title">Ghrelin Surge Log</h2>
-      </div>
-      <p class="cp-caption">Food noise is ghrelin biology — not a willpower score.</p>
-      <div class="noise-wrap">
-        <div class="noise-labels"><span>Quiet</span><span>Relentless</span></div>
-        <input type="range" id="noiseSlider" class="noise-slider" min="1" max="10" value="5">
-      </div>
-      <div id="noiseReadout" class="noise-readout">Move the slider to log today's ghrelin surge level.</div>
-      <button id="logNoiseBtn" class="cp-secondary-btn mt-8">
-        <i class="fa-solid fa-save"></i> Log Level
-      </button>
-    </section>
-
-    <section class="cp-section">
-      <div class="cp-section-hd">
-        <h2 class="cp-section-title">My Lab Markers</h2>
-        <button id="refreshMarkersBtn" class="cp-icon-btn" title="Refresh">
-          <i class="fa-solid fa-rotate"></i>
-        </button>
-      </div>
-      <div id="markersGrid" class="markers-grid">
-        <div class="markers-empty">Upload a Quest or LabCorp PDF to see your markers</div>
-      </div>
-    </section>
-
-  </aside>
-
-  <div id="sidebarOverlay" class="sidebar-overlay"></div>
-  <div id="cockpitOverlay" class="cockpit-overlay"></div>
-
-</div> 
-<input type="file" id="fileInput" accept=".pdf,.txt,image/*" multiple style="display:none">
-<div id="toasts" role="status" aria-live="assertive" aria-atomic="true"></div>
-
-<script src="performance_patch.js?v=13"></script>
-<script src="script.js?v=13"></script>
-<script src="cockpit_upgrades.js?v=13"></script>
 </body>
 </html>
