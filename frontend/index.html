@@ -12,7 +12,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 
-<link rel="stylesheet" href="style.css?v=12">
+<link rel="stylesheet" href="style.css?v=13">
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -73,9 +73,6 @@
           <button class="dd-item" id="themeToggleBtn">
             <i class="fa-solid fa-moon" id="themeIcon"></i>
             <span id="themeLabel">Light Mode</span>
-          </button>
-          <button class="dd-item" id="exportChatBtn">
-            <i class="fa-solid fa-download"></i><span>Export Chat</span>
           </button>
           <div class="dd-divider"></div>
           <button class="dd-item dd-danger" id="logoutBtn">
@@ -280,6 +277,11 @@
         </div>
       </div>
       <button id="updateShieldBtn" class="cp-primary-btn">Log Today's Data</button>
+      
+      <button id="syncWearableBtn" class="cp-secondary-btn mt-8" style="width: 100%; justify-content: center; background: var(--surface-3); border: 1px dashed var(--signal);">
+        <i class="fa-solid fa-camera" style="color: var(--signal);"></i> Sync Watch Screenshot
+      </button>
+
     </section>
 
     <section class="cp-section">
@@ -345,11 +347,12 @@
   <div id="sidebarOverlay" class="sidebar-overlay"></div>
   <div id="cockpitOverlay" class="cockpit-overlay"></div>
 
-</div> <input type="file" id="fileInput" accept=".pdf,.txt,image/*" multiple style="display:none">
+</div> 
+<input type="file" id="fileInput" accept=".pdf,.txt,image/*" multiple style="display:none">
 <div id="toasts" role="status" aria-live="assertive" aria-atomic="true"></div>
 
-<script src="performance_patch.js?v=12"></script>
-<script src="script.js?v=12"></script>
-<script src="cockpit_upgrades.js?v=12"></script>
+<script src="performance_patch.js?v=13"></script>
+<script src="script.js?v=13"></script>
+<script src="cockpit_upgrades.js?v=13"></script>
 </body>
 </html>

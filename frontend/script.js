@@ -1,9 +1,11 @@
 /**
- * script.js — Curabook PHI v2.7
+ * script.js — Curabook PHI v3.0 (Reviewer Patch)
  *
  * FIXES: 
- * 1. Added smooth handoff animations to prevent mobile sidebars from overlapping.
- * 2. Unlocked image uploads (camera/gallery) to support vision_extractor.py.
+ * 1. Optimistic Chat Deletion with confirmation.
+ * 2. Infinite Loader timeouts for Health & Reports.
+ * 3. Wearable Sync camera integration.
+ * 4. Removed Export Chat clutter.
  */
 "use strict";
 
@@ -291,19 +293,29 @@ async function loadHealthView() {
   const content = el("healthContent"); if (!content) return;
   
   if (!content.querySelector(".cliff-card") && !content.querySelector(".trend-card")) {
-    content.innerHTML = `<div class="hv-empty"><i class="fa-solid fa-spinner fa-spin"></i>Loading your health picture…</div>`;
+    content.innerHTML = `<div class="hv-empty" id="healthLoading"><i class="fa-solid fa-spinner fa-spin"></i>Loading your health picture…</div>`;
   }
+
+  // REVIEWER FIX: Infinite Loader Timeout
+  const timeoutId = setTimeout(() => {
+    const loader = el("healthLoading");
+    if (loader) {
+      content.innerHTML = `<div class="hv-empty"><i class="fa-solid fa-heart-pulse" style="font-size:2rem;opacity:.3;margin-bottom:12px;display:block"></i>No health markers detected yet. Upload a lab report.<br><button class="hv-cta-btn" onclick="el('fileInput').click()"><i class="fa-solid fa-upload"></i> Upload First Report</button></div>`;
+    }
+  }, 4000);
   
-  const h = await headers(); if (!h) return;
+  const h = await headers(); if (!h) { clearTimeout(timeoutId); return; }
   try {
     const [mR, dR] = await Promise.allSettled([
       apiJson("/api/health-markers", { headers: h }),
       apiJson("/api/dashboard",      { headers: h }),
     ]);
+    clearTimeout(timeoutId);
+
     const markers  = mR.status === "fulfilled" && mR.value.ok && Array.isArray(mR.value.data) ? mR.value.data : [];
     const dashData = dR.status === "fulfilled" && dR.value.ok && dR.value.data ? dR.value.data : null;
     if (!markers.length) {
-      content.innerHTML = `<div class="hv-empty"><i class="fa-solid fa-chart-line"></i>
+      content.innerHTML = `<div class="hv-empty"><i class="fa-solid fa-chart-line" style="font-size:2rem;opacity:.3;margin-bottom:12px;display:block"></i>
         No health data yet. Upload a lab report to see your cliff risk picture.
         <br><button class="hv-cta-btn" onclick="el('fileInput').click()">
           <i class="fa-solid fa-upload"></i> Upload First Report
@@ -315,6 +327,7 @@ async function loadHealthView() {
       btn.addEventListener("click", () => { switchView("chat"); setTimeout(() => sendMessage(btn.dataset.ask), 100); })
     );
   } catch(e) {
+    clearTimeout(timeoutId);
     content.innerHTML = `<div class="hv-empty">Could not load health data.</div>`;
   }
 }
@@ -380,12 +393,23 @@ function buildHealthViewHTML(markers, dashboard) {
 
 async function loadReportsView() {
   const list = el("reportsList"); if (!list) return;
-  list.innerHTML = `<div class="hv-empty"><i class="fa-solid fa-spinner fa-spin"></i>Loading reports…</div>`;
-  const h = await headers(); if (!h) return;
+  list.innerHTML = `<div class="hv-empty" id="reportsLoading"><i class="fa-solid fa-spinner fa-spin"></i>Loading reports…</div>`;
+  
+  // REVIEWER FIX: Infinite Loader Timeout
+  const timeoutId = setTimeout(() => {
+    const loader = el("reportsLoading");
+    if (loader) {
+      list.innerHTML = `<div class="hv-empty"><i class="fa-solid fa-file-medical" style="font-size:2rem;opacity:.3;margin-bottom:12px;display:block"></i>No lab reports uploaded yet.<br><button class="hv-cta-btn" onclick="el('fileInput').click()"><i class="fa-solid fa-upload"></i> Upload First Report</button></div>`;
+    }
+  }, 4000);
+
+  const h = await headers(); if (!h) { clearTimeout(timeoutId); return; }
   try {
     const { ok, data } = await apiJson("/doctor-prep/history", { headers: h });
+    clearTimeout(timeoutId);
+
     if (!ok || !data?.preps?.length) {
-      list.innerHTML = `<div class="hv-empty"><i class="fa-solid fa-file-medical"></i>No lab reports yet.
+      list.innerHTML = `<div class="hv-empty"><i class="fa-solid fa-file-medical" style="font-size:2rem;opacity:.3;margin-bottom:12px;display:block"></i>No lab reports yet.
         <br><button class="hv-cta-btn" onclick="el('fileInput').click()"><i class="fa-solid fa-upload"></i> Upload First Report</button></div>`;
       return;
     }
@@ -404,6 +428,7 @@ async function loadReportsView() {
       </div>`;
     }).join("");
   } catch {
+    clearTimeout(timeoutId);
     list.innerHTML = `<div class="hv-empty">Could not load reports.</div>`;
   }
 }
@@ -468,13 +493,32 @@ async function openConversation(id) {
   } catch {}
 }
 
+// REVIEWER FIX: Optimistic UI Deletion
 async function deleteConversation(id, e) {
+  e?.preventDefault();
   e?.stopPropagation();
-  document.querySelector(`.hist-item[data-id="${id}"]`)?.remove();
+  
+  if (!confirm("Are you sure you want to delete this conversation?")) return;
+
+  // Optimistic Hide
+  const elItem = document.querySelector(`.hist-item[data-id="${id}"]`);
+  if (elItem) elItem.style.display = 'none';
+  
   if (id === _convId) resetChat();
+
   const h = await headers();
-  if (h) await apiFetch("/delete", { method: "POST", headers: h, body: JSON.stringify({ conversation_id: id }) }).catch(() => {});
-  toast("Conversation deleted");
+  if (h) {
+    try {
+      // Must use apiJson to resolve proper backend routing
+      await apiJson("/delete", { method: "POST", headers: h, body: JSON.stringify({ conversation_id: id }) });
+      if (elItem) elItem.remove();
+      toast("Conversation deleted");
+    } catch (err) {
+      console.error("Failed to delete", err);
+      if (elItem) elItem.style.display = 'flex'; // Bring back if it fails
+      toast("Failed to delete conversation", "err");
+    }
+  }
 }
 
 /* ═══ CHAT STATE ═══ */
@@ -645,7 +689,26 @@ function setSendingState(on) {
 }
 
 /* ═══ FILE UPLOAD (IMAGE SUPPORT FIX) ═══ */
-function handleFileSelect(e) { Array.from(e.target.files || []).forEach(addFile); e.target.value = ""; }
+function handleFileSelect(e) { 
+  Array.from(e.target.files || []).forEach(addFile); 
+  e.target.value = ""; 
+
+  // REVIEWER FIX: Auto-prompt for Wearable Sync
+  if (window.isWearableSync) {
+    const ta = el('chatInput');
+    if (ta) {
+      ta.value = "Here is a screenshot from my health app. Please extract my steps, sleep, and protein and log them for today.";
+      autoGrow(ta);
+    }
+    window.isWearableSync = false;
+    
+    // Auto-click send after a tiny delay for UX feel
+    setTimeout(() => {
+      const sendBtn = el('sendBtn');
+      if (sendBtn && !sendBtn.disabled) sendBtn.click();
+    }, 500);
+  }
+}
 
 function addFile(file) {
   if (file.size > 10 * 1024 * 1024) { toast(`${file.name} too large (max 10MB).`, "err"); return; }
@@ -964,23 +1027,6 @@ function initVoice() {
   });
 }
 
-/* ═══ EXPORT ═══ */
-function exportChat() {
-  const msgs = el("chatDisplay")?.querySelectorAll(".chat-msg");
-  if (!msgs?.length) { toast("No conversation to export.", "err"); return; }
-  let out = `Curabook PHI — Chat Export\n${"=".repeat(40)}\n\n`;
-  msgs.forEach(m => {
-    const role = m.classList.contains("user-msg") ? "You" : "PHI";
-    out += `${role}:\n${m.querySelector(".msg-body")?.innerText?.trim() || ""}\n\n`;
-  });
-  const a = Object.assign(document.createElement("a"), {
-    href:     URL.createObjectURL(new Blob([out], { type: "text/plain" })),
-    download: `phi-chat-${Date.now()}.txt`
-  });
-  a.click();
-  closeUserMenu();
-  toast("Chat exported");
-}
 
 /* ═══ UTILS ═══ */
 const el      = id => document.getElementById(id);
@@ -1021,7 +1067,6 @@ function wireEvents() {
   el("themeToggleBtn")?.addEventListener("click", toggleTheme);
   el("topThemeBtn")?.addEventListener("click", toggleTheme);
   el("logoutBtn")?.addEventListener("click", handleLogout);
-  el("exportChatBtn")?.addEventListener("click", exportChat);
 
   el("historyList")?.addEventListener("click", e => {
     const del  = e.target.closest(".hist-del[data-del]");
@@ -1052,6 +1097,13 @@ function wireEvents() {
   ["attachTopBtn", "attachInputBtn", "uploadNudgeBtn", "reportsUploadBtn"].forEach(id =>
     el(id)?.addEventListener("click", () => fi?.click())
   );
+
+  // REVIEWER FIX: Wearable Camera Button Event
+  el("syncWearableBtn")?.addEventListener("click", () => {
+    closeCockpit(); 
+    window.isWearableSync = true;
+    fi?.click(); 
+  });
 
   el("updateShieldBtn")?.addEventListener("click", updateShield);
   el("calcBtn")?.addEventListener("click", () => {
