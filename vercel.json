@@ -1,24 +1,35 @@
 {
   "version": 2,
+  "cleanUrls": true,
   "builds": [
     {
       "src": "app.py",
-      "use": "@vercel/python"
+      "use": "@vercel/python",
+      "config": {
+        "maxDuration": 60,
+        "memory": 1024
+      }
     },
     {
       "src": "frontend/**",
       "use": "@vercel/static"
     }
   ],
-  "routes": [
-    { "src": "/", "dest": "/frontend/index.html" },
-    { "src": "/app", "dest": "/frontend/app.html" },
-    { "src": "/login", "dest": "/frontend/login.html" },
-    { "src": "/signup", "dest": "/frontend/signup.html" },
-    { "src": "/demo", "dest": "/frontend/demo.html" },
-    { "src": "/privacy", "dest": "/frontend/privacy.html" },
-    { "src": "/terms", "dest": "/frontend/terms.html" },
-    { "src": "/(.*\\.(css|js|png|jpg|jpeg|svg|ico|pdf|txt|webmanifest))", "dest": "/frontend/$1" },
-    { "src": "/(.*)", "dest": "/app.py" }
+  "rewrites": [
+    { "source": "/login", "destination": "/frontend/login.html" },
+    { "source": "/signup", "destination": "/frontend/signup.html" },
+    { "source": "/app", "destination": "/frontend/app.html" },
+    { "source": "/demo", "destination": "/frontend/demo.html" },
+    { "source": "/privacy", "destination": "/frontend/privacy.html" },
+    { "source": "/terms", "destination": "/frontend/terms.html" },
+    { "source": "/style.css", "destination": "/frontend/style.css" },
+    { "source": "/script.js", "destination": "/frontend/script.js" },
+    { "source": "/performance_patch.js", "destination": "/frontend/performance_patch.js" },
+    { "source": "/cockpit_upgrades.js", "destination": "/frontend/cockpit_upgrades.js" },
+    { "source": "/sitemap.xml", "destination": "/frontend/sitemap.xml" },
+    { "source": "/robots.txt", "destination": "/frontend/robots.txt" },
+    { "source": "/", "destination": "/frontend/index.html" },
+    
+    { "source": "/(.*)", "destination": "/app.py" }
   ]
 }
