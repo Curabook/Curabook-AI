@@ -51,23 +51,11 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 print("✅  Supabase ready")
 
 # ── Embedder — lazy loaded ────────────────────────────────────────────────────
-_embedder_instance = None
-_embedder_lock = Lock()
-
+# ── Embedder — DISABLED FOR SERVERLESS STABILITY ──────────────────────────────
 def get_embedder():
-    global _embedder_instance
-    if _embedder_instance is not None:
-        return _embedder_instance
-    with _embedder_lock:
-        if _embedder_instance is None:
-            try:
-                from sentence_transformers import SentenceTransformer
-                print("⏳  Loading embedding model…")
-                _embedder_instance = SentenceTransformer("all-MiniLM-L6-v2")
-                print("✅  Embedding model ready")
-            except Exception as _e:
-                print(f"ℹ️  Embedding model unavailable: {_e}")
-    return _embedder_instance
+    # In Vercel serverless environments, downloading 80MB models causes OOM crashes.
+    # We disable it here to keep the API lightning fast.
+    return None
 
 embedder = None
 
