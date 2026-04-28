@@ -358,11 +358,18 @@ def delete_conversation():
     user = get_authenticated_user(supabase)
     if not user: return jsonify({"error": "Unauthorized"}), 401
 
-    data = request.json or {}
-    conv_id = data.get("conversation_id")
+    conv_id = (request.json or {}).get("conversation_id")
     if not conv_id: return jsonify({"error": "Missing conversation_id"}), 400
 
     try:
+        # FIX: Delete child messages and memories first to satisfy SQL foreign key constraints
+        supabase.table("chats").delete().eq("conversation_id", conv_id).execute()
+        supabase.table("conversation_memories").delete().eq("conversation_id", conv_id).execute()
+        
+        # Now safely delete the empty conversation folder
         supabase.table("conversations").delete().eq("id", conv_id).eq("user_id", user.id).execute()
+        
         return jsonify({"success": True})
-    except Exception as e: return jsonify({"error": str(e)}), 500
+    except Exception as e:
+        print(f"[DELETE ERROR] {e}")
+        return jsonify({"error": str(e)}), 500
