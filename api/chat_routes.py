@@ -27,42 +27,28 @@ def _sort_by_priority(markers: list) -> list:
     order = {"HIGH": 0, "LOW": 1, "NORMAL": 2, "UNKNOWN": 3}
     return sorted(markers, key=lambda x: order.get(str(x.get("status", "")).upper(), 3))
 
-_GHRELIN_SIGNALS = [
-    "food noise", "can't stop thinking about food", "hunger is back",
-    "cravings are back", "always hungry", "relentless hunger",
-    "food obsession", "food thoughts", "thinking about food",
-    "craving everything", "urge to eat", "hunger returned",
-    "binge", "can't resist", "appetite is back",
-]
-
-_TAPER_SIGNALS = [
-    "stopped", "off meds", "stopped wegovy", "stopped ozempic",
-    "stopped zepbound", "stopped mounjaro", "tapering", "reducing dose",
-    "came off", "insurance denied", "can't afford",
-]
+_GHRELIN_SIGNALS = ["food noise", "can't stop thinking about food", "hunger is back", "cravings are back", "always hungry", "relentless hunger", "food obsession", "food thoughts", "thinking about food", "craving everything", "urge to eat", "hunger returned", "binge", "can't resist", "appetite is back"]
+_TAPER_SIGNALS = ["stopped", "off meds", "stopped wegovy", "stopped ozempic", "stopped zepbound", "stopped mounjaro", "tapering", "reducing dose", "came off", "insurance denied", "can't afford"]
 
 def _fast_cliff_context(user_message: str) -> str:
     lower = user_message.lower()
     noise_count = sum(1 for s in _GHRELIN_SIGNALS if s in lower)
     taper_count = sum(1 for s in _TAPER_SIGNALS if s in lower)
-
     parts = []
     if noise_count >= 2: parts.append("🚨 GHRELIN SURGE ACTIVE: User reporting food noise. APPLY FOOD NOISE PROTOCOL FIRST.")
     elif noise_count == 1: parts.append("⚠ Food noise signal detected. Validate as biology before clinical content.")
     if taper_count >= 1: parts.append("⚠ TAPER CONTEXT: User has stopped or is reducing GLP-1. Apply Maintenance overlay.")
-
     return "\n".join(parts) if parts else ""
 
 def _build_context(supabase, user_id: str, user_message: str = "") -> tuple[str, bool]:
     stored_block = ""
     has_data = False
-
     try:
         from health_memory.memory import build_health_context_block
         stored_block = build_health_context_block(supabase, user_id) or ""
         has_data = bool(stored_block.strip())
     except Exception as e:
-        print(f"[CHAT] Memory load non-fatal: {e}")
+        pass
 
     rag_block = ""
     if not has_data and user_message.strip():
@@ -71,7 +57,7 @@ def _build_context(supabase, user_id: str, user_message: str = "") -> tuple[str,
             rag_block = rag_search(supabase, user_message, user_id, top_k=3, threshold=0.65) or ""
             if rag_block: has_data = True
         except Exception as e:
-            print(f"[CHAT] RAG search non-fatal: {e}")
+            pass
 
     if not has_data: return "", False
 
@@ -90,7 +76,7 @@ def _build_messages_safe(supabase, user_id, conversation_id, enriched_message, h
         from ai.system_prompt_v2 import build_phi_messages
         return build_phi_messages(supabase=supabase, user_id=user_id, conversation_id=conversation_id, user_message=enriched_message, has_documents=has_documents, health_context=health_context)
     except Exception as e:
-        print(f"[CHAT] build_phi_messages failed, using fallback: {e}")
+        pass
 
     try:
         from ai.chat import build_chat_messages
@@ -118,7 +104,6 @@ def _call_llm_safe(messages: list) -> str:
     if openai_key:
         try:
             from openai import OpenAI
-            # FIX: 15s timeout prevents Vercel from hanging infinitely.
             client = OpenAI(api_key=openai_key, timeout=15.0)
             resp = client.chat.completions.create(
                 model="gpt-4o-mini", 
@@ -129,8 +114,7 @@ def _call_llm_safe(messages: list) -> str:
             return resp.choices[0].message.content.strip()
         except Exception as e: 
             print(f"[LLM ERROR] {e}")
-            # FIX: Expose exact OpenAI error to the user so you know if your billing/key is stuck
-            return f"⚠️ **OpenAI Error:** {str(e)}\n\n*(If you just added credits, you must generate a NEW API key in the OpenAI dashboard and add it to Vercel for it to work!)*"
+            return f"⚠️ **OpenAI Error:** {str(e)}\n\n*(Check your API Key and billing status)*"
 
     return "⚠️ I'm having trouble connecting to my AI engine. Please check your OPENAI_API_KEY."
 
@@ -155,19 +139,15 @@ def _extract_and_log_metrics(user_message: str, user_id: str, supabase):
             messages=[{"role": "system", "content": prompt}, {"role": "user", "content": user_message[:600]}],
             temperature=0.0, max_tokens=150
         )
-        
         raw = resp.choices[0].message.content.strip()
         match = re.search(r'\[.*\]', raw, re.DOTALL)
-        
         if match:
             metrics = json.loads(match.group(0))
             date_str = datetime.now().strftime("%Y-%m-%d")
-            
             for m in metrics:
                 name = m.get("metric_name")
                 val = m.get("value")
                 unit = m.get("unit", "")
-                
                 if name in ["protein", "steps", "sleep"] and isinstance(val, (int, float)):
                     supabase.table("behavioral_logs").insert({
                         "user_id": user_id, "date": date_str, "metric_name": name, "value": float(val), "unit": unit
@@ -191,8 +171,10 @@ def _run_background_ops(supabase, user_id, conversation_id, user_message, ai_rep
             save_conversation_memory(supabase, user_id, facts, conversation_id)
         except Exception: pass
 
-    try: _extract_and_log_metrics(user_message, user_id, supabase)
-    except Exception: pass
+    try:
+        _extract_and_log_metrics(user_message, user_id, supabase)
+    except Exception as e:
+        print(f"[BG] Metric log error: {e}")
 
     if doc_text_for_extraction:
         try: _extract_and_store_doc_markers(supabase, user_id, doc_text_for_extraction)
@@ -249,13 +231,6 @@ def chat():
     user = get_authenticated_user(supabase)
     if not user: return jsonify({"error": "Unauthorized"}), 401
 
-    try:
-        from services.compliance import verify_user_consent
-        if not verify_user_consent(supabase, user.id, "ai_processing"):
-            supabase.table("user_consents").upsert({"user_id": user.id, "consent_type": "ai_processing", "consent_version": "v2.0", "is_active": True}, on_conflict="user_id,consent_type").execute()
-            supabase.table("user_consents").upsert({"user_id": user.id, "consent_type": "data_processing", "consent_version": "v2.0", "is_active": True}, on_conflict="user_id,consent_type").execute()
-    except Exception: pass
-
     data = request.json or {}
     message = _sanitize(data.get("message", ""))
     conversation_id = data.get("conversation_id", "")
@@ -306,19 +281,10 @@ def chat():
     final_reply = reply + MANDATORY_DISCLAIMER
     doc_for_bg = document_text if is_fresh_document and not current_markers else None
     
-    # FIX: Run synchronously. Removed threading.Thread so Vercel doesn't deadlock the connection!
+    # 🔴 FIX: Executes in sync (No thread) so Vercel doesn't deadlock your chat connection!
     _run_background_ops(supabase, user.id, conversation_id, message, final_reply, doc_for_bg)
 
     return jsonify({"reply": final_reply, "has_health_data": has_health_data, "markers_found": len(current_markers)})
-
-
-@chat_bp.route("/chat/proactive-trigger", methods=["POST"])
-def proactive_trigger():
-    cron_secret = os.getenv("CRON_SECRET", "")
-    if not cron_secret or request.headers.get("X-Cron-Secret", "") != cron_secret:
-        return jsonify({"error": "Unauthorized"}), 401
-    return jsonify({"success": True})
-
 
 @chat_bp.route("/conversation/create", methods=["POST"])
 def create_conversation():
@@ -330,17 +296,10 @@ def create_conversation():
     data = request.json or {}
     title = data.get("title", "New Conversation")
     try:
-        res = supabase.table("conversations").insert({
-            "user_id": user.id,
-            "title": title
-        }).execute()
-        if res.data:
-            return jsonify({"conversation_id": res.data[0]["id"]})
+        res = supabase.table("conversations").insert({"user_id": user.id, "title": title}).execute()
+        if res.data: return jsonify({"conversation_id": res.data[0]["id"]})
         return jsonify({"error": "Failed to create conversation"}), 500
-    except Exception as e:
-        print(f"[CHAT] Create error: {e}")
-        return jsonify({"error": str(e)}), 500
-
+    except Exception as e: return jsonify({"error": str(e)}), 500
 
 @chat_bp.route("/history", methods=["POST"])
 def get_history():
@@ -352,10 +311,7 @@ def get_history():
     try:
         res = supabase.table("conversations").select("id,title,created_at").eq("user_id", user.id).order("created_at", desc=True).execute()
         return jsonify(res.data or [])
-    except Exception as e:
-        print(f"[CHAT] History error: {e}")
-        return jsonify({"error": str(e)}), 500
-
+    except Exception as e: return jsonify({"error": str(e)}), 500
 
 @chat_bp.route("/conversation", methods=["POST"])
 def get_conversation():
@@ -371,10 +327,7 @@ def get_conversation():
     try:
         res = supabase.table("chats").select("role,content,created_at").eq("conversation_id", conv_id).eq("user_id", user.id).order("created_at", desc=False).execute()
         return jsonify(res.data or [])
-    except Exception as e:
-        print(f"[CHAT] Fetch conversation error: {e}")
-        return jsonify({"error": str(e)}), 500
-
+    except Exception as e: return jsonify({"error": str(e)}), 500
 
 @chat_bp.route("/rename", methods=["POST"])
 def rename_conversation():
@@ -391,10 +344,7 @@ def rename_conversation():
     try:
         supabase.table("conversations").update({"title": title[:50]}).eq("id", conv_id).eq("user_id", user.id).execute()
         return jsonify({"success": True})
-    except Exception as e:
-        print(f"[CHAT] Rename error: {e}")
-        return jsonify({"error": str(e)}), 500
-
+    except Exception as e: return jsonify({"error": str(e)}), 500
 
 @chat_bp.route("/delete", methods=["POST"])
 def delete_conversation():
@@ -410,6 +360,4 @@ def delete_conversation():
     try:
         supabase.table("conversations").delete().eq("id", conv_id).eq("user_id", user.id).execute()
         return jsonify({"success": True})
-    except Exception as e:
-        print(f"[CHAT] Delete error: {e}")
-        return jsonify({"error": str(e)}), 500
+    except Exception as e: return jsonify({"error": str(e)}), 500

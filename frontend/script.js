@@ -13,7 +13,8 @@ const SUPABASE_URL = "https://pbeaawlxdcrdbvlmpqhc.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBiZWFhd2x4ZGNyZGJ2bG1wcWhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwMDk0MzksImV4cCI6MjA5MTU4NTQzOX0.6bUpYrDbe0mQjjBHX8Qscj-5R8i4-SqAtW_Z1UFzJ10";
 
 const IS_LOCAL = ["localhost","127.0.0.1","0.0.0.0"].includes(location.hostname);
-const API      = IS_LOCAL ? "http://localhost:5000" : "https://api.curabook.com";
+// This tells the browser to use the current Vercel domain, fixing all API blocks!
+const API = IS_LOCAL ? "http://localhost:5000" : "";
 
 let _sb           = null;
 let _user         = null;
