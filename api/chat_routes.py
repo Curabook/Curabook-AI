@@ -1,9 +1,7 @@
 import re
 import os
-import traceback
 import unicodedata
 import json
-import threading
 from datetime import datetime
 from flask import Blueprint, request, jsonify
 
@@ -48,17 +46,16 @@ def _build_context(supabase, user_id: str, user_message: str = "") -> tuple[str,
         from health_memory.memory import build_health_context_block
         stored_block = build_health_context_block(supabase, user_id) or ""
         has_data = bool(stored_block.strip())
-    except Exception as e:
-        pass
+    except Exception: pass
 
     rag_block = ""
-    if not has_data and user_message.strip():
+    # 🔴 THE FIX: If the message is just "hi", DO NOT trigger the heavy database search!
+    if not has_data and len(user_message.strip()) > 15:
         try:
             from health_memory.rag import rag_search
             rag_block = rag_search(supabase, user_message, user_id, top_k=3, threshold=0.65) or ""
             if rag_block: has_data = True
-        except Exception as e:
-            pass
+        except Exception: pass
 
     if not has_data: return "", False
 
@@ -76,8 +73,7 @@ def _build_messages_safe(supabase, user_id, conversation_id, enriched_message, h
     try:
         from ai.system_prompt_v2 import build_phi_messages
         return build_phi_messages(supabase=supabase, user_id=user_id, conversation_id=conversation_id, user_message=enriched_message, has_documents=has_documents, health_context=health_context)
-    except Exception as e:
-        pass
+    except Exception: pass
 
     try:
         from ai.chat import build_chat_messages
@@ -105,7 +101,7 @@ def _call_llm_safe(messages: list) -> str:
     if openai_key:
         try:
             from openai import OpenAI
-            client = OpenAI(api_key=openai_key, timeout=15.0)
+            client = OpenAI(api_key=openai_key, timeout=12.0)
             resp = client.chat.completions.create(
                 model="gpt-4o-mini", 
                 messages=messages, 
@@ -114,7 +110,6 @@ def _call_llm_safe(messages: list) -> str:
             )
             return resp.choices[0].message.content.strip()
         except Exception as e: 
-            print(f"[LLM ERROR] {e}")
             return f"⚠️ **OpenAI Error:** {str(e)}\n\n*(Check your API Key and billing status)*"
 
     return "⚠️ I'm having trouble connecting to my AI engine. Please check your OPENAI_API_KEY."
@@ -130,7 +125,6 @@ def _extract_and_log_metrics(user_message: str, user_id: str, supabase):
     prompt = """
     The user is reporting daily health metrics in a chat. Extract quantifiable data for 'protein' (grams), 'steps' (count), or 'sleep' (hours).
     Return ONLY a strict JSON array of objects with exactly these keys: "metric_name" (must be 'protein', 'steps', or 'sleep'), "value" (number), "unit" (string).
-    If no concrete numbers are reported, return an empty array [].
     """
     try:
         from openai import OpenAI
@@ -153,14 +147,13 @@ def _extract_and_log_metrics(user_message: str, user_id: str, supabase):
                     supabase.table("behavioral_logs").insert({
                         "user_id": user_id, "date": date_str, "metric_name": name, "value": float(val), "unit": unit
                     }).execute()
-    except Exception as e:
-        print(f"[ACTION CONNECTION ERROR] Failed to extract metrics: {e}")
+    except Exception: pass
 
 def _run_background_ops(supabase, user_id, conversation_id, user_message, ai_reply, doc_text_for_extraction):
     try:
         from ai.chat import save_chat_turn
         save_chat_turn(supabase, user_id, conversation_id, user_message, ai_reply)
-    except Exception as e: print(f"[BG] Chat save error: {e}")
+    except Exception: pass
 
     facts = []
     try: facts = _extract_facts_quick(user_message, ai_reply)
@@ -174,8 +167,7 @@ def _run_background_ops(supabase, user_id, conversation_id, user_message, ai_rep
 
     try:
         _extract_and_log_metrics(user_message, user_id, supabase)
-    except Exception as e:
-        print(f"[BG] Metric log error: {e}")
+    except Exception: pass
 
     if doc_text_for_extraction:
         try: _extract_and_store_doc_markers(supabase, user_id, doc_text_for_extraction)
@@ -282,12 +274,7 @@ def chat():
     final_reply = reply + MANDATORY_DISCLAIMER
     doc_for_bg = document_text if is_fresh_document and not current_markers else None
     
-    # Run heavy extraction in a background thread so the HTTP response returns instantly
-    bg_thread = threading.Thread(
-        target=_run_background_ops,
-        args=(supabase, user.id, conversation_id, message, final_reply, doc_for_bg)
-    )
-    bg_thread.start()
+    _run_background_ops(supabase, user.id, conversation_id, message, final_reply, doc_for_bg)
 
     return jsonify({"reply": final_reply, "has_health_data": has_health_data, "markers_found": len(current_markers)})
 
@@ -297,9 +284,7 @@ def create_conversation():
     from services.auth import get_authenticated_user
     user = get_authenticated_user(supabase)
     if not user: return jsonify({"error": "Unauthorized"}), 401
-
-    data = request.json or {}
-    title = data.get("title", "New Conversation")
+    title = (request.json or {}).get("title", "New Conversation")
     try:
         res = supabase.table("conversations").insert({"user_id": user.id, "title": title}).execute()
         if res.data: return jsonify({"conversation_id": res.data[0]["id"]})
@@ -312,43 +297,9 @@ def get_history():
     from services.auth import get_authenticated_user
     user = get_authenticated_user(supabase)
     if not user: return jsonify({"error": "Unauthorized"}), 401
-
     try:
         res = supabase.table("conversations").select("id,title,created_at").eq("user_id", user.id).order("created_at", desc=True).execute()
         return jsonify(res.data or [])
-    except Exception as e: return jsonify({"error": str(e)}), 500
-
-@chat_bp.route("/conversation", methods=["POST"])
-def get_conversation():
-    from app import supabase
-    from services.auth import get_authenticated_user
-    user = get_authenticated_user(supabase)
-    if not user: return jsonify({"error": "Unauthorized"}), 401
-
-    data = request.json or {}
-    conv_id = data.get("conversation_id")
-    if not conv_id: return jsonify({"error": "Missing conversation_id"}), 400
-
-    try:
-        res = supabase.table("chats").select("role,content,created_at").eq("conversation_id", conv_id).eq("user_id", user.id).order("created_at", desc=False).execute()
-        return jsonify(res.data or [])
-    except Exception as e: return jsonify({"error": str(e)}), 500
-
-@chat_bp.route("/rename", methods=["POST"])
-def rename_conversation():
-    from app import supabase
-    from services.auth import get_authenticated_user
-    user = get_authenticated_user(supabase)
-    if not user: return jsonify({"error": "Unauthorized"}), 401
-
-    data = request.json or {}
-    conv_id = data.get("conversation_id")
-    title = data.get("title")
-    if not conv_id or not title: return jsonify({"error": "Missing parameters"}), 400
-
-    try:
-        supabase.table("conversations").update({"title": title[:50]}).eq("id", conv_id).eq("user_id", user.id).execute()
-        return jsonify({"success": True})
     except Exception as e: return jsonify({"error": str(e)}), 500
 
 @chat_bp.route("/delete", methods=["POST"])
@@ -357,11 +308,8 @@ def delete_conversation():
     from services.auth import get_authenticated_user
     user = get_authenticated_user(supabase)
     if not user: return jsonify({"error": "Unauthorized"}), 401
-
-    data = request.json or {}
-    conv_id = data.get("conversation_id")
+    conv_id = (request.json or {}).get("conversation_id")
     if not conv_id: return jsonify({"error": "Missing conversation_id"}), 400
-
     try:
         supabase.table("conversations").delete().eq("id", conv_id).eq("user_id", user.id).execute()
         return jsonify({"success": True})
