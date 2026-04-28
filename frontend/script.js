@@ -511,7 +511,11 @@ async function deleteConversation(id, e) {
   if (h) {
     try {
       // Must use apiJson to resolve proper backend routing
-      await apiJson("/delete", { method: "POST", headers: h, body: JSON.stringify({ conversation_id: id }) });
+      const res = await apiJson("/delete", { method: "POST", headers: h, body: JSON.stringify({ conversation_id: id }) });
+      
+      // If the server returns a 4xx or 5xx status, throw an error to trigger the catch block
+      if (!res.ok) throw new Error("Backend deletion failed");
+
       if (elItem) elItem.remove();
       toast("Conversation deleted");
     } catch (err) {

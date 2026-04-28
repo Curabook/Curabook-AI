@@ -3,6 +3,7 @@ import os
 import traceback
 import unicodedata
 import json
+import threading
 from datetime import datetime
 from flask import Blueprint, request, jsonify
 
@@ -281,8 +282,12 @@ def chat():
     final_reply = reply + MANDATORY_DISCLAIMER
     doc_for_bg = document_text if is_fresh_document and not current_markers else None
     
-    # 🔴 FIX: Executes in sync (No thread) so Vercel doesn't deadlock your chat connection!
-    _run_background_ops(supabase, user.id, conversation_id, message, final_reply, doc_for_bg)
+    # Run heavy extraction in a background thread so the HTTP response returns instantly
+    bg_thread = threading.Thread(
+        target=_run_background_ops,
+        args=(supabase, user.id, conversation_id, message, final_reply, doc_for_bg)
+    )
+    bg_thread.start()
 
     return jsonify({"reply": final_reply, "has_health_data": has_health_data, "markers_found": len(current_markers)})
 
