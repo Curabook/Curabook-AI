@@ -6,15 +6,17 @@
  * 2. Infinite Loader timeouts for Health & Reports.
  * 3. Wearable Sync camera integration.
  * 4. Removed Export Chat clutter.
+ * 5. Fixed trailing syntax error that crashed script loading.
+ * 6. Dynamic API routing for testing across local networks.
  */
 "use strict";
 
 const SUPABASE_URL = "https://pbeaawlxdcrdbvlmpqhc.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBiZWFhd2x4ZGNyZGJ2bG1wcWhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwMDk0MzksImV4cCI6MjA5MTU4NTQzOX0.6bUpYrDbe0mQjjBHX8Qscj-5R8i4-SqAtW_Z1UFzJ10";
 
-const IS_LOCAL = ["localhost","127.0.0.1","0.0.0.0"].includes(location.hostname);
-// This tells the browser to use the current Vercel domain, fixing all API blocks!
-const API = IS_LOCAL ? "http://localhost:5000" : "";
+// Dynamically handle localhost or local IP addresses (e.g. 192.168.x.x) to prevent connection failures.
+const IS_LOCAL = ["localhost", "127.0.0.1", "0.0.0.0"].includes(location.hostname) || location.hostname.startsWith("192.168.") || location.hostname.startsWith("10.");
+const API = IS_LOCAL ? `http://${location.hostname}:5000` : "";
 
 let _sb           = null;
 let _user         = null;
@@ -89,7 +91,6 @@ async function handleLogout() {
   await doSignOut();
 }
 
-/* ═══ BOOT ═══ */
 /* ═══ BOOT ═══ */
 async function boot() {
   try {
@@ -304,7 +305,6 @@ async function loadHealthView() {
     content.innerHTML = `<div class="hv-empty" id="healthLoading"><i class="fa-solid fa-spinner fa-spin"></i>Loading your health picture…</div>`;
   }
 
-  // REVIEWER FIX: Infinite Loader Timeout
   const timeoutId = setTimeout(() => {
     const loader = el("healthLoading");
     if (loader) {
@@ -403,7 +403,6 @@ async function loadReportsView() {
   const list = el("reportsList"); if (!list) return;
   list.innerHTML = `<div class="hv-empty" id="reportsLoading"><i class="fa-solid fa-spinner fa-spin"></i>Loading reports…</div>`;
   
-  // REVIEWER FIX: Infinite Loader Timeout
   const timeoutId = setTimeout(() => {
     const loader = el("reportsLoading");
     if (loader) {
@@ -501,14 +500,12 @@ async function openConversation(id) {
   } catch {}
 }
 
-// REVIEWER FIX: Optimistic UI Deletion
 async function deleteConversation(id, e) {
   e?.preventDefault();
   e?.stopPropagation();
   
   if (!confirm("Are you sure you want to delete this conversation?")) return;
 
-  // Optimistic Hide
   const elItem = document.querySelector(`.hist-item[data-id="${id}"]`);
   if (elItem) elItem.style.display = 'none';
   
@@ -517,17 +514,14 @@ async function deleteConversation(id, e) {
   const h = await headers();
   if (h) {
     try {
-      // Must use apiJson to resolve proper backend routing
       const res = await apiJson("/delete", { method: "POST", headers: h, body: JSON.stringify({ conversation_id: id }) });
-      
-      // If the server returns a 4xx or 5xx status, throw an error to trigger the catch block
       if (!res.ok) throw new Error("Backend deletion failed");
 
       if (elItem) elItem.remove();
       toast("Conversation deleted");
     } catch (err) {
       console.error("Failed to delete", err);
-      if (elItem) elItem.style.display = 'flex'; // Bring back if it fails
+      if (elItem) elItem.style.display = 'flex'; 
       toast("Failed to delete conversation", "err");
     }
   }
@@ -700,12 +694,11 @@ function setSendingState(on) {
   if (ta) ta.disabled = on;
 }
 
-/* ═══ FILE UPLOAD (IMAGE SUPPORT FIX) ═══ */
+/* ═══ FILE UPLOAD ═══ */
 function handleFileSelect(e) { 
   Array.from(e.target.files || []).forEach(addFile); 
   e.target.value = ""; 
 
-  // REVIEWER FIX: Auto-prompt for Wearable Sync
   if (window.isWearableSync) {
     const ta = el('chatInput');
     if (ta) {
@@ -714,7 +707,6 @@ function handleFileSelect(e) {
     }
     window.isWearableSync = false;
     
-    // Auto-click send after a tiny delay for UX feel
     setTimeout(() => {
       const sendBtn = el('sendBtn');
       if (sendBtn && !sendBtn.disabled) sendBtn.click();
@@ -1039,7 +1031,6 @@ function initVoice() {
   });
 }
 
-
 /* ═══ UTILS ═══ */
 const el      = id => document.getElementById(id);
 const esc     = s  => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -1110,7 +1101,6 @@ function wireEvents() {
     el(id)?.addEventListener("click", () => fi?.click())
   );
 
-  // REVIEWER FIX: Wearable Camera Button Event
   el("syncWearableBtn")?.addEventListener("click", () => {
     closeCockpit(); 
     window.isWearableSync = true;
