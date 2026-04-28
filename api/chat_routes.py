@@ -1,8 +1,3 @@
-# api/chat_routes.py — PHI v3.3 (Action Connection / Semantic Tool Calling Added)
-#
-# ADDED: `_extract_and_log_metrics` directly converts natural language chat messages
-# into database inserts for the Metabolic Shield (`behavioral_logs` table).
-
 import re
 import os
 import traceback
@@ -24,70 +19,15 @@ MANDATORY_DISCLAIMER = (
     "before making any medical decisions.*"
 )
 
-# Proactive trigger configurations
-_PROACTIVE_TRIGGER_CONFIGS = {
-    "high_food_noise_logged": {
-        "intent": "food_noise",
-        "directive": (
-            "The user just logged a high food noise / ghrelin surge score (7+/10). "
-            "Send a warm, unprompted check-in. Open with the ghrelin biology reframe. "
-            "Offer ONE specific protein or behavioral strategy. Ask one Socratic question. "
-            "Keep it under 120 words. No clinical jargon."
-        ),
-    },
-    "missed_checkin": {
-        "intent": "emotional",
-        "directive": (
-            "The user has not opened the app in 5+ days. Send a brief, warm, "
-            "non-pressuring check-in. Acknowledge that managing a metabolic condition "
-            "day after day is genuinely exhausting. Reference one specific data point "
-            "from their health memory (if available). End with an open-ended question. Under 100 words."
-        ),
-    },
-    "cliff_alert_detected": {
-        "intent": "maintenance",
-        "directive": (
-            "PHI has detected a GLP-1 cliff signal in newly uploaded lab data. "
-            "Send a proactive alert. Lead with the specific alert numbers. "
-            "Frame as early detection, not alarm. Give the single most impactful action. Under 150 words."
-        ),
-    },
-    "post_upload_followup": {
-        "intent": "metabolic",
-        "directive": (
-            "The user uploaded a lab report 48 hours ago but has not asked any questions. "
-            "Send a proactive message highlighting the single most clinically important finding. "
-            "End with a question that invites engagement. Under 120 words."
-        ),
-    },
-}
-
-
-# ── Safety helpers ─────────────────────────────────────────────────────────────
-
 def _sanitize(text: str) -> str:
     text = unicodedata.normalize("NFKC", text or "")
     text = re.sub(r"[\x00-\x1f\x7f]", "", text)
     return text.strip()[:MAX_MESSAGE_LEN]
 
-
 def _sort_by_priority(markers: list) -> list:
     order = {"HIGH": 0, "LOW": 1, "NORMAL": 2, "UNKNOWN": 3}
     return sorted(markers, key=lambda x: order.get(str(x.get("status", "")).upper(), 3))
 
-
-def _doctor_questions(markers: list) -> list:
-    qs = []
-    for m in markers:
-        name   = m.get("marker", m.get("marker_name", ""))
-        value  = m.get("value", "")
-        status = str(m.get("status", "")).upper()
-        if status in ("HIGH", "LOW"):
-            qs.append(f"My {name} is {value} ({status.lower()}) — what does this mean for my GLP-1 cliff risk?")
-    return qs[:5] or ["Are all my lab values within a healthy range?"]
-
-
-# ── Fast Cliff Signal Detection ────────────────────────────────────────────────
 
 _GHRELIN_SIGNALS = [
     "food noise", "can't stop thinking about food", "hunger is back",
@@ -115,8 +55,6 @@ def _fast_cliff_context(user_message: str) -> str:
 
     return "\n".join(parts) if parts else ""
 
-
-# ── Context Builder ────────────────────────────────────────────────────────────
 
 def _build_context(supabase, user_id: str, user_message: str = "") -> tuple[str, bool]:
     stored_block = ""
@@ -151,12 +89,10 @@ def _build_context(supabase, user_id: str, user_message: str = "") -> tuple[str,
     return header + "\n\n".join(parts), True
 
 
-# ── LLM Helpers ────────────────────────────────────────────────────────────────
-
-def _build_messages_safe(supabase, user_id, conversation_id, enriched_message, has_documents, health_context, groq_client):
+def _build_messages_safe(supabase, user_id, conversation_id, enriched_message, has_documents, health_context):
     try:
         from ai.system_prompt_v2 import build_phi_messages
-        return build_phi_messages(supabase=supabase, user_id=user_id, conversation_id=conversation_id, user_message=enriched_message, has_documents=has_documents, health_context=health_context, groq_client=groq_client)
+        return build_phi_messages(supabase=supabase, user_id=user_id, conversation_id=conversation_id, user_message=enriched_message, has_documents=has_documents, health_context=health_context)
     except Exception as e:
         print(f"[CHAT] build_phi_messages failed, using fallback: {e}")
 
@@ -180,9 +116,9 @@ def _build_messages_safe(supabase, user_id, conversation_id, enriched_message, h
     return messages
 
 
-def _call_llm_safe(groq_client, messages: list) -> str:
+def _call_llm_safe(messages: list) -> str:
     if not messages: return "I couldn't process that request. Please try again."
-
+    
     openai_key = os.getenv("OPENAI_API_KEY")
     if openai_key:
         try:
@@ -191,26 +127,14 @@ def _call_llm_safe(groq_client, messages: list) -> str:
             return resp.choices[0].message.content.strip()
         except Exception: pass
 
-    if groq_client:
-        try:
-            resp = groq_client.chat.completions.create(model="llama-3.3-70b-versatile", messages=messages, temperature=0.35, max_tokens=1200)
-            return resp.choices[0].message.content.strip()
-        except Exception: pass
-
     return "I'm having trouble connecting to my AI engine right now. Please try again in a moment."
 
 
-# ── ACTION CONNECTION: Semantic Tool Calling ────────────────────────────────────
-
-def _extract_and_log_metrics(user_message: str, user_id: str, supabase, groq_client):
-    """
-    Reads the user's chat message and extracts quantifiable Shield metrics,
-    pushing them directly to the behavioral_logs database table.
-    """
-    if not groq_client: return
-    lower = user_message.lower()
+def _extract_and_log_metrics(user_message: str, user_id: str, supabase):
+    openai_key = os.getenv("OPENAI_API_KEY")
+    if not openai_key: return
     
-    # Fast exit if no relevant keywords are mentioned
+    lower = user_message.lower()
     if not any(kw in lower for kw in ["protein", "step", "sleep", "slept", "walk", "ate", "gram", "hr", "hour"]):
         return
 
@@ -222,14 +146,12 @@ def _extract_and_log_metrics(user_message: str, user_id: str, supabase, groq_cli
     Examples:
     Input: "I walked 4000 steps today, slept for 7.5 hours, and ate 110g of protein."
     Output: [{"metric_name": "steps", "value": 4000, "unit": "steps"}, {"metric_name": "sleep", "value": 7.5, "unit": "hours"}, {"metric_name": "protein", "value": 110, "unit": "g"}]
-    
-    Input: "Just did a 30 min walk and hit 5k steps."
-    Output: [{"metric_name": "steps", "value": 5000, "unit": "steps"}]
     """
     
     try:
-        resp = groq_client.chat.completions.create(
-            model="llama-3.1-8b-instant",
+        from openai import OpenAI
+        resp = OpenAI(api_key=openai_key).chat.completions.create(
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": prompt},
                 {"role": "user", "content": user_message[:600]}
@@ -249,7 +171,6 @@ def _extract_and_log_metrics(user_message: str, user_id: str, supabase, groq_cli
                 val = m.get("value")
                 unit = m.get("unit", "")
                 
-                # Validate exact metric and numeric value before database insertion
                 if name in ["protein", "steps", "sleep"] and isinstance(val, (int, float)):
                     supabase.table("behavioral_logs").insert({
                         "user_id": user_id,
@@ -258,23 +179,20 @@ def _extract_and_log_metrics(user_message: str, user_id: str, supabase, groq_cli
                         "value": float(val),
                         "unit": unit
                     }).execute()
-                    
                     print(f"⚡ [ACTION CONNECTION] Automatically logged {name}: {val} {unit} for user {user_id}")
                     
     except Exception as e:
         print(f"[ACTION CONNECTION ERROR] Failed to extract metrics: {e}")
 
 
-# ── Background Ops ────────────────────────────────────────────────────────────
-
-def _run_background_ops(supabase, groq_client, user_id, conversation_id, user_message, ai_reply, doc_text_for_extraction):
+def _run_background_ops(supabase, user_id, conversation_id, user_message, ai_reply, doc_text_for_extraction):
     try:
         from ai.chat import save_chat_turn
         save_chat_turn(supabase, user_id, conversation_id, user_message, ai_reply)
     except Exception as e: print(f"[BG] Chat save error: {e}")
 
     facts = []
-    try: facts = _extract_facts_quick(user_message, ai_reply, groq_client)
+    try: facts = _extract_facts_quick(user_message, ai_reply)
     except Exception: pass
 
     if facts:
@@ -283,18 +201,17 @@ def _run_background_ops(supabase, groq_client, user_id, conversation_id, user_me
             save_conversation_memory(supabase, user_id, facts, conversation_id)
         except Exception: pass
 
-    # --- EXECUTE THE NEW ACTION CONNECTION ---
     try:
-        _extract_and_log_metrics(user_message, user_id, supabase, groq_client)
+        _extract_and_log_metrics(user_message, user_id, supabase)
     except Exception as e:
         print(f"[BG] Metric log error: {e}")
 
     if doc_text_for_extraction:
-        try: _extract_and_store_doc_markers(supabase, groq_client, user_id, doc_text_for_extraction)
+        try: _extract_and_store_doc_markers(supabase, user_id, doc_text_for_extraction)
         except Exception: pass
 
 
-def _extract_facts_quick(user_message: str, ai_reply: str, groq_client) -> list[str]:
+def _extract_facts_quick(user_message: str, ai_reply: str) -> list[str]:
     lower = user_message.lower()
     facts = []
     if any(kw in lower for kw in ["stopped", "off meds", "discontinued"]):
@@ -307,11 +224,13 @@ def _extract_facts_quick(user_message: str, ai_reply: str, groq_client) -> list[
         nums = re.findall(r'\b(\d{2,3})\s*(?:lbs?|pounds?)\b', lower)
         if nums: facts.append(f"User's goal weight is {nums[0]} lbs")
 
-    if not facts and groq_client and len(user_message) > 30:
+    openai_key = os.getenv("OPENAI_API_KEY")
+    if not facts and openai_key and len(user_message) > 30:
         try:
             if any(kw in lower for kw in ["protein", "steps", "sleep", "weight", "glucose"]):
-                resp = groq_client.chat.completions.create(
-                    model="llama-3.1-8b-instant",
+                from openai import OpenAI
+                resp = OpenAI(api_key=openai_key).chat.completions.create(
+                    model="gpt-4o-mini",
                     messages=[
                         {"role": "system", "content": "Extract 0-2 health facts. Return ONLY a JSON array of short strings."},
                         {"role": "user", "content": f"Extract: {user_message[:600]}"},
@@ -325,25 +244,21 @@ def _extract_facts_quick(user_message: str, ai_reply: str, groq_client) -> list[
     return facts[:3]
 
 
-def _extract_and_store_doc_markers(supabase, groq_client, user_id, doc_text):
+def _extract_and_store_doc_markers(supabase, user_id, doc_text):
     try:
         from health_memory.extractor import extract_health_markers
         from health_memory.memory import store_health_markers
         from services.unit_normalizer import force_us_units_batch
-        markers = extract_health_markers(doc_text[:8000], groq_client, "chat_upload")
+        markers = extract_health_markers(doc_text[:8000], "chat_upload")
         if markers:
             markers = force_us_units_batch(markers)
             store_health_markers(supabase, user_id, markers)
     except Exception: pass
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# ROUTE 1: THE CORE CHAT PIPELINE
-# ══════════════════════════════════════════════════════════════════════════════
-
 @chat_bp.route("/chat", methods=["POST"])
 def chat():
-    from app import supabase, groq_client
+    from app import supabase
     from services.auth import get_authenticated_user
     user = get_authenticated_user(supabase)
     if not user: return jsonify({"error": "Unauthorized"}), 401
@@ -371,7 +286,7 @@ def chat():
         try:
             from health_memory.extractor import extract_health_markers
             from services.unit_normalizer import force_us_units_batch
-            raw = extract_health_markers(document_text, groq_client)
+            raw = extract_health_markers(document_text)
             if raw: current_markers = _sort_by_priority(force_us_units_batch(raw))
         except Exception: pass
 
@@ -391,8 +306,8 @@ def chat():
     if is_fresh_document and document_text.strip():
         enriched_message = f"The patient shared a document:\n[DOCUMENT_START]\n{document_text[:10000]}\n[DOCUMENT_END]\n\nQuestion: {message}\nUse exact values and flag cliff signals."
 
-    messages = _build_messages_safe(supabase, user.id, conversation_id, enriched_message, has_documents or bool(document_text), health_context, groq_client)
-    reply = _call_llm_safe(groq_client, messages)
+    messages = _build_messages_safe(supabase, user.id, conversation_id, enriched_message, has_documents or bool(document_text), health_context)
+    reply = _call_llm_safe(messages)
 
     try:
         from ai.system_prompt_v2 import validate_response, detect_hallucination_risk
@@ -405,14 +320,10 @@ def chat():
     final_reply = reply + MANDATORY_DISCLAIMER
     doc_for_bg = document_text if is_fresh_document and not current_markers else None
     
-    threading.Thread(target=_run_background_ops, args=(supabase, groq_client, user.id, conversation_id, message, final_reply, doc_for_bg), daemon=True).start()
+    threading.Thread(target=_run_background_ops, args=(supabase, user.id, conversation_id, message, final_reply, doc_for_bg), daemon=True).start()
 
     return jsonify({"reply": final_reply, "has_health_data": has_health_data, "markers_found": len(current_markers)})
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-# ROUTE 2: PROACTIVE TRIGGERS
-# ══════════════════════════════════════════════════════════════════════════════
 
 @chat_bp.route("/chat/proactive-trigger", methods=["POST"])
 def proactive_trigger():
@@ -422,13 +333,8 @@ def proactive_trigger():
     return jsonify({"success": True})
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# ROUTE 3: FRONTEND CHAT MANAGEMENT
-# ══════════════════════════════════════════════════════════════════════════════
-
 @chat_bp.route("/conversation/create", methods=["POST"])
 def create_conversation():
-    """Initializes a new chat thread for the user."""
     from app import supabase
     from services.auth import get_authenticated_user
     user = get_authenticated_user(supabase)
@@ -451,7 +357,6 @@ def create_conversation():
 
 @chat_bp.route("/history", methods=["POST"])
 def get_history():
-    """Fetches the sidebar history for the user."""
     from app import supabase
     from services.auth import get_authenticated_user
     user = get_authenticated_user(supabase)
@@ -467,7 +372,6 @@ def get_history():
 
 @chat_bp.route("/conversation", methods=["POST"])
 def get_conversation():
-    """Fetches past messages for a specific conversation_id."""
     from app import supabase
     from services.auth import get_authenticated_user
     user = get_authenticated_user(supabase)
@@ -487,7 +391,6 @@ def get_conversation():
 
 @chat_bp.route("/rename", methods=["POST"])
 def rename_conversation():
-    """Renames a conversation in the sidebar based on the first prompt."""
     from app import supabase
     from services.auth import get_authenticated_user
     user = get_authenticated_user(supabase)
@@ -508,7 +411,6 @@ def rename_conversation():
 
 @chat_bp.route("/delete", methods=["POST"])
 def delete_conversation():
-    """Deletes a conversation from the history sidebar."""
     from app import supabase
     from services.auth import get_authenticated_user
     user = get_authenticated_user(supabase)

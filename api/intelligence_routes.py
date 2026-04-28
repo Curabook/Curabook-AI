@@ -1,44 +1,18 @@
-"""
-api/intelligence_routes.py
-═══════════════════════════════════════════════════════════════════════════
-New API endpoints exposing Tasks 1–3 to the frontend.
-
-  GET  /api/persona              → Health Persona (200-word biography)
-  POST /api/persona/refresh      → Force-regenerate persona
-  GET  /api/advocacy             → PA support packet
-  POST /api/correlate            → Cross-domain Observation Cards
-  GET  /api/behavioral-logs      → Fetch behavioral log entries
-  POST /api/behavioral-logs      → Add a behavioral log entry
-
-Register in app.py:
-  from api.intelligence_routes import intelligence_bp
-  app.register_blueprint(intelligence_bp)
-═══════════════════════════════════════════════════════════════════════════
-"""
-
 from flask import Blueprint, request, jsonify
 
 intelligence_bp = Blueprint("intelligence", __name__)
 
 
 def _deps():
-    from app import supabase, groq_client
+    from app import supabase
     from services.auth       import get_authenticated_user
     from services.compliance import audit_log, verify_user_consent
-    return supabase, groq_client, get_authenticated_user, audit_log, verify_user_consent
+    return supabase, get_authenticated_user, audit_log, verify_user_consent
 
-
-# ── GET /api/persona ──────────────────────────────────────────────────────────
 
 @intelligence_bp.route("/api/persona", methods=["GET"])
 def get_persona():
-    """
-    Returns the user's Health Persona — a ≤200-word biography synthesized
-    from their markers, conversation memory, and profile.
-
-    Cached with 6-hour TTL. Automatically invalidated when marker count changes.
-    """
-    supabase, groq_client, get_user, audit, _ = _deps()
+    supabase, get_user, audit, _ = _deps()
     user = get_user(supabase)
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
@@ -49,14 +23,12 @@ def get_persona():
         audit(supabase, user.id, "PERSONA_ACCESSED", f"len:{len(persona)}", "PHI")
         return jsonify({"persona": persona, "user_id": user.id[:8]})
     except Exception as e:
-        import traceback; traceback.print_exc()
         return jsonify({"error": f"Persona generation failed: {type(e).__name__}"}), 500
 
 
 @intelligence_bp.route("/api/persona/refresh", methods=["POST"])
 def refresh_persona():
-    """Force-regenerate the Health Persona, bypassing cache."""
-    supabase, groq_client, get_user, audit, verify = _deps()
+    supabase, get_user, audit, verify = _deps()
     user = get_user(supabase)
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
@@ -72,23 +44,9 @@ def refresh_persona():
         return jsonify({"error": f"Refresh failed: {type(e).__name__}"}), 500
 
 
-# ── GET /api/advocacy ─────────────────────────────────────────────────────────
-
 @intelligence_bp.route("/api/advocacy", methods=["GET"])
 def get_advocacy_brief():
-    """
-    Generate a GLP-1 Prior Authorization Support Packet.
-
-    Query params:
-      medication  — medication name (default: "GLP-1")
-      raw         — include raw PA-relevant markers (default: false)
-
-    Returns structured PA packet with clinical facts, evidence strength,
-    missing data, and next steps.
-
-    INFORMATIONAL ONLY — for the user to share with their provider.
-    """
-    supabase, groq_client, get_user, audit, verify = _deps()
+    supabase, get_user, audit, verify = _deps()
     user = get_user(supabase)
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
@@ -109,26 +67,12 @@ def get_advocacy_brief():
               f"med:{medication} strength:{result.get('evidence_strength','?')}", "PHI")
         return jsonify(result)
     except Exception as e:
-        import traceback; traceback.print_exc()
         return jsonify({"error": f"Advocacy brief failed: {type(e).__name__}"}), 500
 
 
-# ── POST /api/correlate ───────────────────────────────────────────────────────
-
 @intelligence_bp.route("/api/correlate", methods=["POST"])
 def correlate():
-    """
-    Cross-domain Correlation Engine.
-
-    Request body:
-      { "query": "why did my sugar spike on Monday?",
-        "lookback_days": 90,      # optional, default 90
-        "max_cards": 3 }          # optional, default 3
-
-    Returns a list of ObservationCard dicts with plain-English findings
-    and confidence scores.
-    """
-    supabase, _, get_user, audit, verify = _deps()
+    supabase, get_user, audit, verify = _deps()
     user = get_user(supabase)
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
@@ -154,22 +98,12 @@ def correlate():
               f"query:'{query[:40]}' cards:{len(cards)}", "PHI")
         return jsonify({"observation_cards": cards, "query": query})
     except Exception as e:
-        import traceback; traceback.print_exc()
         return jsonify({"error": f"Correlation failed: {type(e).__name__}"}), 500
 
 
-# ── Behavioral logs ───────────────────────────────────────────────────────────
-
 @intelligence_bp.route("/api/behavioral-logs", methods=["GET"])
 def get_behavioral_logs():
-    """
-    Fetch behavioral logs for the authenticated user.
-
-    Query params:
-      metric  — filter by metric_name (e.g. "steps")
-      days    — lookback window (default: 30, max: 365)
-    """
-    supabase, _, get_user, audit, _ = _deps()
+    supabase, get_user, audit, _ = _deps()
     user = get_user(supabase)
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
@@ -195,31 +129,13 @@ def get_behavioral_logs():
         return jsonify(rows)
     except Exception as e:
         if "does not exist" in str(e).lower():
-            return jsonify([])   # Table not created yet — return empty
+            return jsonify([]) 
         return jsonify({"error": str(e)}), 500
 
 
 @intelligence_bp.route("/api/behavioral-logs", methods=["POST"])
 def add_behavioral_log():
-    """
-    Add a behavioral log entry.
-
-    Request body:
-      { "date":        "2026-04-12",     # YYYY-MM-DD
-        "metric_name": "steps",          # steps | food | sleep | stress | weight
-        "value":       8500,
-        "unit":        "steps",
-        "notes":       "20min walk after dinner"  # optional
-      }
-
-    Supported metric_name values (not enforced, but expected by correlation engine):
-      "steps"   — daily step count
-      "food"    — caloric intake (value in kcal)
-      "sleep"   — sleep duration (value in hours)
-      "stress"  — stress level (value 1–10)
-      "weight"  — body weight (value in lbs or kg, specify unit)
-    """
-    supabase, _, get_user, audit, verify = _deps()
+    supabase, get_user, audit, verify = _deps()
     user = get_user(supabase)
     if not user:
         return jsonify({"error": "Unauthorized"}), 401

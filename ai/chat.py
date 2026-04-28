@@ -1,35 +1,12 @@
-"""
-ai/chat.py  —  PHI Adaptive Co-pilot Engine  |  GLP-1 Maintenance Edition
-─────────────────────────────────────────────────────────────────────────────
-CHANGES vs. previous version:
-
-  #MUSCLE-1   _PHI_METABOLIC_OVERLAY now includes the Muscle Defense
-              Calculation: Target Protein = Goal Weight (lbs) × 0.545 g/day.
-              Cited in every metabolic/maintenance response.
-
-  #TAPER-1    Dedicated _PHI_TAPER_OVERLAY provides educational content for
-              Reduced-Frequency Dosing (10-14 day cadence), microdosing, and
-              AOM transition strategies. Surfaces on maintenance/taper intents.
-
-  #FOOD-NOISE _PHI_FOOD_NOISE_OVERLAY validates ghrelin surge as physiological
-              data, not moral failure. Mandatory before any clinical content.
-
-  #UNITS-1    All US unit defaults enforced: lbs, mg/dL, %, °F.
-              Metric unit detection added to validate_llm_output().
-
-  #DISCLAIMER Updated to match system_prompt.py canonical text.
-"""
-
 from __future__ import annotations
 import os, re, time, json
 from typing import List, Dict, Optional, Tuple, Any
 from services.compliance import anonymize_for_llm
 
 MAX_HISTORY_MESSAGES = 12
-MAX_RESPONSE_TOKENS  = 1400   # Increased — maintenance explanations need space
+MAX_RESPONSE_TOKENS  = 1400
 DEFAULT_TIMEOUT_SEC  = 25
 
-# ── Canonical disclaimer — keep in sync with system_prompt.py and chat_routes.py
 MANDATORY_DISCLAIMER = (
     "\n\n---\n"
     "⚕️ *PHI is an educational wellness tool. It does not provide medical "
@@ -49,13 +26,6 @@ _SAFE_FALLBACK = (
     "⚕️ *PHI is an educational wellness tool. Always consult your provider.*"
 )
 
-_INJECTION_PATTERNS = [
-    re.compile(r"ignore (previous|all|your) (instructions?|prompt|system)", re.I),
-    re.compile(r"you are now|pretend you are|act as if you are", re.I),
-    re.compile(r"(disregard|forget|override) (your|all) (instructions?|rules)", re.I),
-    re.compile(r"jailbreak|do anything now|dan mode", re.I),
-]
-
 _FORBIDDEN_PATTERNS = [
     (re.compile(r"\b(you have|you likely have|this confirms you have|my diagnosis is)\b", re.I), "diagnosis"),
     (re.compile(r"\b(stop taking|increase your dose|decrease your dose|take \d+\s*(mg|mcg|g|ml))\b", re.I), "medication_instruction"),
@@ -68,38 +38,15 @@ _HALLUCINATION_SIGNALS = [
     "you have high", "you have low", "your hba1c", "your tsh", "your vitamin",
 ]
 
-# US unit patterns — detect metric outputs for flagging
 _METRIC_OUTPUTS = [
     re.compile(r'\b\d+\.?\d*\s*mmol/l\b', re.I),
-    re.compile(r'\b\d+\.?\d*\s*kg\b(?!\s*/m)', re.I),  # kg but not kg/m²
+    re.compile(r'\b\d+\.?\d*\s*kg\b(?!\s*/m)', re.I),
     re.compile(r'\b\d+\.?\d*\s*°C\b', re.I),
 ]
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-# MUSCLE DEFENSE CALCULATOR
-# ══════════════════════════════════════════════════════════════════════════════
-
 def calculate_muscle_defense_protocol(goal_weight_lbs: float) -> dict:
-    """
-    #MUSCLE-1: Calculate the Muscle Defense protein target and daily plan.
-
-    Formula: Target Protein (g) = Goal Weight (lbs) × 0.545
-    Derived from: 1.2g protein/kg body weight clinical recommendation
-    Conversion:   1.2g/kg × 0.4536 kg/lb = 0.5443g/lb ≈ 0.545
-
-    Returns a dict with:
-      - daily_protein_g: target grams/day
-      - per_meal_g: per meal assuming 3 meals (with leucine threshold context)
-      - food_examples: practical whole-food breakdown to hit the target
-      - resistance_rx: evidence-based resistance training minimum
-      - bm_context: BMR defense explanation
-    """
     daily_protein_g = round(goal_weight_lbs * 0.545, 1)
     per_meal_g      = round(daily_protein_g / 3, 1)
-
-    # Leucine threshold: 2.5-3g leucine per meal triggers muscle protein synthesis
-    # ~35g high-quality protein ≈ 2.7g leucine (chicken, whey, egg)
     leucine_adequate = per_meal_g >= 30
 
     food_examples = []
@@ -115,8 +62,7 @@ def calculate_muscle_defense_protocol(goal_weight_lbs: float) -> dict:
         ("2 oz string cheese",   14),
     ]
     for source, grams in sources:
-        if remaining <= 0:
-            break
+        if remaining <= 0: break
         food_examples.append(f"{source} ({grams}g protein)")
         remaining -= grams
 
@@ -136,12 +82,9 @@ def calculate_muscle_defense_protocol(goal_weight_lbs: float) -> dict:
         ),
     }
 
-
 def format_muscle_defense_message(goal_weight_lbs: float) -> str:
-    """Format the Muscle Defense Protocol into a user-facing message."""
     p = calculate_muscle_defense_protocol(goal_weight_lbs)
     foods_str = " + ".join(p["food_examples"][:5])
-
     return (
         f"**🛡 Muscle Defense Protocol — {goal_weight_lbs} lbs goal weight**\n\n"
         f"**Daily Protein Target:** {p['daily_protein_g']}g "
@@ -154,11 +97,6 @@ def format_muscle_defense_message(goal_weight_lbs: float) -> str:
         "*(Clinical basis: 1.2g protein/kg/day — Obesity Medicine Association 2026 "
         "Algorithm; UC Davis 2025 lean mass data)*"
     )
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# SYSTEM PROMPTS
-# ══════════════════════════════════════════════════════════════════════════════
 
 _PHI_BASE_SYSTEM = """
 You are PHI — a GLP-1 Maintenance Strategist and Personal Health Intelligence
@@ -210,10 +148,6 @@ SAFETY RULES (non-negotiable):
 - Never invent numbers.
 """.strip()
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# #MUSCLE-1: Updated Metabolic Overlay with Muscle Defense Calculation
-# ─────────────────────────────────────────────────────────────────────────────
 _PHI_METABOLIC_OVERLAY = """
 METABOLIC SYNTHESIS MODE — GLP-1 CLIFF AWARENESS
 
@@ -249,10 +183,6 @@ METABOLIC SYNTHESIS MODE — GLP-1 CLIFF AWARENESS
 6. ONE ACTIONABLE QUESTION for their provider.
 """.strip()
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# #TAPER-1: New Taper Support Overlay
-# ─────────────────────────────────────────────────────────────────────────────
 _PHI_TAPER_OVERLAY = """
 GLP-1 TAPER & MAINTENANCE EDUCATIONAL MODE
 
@@ -296,7 +226,6 @@ WHAT THE MUSCLE DEFENSE PROTOCOL ADDS:
    - 7-9 hours sleep (ghrelin rises 15% for each hour under 7h)
    - 20-30 min post-meal walks (autonomous GLP-1 production via L-cells)
 """.strip()
-
 
 _PHI_DOCTOR_PREP_OVERLAY = """
 DOCTOR VISIT PREPARATION MODE — GLP-1 SPECIALIST BRIEF
@@ -359,9 +288,6 @@ _INTENT_TO_OVERLAY = {
     "advocacy":       _PHI_ADVOCACY_OVERLAY,
 }
 
-
-# ── Intent detection ──────────────────────────────────────────────────────────
-
 _MAINTENANCE_KW = [
     "off meds", "stopped wegovy", "stopped ozempic", "stopped zepbound",
     "stopped mounjaro", "regain", "regaining", "weight coming back",
@@ -398,10 +324,8 @@ _LIFESTYLE_KW = [
     "reduce", "lower", "walk", "gym", "calories", "keto", "fasting",
 ]
 
-
 def _detect_intent(message: str) -> str:
     lower = message.lower()
-    # Maintenance and muscle checked first (highest priority for this platform)
     if any(k in lower for k in _MAINTENANCE_KW): return "maintenance"
     if any(k in lower for k in _MUSCLE_KW):      return "muscle_defense"
     if any(k in lower for k in _ADVOCACY_KW):    return "advocacy"
@@ -409,9 +333,6 @@ def _detect_intent(message: str) -> str:
     if any(k in lower for k in _LIFESTYLE_KW):   return "lifestyle"
     if any(k in lower for k in _METABOLIC_KW):   return "metabolic"
     return "general"
-
-
-# ── Output validation ─────────────────────────────────────────────────────────
 
 def validate_llm_output(text: str, has_health_data: bool) -> Tuple[str, List[str]]:
     violations = []
@@ -426,39 +347,29 @@ def validate_llm_output(text: str, has_health_data: bool) -> Tuple[str, List[str
         if "medication_instruction" in violations:
             return _SAFE_FALLBACK, violations
 
-    # #UNITS-1: Flag metric units in output (informational — don't block response)
     metric_found = [p.pattern for p in _METRIC_OUTPUTS if p.search(text)]
     if metric_found:
-        print(f"[CHAT] Metric unit detected in output — US unit preference: {metric_found}")
+        pass 
 
     return text, violations
 
-
 def detect_hallucination_risk(reply: str, has_health_data: bool) -> bool:
-    if has_health_data:
-        return False
+    if has_health_data: return False
     lower = reply.lower()
     return sum(1 for phrase in _HALLUCINATION_SIGNALS if phrase in lower) >= 2
-
-
-# ── Message builder ───────────────────────────────────────────────────────────
 
 def build_chat_messages(
     supabase: Any, user_id: str, conversation_id: str,
     user_message: str, has_documents: bool = False, health_context: str = "",
 ) -> List[Dict[str, str]]:
     intent = _detect_intent(user_message)
-
     system_parts = [_PHI_BASE_SYSTEM]
     overlay = _INTENT_TO_OVERLAY.get(intent, "")
-    if overlay:
-        system_parts.append("\n\n" + overlay)
+    if overlay: system_parts.append("\n\n" + overlay)
 
-    messages: List[Dict[str, str]] = [
-        {"role": "system", "content": "\n".join(system_parts)}
-    ]
-
+    messages: List[Dict[str, str]] = [{"role": "system", "content": "\n".join(system_parts)}]
     has_health_data = bool(health_context and health_context.strip())
+    
     if has_health_data:
         messages.append({
             "role": "system",
@@ -493,7 +404,6 @@ def build_chat_messages(
             ),
         })
 
-    # Conversation history
     try:
         res = (supabase.table("chats")
                .select("role,content")
@@ -507,17 +417,13 @@ def build_chat_messages(
             content = row.get("content", "")
             if role in ("user", "assistant") and content:
                 messages.append({"role": role, "content": anonymize_for_llm(str(content), user_id)})
-    except Exception as e:
-        print(f"[AI] History load error: {e}")
+    except Exception: pass
 
     messages.append({"role": "user", "content": anonymize_for_llm(user_message or "", user_id)})
     return messages
 
 
-# ── LLM call ─────────────────────────────────────────────────────────────────
-
-def call_llm(groq_client: Any, messages: List[Dict[str, str]],
-             max_tokens: int = MAX_RESPONSE_TOKENS) -> Optional[str]:
+def call_llm(messages: List[Dict[str, str]], max_tokens: int = MAX_RESPONSE_TOKENS) -> Optional[str]:
     def _run():
         openai_key = os.getenv("OPENAI_API_KEY")
         if openai_key:
@@ -531,25 +437,13 @@ def call_llm(groq_client: Any, messages: List[Dict[str, str]],
                 return c.strip() if c else None
             except Exception as e:
                 print(f"[AI] OpenAI error: {e}")
-        if groq_client:
-            try:
-                resp = groq_client.chat.completions.create(
-                    model="llama-3.3-70b-versatile", messages=messages,
-                    temperature=0.35, max_tokens=max_tokens,
-                )
-                c = resp.choices[0].message.content
-                return c.strip() if c else None
-            except Exception as e:
-                print(f"[AI] Groq error: {e}")
         return None
 
     start = time.monotonic()
     try:
         result = _run()
-        if time.monotonic() - start > DEFAULT_TIMEOUT_SEC:
-            return None
-        if not result:
-            return None
+        if time.monotonic() - start > DEFAULT_TIMEOUT_SEC: return None
+        if not result: return None
         result = str(result).strip()
         if len(result) >= max_tokens * 3:
             result += "\n\n⚠️ *Response trimmed — ask a follow-up for details.*"
@@ -558,17 +452,13 @@ def call_llm(groq_client: Any, messages: List[Dict[str, str]],
         print(f"[AI ERROR] {e}")
         return None
 
-
-# ── Memory extraction ─────────────────────────────────────────────────────────
-
-def extract_conversation_memories(groq_client: Any, user_message: str, ai_reply: str) -> List[str]:
+def extract_conversation_memories(user_message: str, ai_reply: str) -> List[str]:
     health_indicators = [
         "supplement", "medication", "doctor", "appointment", "symptom", "fatigue",
         "diet", "exercise", "concern", "worried", "family history", "blood pressure",
         "taking", "prescribed", "sleep", "stress", "weight", "insulin", "metformin",
         "walking", "gym", "calories", "insurance", "denied", "glp",
         "wegovy", "ozempic", "zepbound", "mounjaro", "prior auth",
-        # GLP-1 maintenance specific
         "stopped", "off meds", "taper", "food noise", "hunger", "cravings",
         "protein", "resistance training", "muscle", "plateau",
     ]
@@ -586,25 +476,25 @@ Rules:
 - Short, clear. Max 100 chars each.
 - Return ONLY a JSON array: ["User stopped Wegovy 3 weeks ago", "User reports intense food noise returning"]
 - Empty array [] if no relevant facts."""
+    
+    openai_key = os.getenv("OPENAI_API_KEY")
+    if not openai_key: return []
     try:
-        if groq_client:
-            resp = groq_client.chat.completions.create(
-                model="llama-3.1-8b-instant",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.0, max_tokens=250,
-            )
-            raw   = resp.choices[0].message.content.strip()
-            match = re.search(r'\[.*\]', raw, re.DOTALL)
-            if match:
-                parsed = json.loads(match.group(0))
-                if isinstance(parsed, list):
-                    return [str(f)[:200] for f in parsed if isinstance(f, str) and len(f) > 5]
+        from openai import OpenAI
+        resp = OpenAI(api_key=openai_key).chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.0, max_tokens=250,
+        )
+        raw   = resp.choices[0].message.content.strip()
+        match = re.search(r'\[.*\]', raw, re.DOTALL)
+        if match:
+            parsed = json.loads(match.group(0))
+            if isinstance(parsed, list):
+                return [str(f)[:200] for f in parsed if isinstance(f, str) and len(f) > 5]
     except Exception as e:
         print(f"[MEMORY] Extraction error: {e}")
     return []
-
-
-# ── Chat persistence ──────────────────────────────────────────────────────────
 
 def save_chat_turn(supabase: Any, user_id: str, conversation_id: str,
                    user_msg: str, ai_reply: str, is_phi: bool = False):
@@ -618,9 +508,7 @@ def save_chat_turn(supabase: Any, user_id: str, conversation_id: str,
     except Exception as e:
         print(f"[CHAT SAVE ERROR] {e}")
 
-
-def generate_doctor_prep(groq_client: Any, document_text: str,
-                         markers: List[Dict], user_name: str) -> str:
+def generate_doctor_prep(document_text: str, markers: List[Dict], user_name: str) -> str:
     abnormal = [m for m in (markers or []) if m.get("status") in ("HIGH", "LOW")]
     labs_text = "\n".join(
         f"  • {m.get('marker', m.get('marker_name','?'))}: "
@@ -653,5 +541,5 @@ Format:
 
 Under 250 words. End: "⚕️ PHI is an educational wellness tool. Always consult your provider."
 """
-    result = call_llm(groq_client, [{"role": "user", "content": prompt}], max_tokens=500)
+    result = call_llm([{"role": "user", "content": prompt}], max_tokens=500)
     return result or f"{prefix} is your GLP-1 Maintenance doctor visit brief."

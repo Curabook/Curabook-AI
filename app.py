@@ -1,24 +1,3 @@
-"""
-app.py — Safety-hardened
-FIXES APPLIED:
-  #H2  — ENCRYPTION_KEY is now a hard startup failure if not set
-  #M5  — Removed duplicate init_workers() call
-  #H5  — Rate limiter documented as single-process only; warning printed
-  #H1  — /api/config moved to compliance_routes.py (auth-protected)
-  #BP-1 — Blueprint name collision fixed
-  #CORS-1 — CORS headers now applied on ALL responses including 500s.
-            Flask's after_request hook may not fire when errorhandler
-            returns — so CORS is set inside handle_exception too.
-  #CORS-2 — OPTIONS preflight requests now handled before auth/rate checks.
-  #BUG-CORS-404 — Added 404 handler with CORS headers so preflight
-                  requests to unknown routes don't return bare 404s.
-  #FIX-BP-SHADOW — Removed duplicate blueprint re-registrations with
-                   url_prefix="/api/v1" that were shadowing the original
-                   routes. Flask 2.x cannot re-register the same blueprint
-                   object with a different url_prefix — it silently breaks
-                   the original routes (e.g. POST /chat becomes unreachable).
-"""
-
 import os
 import time
 from collections import defaultdict
@@ -34,7 +13,6 @@ print("🚀 Using environment variables")
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")
 if not ENCRYPTION_KEY:
@@ -62,20 +40,11 @@ if not SUPABASE_SERVICE_KEY:
 
 # ── AI clients ────────────────────────────────────────────────────────────────
 _openai_key = os.getenv("OPENAI_API_KEY")
-_groq_key   = os.getenv("GROQ_API_KEY")
 
 if _openai_key:
     print("✅  OpenAI configured (primary AI)")
-elif _groq_key:
-    print("✅  Groq configured (add OPENAI_API_KEY for better quality)")
 else:
     print("⚠️  No AI key found. Add OPENAI_API_KEY to .env")
-
-try:
-    from groq import Groq
-    groq_client = Groq(api_key=_groq_key) if _groq_key else None
-except Exception:
-    groq_client = None
 
 # ── Supabase singleton ────────────────────────────────────────────────────────
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
@@ -164,13 +133,7 @@ CORS(
 print(f"✅  CORS configured for: {_allowed_origins}")
 
 
-# ── CORS helper — applied on ALL responses ────────────────────────────────────
 def _apply_cors(response):
-    """
-    Apply CORS headers to any response object. Safe to call multiple times.
-    This is the belt-and-suspenders approach: flask_cors handles normal responses,
-    but error handlers may bypass after_request, so we call this explicitly there.
-    """
     origin = request.headers.get("Origin", "")
     if origin:
         response.headers["Access-Control-Allow-Origin"]      = origin
@@ -182,10 +145,8 @@ def _apply_cors(response):
     return response
 
 
-# ── OPTIONS preflight — must respond before any auth or rate-limit check ──────
 @app.before_request
 def handle_options_preflight():
-    """Return 200 immediately for all OPTIONS requests."""
     if request.method == "OPTIONS":
         resp = make_response("", 200)
         _apply_cors(resp)
@@ -193,7 +154,6 @@ def handle_options_preflight():
         return resp
 
 
-# ── Security headers ──────────────────────────────────────────────────────────
 @app.after_request
 def add_security_headers(response):
     _apply_cors(response)
@@ -207,7 +167,6 @@ def add_security_headers(response):
     return response
 
 
-# ── Rate limiting middleware ──────────────────────────────────────────────────
 @app.before_request
 def check_rate_limit():
     track("requests_total")
@@ -227,7 +186,6 @@ def check_rate_limit():
             return resp
 
 
-# ── Blueprints ────────────────────────────────────────────────────────────────
 from services.job_queue import init_workers
 init_workers(num_workers=int(os.getenv("WORKER_COUNT", "1")))
 
@@ -241,11 +199,6 @@ from api.intelligence_routes import intelligence_bp
 from api.cron_routes         import cron_bp
 from api.startup_routes import startup_bp
 
-# Register blueprints ONCE — no url_prefix duplicates.
-# FIX #FIX-BP-SHADOW: The original code re-registered the same blueprint
-# objects with url_prefix="/api/v1", which in Flask 2.x silently shadows
-# the original routes. E.g. POST /chat would only resolve to /api/v1/chat,
-# making the frontend's calls to /chat return 404.
 app.register_blueprint(auth_bp)
 app.register_blueprint(chat_bp)
 app.register_blueprint(document_bp)
@@ -277,7 +230,7 @@ from api.retention_routes import retention_bp
 app.register_blueprint(retention_bp)
 print("✅  Retention routes ready")
 
-# ── Error handlers ────────────────────────────────────────────────────────────
+
 @app.errorhandler(429)
 def too_many_requests(e):
     resp = jsonify({"error": "Too many requests. Please slow down."})
@@ -287,12 +240,6 @@ def too_many_requests(e):
 
 @app.errorhandler(404)
 def not_found(e):
-    """
-    FIX #BUG-CORS-404: Without this, OPTIONS preflight to unknown routes returns
-    a bare 404 with no CORS headers, causing the browser to block the actual request
-    with a confusing CORS error rather than a 404. This handler adds CORS so the
-    real 404 reaches the frontend correctly.
-    """
     resp = jsonify({"error": "Not found"})
     resp.status_code = 404
     _apply_cors(resp)
@@ -312,27 +259,22 @@ def handle_exception(e):
     track("errors_500")
     resp = jsonify({"error": "Something went wrong. Please try again."})
     resp.status_code = 500
-    # Manually apply CORS — after_request may not fire on unhandled exceptions
     _apply_cors(resp)
     return resp
 
 
-# ── Debug routes endpoint (dev only) ─────────────────────────────────────────
 @app.route("/debug/routes")
 def debug_routes():
-    """List all registered routes — useful to verify blueprint registration."""
     routes = [(r.rule, sorted(r.methods - {"HEAD", "OPTIONS"})) for r in app.url_map.iter_rules()]
     return jsonify(sorted(routes, key=lambda x: x[0]))
 
 
-# ── Health + monitoring endpoints ─────────────────────────────────────────────
 @app.route("/health", methods=["GET"])
 def health_check():
     from services.compliance import check_baa_compliance
     return jsonify({
         "status":           "healthy",
         "openai":           bool(_openai_key),
-        "groq":             bool(_groq_key),
         "supabase":         True,
         "rate_limiting":    True,
         "security_headers": True,
