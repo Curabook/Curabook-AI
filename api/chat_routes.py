@@ -2,7 +2,6 @@ import re
 import os
 import traceback
 import unicodedata
-import threading
 import json
 from datetime import datetime
 from flask import Blueprint, request, jsonify
@@ -27,7 +26,6 @@ def _sanitize(text: str) -> str:
 def _sort_by_priority(markers: list) -> list:
     order = {"HIGH": 0, "LOW": 1, "NORMAL": 2, "UNKNOWN": 3}
     return sorted(markers, key=lambda x: order.get(str(x.get("status", "")).upper(), 3))
-
 
 _GHRELIN_SIGNALS = [
     "food noise", "can't stop thinking about food", "hunger is back",
@@ -54,7 +52,6 @@ def _fast_cliff_context(user_message: str) -> str:
     if taper_count >= 1: parts.append("⚠ TAPER CONTEXT: User has stopped or is reducing GLP-1. Apply Maintenance overlay.")
 
     return "\n".join(parts) if parts else ""
-
 
 def _build_context(supabase, user_id: str, user_message: str = "") -> tuple[str, bool]:
     stored_block = ""
@@ -88,7 +85,6 @@ def _build_context(supabase, user_id: str, user_message: str = "") -> tuple[str,
     )
     return header + "\n\n".join(parts), True
 
-
 def _build_messages_safe(supabase, user_id, conversation_id, enriched_message, has_documents, health_context):
     try:
         from ai.system_prompt_v2 import build_phi_messages
@@ -115,7 +111,6 @@ def _build_messages_safe(supabase, user_id, conversation_id, enriched_message, h
     messages.append({"role": "user", "content": enriched_message})
     return messages
 
-
 def _call_llm_safe(messages: list) -> str:
     if not messages: return "I couldn't process that request. Please try again."
     
@@ -123,12 +118,21 @@ def _call_llm_safe(messages: list) -> str:
     if openai_key:
         try:
             from openai import OpenAI
-            resp = OpenAI(api_key=openai_key).chat.completions.create(model="gpt-4o-mini", messages=messages, temperature=0.35, max_tokens=1200)
+            # FIX: 15s timeout prevents Vercel from hanging infinitely.
+            client = OpenAI(api_key=openai_key, timeout=15.0)
+            resp = client.chat.completions.create(
+                model="gpt-4o-mini", 
+                messages=messages, 
+                temperature=0.35, 
+                max_tokens=1200
+            )
             return resp.choices[0].message.content.strip()
-        except Exception: pass
+        except Exception as e: 
+            print(f"[LLM ERROR] {e}")
+            # FIX: Expose exact OpenAI error to the user so you know if your billing/key is stuck
+            return f"⚠️ **OpenAI Error:** {str(e)}\n\n*(If you just added credits, you must generate a NEW API key in the OpenAI dashboard and add it to Vercel for it to work!)*"
 
-    return "I'm having trouble connecting to my AI engine right now. Please try again in a moment."
-
+    return "⚠️ I'm having trouble connecting to my AI engine. Please check your OPENAI_API_KEY."
 
 def _extract_and_log_metrics(user_message: str, user_id: str, supabase):
     openai_key = os.getenv("OPENAI_API_KEY")
@@ -142,20 +146,13 @@ def _extract_and_log_metrics(user_message: str, user_id: str, supabase):
     The user is reporting daily health metrics in a chat. Extract quantifiable data for 'protein' (grams), 'steps' (count), or 'sleep' (hours).
     Return ONLY a strict JSON array of objects with exactly these keys: "metric_name" (must be 'protein', 'steps', or 'sleep'), "value" (number), "unit" (string).
     If no concrete numbers are reported, return an empty array [].
-    
-    Examples:
-    Input: "I walked 4000 steps today, slept for 7.5 hours, and ate 110g of protein."
-    Output: [{"metric_name": "steps", "value": 4000, "unit": "steps"}, {"metric_name": "sleep", "value": 7.5, "unit": "hours"}, {"metric_name": "protein", "value": 110, "unit": "g"}]
     """
-    
     try:
         from openai import OpenAI
-        resp = OpenAI(api_key=openai_key).chat.completions.create(
+        client = OpenAI(api_key=openai_key, timeout=5.0)
+        resp = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": prompt},
-                {"role": "user", "content": user_message[:600]}
-            ],
+            messages=[{"role": "system", "content": prompt}, {"role": "user", "content": user_message[:600]}],
             temperature=0.0, max_tokens=150
         )
         
@@ -173,17 +170,10 @@ def _extract_and_log_metrics(user_message: str, user_id: str, supabase):
                 
                 if name in ["protein", "steps", "sleep"] and isinstance(val, (int, float)):
                     supabase.table("behavioral_logs").insert({
-                        "user_id": user_id,
-                        "date": date_str,
-                        "metric_name": name,
-                        "value": float(val),
-                        "unit": unit
+                        "user_id": user_id, "date": date_str, "metric_name": name, "value": float(val), "unit": unit
                     }).execute()
-                    print(f"⚡ [ACTION CONNECTION] Automatically logged {name}: {val} {unit} for user {user_id}")
-                    
     except Exception as e:
         print(f"[ACTION CONNECTION ERROR] Failed to extract metrics: {e}")
-
 
 def _run_background_ops(supabase, user_id, conversation_id, user_message, ai_reply, doc_text_for_extraction):
     try:
@@ -201,15 +191,12 @@ def _run_background_ops(supabase, user_id, conversation_id, user_message, ai_rep
             save_conversation_memory(supabase, user_id, facts, conversation_id)
         except Exception: pass
 
-    try:
-        _extract_and_log_metrics(user_message, user_id, supabase)
-    except Exception as e:
-        print(f"[BG] Metric log error: {e}")
+    try: _extract_and_log_metrics(user_message, user_id, supabase)
+    except Exception: pass
 
     if doc_text_for_extraction:
         try: _extract_and_store_doc_markers(supabase, user_id, doc_text_for_extraction)
         except Exception: pass
-
 
 def _extract_facts_quick(user_message: str, ai_reply: str) -> list[str]:
     lower = user_message.lower()
@@ -229,7 +216,8 @@ def _extract_facts_quick(user_message: str, ai_reply: str) -> list[str]:
         try:
             if any(kw in lower for kw in ["protein", "steps", "sleep", "weight", "glucose"]):
                 from openai import OpenAI
-                resp = OpenAI(api_key=openai_key).chat.completions.create(
+                client = OpenAI(api_key=openai_key, timeout=5.0)
+                resp = client.chat.completions.create(
                     model="gpt-4o-mini",
                     messages=[
                         {"role": "system", "content": "Extract 0-2 health facts. Return ONLY a JSON array of short strings."},
@@ -243,7 +231,6 @@ def _extract_facts_quick(user_message: str, ai_reply: str) -> list[str]:
         except Exception: pass
     return facts[:3]
 
-
 def _extract_and_store_doc_markers(supabase, user_id, doc_text):
     try:
         from health_memory.extractor import extract_health_markers
@@ -254,7 +241,6 @@ def _extract_and_store_doc_markers(supabase, user_id, doc_text):
             markers = force_us_units_batch(markers)
             store_health_markers(supabase, user_id, markers)
     except Exception: pass
-
 
 @chat_bp.route("/chat", methods=["POST"])
 def chat():
@@ -320,7 +306,8 @@ def chat():
     final_reply = reply + MANDATORY_DISCLAIMER
     doc_for_bg = document_text if is_fresh_document and not current_markers else None
     
-    threading.Thread(target=_run_background_ops, args=(supabase, user.id, conversation_id, message, final_reply, doc_for_bg), daemon=True).start()
+    # FIX: Run synchronously. Removed threading.Thread so Vercel doesn't deadlock the connection!
+    _run_background_ops(supabase, user.id, conversation_id, message, final_reply, doc_for_bg)
 
     return jsonify({"reply": final_reply, "has_health_data": has_health_data, "markers_found": len(current_markers)})
 
