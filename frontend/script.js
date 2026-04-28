@@ -90,6 +90,7 @@ async function handleLogout() {
 }
 
 /* ═══ BOOT ═══ */
+/* ═══ BOOT ═══ */
 async function boot() {
   try {
     _sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
@@ -106,14 +107,21 @@ async function boot() {
       }
     });
 
+    // 🔴 THE FIX: Listen for "INITIAL_SESSION" instead of manually calling getSession()
     _sb.auth.onAuthStateChange(async (event, session) => {
-      if (event === "SIGNED_IN" && session?.user && !_initialized) {
+      
+      // 1. User is already logged in or just signed in
+      if ((event === "INITIAL_SESSION" || event === "SIGNED_IN") && session?.user && !_initialized) {
         await onSignIn(session.user);
       }
+      
+      // 2. Token refreshed
       if (event === "TOKEN_REFRESHED" && session?.user) {
         _user = session.user;
         window._user = session.user;
       }
+      
+      // 3. User signed out
       if (event === "SIGNED_OUT" && !_redirecting) {
         _redirecting = true;
         _initialized = false;
@@ -122,16 +130,15 @@ async function boot() {
         _convId = null;
         window.location.replace("/login");
       }
+
+      // 4. Initial check finished, but nobody is logged in -> Kick to login
+      if (event === "INITIAL_SESSION" && !session?.user) {
+        if (!IS_LOCAL) {
+          window.location.replace("/login");
+        }
+      }
     });
 
-    const { data } = await _sb.auth.getSession();
-    if (data?.session?.user) {
-      if (!_initialized) await onSignIn(data.session.user);
-    } else {
-      if (!IS_LOCAL) {
-        window.location.replace("/login");
-      }
-    }
   } catch(err) {
     console.error("[PHI] Boot:", err);
     toast("Failed to initialize — please refresh.", "err");
