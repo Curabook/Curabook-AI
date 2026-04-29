@@ -9,12 +9,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-    :root {
-        --brand: #00C8E0; --brand-dark: #009db5; --text: #111111;
-        --muted: #6b7280; --border: #e5e7eb; --bg: #fafafa; --white: #ffffff;
-        --font: 'Plus Jakarta Sans','Segoe UI',sans-serif;
-        --serif: 'Instrument Serif',Georgia,serif;
-    }
+    :root { --brand: #00C8E0; --brand-dark: #009db5; --text: #111111; --muted: #6b7280; --border: #e5e7eb; --bg: #fafafa; --white: #ffffff; --font: 'Plus Jakarta Sans','Segoe UI',sans-serif; --serif: 'Instrument Serif',Georgia,serif; }
     body { font-family: var(--font); min-height: 100vh; display: flex; background: var(--bg); -webkit-font-smoothing: antialiased; }
     .left-panel { flex: 1; background: #0a0a0a; display: flex; flex-direction: column; justify-content: space-between; padding: 48px; position: relative; overflow: hidden; }
     .left-panel::before { content:''; position:absolute; top:-60px; right:-60px; width:360px; height:360px; background:radial-gradient(circle, rgba(0,200,224,.14) 0%, transparent 70%); pointer-events:none; }
@@ -39,7 +34,6 @@
     .form-label { display:block; font-size:13px; font-weight:600; color:var(--text); margin-bottom:7px; }
     .form-input { width:100%; padding:11px 13px; border:1.5px solid var(--border); border-radius:10px; font-size:14.5px; font-family:var(--font); color:var(--text); background:var(--white); outline:none; transition:border-color .2s,box-shadow .2s; }
     .form-input:focus { border-color:var(--brand); box-shadow:0 0 0 3px rgba(0,200,224,.1); }
-    .form-input::placeholder { color:#9ca3af; }
     .forgot-link { display:block; text-align:right; font-size:13px; color:var(--brand); text-decoration:none; margin-bottom:20px; margin-top:-8px; }
     .btn-primary { width:100%; padding:13px; background:var(--brand); color:white; border:none; border-radius:10px; font-size:15px; font-weight:600; font-family:var(--font); cursor:pointer; transition:all .15s; margin-bottom:16px; }
     .btn-primary:hover { background:var(--brand-dark); transform:translateY(-1px); }
@@ -132,23 +126,9 @@ let _supabase     = null;
 let _redirected   = false;
 let _termsShowing = false;
 
-function sanitizeLocalStorage() {
-    try {
-        Object.keys(localStorage)
-            .filter(k => k.startsWith("sb-") || k.includes("supabase") || k.includes("gotrue"))
-            .forEach(key => {
-                const raw = localStorage.getItem(key);
-                if (!raw) return;
-                try { JSON.parse(raw); }
-                catch { console.warn("[PHI] Clearing corrupt key:", key); localStorage.removeItem(key); }
-            });
-    } catch (e) { console.warn("[PHI] localStorage sanitize error:", e); }
-}
-
 function setStatus(msg, type = "") {
     const el = document.getElementById("status-msg");
-    el.textContent  = msg;
-    el.className    = "status-msg " + type;
+    el.textContent  = msg; el.className = "status-msg " + type;
 }
 
 function setLoading(btn, loading) {
@@ -156,23 +136,21 @@ function setLoading(btn, loading) {
     btn.innerHTML = loading ? '<span class="spinner"></span> Signing in…' : "Sign In";
 }
 
-// ── FIX: Redirects directly to /app ─────────────────────────
 function doRedirect() {
     if (_redirected || _termsShowing) return;
     _redirected = true;
     setStatus("Signing you in…", "success");
-    window.location.href = "/app";
+    window.location.href = "/";
 }
 
 async function saveConsentToBackend(accessToken) {
     try {
-        const resp = await fetch(`${API_BASE}/api/consent`, {
+        await fetch(`${API_BASE}/api/consent`, {
             method:  "POST",
             headers: { "Content-Type": "application/json", "Authorization": "Bearer " + accessToken },
             body:    JSON.stringify({ consents: ["data_processing", "ai_processing", "document_processing"] }),
         });
-        if (!resp.ok) console.warn("[CONSENT] Backend returned", resp.status);
-    } catch (err) { console.warn("[CONSENT] Non-fatal:", err); }
+    } catch (err) {}
 }
 
 function showGoogleTermsModal(user, session) {
@@ -195,10 +173,10 @@ function showGoogleTermsModal(user, session) {
             <div class="consent-badge"><i class="fa-solid fa-shield-halved"></i> HIPAA-Ready &nbsp;·&nbsp; GDPR Compliant</div>
             <label class="terms-row">
                 <input type="checkbox" id="googleTermsCheck">
-                <span>I agree to the <a href="/terms" target="_blank">Terms of Service</a> and <a href="/privacy" target="_blank">Privacy Policy</a>, and consent to PHI processing my health data as described.</span>
+                <span>I agree to the <a href="/terms" target="_blank">Terms of Service</a> and <a href="/privacy" target="_blank">Privacy Policy</a>, and consent to PHI processing my health data.</span>
             </label>
             <div class="terms-modal-actions">
-                <button class="btn-decline" id="declineBtn">Decline &amp; Sign Out</button>
+                <button class="btn-decline" id="declineBtn">Decline</button>
                 <button class="btn-accept" id="acceptBtn">Accept &amp; Enter PHI</button>
             </div>
         </div>`;
@@ -206,97 +184,56 @@ function showGoogleTermsModal(user, session) {
 
     document.getElementById("declineBtn").addEventListener("click", async () => {
         await _supabase.auth.signOut();
-        overlay.remove();
-        _termsShowing = false;
+        overlay.remove(); _termsShowing = false;
         setStatus("You must accept the terms to use Curabook PHI.", "error");
     });
 
     document.getElementById("acceptBtn").addEventListener("click", async () => {
         if (!document.getElementById("googleTermsCheck").checked) {
-            overlay.querySelector(".terms-row").style.color = "#ef4444";
-            return;
+            overlay.querySelector(".terms-row").style.color = "#ef4444"; return;
         }
-        const btn = document.getElementById("acceptBtn");
-        btn.disabled  = true;
-        btn.innerHTML = '<span class="spinner"></span> Saving…';
-
+        document.getElementById("acceptBtn").innerHTML = '<span class="spinner"></span> Saving…';
         localStorage.setItem(`phi_terms_${user.id}`, Date.now().toString());
-
-        if (session?.access_token) {
-            await saveConsentToBackend(session.access_token);
-        }
-
-        overlay.remove();
-        _termsShowing = false;
+        if (session?.access_token) await saveConsentToBackend(session.access_token);
+        overlay.remove(); _termsShowing = false;
         doRedirect();
     });
 }
 
 document.getElementById("loginBtn").addEventListener("click", async () => {
-    const email    = document.getElementById("email").value.trim();
+    const email = document.getElementById("email").value.trim();
     const password = document.getElementById("password").value;
-    const btn      = document.getElementById("loginBtn");
+    const btn = document.getElementById("loginBtn");
     if (!email || !password) { setStatus("Please enter your email and password.", "error"); return; }
     setLoading(btn, true);
     try {
         const { data, error } = await _supabase.auth.signInWithPassword({ email, password });
         if (error) { setStatus(error.message, "error"); setLoading(btn, false); return; }
-    } catch (err) {
-        console.error("[LOGIN]", err);
-        setStatus("Something went wrong. Please try again.", "error");
-        setLoading(btn, false);
-    }
+    } catch (err) { setStatus("Something went wrong.", "error"); setLoading(btn, false); }
 });
 
-document.addEventListener("keydown", e => {
-    if (e.key === "Enter" && !document.querySelector(".terms-modal-overlay")) {
-        document.getElementById("loginBtn").click();
-    }
-});
-
-document.getElementById("forgotLink").addEventListener("click", async e => {
-    e.preventDefault();
-    const email = document.getElementById("email").value.trim();
-    if (!email) { setStatus("Enter your email address first.", "error"); return; }
-    try {
-        const { error } = await _supabase.auth.resetPasswordForEmail(email, {
-            redirectTo: `${window.location.origin}/login`,
-        });
-        if (error) { setStatus(error.message, "error"); return; }
-        setStatus("Password reset email sent. Check your inbox.", "success");
-    } catch { setStatus("Could not send reset email. Try again.", "error"); }
-});
+document.addEventListener("keydown", e => { if (e.key === "Enter" && !document.querySelector(".terms-modal-overlay")) document.getElementById("loginBtn").click(); });
 
 document.getElementById("googleBtn").addEventListener("click", async () => {
     try {
         await _supabase.auth.signInWithOAuth({
             provider: "google",
-            options: { redirectTo: `${window.location.origin}/app` },
+            options: { redirectTo: `${window.location.origin}/login` }, 
         });
-    } catch { setStatus("Google sign-in unavailable. Try email instead.", "error"); }
+    } catch { setStatus("Google sign-in unavailable.", "error"); }
 });
 
 (async function boot() {
     try {
-        sanitizeLocalStorage();
-
         _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
-            auth: {
-                detectSessionInUrl: true, 
-                persistSession:     true,
-                flowType:           "implicit",
-            },
+            auth: { detectSessionInUrl: true, persistSession: true, flowType: "implicit" },
         });
 
-        const { data: { subscription } } = _supabase.auth.onAuthStateChange(async (event, session) => {
-            console.log("[AUTH]", event, session?.user?.email);
-
+        _supabase.auth.onAuthStateChange(async (event, session) => {
             if (event === "SIGNED_IN" && session?.user) {
-                const user      = session.user;
-                const isGoogle  = user.app_metadata?.provider === "google";
-                const termsKey  = `phi_terms_${user.id}`;
-
-                if (isGoogle && !localStorage.getItem(termsKey)) {
+                const user = session.user;
+                const termsKey = `phi_terms_${user.id}`;
+                if (!localStorage.getItem(termsKey)) {
                     showGoogleTermsModal(user, session);
                     return;
                 }
@@ -308,21 +245,15 @@ document.getElementById("googleBtn").addEventListener("click", async () => {
         if (!hasOAuthHash) {
             const { data: { session } } = await _supabase.auth.getSession();
             if (session?.user) {
-                const user     = session.user;
-                const isGoogle = user.app_metadata?.provider === "google";
-                const termsKey = `phi_terms_${user.id}`;
-                if (isGoogle && !localStorage.getItem(termsKey)) {
-                    showGoogleTermsModal(user, session);
+                const termsKey = `phi_terms_${session.user.id}`;
+                if (!localStorage.getItem(termsKey)) {
+                    showGoogleTermsModal(session.user, session);
                     return;
                 }
                 doRedirect();
             }
         }
-
-    } catch (err) {
-        console.error("[LOGIN BOOT]", err);
-        setStatus("App failed to load. Please refresh the page.", "error");
-    }
+    } catch (err) { setStatus("App failed to load.", "error"); }
 })();
 </script>
 </body>
