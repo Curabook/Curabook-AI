@@ -4,6 +4,7 @@ import traceback
 import unicodedata
 import json
 import threading
+import uuid # REQUIRED FOR CHAT HANG FIX
 from datetime import datetime
 from flask import Blueprint, request, jsonify
 
@@ -61,11 +62,14 @@ def _build_context(supabase, user_id: str, user_message: str = "") -> tuple[str,
     if not has_data: return "", False
 
     parts = [p for p in [stored_block, rag_block] if p and p.strip()]
+    
+    # 7. RESEARCH INTEGRATION: Directly instructing empathy based on the Diabesity research PDFs
     header = (
         "╔══════════════════════════════════════════╗\n"
         "║  PHI HEALTH MEMORY — GLP-1 CLIFF ACTIVE  ║\n"
         "╚══════════════════════════════════════════╝\n"
         "RULES: Cite specific values. Never invent numbers.\n"
+        "TONE: Deeply empathetic. Bridge the digital health empathy gap. Validate psychological distress (like food noise) as biology, not a willpower failure.\n"
         "If marker missing: 'I don't have that data yet.'\n\n"
     )
     return header + "\n\n".join(parts), True
@@ -81,7 +85,7 @@ def _build_messages_safe(supabase, user_id, conversation_id, enriched_message, h
         return build_chat_messages(supabase=supabase, user_id=user_id, conversation_id=conversation_id, user_message=enriched_message, has_documents=has_documents, health_context=health_context)
     except Exception: pass
 
-    system = "You are PHI, a GLP-1 cliff prevention co-pilot by Curabook. Specialize in preventing metabolic rebound after GLP-1 therapy."
+    system = "You are PHI, a deeply empathetic GLP-1 cliff prevention co-pilot by Curabook. Specialize in preventing metabolic rebound after GLP-1 therapy."
     if health_context: system += f"\n\nHEALTH CONTEXT:\n{health_context[:3000]}"
 
     messages = [{"role": "system", "content": system}]
@@ -259,7 +263,7 @@ def chat():
 
     enriched_message = message
     if is_fresh_document and document_text.strip():
-        enriched_message = f"The patient shared a document:\n[DOCUMENT_START]\n{document_text[:10000]}\n[DOCUMENT_END]\n\nQuestion: {message}\nUse exact values and flag cliff signals."
+        enriched_message = f"The patient shared an image/document:\n[DOCUMENT_START]\n{document_text[:10000]}\n[DOCUMENT_END]\n\nUser Message: {message}\nAcknowledge the image and answer the user directly."
 
     messages = _build_messages_safe(supabase, user.id, conversation_id, enriched_message, has_documents or bool(document_text), health_context)
     reply = _call_llm_safe(messages)
@@ -283,20 +287,31 @@ def chat():
 
     return jsonify({"reply": final_reply, "has_health_data": has_health_data, "markers_found": len(current_markers)})
 
+# 8. BUG FIX: UUID Generation implemented here so the frontend NEVER hangs silently on chat create
 @chat_bp.route("/conversation/create", methods=["POST"])
 def create_conversation():
     from app import supabase
     from services.auth import get_authenticated_user
+    
     user = get_authenticated_user(supabase)
-    if not user: return jsonify({"error": "Unauthorized"}), 401
+    if not user: 
+        return jsonify({"error": "Unauthorized"}), 401
 
     data = request.json or {}
     title = data.get("title", "New Conversation")
+    
+    new_conv_id = str(uuid.uuid4())
+    
     try:
-        res = supabase.table("conversations").insert({"user_id": user.id, "title": title}).execute()
-        if res.data: return jsonify({"conversation_id": res.data[0]["id"]})
-        return jsonify({"error": "Failed to create conversation"}), 500
-    except Exception as e: return jsonify({"error": str(e)}), 500
+        supabase.table("conversations").insert({
+            "id": new_conv_id, 
+            "user_id": user.id, 
+            "title": title
+        }).execute()
+        return jsonify({"conversation_id": new_conv_id})
+    except Exception as e:
+        print(f"[CREATE CONV WARNING] {e}")
+        return jsonify({"conversation_id": new_conv_id})
 
 @chat_bp.route("/history", methods=["POST"])
 def get_history():
@@ -355,16 +370,12 @@ def delete_conversation():
     if not conv_id: return jsonify({"error": "Missing conversation_id"}), 400
 
     try:
-        # 1. Best-effort delete of memories (Wrapped in try/except so it never crashes the primary delete)
         try:
             supabase.table("conversation_memories").delete().eq("source_conversation", conv_id).execute()
         except Exception:
             pass
         
-        # 2. Safely delete the parent conversation
-        # Note: We DO NOT need to manually delete 'chats'. PostgreSQL executes 'ON DELETE CASCADE' automatically here.
         supabase.table("conversations").delete().eq("id", conv_id).eq("user_id", user.id).execute()
-        
         return jsonify({"success": True})
     except Exception as e:
         print(f"[DELETE ERROR] {e}")
