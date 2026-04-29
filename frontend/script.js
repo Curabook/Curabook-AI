@@ -553,13 +553,15 @@ async function createConversation() {
     if (h2) ({ ok, status, data } = await doCreate(h2));
   }
   if (!ok && status === 401) { await handleUnauthorized(); return null; }
+  
   if (ok && data?.conversation_id) {
     _convId = data.conversation_id;
     prependHistory(_convId, "New Conversation");
     return _convId;
   }
-  if (IS_LOCAL) { _convId = "local-" + Date.now(); return _convId; }
-  toast("Could not start conversation. Try refreshing.", "err");
+  
+  // FIX: Removed IS_LOCAL database-crashing UUID hack
+  toast("Could not start conversation. Please check your backend connection.", "err");
   return null;
 }
 

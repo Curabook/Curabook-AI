@@ -48,8 +48,7 @@ def _build_context(supabase, user_id: str, user_message: str = "") -> tuple[str,
         from health_memory.memory import build_health_context_block
         stored_block = build_health_context_block(supabase, user_id) or ""
         has_data = bool(stored_block.strip())
-    except Exception as e:
-        pass
+    except Exception: pass
 
     rag_block = ""
     if not has_data and user_message.strip():
@@ -57,8 +56,7 @@ def _build_context(supabase, user_id: str, user_message: str = "") -> tuple[str,
             from health_memory.rag import rag_search
             rag_block = rag_search(supabase, user_message, user_id, top_k=3, threshold=0.65) or ""
             if rag_block: has_data = True
-        except Exception as e:
-            pass
+        except Exception: pass
 
     if not has_data: return "", False
 
@@ -76,8 +74,7 @@ def _build_messages_safe(supabase, user_id, conversation_id, enriched_message, h
     try:
         from ai.system_prompt_v2 import build_phi_messages
         return build_phi_messages(supabase=supabase, user_id=user_id, conversation_id=conversation_id, user_message=enriched_message, has_documents=has_documents, health_context=health_context)
-    except Exception as e:
-        pass
+    except Exception: pass
 
     try:
         from ai.chat import build_chat_messages
@@ -105,7 +102,6 @@ def _call_llm_safe(messages: list) -> str:
     if openai_key:
         try:
             from openai import OpenAI
-            # FIX: Increased timeout to 60s to prevent hanging on larger generations
             client = OpenAI(api_key=openai_key, timeout=60.0) 
             resp = client.chat.completions.create(
                 model="gpt-4o-mini", 
@@ -154,8 +150,7 @@ def _extract_and_log_metrics(user_message: str, user_id: str, supabase):
                     supabase.table("behavioral_logs").insert({
                         "user_id": user_id, "date": date_str, "metric_name": name, "value": float(val), "unit": unit
                     }).execute()
-    except Exception as e:
-        print(f"[ACTION CONNECTION ERROR] Failed to extract metrics: {e}")
+    except Exception as e: print(f"[ACTION ERROR] {e}")
 
 def _run_background_ops(supabase, user_id, conversation_id, user_message, ai_reply, doc_text_for_extraction):
     try:
@@ -173,10 +168,8 @@ def _run_background_ops(supabase, user_id, conversation_id, user_message, ai_rep
             save_conversation_memory(supabase, user_id, facts, conversation_id)
         except Exception: pass
 
-    try:
-        _extract_and_log_metrics(user_message, user_id, supabase)
-    except Exception as e:
-        print(f"[BG] Metric log error: {e}")
+    try: _extract_and_log_metrics(user_message, user_id, supabase)
+    except Exception: pass
 
     if doc_text_for_extraction:
         try: _extract_and_store_doc_markers(supabase, user_id, doc_text_for_extraction)
@@ -190,7 +183,6 @@ def _extract_facts_quick(user_message: str, ai_reply: str) -> list[str]:
             if med in lower:
                 facts.append(f"User stopped {med.title()} (self-reported)")
                 break
-
     if "goal weight" in lower:
         nums = re.findall(r'\b(\d{2,3})\s*(?:lbs?|pounds?)\b', lower)
         if nums: facts.append(f"User's goal weight is {nums[0]} lbs")
@@ -351,6 +343,7 @@ def rename_conversation():
         return jsonify({"success": True})
     except Exception as e: return jsonify({"error": str(e)}), 500
 
+
 @chat_bp.route("/delete", methods=["POST"])
 def delete_conversation():
     from app import supabase
@@ -362,13 +355,14 @@ def delete_conversation():
     if not conv_id: return jsonify({"error": "Missing conversation_id"}), 400
 
     try:
-        # FIX: Changed 'conversation_id' to 'source_conversation' to match your schema.sql
-        supabase.table("conversation_memories").delete().eq("source_conversation", conv_id).execute()
+        # 1. Best-effort delete of memories (Wrapped in try/except so it never crashes the primary delete)
+        try:
+            supabase.table("conversation_memories").delete().eq("source_conversation", conv_id).execute()
+        except Exception:
+            pass
         
-        # 'chats' table has 'on delete cascade' in your schema, but doing it explicitly is fine.
-        supabase.table("chats").delete().eq("conversation_id", conv_id).execute()
-        
-        # Now safely delete the parent conversation folder
+        # 2. Safely delete the parent conversation
+        # Note: We DO NOT need to manually delete 'chats'. PostgreSQL executes 'ON DELETE CASCADE' automatically here.
         supabase.table("conversations").delete().eq("id", conv_id).eq("user_id", user.id).execute()
         
         return jsonify({"success": True})
