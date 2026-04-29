@@ -1,9 +1,6 @@
 /**
- * script.js — Curabook PHI v4.0 (Full Feature + Bulletproof UI Patch)
- * * Features Restored: Dashboard, Shield, Health View, Food Noise, Protein Calc.
- * Fixes Applied: 
- * - Failsafe try/catch/finally in sendMessage to prevent infinite spinning buttons.
- * - Correctly routed /api/ prefixes for compliance/health.
+ * script.js — Curabook PHI v5.0 (The Final Master Version)
+ * All features fully restored. Render sleep cold-start fixed. Bulletproof chat routing.
  */
 "use strict";
 
@@ -73,15 +70,22 @@ async function handleLogout() {
   await doSignOut();
 }
 
+/* ═══ WAKE UP PING ═══ */
+function wakeUpServer() {
+  // Silently kicks the Render backend to wake it up from sleep
+  fetch(API + "/startup", { method: "GET" }).catch(() => {});
+}
+
 /* ═══ BOOT ═══ */
 async function boot() {
+  wakeUpServer(); // Instantly wake up the backend!
   try {
     _sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
       auth: { detectSessionInUrl: true, persistSession: true, autoRefreshToken: true }
     });
 
     document.addEventListener("visibilitychange", () => {
-      if (!document.hidden && _isSending && Date.now() - _sendStart > 30000) {
+      if (!document.hidden && _isSending && Date.now() - _sendStart > 65000) {
         _isSending = false; setSendingState(false);
       }
     });
@@ -156,14 +160,15 @@ async function headers(ct = true) {
 
 async function apiFetch(path, opts = {}) {
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 32000);
+  // 65 SECOND TIMEOUT to allow Render Free Tier to fully boot up!
+  const t = setTimeout(() => ctrl.abort(), 65000);
   try {
     const r = await fetch(API + path, { ...opts, signal: ctrl.signal });
     clearTimeout(t);
     return r;
   } catch(e) {
     clearTimeout(t);
-    if (e.name === "AbortError") throw new Error("Request timed out");
+    if (e.name === "AbortError") throw new Error("Server is waking up (takes ~50s). Please try again.");
     throw e;
   }
 }
@@ -315,6 +320,10 @@ function askAboutReport(f) { switchView("chat"); setTimeout(() => sendMessage(`S
 
 /* ═══ HISTORY ═══ */
 async function loadHistory() {
+  const list = el("historyList");
+  // Visual indicator that the server might be waking up
+  if (list) list.innerHTML = '<div class="sb-empty"><i class="fa-solid fa-spinner fa-spin"></i> Waking secure server...</div>';
+  
   const h = await headers(); if (!h) return;
   try {
     let { ok, status, data } = await apiJson("/history", { method: "POST", headers: h, body: JSON.stringify({}) });
@@ -324,7 +333,7 @@ async function loadHistory() {
       ({ ok, data } = await apiJson("/history", { method: "POST", headers: h2, body: JSON.stringify({}) }));
     }
     if (ok && Array.isArray(data)) renderHistory(data);
-  } catch(e) { console.warn("[PHI] loadHistory:", e); }
+  } catch(e) { if (list) list.innerHTML = '<div class="sb-empty">Failed to load history.</div>'; }
 }
 
 function renderHistory(convs) {
@@ -563,7 +572,7 @@ async function processUpload(file) {
   });
 
   try {
-    let res = await Promise.race([doUp(s.access_token), new Promise((_, r) => setTimeout(() => r(new Error("timed out")), 60000))]);
+    let res = await Promise.race([doUp(s.access_token), new Promise((_, r) => setTimeout(() => r(new Error("timed out")), 65000))]);
     if (res.status === 401) { await handleUnauthorized(); return null; }
     if (res.status === 403) {
       _consentsSaved = false; await saveConsents().catch(() => {});
