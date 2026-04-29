@@ -4,7 +4,7 @@ import traceback
 import unicodedata
 import json
 import threading
-import uuid # REQUIRED FOR CHAT HANG FIX
+import uuid
 from datetime import datetime
 from flask import Blueprint, request, jsonify
 
@@ -63,7 +63,6 @@ def _build_context(supabase, user_id: str, user_message: str = "") -> tuple[str,
 
     parts = [p for p in [stored_block, rag_block] if p and p.strip()]
     
-    # 7. RESEARCH INTEGRATION: Directly instructing empathy based on the Diabesity research PDFs
     header = (
         "╔══════════════════════════════════════════╗\n"
         "║  PHI HEALTH MEMORY — GLP-1 CLIFF ACTIVE  ║\n"
@@ -156,12 +155,75 @@ def _extract_and_log_metrics(user_message: str, user_id: str, supabase):
                     }).execute()
     except Exception as e: print(f"[ACTION ERROR] {e}")
 
+# SMART FIX: Unlocked memory extractor so it captures ALL context!
+def _extract_facts_quick(user_message: str, ai_reply: str) -> list[str]:
+    lower = user_message.lower()
+    facts = []
+    
+    if any(kw in lower for kw in ["stopped", "off meds", "discontinued"]):
+        for med in ["zepbound", "wegovy", "ozempic", "mounjaro", "tirzepatide", "semaglutide"]:
+            if med in lower:
+                facts.append(f"User stopped {med.title()} (self-reported)")
+                break
+    if "goal weight" in lower:
+        nums = re.findall(r'\b(\d{2,3})\s*(?:lbs?|pounds?)\b', lower)
+        if nums: facts.append(f"User's goal weight is {nums[0]} lbs")
+
+    openai_key = os.getenv("OPENAI_API_KEY")
+    # REMOVED THE KEYWORD LOCK! Now extracts facts from ANY message > 15 chars.
+    if openai_key and len(user_message) > 15:
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=openai_key, timeout=10.0)
+            prompt = (
+                "Extract 0-3 concise, permanent health facts about the user from their message "
+                "(e.g., chronic conditions, allergies, diet preferences, ongoing symptoms, lifestyle habits). "
+                "Do NOT extract questions or temporary feelings. "
+                "Return ONLY a strict JSON array of strings. If no permanent facts exist, return []."
+            )
+            resp = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": prompt},
+                    {"role": "user", "content": f"Message: {user_message[:800]}"},
+                ],
+                temperature=0.0, max_tokens=150,
+            )
+            raw = resp.choices[0].message.content.strip()
+            # Bulletproof JSON extraction
+            match = re.search(r'\[.*\]', raw, re.DOTALL)
+            if match:
+                parsed = json.loads(match.group(0))
+                if isinstance(parsed, list):
+                    facts.extend([str(f)[:200] for f in parsed])
+        except Exception as e:
+            print(f"[FACT EXTRACT ERROR] {e}")
+            
+    return list(set(facts))[:3]
+
+def _extract_and_store_doc_markers(supabase, user_id, doc_text):
+    try:
+        from health_memory.extractor import extract_health_markers
+        from health_memory.memory import store_health_markers
+        from services.unit_normalizer import force_us_units_batch
+        markers = extract_health_markers(doc_text[:8000], "chat_upload")
+        if markers:
+            markers = force_us_units_batch(markers)
+            store_health_markers(supabase, user_id, markers)
+    except Exception: pass
+
 def _run_background_ops(supabase, user_id, conversation_id, user_message, ai_reply, doc_text_for_extraction):
     try:
         from ai.chat import save_chat_turn
         save_chat_turn(supabase, user_id, conversation_id, user_message, ai_reply)
     except Exception as e: print(f"[BG] Chat save error: {e}")
 
+    # Extract markers first so memory cache invalidates correctly
+    if doc_text_for_extraction:
+        try: _extract_and_store_doc_markers(supabase, user_id, doc_text_for_extraction)
+        except Exception: pass
+
+    # Extract facts without limits
     facts = []
     try: facts = _extract_facts_quick(user_message, ai_reply)
     except Exception: pass
@@ -173,53 +235,6 @@ def _run_background_ops(supabase, user_id, conversation_id, user_message, ai_rep
         except Exception: pass
 
     try: _extract_and_log_metrics(user_message, user_id, supabase)
-    except Exception: pass
-
-    if doc_text_for_extraction:
-        try: _extract_and_store_doc_markers(supabase, user_id, doc_text_for_extraction)
-        except Exception: pass
-
-def _extract_facts_quick(user_message: str, ai_reply: str) -> list[str]:
-    lower = user_message.lower()
-    facts = []
-    if any(kw in lower for kw in ["stopped", "off meds", "discontinued"]):
-        for med in ["zepbound", "wegovy", "ozempic", "mounjaro", "tirzepatide", "semaglutide"]:
-            if med in lower:
-                facts.append(f"User stopped {med.title()} (self-reported)")
-                break
-    if "goal weight" in lower:
-        nums = re.findall(r'\b(\d{2,3})\s*(?:lbs?|pounds?)\b', lower)
-        if nums: facts.append(f"User's goal weight is {nums[0]} lbs")
-
-    openai_key = os.getenv("OPENAI_API_KEY")
-    if not facts and openai_key and len(user_message) > 30:
-        try:
-            if any(kw in lower for kw in ["protein", "steps", "sleep", "weight", "glucose"]):
-                from openai import OpenAI
-                client = OpenAI(api_key=openai_key, timeout=10.0)
-                resp = client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[
-                        {"role": "system", "content": "Extract 0-2 health facts. Return ONLY a JSON array of short strings."},
-                        {"role": "user", "content": f"Extract: {user_message[:600]}"},
-                    ],
-                    temperature=0.0, max_tokens=150,
-                )
-                import json
-                parsed = json.loads(resp.choices[0].message.content.strip().strip("```json").strip("```").strip())
-                if isinstance(parsed, list): facts.extend([str(f)[:200] for f in parsed])
-        except Exception: pass
-    return facts[:3]
-
-def _extract_and_store_doc_markers(supabase, user_id, doc_text):
-    try:
-        from health_memory.extractor import extract_health_markers
-        from health_memory.memory import store_health_markers
-        from services.unit_normalizer import force_us_units_batch
-        markers = extract_health_markers(doc_text[:8000], "chat_upload")
-        if markers:
-            markers = force_us_units_batch(markers)
-            store_health_markers(supabase, user_id, markers)
     except Exception: pass
 
 @chat_bp.route("/chat", methods=["POST"])
@@ -287,7 +302,6 @@ def chat():
 
     return jsonify({"reply": final_reply, "has_health_data": has_health_data, "markers_found": len(current_markers)})
 
-# 8. BUG FIX: UUID Generation implemented here so the frontend NEVER hangs silently on chat create
 @chat_bp.route("/conversation/create", methods=["POST"])
 def create_conversation():
     from app import supabase

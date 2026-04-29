@@ -2,14 +2,7 @@
 health_memory/memory.py
 ─────────────────────────────────────────────────────────────────────────────
 FIX #CACHE-CONTEXT: build_health_context_block() now caches the result in
-    a module-level dict for 90 seconds. Previously this function made 4
-    sequential DB calls on EVERY chat turn, adding ~300-500ms of DB latency
-    to every single response. With caching, only the first request per
-    90-second window hits the database.
-
-FIX #DEMO-1  (preserved): user age and gender injected for sex-specific ranges.
-FIX #MEM-1   (preserved): source_conversation fallback for older schemas.
-FIX #MEM-2   (preserved): clean retry loop with full error transparency.
+    a module-level dict for 90 seconds. 
 """
 
 from __future__ import annotations
@@ -21,14 +14,13 @@ _STALE_DAYS    = 180
 _TREND_MIN_PCT = 10
 _MAX_MEMORIES  = 15
 
-# FIX #CACHE-CONTEXT: 90-second in-process cache for health context blocks
-# Key: user_id, Value: (context_str, timestamp)
+# Cache for health context blocks
 _context_cache: dict[str, tuple[str, float]] = {}
 _CONTEXT_CACHE_TTL = 90  # seconds
 
 
 def _invalidate_context_cache(user_id: str) -> None:
-    """Call this after storing new markers to force context refresh."""
+    """Call this after storing new markers or memories to force context refresh."""
     _context_cache.pop(user_id, None)
 
 
@@ -62,7 +54,6 @@ def store_health_markers(supabase, user_id: str, markers: list[dict]) -> int:
         except Exception as e:
             print(f"[MEMORY] Store error for {marker_name}: {e}")
     if stored:
-        # Invalidate context cache when new markers are stored
         _invalidate_context_cache(user_id)
         print(f"[MEMORY] Stored {stored}/{len(markers)} markers for {user_id[:8]}")
     return stored
@@ -211,7 +202,6 @@ def save_conversation_memory(
     if saved > 0 or dropped > 0:
         print(f"[MEMORY] Facts: {saved} saved, {dropped} dropped for {user_id[:8]}")
 
-    # Invalidate context cache after saving new memories
     if saved > 0:
         _invalidate_context_cache(user_id)
 
@@ -302,34 +292,22 @@ def synthesize_metabolic_story(latest: dict[str, dict], trends: list[dict]) -> s
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Layer 5 — Narrative Context Builder (with 90s cache)
+# Layer 5 — Narrative Context Builder
 # ══════════════════════════════════════════════════════════════════════════════
 
 def build_health_context_block(supabase, user_id: str) -> str:
-    """
-    Builds the complete health narrative for the LLM.
-    FIX #CACHE-CONTEXT: Result cached for 90 seconds to avoid 4 sequential
-    DB calls on every chat turn.
-    """
-    # Check cache first
     now_ts = time.monotonic()
     if user_id in _context_cache:
         cached_ctx, cached_ts = _context_cache[user_id]
         if now_ts - cached_ts < _CONTEXT_CACHE_TTL:
-            print(f"[MEMORY] Context cache HIT for {user_id[:8]}")
             return cached_ctx
 
-    # Cache miss — build from DB
-    print(f"[MEMORY] Context cache MISS for {user_id[:8]} — querying DB")
     result = _build_context_from_db(supabase, user_id)
-
-    # Cache the result
     _context_cache[user_id] = (result, now_ts)
     return result
 
 
 def _build_context_from_db(supabase, user_id: str) -> str:
-    """Inner function that actually queries the database."""
     try:
         latest   = get_latest_markers(supabase, user_id)
         trends   = get_health_trends(supabase, user_id)
@@ -340,11 +318,7 @@ def _build_context_from_db(supabase, user_id: str) -> str:
         return ""
 
     if not latest and not memories and not trends:
-        print(f"[MEMORY] No health data for {user_id[:8]}")
         return ""
-
-    print(f"[MEMORY] Context: {len(latest)} markers, {len(trends)} trends, "
-          f"{len(memories)} memories for {user_id[:8]}")
 
     lines = []
     today = date.today().isoformat()
@@ -408,6 +382,7 @@ def _build_context_from_db(supabase, user_id: str) -> str:
     if stale:
         lines.append(f"\n⏳ HISTORICAL (>6 months): {', '.join(list(stale.keys())[:5])}")
 
+    # CONVERSATION MEMORY IS NOW ACCURATELY CAPTURED AND DISPLAYED
     if memories:
         lines.append(f"\n💬 WHAT THIS PERSON HAS SHARED ({len(memories)} facts):")
         for fact in memories[:8]:
