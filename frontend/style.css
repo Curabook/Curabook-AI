@@ -373,7 +373,7 @@ body::before {
   height: 100%;
   background: var(--bg);
   transition: background .25s;
-  padding-bottom: var(--bottom-nav-h);
+  padding-bottom: 0; /* FIXED: Removed ghost padding for bottom nav */
 }
 
 /* ─── Topbar ─── */

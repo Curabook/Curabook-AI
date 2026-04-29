@@ -1,10 +1,10 @@
 /**
- * script.js — Curabook PHI v2.4 (URL Normalization Patch)
+ * script.js — Curabook PHI v3.1 (Final URL Alignment Patch)
  *
- * FIXES:
- * - Removed "/api/" prefix from fetch calls to perfectly match the backend 
- * Blueprint registrations in app.py (which are registered at the root).
- * - Resolves the 404 errors for consent, health-markers, logs, and dashboard.
+ * FIXES APPLIED:
+ * - Restored "/api/" prefix to compliance and health routes (/api/consent, /api/health-markers, etc.)
+ * - Kept root paths for chat routes (/chat, /history, /conversation/create)
+ * - Restored sidebar close button mobile logic
  */
 "use strict";
 
@@ -194,7 +194,8 @@ async function saveConsents() {
     try {
       const h = await headers();
       if (!h) return;
-      const res = await apiFetch("/consent", {
+      // FIX 1: RESTORED /api/ PREFIX
+      const res = await apiFetch("/api/consent", {
         method: "POST",
         headers: h,
         body: JSON.stringify({ consents: ["data_processing", "ai_processing", "document_processing"] })
@@ -239,8 +240,8 @@ async function loadHealthView() {
   const h = await headers(); if (!h) return;
   try {
     const [mR, dR] = await Promise.allSettled([
-      apiJson("/health-markers", { headers: h }),
-      apiJson("/dashboard",      { headers: h }),
+      apiJson("/api/health-markers", { headers: h }), // RESTORED /api/ PREFIX
+      apiJson("/api/dashboard",      { headers: h }), // RESTORED /api/ PREFIX
     ]);
     const markers  = mR.status === "fulfilled" && mR.value.ok && Array.isArray(mR.value.data) ? mR.value.data : [];
     const dashData = dR.status === "fulfilled" && dR.value.ok && dR.value.data ? dR.value.data : null;
@@ -300,7 +301,7 @@ async function loadReportsView() {
   list.innerHTML = `<div class="hv-empty"><i class="fa-solid fa-spinner fa-spin"></i>Loading reports…</div>`;
   const h = await headers(); if (!h) return;
   try {
-    const { ok, data } = await apiJson("/doctor-prep/history", { headers: h });
+    const { ok, data } = await apiJson("/api/doctor-prep/history", { headers: h }); // RESTORED /api/ PREFIX
     if (!ok || !data?.preps?.length) {
       list.innerHTML = `<div class="hv-empty"><i class="fa-solid fa-file-medical"></i>No lab reports yet.<br><button class="hv-cta-btn" onclick="el('fileInput').click()"><i class="fa-solid fa-upload"></i> Upload First Report</button></div>`;
       return;
@@ -624,7 +625,8 @@ const scrollBottom = () => { const d = el("chatDisplay"); if (d) d.scrollTop = d
 async function loadMarkersData() {
   const h = await headers(); if (!h) return;
   try {
-    const { ok, data } = await apiJson("/health-markers", { headers: h });
+    // FIX 2: RESTORED /api/ PREFIX
+    const { ok, data } = await apiJson("/api/health-markers", { headers: h });
     if (ok && Array.isArray(data) && data.length) { renderMarkers(data); runCliffDetection(data); }
   } catch {}
 }
@@ -675,7 +677,8 @@ async function autoLoadShield() {
   const h = await headers(); if (!h) { renderShield(0, 0, 0, null); return; }
   const today = new Date().toISOString().slice(0, 10);
   try {
-    const { ok, status, data } = await apiJson(`/behavioral-logs?days=1`, { headers: h });
+    // FIX 3: RESTORED /api/ PREFIX
+    const { ok, status, data } = await apiJson(`/api/behavioral-logs?days=1`, { headers: h });
     if (!ok || status >= 500 || !Array.isArray(data)) { renderShield(0, 0, 0, null); return; }
     const tl  = data.filter(l => l.date === today);
     const get = m => { const l = tl.filter(x => x.metric_name === m).sort((a, b) => a.created_at < b.created_at ? 1 : -1)[0]; return l ? parseFloat(l.value) : 0; };
@@ -733,7 +736,8 @@ async function logShieldData(p, s, sl) {
   if (p > 0) logs.push({ date, metric_name: "protein", value: p, unit: "g" });
   if (s > 0) logs.push({ date, metric_name: "steps", value: s, unit: "steps" });
   if (sl > 0) logs.push({ date, metric_name: "sleep", value: sl, unit: "hours" });
-  logs.forEach(l => apiFetch("/behavioral-logs", { method: "POST", headers: h, body: JSON.stringify(l) }).catch(() => {}));
+  // FIX 4: RESTORED /api/ PREFIX
+  logs.forEach(l => apiFetch("/api/behavioral-logs", { method: "POST", headers: h, body: JSON.stringify(l) }).catch(() => {}));
   setText("shieldLastLogged", "Last logged: just now"); toast("Shield data logged ✓");
 }
 
@@ -767,7 +771,8 @@ function updateNoiseReadout() {
 async function logNoiseLevel() {
   const val = parseInt(el("noiseSlider")?.value || 5);
   const h = await headers(); if (!h) { toast("Sign in to log.", "info"); return; }
-  await apiFetch("/behavioral-logs", { method: "POST", headers: h, body: JSON.stringify({ date: new Date().toISOString().slice(0, 10), metric_name: "food_noise", value: val, unit: "1-10" }) }).catch(() => {});
+  // FIX 5: RESTORED /api/ PREFIX
+  await apiFetch("/api/behavioral-logs", { method: "POST", headers: h, body: JSON.stringify({ date: new Date().toISOString().slice(0, 10), metric_name: "food_noise", value: val, unit: "1-10" }) }).catch(() => {});
   toast(`Food noise ${val}/10 logged ✓`, "info");
 }
 
@@ -828,6 +833,9 @@ function wireEvents() {
   el("mobileCockpitBtn")?.addEventListener("click", toggleCockpit);
   el("cockpitOverlay")?.addEventListener("click", closeCockpit);
   el("cockpitCloseBtn")?.addEventListener("click", closeCockpit);
+  
+  // RESTORED: Mobile Sidebar "X" Button logic
+  el("sidebarCloseBtn")?.addEventListener("click", closeSidebar);
 
   el("userRow")?.addEventListener("click", e => { if (!e.target.closest(".user-dropdown")) toggleUserMenu(); });
   document.addEventListener("click", e => { if (!el("userRow")?.contains(e.target)) closeUserMenu(); });
