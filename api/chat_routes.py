@@ -105,7 +105,8 @@ def _call_llm_safe(messages: list) -> str:
     if openai_key:
         try:
             from openai import OpenAI
-            client = OpenAI(api_key=openai_key, timeout=15.0)
+            # FIX: Increased timeout to 60s to prevent hanging on larger generations
+            client = OpenAI(api_key=openai_key, timeout=60.0) 
             resp = client.chat.completions.create(
                 model="gpt-4o-mini", 
                 messages=messages, 
@@ -134,7 +135,7 @@ def _extract_and_log_metrics(user_message: str, user_id: str, supabase):
     """
     try:
         from openai import OpenAI
-        client = OpenAI(api_key=openai_key, timeout=5.0)
+        client = OpenAI(api_key=openai_key, timeout=10.0)
         resp = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "system", "content": prompt}, {"role": "user", "content": user_message[:600]}],
@@ -199,7 +200,7 @@ def _extract_facts_quick(user_message: str, ai_reply: str) -> list[str]:
         try:
             if any(kw in lower for kw in ["protein", "steps", "sleep", "weight", "glucose"]):
                 from openai import OpenAI
-                client = OpenAI(api_key=openai_key, timeout=5.0)
+                client = OpenAI(api_key=openai_key, timeout=10.0)
                 resp = client.chat.completions.create(
                     model="gpt-4o-mini",
                     messages=[
@@ -282,7 +283,6 @@ def chat():
     final_reply = reply + MANDATORY_DISCLAIMER
     doc_for_bg = document_text if is_fresh_document and not current_markers else None
     
-    # Run heavy extraction in a background thread so the HTTP response returns instantly
     bg_thread = threading.Thread(
         target=_run_background_ops,
         args=(supabase, user.id, conversation_id, message, final_reply, doc_for_bg)
@@ -362,11 +362,13 @@ def delete_conversation():
     if not conv_id: return jsonify({"error": "Missing conversation_id"}), 400
 
     try:
-        # FIX: Delete child messages and memories first to satisfy SQL foreign key constraints
-        supabase.table("chats").delete().eq("conversation_id", conv_id).execute()
-        supabase.table("conversation_memories").delete().eq("conversation_id", conv_id).execute()
+        # FIX: Changed 'conversation_id' to 'source_conversation' to match your schema.sql
+        supabase.table("conversation_memories").delete().eq("source_conversation", conv_id).execute()
         
-        # Now safely delete the empty conversation folder
+        # 'chats' table has 'on delete cascade' in your schema, but doing it explicitly is fine.
+        supabase.table("chats").delete().eq("conversation_id", conv_id).execute()
+        
+        # Now safely delete the parent conversation folder
         supabase.table("conversations").delete().eq("id", conv_id).eq("user_id", user.id).execute()
         
         return jsonify({"success": True})

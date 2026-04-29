@@ -5,7 +5,7 @@ from services.compliance import anonymize_for_llm
 
 MAX_HISTORY_MESSAGES = 12
 MAX_RESPONSE_TOKENS  = 1400
-DEFAULT_TIMEOUT_SEC  = 25
+DEFAULT_TIMEOUT_SEC  = 60 # Increased timeout to prevent hanging
 
 MANDATORY_DISCLAIMER = (
     "\n\n---\n"
@@ -499,12 +499,18 @@ Rules:
 def save_chat_turn(supabase: Any, user_id: str, conversation_id: str,
                    user_msg: str, ai_reply: str, is_phi: bool = False):
     try:
-        supabase.table("chats").insert([
+        # FIX: Sequential inserts with a sleep to ensure unique, ordered database timestamps.
+        supabase.table("chats").insert(
             {"user_id": user_id, "conversation_id": conversation_id,
-             "role": "user",      "content": str(user_msg  or "").strip()},
+             "role": "user",      "content": str(user_msg  or "").strip()}
+        ).execute()
+        
+        time.sleep(0.05)
+        
+        supabase.table("chats").insert(
             {"user_id": user_id, "conversation_id": conversation_id,
-             "role": "assistant", "content": str(ai_reply or "").strip()},
-        ]).execute()
+             "role": "assistant", "content": str(ai_reply or "").strip()}
+        ).execute()
     except Exception as e:
         print(f"[CHAT SAVE ERROR] {e}")
 
