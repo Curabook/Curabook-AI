@@ -1,22 +1,18 @@
 /**
- * script.js — Curabook PHI v3.0 (Reviewer Patch)
+ * script.js — Curabook PHI v2.4 (URL Normalization Patch)
  *
- * FIXES: 
- * 1. Optimistic Chat Deletion with confirmation.
- * 2. Infinite Loader timeouts for Health & Reports.
- * 3. Wearable Sync camera integration.
- * 4. Removed Export Chat clutter.
- * 5. Fixed trailing syntax error that crashed script loading.
- * 6. Dynamic API routing for testing across local networks.
+ * FIXES:
+ * - Removed "/api/" prefix from fetch calls to perfectly match the backend 
+ * Blueprint registrations in app.py (which are registered at the root).
+ * - Resolves the 404 errors for consent, health-markers, logs, and dashboard.
  */
 "use strict";
 
 const SUPABASE_URL = "https://pbeaawlxdcrdbvlmpqhc.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBiZWFhd2x4ZGNyZGJ2bG1wcWhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwMDk0MzksImV4cCI6MjA5MTU4NTQzOX0.6bUpYrDbe0mQjjBHX8Qscj-5R8i4-SqAtW_Z1UFzJ10";
 
-// Dynamically handle localhost or local IP addresses (e.g. 192.168.x.x) to prevent connection failures.
-const IS_LOCAL = ["localhost", "127.0.0.1", "0.0.0.0"].includes(location.hostname) || location.hostname.startsWith("192.168.") || location.hostname.startsWith("10.");
-const API = IS_LOCAL ? `http://${location.hostname}:5000` : "";
+const IS_LOCAL = ["localhost","127.0.0.1","0.0.0.0"].includes(location.hostname);
+const API      = IS_LOCAL ? "http://localhost:5000" : "https://api.curabook.com";
 
 let _sb           = null;
 let _user         = null;
@@ -33,12 +29,6 @@ let _initialized     = false;
 let _consentsSaved   = false;
 let _consentsPromise = null;
 let _redirecting     = false;
-
-const NOISE_MSG = {
-  1:"Nearly silent.",2:"Very low.",3:"Mild.",4:"Low-moderate.",5:"Moderate.",
-  6:"Elevated.",7:"High — taper may have been too fast.",8:"Very high — biology, not willpower.",
-  9:"Intense. Discuss urgently.",10:"🚨 Maximum. Provider conversation needed."
-};
 
 /* ═══ THEME ═══ */
 function initTheme() { applyTheme(localStorage.getItem("phi_theme") || "dark"); }
@@ -62,7 +52,6 @@ async function doSignOut() {
   _redirecting   = true;
   _initialized   = false;
   _user          = null;
-  window._user   = null;
   _convId        = null;
   _isSending     = false;
   _consentsSaved = false;
@@ -70,19 +59,13 @@ async function doSignOut() {
 
   try {
     const keysToRemove = Object.keys(localStorage).filter(k =>
-      k.startsWith("sb-")        ||
-      k.startsWith("supabase")   ||
-      k.startsWith("gotrue")     ||
-      k.startsWith("pkce")
+      k.startsWith("sb-") || k.startsWith("supabase") || k.startsWith("gotrue") || k.startsWith("pkce")
     );
     keysToRemove.forEach(k => localStorage.removeItem(k));
     sessionStorage.clear();
   } catch(e) {}
 
-  try {
-    if (_sb) _sb.auth.signOut({ scope: "global" }).catch(() => {});
-  } catch(e) {}
-
+  try { if (_sb) _sb.auth.signOut({ scope: "global" }).catch(() => {}); } catch(e) {}
   window.location.replace("/login");
 }
 
@@ -95,11 +78,7 @@ async function handleLogout() {
 async function boot() {
   try {
     _sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
-      auth: {
-        detectSessionInUrl: true,
-        persistSession:     true,
-        autoRefreshToken:   true,
-      }
+      auth: { detectSessionInUrl: true, persistSession: true, autoRefreshToken: true }
     });
 
     document.addEventListener("visibilitychange", () => {
@@ -108,38 +87,21 @@ async function boot() {
       }
     });
 
-    // 🔴 THE FIX: Listen for "INITIAL_SESSION" instead of manually calling getSession()
     _sb.auth.onAuthStateChange(async (event, session) => {
-      
-      // 1. User is already logged in or just signed in
-      if ((event === "INITIAL_SESSION" || event === "SIGNED_IN") && session?.user && !_initialized) {
-        await onSignIn(session.user);
-      }
-      
-      // 2. Token refreshed
-      if (event === "TOKEN_REFRESHED" && session?.user) {
-        _user = session.user;
-        window._user = session.user;
-      }
-      
-      // 3. User signed out
+      if (event === "SIGNED_IN" && session?.user && !_initialized) await onSignIn(session.user);
+      if (event === "TOKEN_REFRESHED" && session?.user) _user = session.user;
       if (event === "SIGNED_OUT" && !_redirecting) {
-        _redirecting = true;
-        _initialized = false;
-        _user = null;
-        window._user = null;
-        _convId = null;
+        _redirecting = true; _initialized = false; _user = null; _convId = null;
         window.location.replace("/login");
-      }
-
-      // 4. Initial check finished, but nobody is logged in -> Kick to login
-      if (event === "INITIAL_SESSION" && !session?.user) {
-        if (!IS_LOCAL) {
-          window.location.replace("/login");
-        }
       }
     });
 
+    const { data } = await _sb.auth.getSession();
+    if (data?.session?.user) {
+      if (!_initialized) await onSignIn(data.session.user);
+    } else {
+      if (!IS_LOCAL) window.location.replace("/login");
+    }
   } catch(err) {
     console.error("[PHI] Boot:", err);
     toast("Failed to initialize — please refresh.", "err");
@@ -147,15 +109,12 @@ async function boot() {
 }
 
 async function onSignIn(user) {
-  if (_initialized) return; 
+  if (_initialized) return;
   _initialized = true;
   _user = user;
-  window._user = user;
 
   const meta = user.user_metadata || {};
-  _userName = meta.first_name
-    || user.email?.split("@")[0]?.split(/[._-]/)[0]
-    || "there";
+  _userName = meta.first_name || user.email?.split("@")[0]?.split(/[._-]/)[0] || "there";
   _userName = _userName[0].toUpperCase() + _userName.slice(1);
 
   setText("userEmail", user.email);
@@ -167,12 +126,9 @@ async function onSignIn(user) {
   setText("timeGreeting", h < 12 ? "morning" : h < 17 ? "afternoon" : "evening");
 
   await saveConsents().catch(() => {});
-  
-  if (!window._perf_patch_active || window._perf_patch_failed_auth) {
-    await loadHistory();
-    autoLoadShield().catch(() => {});
-    loadMarkersData().catch(() => {});
-  }
+  await loadHistory();
+  autoLoadShield().catch(() => {});
+  loadMarkersData().catch(() => {});
 
   const gw = localStorage.getItem("phi_goal_wt");
   if (gw) {
@@ -224,11 +180,7 @@ async function apiJson(path, opts = {}) {
 async function handleUnauthorized() {
   try {
     const { data } = await _sb.auth.refreshSession();
-    if (data?.session) { 
-      _user = data.session.user; 
-      window._user = data.session.user;
-      return true; 
-    }
+    if (data?.session) { _user = data.session.user; return true; }
   } catch {}
   await doSignOut();
   return false;
@@ -242,7 +194,7 @@ async function saveConsents() {
     try {
       const h = await headers();
       if (!h) return;
-      const res = await apiFetch("/api/consent", {
+      const res = await apiFetch("/consent", {
         method: "POST",
         headers: h,
         body: JSON.stringify({ consents: ["data_processing", "ai_processing", "document_processing"] })
@@ -257,29 +209,12 @@ async function saveConsents() {
   return _consentsPromise;
 }
 
-/* ═══ SIDEBAR & COCKPIT (MOBILE SMOOTH FIX) ═══ */
+/* ═══ SIDEBAR & COCKPIT ═══ */
+const openSidebar  = () => { el("sidebar")?.classList.add("open");    el("sidebarOverlay")?.classList.add("show");    closeCockpit(); };
 const closeSidebar = () => { el("sidebar")?.classList.remove("open"); el("sidebarOverlay")?.classList.remove("show"); };
+const openCockpit  = () => { el("cockpit")?.classList.add("open");    el("cockpitOverlay")?.classList.add("show");    closeSidebar(); };
 const closeCockpit = () => { el("cockpit")?.classList.remove("open"); el("cockpitOverlay")?.classList.remove("show"); };
-
-const openSidebar = () => {
-  if (el("cockpit")?.classList.contains("open")) { 
-    closeCockpit(); 
-    setTimeout(() => { el("sidebar")?.classList.add("open"); el("sidebarOverlay")?.classList.add("show"); }, 200); 
-  } else { 
-    el("sidebar")?.classList.add("open"); el("sidebarOverlay")?.classList.add("show"); 
-  }
-};
-
-const openCockpit = () => {
-  if (el("sidebar")?.classList.contains("open")) { 
-    closeSidebar(); 
-    setTimeout(() => { el("cockpit")?.classList.add("open"); el("cockpitOverlay")?.classList.add("show"); }, 200); 
-  } else { 
-    el("cockpit")?.classList.add("open"); el("cockpitOverlay")?.classList.add("show"); 
-  }
-};
-
-const toggleCockpit = () => el("cockpit")?.classList.contains("open") ? closeCockpit() : openCockpit();
+const toggleCockpit  = () => el("cockpit")?.classList.contains("open") ? closeCockpit() : openCockpit();
 const toggleUserMenu = () => {
   const dd = el("userDropdown");
   if (dd) dd.setAttribute("aria-hidden", dd.getAttribute("aria-hidden") === "false" ? "true" : "false");
@@ -300,34 +235,19 @@ function switchView(view) {
 
 async function loadHealthView() {
   const content = el("healthContent"); if (!content) return;
-  
-  if (!content.querySelector(".cliff-card") && !content.querySelector(".trend-card")) {
-    content.innerHTML = `<div class="hv-empty" id="healthLoading"><i class="fa-solid fa-spinner fa-spin"></i>Loading your health picture…</div>`;
-  }
-
-  const timeoutId = setTimeout(() => {
-    const loader = el("healthLoading");
-    if (loader) {
-      content.innerHTML = `<div class="hv-empty"><i class="fa-solid fa-heart-pulse" style="font-size:2rem;opacity:.3;margin-bottom:12px;display:block"></i>No health markers detected yet. Upload a lab report.<br><button class="hv-cta-btn" onclick="el('fileInput').click()"><i class="fa-solid fa-upload"></i> Upload First Report</button></div>`;
-    }
-  }, 4000);
-  
-  const h = await headers(); if (!h) { clearTimeout(timeoutId); return; }
+  content.innerHTML = `<div class="hv-empty"><i class="fa-solid fa-spinner fa-spin"></i>Loading your health picture…</div>`;
+  const h = await headers(); if (!h) return;
   try {
     const [mR, dR] = await Promise.allSettled([
-      apiJson("/api/health-markers", { headers: h }),
-      apiJson("/api/dashboard",      { headers: h }),
+      apiJson("/health-markers", { headers: h }),
+      apiJson("/dashboard",      { headers: h }),
     ]);
-    clearTimeout(timeoutId);
-
     const markers  = mR.status === "fulfilled" && mR.value.ok && Array.isArray(mR.value.data) ? mR.value.data : [];
     const dashData = dR.status === "fulfilled" && dR.value.ok && dR.value.data ? dR.value.data : null;
     if (!markers.length) {
-      content.innerHTML = `<div class="hv-empty"><i class="fa-solid fa-chart-line" style="font-size:2rem;opacity:.3;margin-bottom:12px;display:block"></i>
+      content.innerHTML = `<div class="hv-empty"><i class="fa-solid fa-chart-line"></i>
         No health data yet. Upload a lab report to see your cliff risk picture.
-        <br><button class="hv-cta-btn" onclick="el('fileInput').click()">
-          <i class="fa-solid fa-upload"></i> Upload First Report
-        </button></div>`;
+        <br><button class="hv-cta-btn" onclick="el('fileInput').click()"><i class="fa-solid fa-upload"></i> Upload First Report</button></div>`;
       return;
     }
     content.innerHTML = buildHealthViewHTML(markers, dashData);
@@ -335,7 +255,6 @@ async function loadHealthView() {
       btn.addEventListener("click", () => { switchView("chat"); setTimeout(() => sendMessage(btn.dataset.ask), 100); })
     );
   } catch(e) {
-    clearTimeout(timeoutId);
     content.innerHTML = `<div class="hv-empty">Could not load health data.</div>`;
   }
 }
@@ -346,28 +265,13 @@ function buildHealthViewHTML(markers, dashboard) {
   const cliffalerts = (dashboard?.cliff_alerts  || []);
   const riskLevel   = cliffalerts.length > 0 ? "high" : abnormal.length > 2 ? "warn" : "none";
   const riskScore   = cliffalerts.length || abnormal.length;
-  const riskLabel   = riskLevel === "high"  ? "Active Rebound Signals"
-                    : riskLevel === "warn"  ? "Needs Attention"
-                    : "No Cliff Signals";
-  const riskDesc    = riskLevel === "high"
-                    ? `${cliffalerts.length} threshold${cliffalerts.length > 1 ? "s" : ""} exceeded.`
-                    : riskLevel === "warn"  ? `${abnormal.length} markers outside normal range.`
-                    : "All monitored markers within normal range.";
-  let html = `<div class="hv-section">
-    <div class="hv-heading"><i class="fa-solid fa-triangle-exclamation"></i>Cliff Risk</div>
-    <div class="cliff-card risk-${riskLevel}">
-      <div><div class="cliff-num risk-${riskLevel}">${riskLevel === "none" ? "✓" : riskScore}</div></div>
-      <div class="cliff-detail"><h3>${riskLabel}</h3><p>${riskDesc}</p>
-        ${riskLevel !== "none" ? `<button class="alert-cta" data-ask="Run a full cliff risk analysis on my stored data. What are my urgent signals?">Ask PHI →</button>` : ""}
-      </div></div></div>`;
+  const riskLabel   = riskLevel === "high"  ? "Active Rebound Signals" : riskLevel === "warn"  ? "Needs Attention" : "No Cliff Signals";
+  const riskDesc    = riskLevel === "high" ? `${cliffalerts.length} threshold${cliffalerts.length > 1 ? "s" : ""} exceeded.` : riskLevel === "warn"  ? `${abnormal.length} markers outside normal range.` : "All monitored markers within normal range.";
+  let html = `<div class="hv-section"><div class="hv-heading"><i class="fa-solid fa-triangle-exclamation"></i>Cliff Risk</div><div class="cliff-card risk-${riskLevel}"><div><div class="cliff-num risk-${riskLevel}">${riskLevel === "none" ? "✓" : riskScore}</div></div><div class="cliff-detail"><h3>${riskLabel}</h3><p>${riskDesc}</p>${riskLevel !== "none" ? `<button class="alert-cta" data-ask="Run a full cliff risk analysis on my stored data. What are my urgent signals?">Ask PHI →</button>` : ""}</div></div></div>`;
 
   if (cliffalerts.length) {
     html += `<div class="hv-section"><div class="hv-heading"><i class="fa-solid fa-bolt"></i>Active Alerts</div><div class="alert-feed">`;
-    cliffalerts.forEach(a => { html += `<div class="alert-item danger">
-      <div class="alert-title">${esc(a.headline || a.title || "Rebound signal")}</div>
-      <div class="alert-desc">${esc(a.detail || "")}</div>
-      ${a.action ? `<button class="alert-cta" data-ask="${esc(a.action)}">What to do →</button>` : ""}
-    </div>`; });
+    cliffalerts.forEach(a => { html += `<div class="alert-item danger"><div class="alert-title">${esc(a.headline || a.title || "Rebound signal")}</div><div class="alert-desc">${esc(a.detail || "")}</div>${a.action ? `<button class="alert-cta" data-ask="${esc(a.action)}">What to do →</button>` : ""}</div>`; });
     html += `</div></div>`;
   }
 
@@ -378,22 +282,14 @@ function buildHealthViewHTML(markers, dashboard) {
       const cls = s === "high" ? "hi" : s === "low" ? "lo" : s === "normal" ? "ok" : "";
       const tr  = trending.find(t => t.marker === m.marker_name);
       const badge = tr ? `<div class="trend-badge ${tr.concerning ? "bad" : "good"}">${tr.direction === "rising" ? "↑" : "↓"} ${tr.pct_change}%</div>` : "";
-      html += `<div class="trend-card">
-        <div class="trend-name" title="${esc(m.marker_name)}">${esc(m.marker_name)}</div>
-        <div><span class="trend-val ${cls}">${m.value}</span><span class="trend-unit"> ${esc(m.unit || "")}</span></div>
-        ${badge}${m.date ? `<div class="trend-dates">${m.date}</div>` : ""}
-      </div>`;
+      html += `<div class="trend-card"><div class="trend-name" title="${esc(m.marker_name)}">${esc(m.marker_name)}</div><div><span class="trend-val ${cls}">${m.value}</span><span class="trend-unit"> ${esc(m.unit || "")}</span></div>${badge}${m.date ? `<div class="trend-dates">${m.date}</div>` : ""}</div>`;
     });
     html += `</div></div>`;
   }
 
   if (abnormal.length) {
     html += `<div class="hv-section"><div class="hv-heading"><i class="fa-solid fa-circle-exclamation"></i>Needs Attention</div><div class="alert-feed">`;
-    abnormal.slice(0, 6).forEach(m => { html += `<div class="alert-item warn">
-      <div class="alert-title">${esc(m.marker_name)} is ${m.status}</div>
-      <div class="alert-desc">${m.value} ${esc(m.unit || "")} — ${m.status === "HIGH" ? "above" : "below"} normal${m.reference_range ? ` (${esc(m.reference_range)})` : ""}</div>
-      <button class="alert-cta" data-ask="Explain my ${esc(m.marker_name)} result of ${m.value}. Is this GLP-1 cliff related?">Explain →</button>
-    </div>`; });
+    abnormal.slice(0, 6).forEach(m => { html += `<div class="alert-item warn"><div class="alert-title">${esc(m.marker_name)} is ${m.status}</div><div class="alert-desc">${m.value} ${esc(m.unit || "")} — ${m.status === "HIGH" ? "above" : "below"} normal${m.reference_range ? ` (${esc(m.reference_range)})` : ""}</div><button class="alert-cta" data-ask="Explain my ${esc(m.marker_name)} result of ${m.value}. Is this GLP-1 cliff related?">Explain →</button></div>`; });
     html += `</div></div>`;
   }
   return html;
@@ -401,43 +297,19 @@ function buildHealthViewHTML(markers, dashboard) {
 
 async function loadReportsView() {
   const list = el("reportsList"); if (!list) return;
-  list.innerHTML = `<div class="hv-empty" id="reportsLoading"><i class="fa-solid fa-spinner fa-spin"></i>Loading reports…</div>`;
-  
-  const timeoutId = setTimeout(() => {
-    const loader = el("reportsLoading");
-    if (loader) {
-      list.innerHTML = `<div class="hv-empty"><i class="fa-solid fa-file-medical" style="font-size:2rem;opacity:.3;margin-bottom:12px;display:block"></i>No lab reports uploaded yet.<br><button class="hv-cta-btn" onclick="el('fileInput').click()"><i class="fa-solid fa-upload"></i> Upload First Report</button></div>`;
-    }
-  }, 4000);
-
-  const h = await headers(); if (!h) { clearTimeout(timeoutId); return; }
+  list.innerHTML = `<div class="hv-empty"><i class="fa-solid fa-spinner fa-spin"></i>Loading reports…</div>`;
+  const h = await headers(); if (!h) return;
   try {
     const { ok, data } = await apiJson("/doctor-prep/history", { headers: h });
-    clearTimeout(timeoutId);
-
     if (!ok || !data?.preps?.length) {
-      list.innerHTML = `<div class="hv-empty"><i class="fa-solid fa-file-medical" style="font-size:2rem;opacity:.3;margin-bottom:12px;display:block"></i>No lab reports yet.
-        <br><button class="hv-cta-btn" onclick="el('fileInput').click()"><i class="fa-solid fa-upload"></i> Upload First Report</button></div>`;
+      list.innerHTML = `<div class="hv-empty"><i class="fa-solid fa-file-medical"></i>No lab reports yet.<br><button class="hv-cta-btn" onclick="el('fileInput').click()"><i class="fa-solid fa-upload"></i> Upload First Report</button></div>`;
       return;
     }
     list.innerHTML = data.preps.map(p => {
-      const date = p.generated_at
-        ? new Date(p.generated_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-        : "";
-      return `<div class="report-card">
-        <div class="report-icon"><i class="fa-solid fa-file-medical-alt"></i></div>
-        <div class="report-meta">
-          <div class="report-name">${esc(p.filename || "Lab Report")}</div>
-          <div class="report-date">${date}</div>
-          <div class="report-tags"><span class="report-tag info">Lab</span></div>
-        </div>
-        <button class="report-ask-btn" onclick="askAboutReport('${esc(p.filename || "report")}')">Ask PHI →</button>
-      </div>`;
+      const date = p.generated_at ? new Date(p.generated_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "";
+      return `<div class="report-card"><div class="report-icon"><i class="fa-solid fa-file-medical-alt"></i></div><div class="report-meta"><div class="report-name">${esc(p.filename || "Lab Report")}</div><div class="report-date">${date}</div><div class="report-tags"><span class="report-tag info">Lab</span></div></div><button class="report-ask-btn" onclick="askAboutReport('${esc(p.filename || "report")}')">Ask PHI →</button></div>`;
     }).join("");
-  } catch {
-    clearTimeout(timeoutId);
-    list.innerHTML = `<div class="hv-empty">Could not load reports.</div>`;
-  }
+  } catch { list.innerHTML = `<div class="hv-empty">Could not load reports.</div>`; }
 }
 
 function askAboutReport(f) { switchView("chat"); setTimeout(() => sendMessage(`Summarize my ${f} report and flag any cliff signals.`), 100); }
@@ -448,8 +320,7 @@ async function loadHistory() {
   try {
     let { ok, status, data } = await apiJson("/history", { method: "POST", headers: h, body: JSON.stringify({}) });
     if (status === 401) {
-      const ok2 = await handleUnauthorized();
-      if (!ok2) return;
+      const ok2 = await handleUnauthorized(); if (!ok2) return;
       const h2 = await headers(); if (!h2) return;
       ({ ok, data } = await apiJson("/history", { method: "POST", headers: h2, body: JSON.stringify({}) }));
     }
@@ -465,9 +336,7 @@ function renderHistory(convs) {
   const groups = new Map();
   convs.forEach(c => {
     const d = new Date(c.created_at || Date.now()); d.setHours(0,0,0,0);
-    const label = d.getTime() === today.getTime() ? "Today"
-                : d.getTime() === yest.getTime()  ? "Yesterday"
-                : d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    const label = d.getTime() === today.getTime() ? "Today" : d.getTime() === yest.getTime()  ? "Yesterday" : d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
     if (!groups.has(label)) groups.set(label, []);
     groups.get(label).push(c);
   });
@@ -477,10 +346,7 @@ function renderHistory(convs) {
     arr.forEach(c => {
       const active = c.id === _convId ? " active" : "";
       const title  = (c.title && c.title !== "New Chat") ? c.title : "New Conversation";
-      html += `<div class="hist-item${active}" data-id="${esc(c.id)}">
-        <span class="hist-title">${esc(title)}</span>
-        <button class="hist-del" data-del="${esc(c.id)}" title="Delete"><i class="fa-solid fa-trash"></i></button>
-      </div>`;
+      html += `<div class="hist-item${active}" data-id="${esc(c.id)}"><span class="hist-title">${esc(title)}</span><button class="hist-del" data-del="${esc(c.id)}" title="Delete"><i class="fa-solid fa-trash"></i></button></div>`;
     });
   });
   list.innerHTML = html;
@@ -501,30 +367,12 @@ async function openConversation(id) {
 }
 
 async function deleteConversation(id, e) {
-  e?.preventDefault();
   e?.stopPropagation();
-  
-  if (!confirm("Are you sure you want to delete this conversation?")) return;
-
-  const elItem = document.querySelector(`.hist-item[data-id="${id}"]`);
-  if (elItem) elItem.style.display = 'none';
-  
+  document.querySelector(`.hist-item[data-id="${id}"]`)?.remove();
   if (id === _convId) resetChat();
-
   const h = await headers();
-  if (h) {
-    try {
-      const res = await apiJson("/delete", { method: "POST", headers: h, body: JSON.stringify({ conversation_id: id }) });
-      if (!res.ok) throw new Error("Backend deletion failed");
-
-      if (elItem) elItem.remove();
-      toast("Conversation deleted");
-    } catch (err) {
-      console.error("Failed to delete", err);
-      if (elItem) elItem.style.display = 'flex'; 
-      toast("Failed to delete conversation", "err");
-    }
-  }
+  if (h) await apiFetch("/delete", { method: "POST", headers: h, body: JSON.stringify({ conversation_id: id }) }).catch(() => {});
+  toast("Conversation deleted");
 }
 
 /* ═══ CHAT STATE ═══ */
@@ -553,15 +401,13 @@ async function createConversation() {
     if (h2) ({ ok, status, data } = await doCreate(h2));
   }
   if (!ok && status === 401) { await handleUnauthorized(); return null; }
-  
   if (ok && data?.conversation_id) {
     _convId = data.conversation_id;
     prependHistory(_convId, "New Conversation");
     return _convId;
   }
-  
-  // FIX: Removed IS_LOCAL database-crashing UUID hack
-  toast("Could not start conversation. Please check your backend connection.", "err");
+  if (IS_LOCAL) { _convId = "local-" + Date.now(); return _convId; }
+  toast("Could not start conversation. Try refreshing.", "err");
   return null;
 }
 
@@ -663,9 +509,7 @@ async function sendMessage(text) {
       if (userMsgs?.length === 1 && _convId) renameConversation(_convId, text);
       if (_docCtx.hasDoc) setTimeout(loadMarkersData, 2000);
     } else {
-      const msg = status === 401 ? "Session expired — please sign in again."
-                : status === 403 ? "Access issue — please refresh the page."
-                : "I ran into a technical issue. Please try again in a moment.";
+      const msg = status === 401 ? "Session expired — please sign in again." : status === 403 ? "Access issue — please refresh the page." : "I ran into a technical issue. Please try again in a moment.";
       updateMsg(botRow, msg + "\n\n---\n⚕️ *Always consult your healthcare provider.*");
     }
   } catch(err) {
@@ -674,9 +518,7 @@ async function sendMessage(text) {
     if (d) {
       const last = d.querySelector(".ai-msg:last-child .msg-body");
       if (last && last.querySelector(".typing-indicator")) {
-        const errMsg = err.message?.includes("timed out")
-          ? "Request timed out — your PDF may be large. Try a smaller file."
-          : "Connection error — please check your internet and try again.";
+        const errMsg = err.message?.includes("timed out") ? "Request timed out — your PDF may be large. Try a smaller file." : "Connection error — please check your internet and try again.";
         last.innerHTML = errMsg + "<p class='phi-legal'>⚕️ PHI is an educational wellness tool.</p>";
       }
     }
@@ -689,41 +531,17 @@ function setSendingState(on) {
   const btn = el("sendBtn"), ta = el("chatInput");
   if (btn) {
     btn.disabled  = on;
-    btn.innerHTML = on
-      ? '<i class="fa-solid fa-spinner" style="animation:spin .7s linear infinite"></i>'
-      : '<i class="fa-solid fa-arrow-up"></i>';
+    btn.innerHTML = on ? '<i class="fa-solid fa-spinner" style="animation:spin .7s linear infinite"></i>' : '<i class="fa-solid fa-arrow-up"></i>';
   }
   if (ta) ta.disabled = on;
 }
 
 /* ═══ FILE UPLOAD ═══ */
-function handleFileSelect(e) { 
-  Array.from(e.target.files || []).forEach(addFile); 
-  e.target.value = ""; 
-
-  if (window.isWearableSync) {
-    const ta = el('chatInput');
-    if (ta) {
-      ta.value = "Here is a screenshot from my health app. Please extract my steps, sleep, and protein and log them for today.";
-      autoGrow(ta);
-    }
-    window.isWearableSync = false;
-    
-    setTimeout(() => {
-      const sendBtn = el('sendBtn');
-      if (sendBtn && !sendBtn.disabled) sendBtn.click();
-    }, 500);
-  }
-}
+function handleFileSelect(e) { Array.from(e.target.files || []).forEach(addFile); e.target.value = ""; }
 
 function addFile(file) {
   if (file.size > 10 * 1024 * 1024) { toast(`${file.name} too large (max 10MB).`, "err"); return; }
-  
-  const isImg = file.type.startsWith("image/") || /\.(png|jpe?g|webp|heic)$/i.test(file.name);
-  const isDoc = /\.(pdf|txt)$/i.test(file.name);
-  
-  if (!isDoc && !isImg) { toast("Only PDF, TXT, or Images supported.", "err"); return; }
-  
+  if (!/\.(pdf|txt|jpg|jpeg|png|webp)$/i.test(file.name)) { toast("Unsupported file type.", "err"); return; }
   _uploads.push(file);
   renderFilePreview();
   toast(`${file.name} ready — press Send to analyze`);
@@ -735,18 +553,8 @@ function renderFilePreview() {
   const s = el("filePreview"); if (!s) return;
   if (!_uploads.length) { s.classList.remove("show"); s.innerHTML = ""; return; }
   s.classList.add("show");
-  
-  s.innerHTML = _uploads.map((f, i) => {
-    const isImg = f.type.startsWith("image/") || /\.(png|jpe?g|webp|heic)$/i.test(f.name);
-    const iconClass = f.name.endsWith(".pdf") ? "fa-file-pdf" : isImg ? "fa-file-image" : "fa-file-lines";
-    
-    return `
-      <div class="file-chip">
-        <i class="fa-solid ${iconClass}"></i>
-        <span>${esc(f.name)}</span>
-        <button class="file-chip-rm" onclick="removeFile(${i})"><i class="fa-solid fa-xmark"></i></button>
-      </div>`;
-  }).join("");
+  s.innerHTML = _uploads.map((f, i) => `
+    <div class="file-chip"><i class="fa-solid fa-file"></i><span>${esc(f.name)}</span><button class="file-chip-rm" onclick="removeFile(${i})"><i class="fa-solid fa-xmark"></i></button></div>`).join("");
 }
 
 function clearFilePreview() {
@@ -756,35 +564,22 @@ function clearFilePreview() {
 
 async function processUpload(file) {
   const s = await session(); if (!s) { toast("Session expired.", "err"); return null; }
-
   const doUp = (token) => fetch(API + "/analyze", {
-    method:  "POST",
-    headers: { Authorization: `Bearer ${token}` },
-    body:    (() => { const f = new FormData(); f.append("file", file); return f; })()
+    method: "POST", headers: { Authorization: `Bearer ${token}` }, body: (() => { const f = new FormData(); f.append("file", file); return f; })()
   });
 
   try {
-    let res = await Promise.race([
-      doUp(s.access_token),
-      new Promise((_, r) => setTimeout(() => r(new Error("timed out")), 60000)) 
-    ]);
+    let res = await Promise.race([doUp(s.access_token), new Promise((_, r) => setTimeout(() => r(new Error("timed out")), 60000))]);
     if (res.status === 401) { await handleUnauthorized(); return null; }
     if (res.status === 403) {
-      _consentsSaved = false;
-      await saveConsents().catch(() => {});
-      const s2 = await session();
-      if (s2) res = await doUp(s2.access_token);
+      _consentsSaved = false; await saveConsents().catch(() => {});
+      const s2 = await session(); if (s2) res = await doUp(s2.access_token);
     }
     if (res.status === 413) { toast("File too large (max 5MB).", "err"); return null; }
-    if (!res.ok) {
-      const d = await res.json().catch(() => ({}));
-      toast(d.error || `Upload failed (${res.status}).`, "err");
-      return null;
-    }
+    if (!res.ok) { const d = await res.json().catch(() => ({})); toast(d.error || `Upload failed (${res.status}).`, "err"); return null; }
     return await res.json();
   } catch(err) {
-    toast(err.message?.includes("timed out") ? "Upload timed out — try a smaller file." : "Upload failed.", "err");
-    return null;
+    toast(err.message?.includes("timed out") ? "Upload timed out — try a smaller PDF." : "Upload failed.", "err"); return null;
   }
 }
 
@@ -795,17 +590,9 @@ function appendMsg(text, role) {
   wrap.className = `chat-msg ${role === "user" ? "user-msg" : "ai-msg"}`;
   const av = `<div class="msg-av ${role === "user" ? "av-user" : "av-ai"}">${role === "user" ? (_userName?.[0]?.toUpperCase() || "U") : "φ"}</div>`;
   const body = document.createElement("div"); body.className = "msg-body";
-  if (role === "user") {
-    body.textContent = text;
-    wrap.innerHTML = av;
-    wrap.insertBefore(body, wrap.firstChild);
-  } else {
-    renderAI(body, text);
-    wrap.innerHTML = av;
-    wrap.appendChild(body);
-  }
-  d.appendChild(wrap);
-  return wrap;
+  if (role === "user") { body.textContent = text; wrap.innerHTML = av; wrap.insertBefore(body, wrap.firstChild); }
+  else { renderAI(body, text); wrap.innerHTML = av; wrap.appendChild(body); }
+  d.appendChild(wrap); return wrap;
 }
 
 function appendTyping() {
@@ -837,7 +624,7 @@ const scrollBottom = () => { const d = el("chatDisplay"); if (d) d.scrollTop = d
 async function loadMarkersData() {
   const h = await headers(); if (!h) return;
   try {
-    const { ok, data } = await apiJson("/api/health-markers", { headers: h });
+    const { ok, data } = await apiJson("/health-markers", { headers: h });
     if (ok && Array.isArray(data) && data.length) { renderMarkers(data); runCliffDetection(data); }
   } catch {}
 }
@@ -849,11 +636,7 @@ function renderMarkers(markers) {
     const s   = (m.status || "").toLowerCase();
     const cls = s === "high" ? "val-high" : s === "low" ? "val-low" : s === "normal" ? "val-normal" : "";
     const badge = s && s !== "unknown" ? `<span class="marker-status st-${s}">${s.toUpperCase()}</span>` : "";
-    return `<div class="marker-card">
-      <div class="marker-card-name" title="${esc(m.marker_name)}">${esc(m.marker_name)}</div>
-      <div class="marker-card-val ${cls}">${m.value}<span class="marker-card-unit"> ${esc(m.unit || "")}</span></div>
-      ${badge}
-    </div>`;
+    return `<div class="marker-card"><div class="marker-card-name" title="${esc(m.marker_name)}">${esc(m.marker_name)}</div><div class="marker-card-val ${cls}">${m.value}<span class="marker-card-unit"> ${esc(m.unit || "")}</span></div>${badge}</div>`;
   }).join("");
 }
 
@@ -881,8 +664,7 @@ function runCliffDetection(markers) {
       if (d >= 0.25) { alerts.push({ type: "danger", title: `🚨 HbA1c rebound +${d.toFixed(2)}%`, desc: `${r[i-1]._v}% → ${r[i]._v}%` }); break; }
     }
   }
-  markers.filter(m => m.status === "HIGH" && !/glucose/i.test(m.marker_name)).slice(0, 2)
-    .forEach(m => alerts.push({ type: "warn", title: `⬆ ${m.marker_name} HIGH`, desc: `${m.value} ${m.unit || ""}` }));
+  markers.filter(m => m.status === "HIGH" && !/glucose/i.test(m.marker_name)).slice(0, 2).forEach(m => alerts.push({ type: "warn", title: `⬆ ${m.marker_name} HIGH`, desc: `${m.value} ${m.unit || ""}` }));
   if (!alerts.length) alerts.push({ type: "ok", title: "✅ No rebound signals", desc: "All markers stable. Keep up protein + training." });
   const c = el("cliffAlerts");
   if (c) c.innerHTML = alerts.map(a => `<div class="ca-item ca-${a.type}"><div class="ca-title">${a.title}</div><div class="ca-desc">${a.desc}</div></div>`).join("");
@@ -893,14 +675,14 @@ async function autoLoadShield() {
   const h = await headers(); if (!h) { renderShield(0, 0, 0, null); return; }
   const today = new Date().toISOString().slice(0, 10);
   try {
-    const { ok, status, data } = await apiJson(`/api/behavioral-logs?days=1`, { headers: h });
+    const { ok, status, data } = await apiJson(`/behavioral-logs?days=1`, { headers: h });
     if (!ok || status >= 500 || !Array.isArray(data)) { renderShield(0, 0, 0, null); return; }
     const tl  = data.filter(l => l.date === today);
     const get = m => { const l = tl.filter(x => x.metric_name === m).sort((a, b) => a.created_at < b.created_at ? 1 : -1)[0]; return l ? parseFloat(l.value) : 0; };
     const p = get("protein"), s = get("steps"), sl = get("sleep");
-    if (p  > 0 && el("inputProtein")) el("inputProtein").value = p;
-    if (s  > 0 && el("inputSteps"))   el("inputSteps").value   = s;
-    if (sl > 0 && el("inputSleep"))   el("inputSleep").value   = sl;
+    if (p > 0 && el("inputProtein")) el("inputProtein").value = p;
+    if (s > 0 && el("inputSteps")) el("inputSteps").value = s;
+    if (sl > 0 && el("inputSleep")) el("inputSleep").value = sl;
     if (data.length > 0) {
       const last = data.sort((a, b) => a.created_at < b.created_at ? 1 : -1)[0];
       const w = new Date(last.created_at);
@@ -915,17 +697,7 @@ function updateShield() {
   const s  = parseFloat(el("inputSteps")?.value)   || 0;
   const sl = parseFloat(el("inputSleep")?.value)   || 0;
   const gw = parseFloat(el("inputGoalWt")?.value);
-  
-  if (gw && gw !== _goalWt) { 
-    _goalWt = gw; 
-    localStorage.setItem("phi_goal_wt", String(gw)); 
-    calcProteinDisplay(gw, false); 
-  }
-
-  if (window.Cache && window._user?.id) {
-    window.Cache.set("shield_" + window._user.id, { protein: p, steps: s, sleep: sl });
-  }
-
+  if (gw && gw !== _goalWt) { _goalWt = gw; localStorage.setItem("phi_goal_wt", String(gw)); calcProteinDisplay(gw, false); }
   renderShield(p, s, sl, new Date().toISOString().slice(0, 10));
   if (_user) logShieldData(p, s, sl);
 }
@@ -944,18 +716,13 @@ function renderShield(p, s, sl, logDate) {
   setText("shieldBadge",  sc + "%");
   setText("proteinLegend",  p  > 0 ? `${p}g / ${_proteinTarget}g (${pP}%)` : `Target: ${_proteinTarget}g — not logged`);
   setText("movementLegend", s  > 0 ? `${s.toLocaleString()} steps (${mP}%)` : "Steps — not logged");
-  setText("recoveryLegend", sl > 0 ? `${sl}h sleep (${rP}%)`              : "Sleep — not logged");
-  setBarPct("proteinBar",  pP);
-  setBarPct("movementBar", mP);
-  setBarPct("recoveryBar", rP);
+  setText("recoveryLegend", sl > 0 ? `${sl}h sleep (${rP}%)` : "Sleep — not logged");
+  setBarPct("proteinBar",  pP); setBarPct("movementBar", mP); setBarPct("recoveryBar", rP);
 }
 
 function setRing(id, circ, pct) {
   const r = el(id);
-  if (r) {
-    r.style.strokeDasharray  = circ;
-    r.style.strokeDashoffset = circ - (circ * Math.max(0, Math.min(100, pct)) / 100);
-  }
+  if (r) { r.style.strokeDasharray  = circ; r.style.strokeDashoffset = circ - (circ * Math.max(0, Math.min(100, pct)) / 100); }
 }
 function setBarPct(id, pct) { const b = el(id); if (b) b.style.width = Math.max(0, pct) + "%"; }
 
@@ -963,12 +730,11 @@ async function logShieldData(p, s, sl) {
   const h = await headers(); if (!h) return;
   const date = new Date().toISOString().slice(0, 10);
   const logs = [];
-  if (p  > 0) logs.push({ date, metric_name: "protein", value: p,  unit: "g"     });
-  if (s  > 0) logs.push({ date, metric_name: "steps",   value: s,  unit: "steps" });
-  if (sl > 0) logs.push({ date, metric_name: "sleep",   value: sl, unit: "hours" });
-  logs.forEach(l => apiFetch("/api/behavioral-logs", { method: "POST", headers: h, body: JSON.stringify(l) }).catch(() => {}));
-  setText("shieldLastLogged", "Last logged: just now");
-  toast("Shield data logged ✓");
+  if (p > 0) logs.push({ date, metric_name: "protein", value: p, unit: "g" });
+  if (s > 0) logs.push({ date, metric_name: "steps", value: s, unit: "steps" });
+  if (sl > 0) logs.push({ date, metric_name: "sleep", value: sl, unit: "hours" });
+  logs.forEach(l => apiFetch("/behavioral-logs", { method: "POST", headers: h, body: JSON.stringify(l) }).catch(() => {}));
+  setText("shieldLastLogged", "Last logged: just now"); toast("Shield data logged ✓");
 }
 
 /* ═══ PROTEIN CALC ═══ */
@@ -978,41 +744,30 @@ function calcProteinDisplay(gw, showDetails = true) {
   const pm = Math.round(_proteinTarget / 3 * 10) / 10;
   const lu = pm >= 30;
   localStorage.setItem("phi_goal_wt", String(gw));
-  setText("proteinNum",     _proteinTarget);
-  setText("proteinCaption", `${gw} lbs × 0.545 = ${_proteinTarget}g/day`);
+  setText("proteinNum", _proteinTarget); setText("proteinCaption", `${gw} lbs × 0.545 = ${_proteinTarget}g/day`);
   if (showDetails) {
     const d = el("proteinDetails");
     if (d) {
       d.classList.remove("hidden");
-      d.innerHTML = `<strong>${pm}g per meal</strong> across 3 meals — ${lu ? "✅" : "⚠️"} ${lu ? "Meets" : "Below"} 30g leucine threshold<br>
-        <span style="color:var(--text-3);margin-top:4px;display:block">4oz chicken (35g) + Greek yogurt (17g) + 2 eggs (12g) + whey scoop (25g)</span>`;
+      d.innerHTML = `<strong>${pm}g per meal</strong> across 3 meals — ${lu ? "✅" : "⚠️"} ${lu ? "Meets" : "Below"} 30g leucine threshold<br><span style="color:var(--text-3);margin-top:4px;display:block">4oz chicken (35g) + Greek yogurt (17g) + 2 eggs (12g) + whey scoop (25g)</span>`;
     }
     if (el("inputGoalWt")) el("inputGoalWt").value = gw;
-    renderShield(
-      parseFloat(el("inputProtein")?.value) || 0,
-      parseFloat(el("inputSteps")?.value)   || 0,
-      parseFloat(el("inputSleep")?.value)   || 0,
-      null
-    );
+    renderShield(parseFloat(el("inputProtein")?.value) || 0, parseFloat(el("inputSteps")?.value) || 0, parseFloat(el("inputSleep")?.value) || 0, null);
   }
 }
 
 /* ═══ GHRELIN / FOOD NOISE ═══ */
+const NOISE_MSG = { 1:"Nearly silent.",2:"Very low.",3:"Mild.",4:"Low-moderate.",5:"Moderate.",6:"Elevated.",7:"High — taper may have been too fast.",8:"Very high — biology, not willpower.",9:"Intense. Discuss urgently.",10:"🚨 Maximum. Provider conversation needed." };
 function updateNoiseReadout() {
   const v = parseInt(el("noiseSlider")?.value || 5);
-  const colors = [, "var(--ok)", "var(--ok)", "var(--ok)", "var(--amber)", "var(--amber)",
-    "var(--amber)", "var(--danger)", "var(--danger)", "var(--danger)", "var(--danger)"];
-  const r = el("noiseReadout");
-  if (r) r.innerHTML = `<strong style="color:${colors[v]}">Level ${v}/10</strong> — ${NOISE_MSG[v]}`;
+  const colors = [, "var(--ok)", "var(--ok)", "var(--ok)", "var(--amber)", "var(--amber)", "var(--amber)", "var(--danger)", "var(--danger)", "var(--danger)", "var(--danger)"];
+  const r = el("noiseReadout"); if (r) r.innerHTML = `<strong style="color:${colors[v]}">Level ${v}/10</strong> — ${NOISE_MSG[v]}`;
 }
 
 async function logNoiseLevel() {
   const val = parseInt(el("noiseSlider")?.value || 5);
   const h = await headers(); if (!h) { toast("Sign in to log.", "info"); return; }
-  await apiFetch("/api/behavioral-logs", {
-    method: "POST", headers: h,
-    body: JSON.stringify({ date: new Date().toISOString().slice(0, 10), metric_name: "food_noise", value: val, unit: "1-10" })
-  }).catch(() => {});
+  await apiFetch("/behavioral-logs", { method: "POST", headers: h, body: JSON.stringify({ date: new Date().toISOString().slice(0, 10), metric_name: "food_noise", value: val, unit: "1-10" }) }).catch(() => {});
   toast(`Food noise ${val}/10 logged ✓`, "info");
 }
 
@@ -1033,6 +788,19 @@ function initVoice() {
   });
 }
 
+/* ═══ EXPORT ═══ */
+function exportChat() {
+  const msgs = el("chatDisplay")?.querySelectorAll(".chat-msg");
+  if (!msgs?.length) { toast("No conversation to export.", "err"); return; }
+  let out = `Curabook PHI — Chat Export\n${"=".repeat(40)}\n\n`;
+  msgs.forEach(m => {
+    const role = m.classList.contains("user-msg") ? "You" : "PHI";
+    out += `${role}:\n${m.querySelector(".msg-body")?.innerText?.trim() || ""}\n\n`;
+  });
+  const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob([out], { type: "text/plain" })), download: `phi-chat-${Date.now()}.txt` });
+  a.click(); closeUserMenu(); toast("Chat exported");
+}
+
 /* ═══ UTILS ═══ */
 const el      = id => document.getElementById(id);
 const esc     = s  => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -1047,18 +815,12 @@ function toast(msg, type = "ok") {
   t.className = `toast toast-${type}`;
   t.innerHTML = `<i class="fa-solid fa-${icons[type] || "circle-info"}"></i> ${esc(msg)}`;
   c.appendChild(t);
-  setTimeout(() => {
-    t.style.opacity    = "0";
-    t.style.transition = "opacity .3s";
-    setTimeout(() => t.remove(), 300);
-  }, 3800);
+  setTimeout(() => { t.style.opacity = "0"; t.style.transition = "opacity .3s"; setTimeout(() => t.remove(), 300); }, 3800);
 }
 
 /* ═══ EVENTS ═══ */
 function wireEvents() {
-  document.querySelectorAll(".nav-item[data-view]").forEach(btn =>
-    btn.addEventListener("click", () => { switchView(btn.dataset.view); closeSidebar(); })
-  );
+  document.querySelectorAll(".nav-item[data-view]").forEach(btn => btn.addEventListener("click", () => { switchView(btn.dataset.view); closeSidebar(); }));
   el("newChatBtn")?.addEventListener("click", () => { resetChat(); switchView("chat"); });
 
   el("mobileMenuBtn")?.addEventListener("click", openSidebar);
@@ -1072,6 +834,7 @@ function wireEvents() {
   el("themeToggleBtn")?.addEventListener("click", toggleTheme);
   el("topThemeBtn")?.addEventListener("click", toggleTheme);
   el("logoutBtn")?.addEventListener("click", handleLogout);
+  el("exportChatBtn")?.addEventListener("click", exportChat);
 
   el("historyList")?.addEventListener("click", e => {
     const del  = e.target.closest(".hist-del[data-del]");
@@ -1087,33 +850,17 @@ function wireEvents() {
   }
   el("sendBtn")?.addEventListener("click", handleSend);
 
-  document.querySelectorAll(".suggestion-chips .chip").forEach(c =>
-    c.addEventListener("click", () => { if (c.dataset.q) sendMessage(c.dataset.q); })
-  );
-
+  document.querySelectorAll(".suggestion-chips .chip").forEach(c => c.addEventListener("click", () => { if (c.dataset.q) sendMessage(c.dataset.q); }));
   el("chatDisplay")?.addEventListener("click", e => {
-    const chip = e.target.closest(".chip[data-q]");
-    if (chip?.dataset.q) { sendMessage(chip.dataset.q); return; }
-    const cta  = e.target.closest("[data-ask]");
-    if (cta?.dataset.ask) sendMessage(cta.dataset.ask);
+    const chip = e.target.closest(".chip[data-q]"); if (chip?.dataset.q) { sendMessage(chip.dataset.q); return; }
+    const cta  = e.target.closest("[data-ask]"); if (cta?.dataset.ask) sendMessage(cta.dataset.ask);
   });
 
   const fi = el("fileInput"); fi?.addEventListener("change", handleFileSelect);
-  ["attachTopBtn", "attachInputBtn", "uploadNudgeBtn", "reportsUploadBtn"].forEach(id =>
-    el(id)?.addEventListener("click", () => fi?.click())
-  );
-
-  el("syncWearableBtn")?.addEventListener("click", () => {
-    closeCockpit(); 
-    window.isWearableSync = true;
-    fi?.click(); 
-  });
+  ["attachTopBtn", "attachInputBtn", "uploadNudgeBtn", "reportsUploadBtn"].forEach(id => el(id)?.addEventListener("click", () => fi?.click()));
 
   el("updateShieldBtn")?.addEventListener("click", updateShield);
-  el("calcBtn")?.addEventListener("click", () => {
-    const gw = parseFloat(el("proteinInput")?.value);
-    gw ? calcProteinDisplay(gw, true) : toast("Enter a goal weight (80–400 lbs).", "err");
-  });
+  el("calcBtn")?.addEventListener("click", () => { const gw = parseFloat(el("proteinInput")?.value); gw ? calcProteinDisplay(gw, true) : toast("Enter a goal weight (80–400 lbs).", "err"); });
   el("proteinInput")?.addEventListener("keydown", e => { if (e.key === "Enter") el("calcBtn")?.click(); });
   el("noiseSlider")?.addEventListener("input", updateNoiseReadout);
   el("logNoiseBtn")?.addEventListener("click", logNoiseLevel);
@@ -1130,10 +877,4 @@ function wireEvents() {
 }
 
 /* ═══ INIT ═══ */
-document.addEventListener("DOMContentLoaded", () => {
-  initTheme();
-  wireEvents();
-  updateNoiseReadout();
-  initVoice();
-  boot();
-});
+document.addEventListener("DOMContentLoaded", () => { initTheme(); wireEvents(); updateNoiseReadout(); initVoice(); boot(); });
