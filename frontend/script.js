@@ -1,5 +1,5 @@
 /**
- * script.js — Curabook PHI v5.1 (Master Version)
+ * script.js — Curabook PHI v5.0 (The Final Master Version)
  * All features fully restored. Render sleep cold-start fixed. Bulletproof chat routing.
  */
 "use strict";
@@ -72,12 +72,13 @@ async function handleLogout() {
 
 /* ═══ WAKE UP PING ═══ */
 function wakeUpServer() {
+  // Silently kicks the Render backend to wake it up from sleep
   fetch(API + "/startup", { method: "GET" }).catch(() => {});
 }
 
 /* ═══ BOOT ═══ */
 async function boot() {
-  wakeUpServer(); 
+  wakeUpServer(); // Instantly wake up the backend!
   try {
     _sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
       auth: { detectSessionInUrl: true, persistSession: true, autoRefreshToken: true }
@@ -159,6 +160,7 @@ async function headers(ct = true) {
 
 async function apiFetch(path, opts = {}) {
   const ctrl = new AbortController();
+  // 65 SECOND TIMEOUT to allow Render Free Tier to fully boot up!
   const t = setTimeout(() => ctrl.abort(), 65000);
   try {
     const r = await fetch(API + path, { ...opts, signal: ctrl.signal });
@@ -197,9 +199,9 @@ async function saveConsents() {
       const h = await headers();
       if (!h) return;
       const res = await apiFetch("/api/consent", {
-        method:  "POST",
+        method: "POST",
         headers: h,
-        body:    JSON.stringify({ consents: ["data_processing", "ai_processing", "document_processing"] })
+        body: JSON.stringify({ consents: ["data_processing", "ai_processing", "document_processing"] })
       });
       if (res.ok || res.status === 200) _consentsSaved = true;
     } catch(e) {
@@ -319,6 +321,7 @@ function askAboutReport(f) { switchView("chat"); setTimeout(() => sendMessage(`S
 /* ═══ HISTORY ═══ */
 async function loadHistory() {
   const list = el("historyList");
+  // Visual indicator that the server might be waking up
   if (list) list.innerHTML = '<div class="sb-empty"><i class="fa-solid fa-spinner fa-spin"></i> Waking secure server...</div>';
   
   const h = await headers(); if (!h) return;
@@ -508,7 +511,6 @@ async function sendMessage(text) {
       const userMsgs = el("chatDisplay")?.querySelectorAll(".chat-msg.user-msg");
       if (userMsgs?.length === 1 && _convId) renameConversation(_convId, text);
       if (_docCtx.hasDoc) setTimeout(loadMarkersData, 2000);
-      setTimeout(autoLoadShield, 2500); 
     } else {
       throw new Error(`Server Error (${res.status}): ${txt.slice(0, 150)}`);
     }
@@ -521,6 +523,7 @@ async function sendMessage(text) {
       toast(err.message, "err");
     }
   } finally {
+    // ALWAYS reset UI state so button never hangs
     _isSending = false; 
     setSendingState(false); 
     scrollBottom();

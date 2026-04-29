@@ -155,6 +155,7 @@ def _extract_and_log_metrics(user_message: str, user_id: str, supabase):
                     }).execute()
     except Exception as e: print(f"[ACTION ERROR] {e}")
 
+# SMART FIX: Unlocked memory extractor so it captures ALL context!
 def _extract_facts_quick(user_message: str, ai_reply: str) -> list[str]:
     lower = user_message.lower()
     facts = []
@@ -169,6 +170,7 @@ def _extract_facts_quick(user_message: str, ai_reply: str) -> list[str]:
         if nums: facts.append(f"User's goal weight is {nums[0]} lbs")
 
     openai_key = os.getenv("OPENAI_API_KEY")
+    # REMOVED THE KEYWORD LOCK! Now extracts facts from ANY message > 15 chars.
     if openai_key and len(user_message) > 15:
         try:
             from openai import OpenAI
@@ -188,6 +190,7 @@ def _extract_facts_quick(user_message: str, ai_reply: str) -> list[str]:
                 temperature=0.0, max_tokens=150,
             )
             raw = resp.choices[0].message.content.strip()
+            # Bulletproof JSON extraction
             match = re.search(r'\[.*\]', raw, re.DOTALL)
             if match:
                 parsed = json.loads(match.group(0))
@@ -215,10 +218,12 @@ def _run_background_ops(supabase, user_id, conversation_id, user_message, ai_rep
         save_chat_turn(supabase, user_id, conversation_id, user_message, ai_reply)
     except Exception as e: print(f"[BG] Chat save error: {e}")
 
+    # Extract markers first so memory cache invalidates correctly
     if doc_text_for_extraction:
         try: _extract_and_store_doc_markers(supabase, user_id, doc_text_for_extraction)
         except Exception: pass
 
+    # Extract facts without limits
     facts = []
     try: facts = _extract_facts_quick(user_message, ai_reply)
     except Exception: pass
@@ -276,11 +281,17 @@ def chat():
         enriched_message = f"The patient shared an image/document:\n[DOCUMENT_START]\n{document_text[:10000]}\n[DOCUMENT_END]\n\nUser Message: {message}\nAcknowledge the image and answer the user directly."
 
     messages = _build_messages_safe(supabase, user.id, conversation_id, enriched_message, has_documents or bool(document_text), health_context)
-    
-    # THE FIX: Generate the reply naturally using empathy and memory
     reply = _call_llm_safe(messages)
+
+    try:
+        from ai.system_prompt_v2 import validate_response, detect_hallucination_risk
+        if detect_hallucination_risk(reply, has_health_data):
+            reply = "I want to give accurate information, but I don't have health data stored for you yet. Tap the 📎 button to upload a lab report."
+        else:
+            reply, _ = validate_response(reply, has_health_data)
+    except Exception: pass
+
     final_reply = reply + MANDATORY_DISCLAIMER
-    
     doc_for_bg = document_text if is_fresh_document and not current_markers else None
     
     bg_thread = threading.Thread(
@@ -360,6 +371,7 @@ def rename_conversation():
         supabase.table("conversations").update({"title": title[:50]}).eq("id", conv_id).eq("user_id", user.id).execute()
         return jsonify({"success": True})
     except Exception as e: return jsonify({"error": str(e)}), 500
+
 
 @chat_bp.route("/delete", methods=["POST"])
 def delete_conversation():
