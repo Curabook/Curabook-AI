@@ -72,7 +72,7 @@ async function _fetchFresh(userId, token) {
   try {
     const controller = new AbortController();
     setTimeout(() => controller.abort(), 6000);
-    const res = await fetch(_api() + "/api/startup", { headers: hdrs, signal: controller.signal });
+    const res = await fetch(_api() + "/startup", { headers: hdrs, signal: controller.signal });
     if (res.status === 401) { window._perf_patch_failed_auth = true; return; }
     if (res.ok) data = await res.json();
   } catch(e) {}
