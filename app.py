@@ -134,6 +134,7 @@ from api.compliance_routes   import compliance_bp
 from api.profile_routes      import profile_bp
 from api.intelligence_routes import intelligence_bp
 from api.cron_routes         import cron_bp
+from api.startup_routes      import startup_bp
 
 # Register blueprints strictly at root to perfectly match frontend
 app.register_blueprint(auth_bp)
@@ -144,6 +145,7 @@ app.register_blueprint(compliance_bp)
 app.register_blueprint(profile_bp)
 app.register_blueprint(intelligence_bp)
 app.register_blueprint(cron_bp)
+app.register_blueprint(startup_bp)
 
 try:
     from api.payment_routes import payment_bp

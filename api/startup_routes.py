@@ -214,7 +214,7 @@ def _build_cliff_alerts(markers: list) -> list:
 
 # ── Main endpoint ─────────────────────────────────────────────────────────────
 
-@startup_bp.route("/api/startup", methods=["GET"])
+@startup_bp.route("/startup", methods=["GET"])
 def startup():
     """
     Parallel batch startup endpoint.
