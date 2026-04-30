@@ -140,7 +140,7 @@ function doRedirect() {
     if (_redirected || _termsShowing) return;
     _redirected = true;
     setStatus("Signing you in…", "success");
-    window.location.href = "app.html";
+    window.location.href = "/app";
 }
 
 async function saveConsentToBackend(accessToken) {
