@@ -1,6 +1,6 @@
 /**
- * script.js — Curabook PHI v5.0 (The Final Master Version)
- * All features fully restored. Render sleep cold-start fixed. Bulletproof chat routing.
+ * script.js — Curabook PHI v5.0
+ * Auth Loop Fixed: Aggressive background token refreshing and stateless sync.
  */
 "use strict";
 
@@ -72,13 +72,12 @@ async function handleLogout() {
 
 /* ═══ WAKE UP PING ═══ */
 function wakeUpServer() {
-  // Silently kicks the Render backend to wake it up from sleep
   fetch(API + "/startup", { method: "GET" }).catch(() => {});
 }
 
 /* ═══ BOOT ═══ */
 async function boot() {
-  wakeUpServer(); // Instantly wake up the backend!
+  wakeUpServer(); 
   try {
     _sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
       auth: { detectSessionInUrl: true, persistSession: true, autoRefreshToken: true }
@@ -93,15 +92,17 @@ async function boot() {
     _sb.auth.onAuthStateChange(async (event, session) => {
       if (event === "SIGNED_IN" && session?.user && !_initialized) await onSignIn(session.user);
       if (event === "TOKEN_REFRESHED" && session?.user) _user = session.user;
+      
+      // ONLY redirect on explicit SIGNED_OUT events. Do not trigger on token expirations.
       if (event === "SIGNED_OUT" && !_redirecting) {
         _redirecting = true; _initialized = false; _user = null; _convId = null;
         window.location.replace("/login");
       }
     });
 
-    const { data } = await _sb.auth.getSession();
-    if (data?.session?.user) {
-      if (!_initialized) await onSignIn(data.session.user);
+    const { data: { session } } = await _sb.auth.getSession();
+    if (session?.user) {
+      if (!_initialized) await onSignIn(session.user);
     } else {
       if (!IS_LOCAL) window.location.replace("/login");
     }
@@ -142,25 +143,27 @@ async function onSignIn(user) {
 }
 
 /* ═══ API HELPERS ═══ */
-async function session() {
-  if (!_sb) return null;
-  try {
-    const { data } = await _sb.auth.getSession();
-    return data?.session || null;
-  } catch(e) { return null; }
-}
 
+// FIX: Bulletproof header generation forces a check/refresh every time.
 async function headers(ct = true) {
-  const s = await session();
-  if (!s?.access_token) return null;
-  const h = { Authorization: `Bearer ${s.access_token}` };
+  if (!_sb) return null;
+  
+  // getSession() automatically looks at the token expiry and refreshes if needed 
+  // before returning the data to you.
+  const { data: { session }, error } = await _sb.auth.getSession();
+  
+  if (error || !session?.access_token) {
+      console.warn("[AUTH] Session expired or invalid locally.");
+      return null;
+  }
+  
+  const h = { Authorization: `Bearer ${session.access_token}` };
   if (ct) h["Content-Type"] = "application/json";
   return h;
 }
 
 async function apiFetch(path, opts = {}) {
   const ctrl = new AbortController();
-  // 65 SECOND TIMEOUT to allow Render Free Tier to fully boot up!
   const t = setTimeout(() => ctrl.abort(), 65000);
   try {
     const r = await fetch(API + path, { ...opts, signal: ctrl.signal });
@@ -181,11 +184,18 @@ async function apiJson(path, opts = {}) {
   return { ok: res.ok, status: res.status, data };
 }
 
+// FIX: Aggressive refresh fallback
 async function handleUnauthorized() {
   try {
-    const { data } = await _sb.auth.refreshSession();
-    if (data?.session) { _user = data.session.user; return true; }
+    const { data, error } = await _sb.auth.refreshSession();
+    if (data?.session) { 
+        _user = data.session.user; 
+        return true; 
+    }
   } catch {}
+  
+  // Only sign out if the forced refresh explicitly fails
+  toast("Session expired. Please sign in again.", "err");
   await doSignOut();
   return false;
 }
@@ -240,7 +250,9 @@ function switchView(view) {
 async function loadHealthView() {
   const content = el("healthContent"); if (!content) return;
   content.innerHTML = `<div class="hv-empty"><i class="fa-solid fa-spinner fa-spin"></i>Loading your health picture…</div>`;
-  const h = await headers(); if (!h) return;
+  const h = await headers(); 
+  if (!h) { await handleUnauthorized(); return; }
+  
   try {
     const [mR, dR] = await Promise.allSettled([
       apiJson("/api/health-markers", { headers: h }),
@@ -302,7 +314,9 @@ function buildHealthViewHTML(markers, dashboard) {
 async function loadReportsView() {
   const list = el("reportsList"); if (!list) return;
   list.innerHTML = `<div class="hv-empty"><i class="fa-solid fa-spinner fa-spin"></i>Loading reports…</div>`;
-  const h = await headers(); if (!h) return;
+  const h = await headers(); 
+  if (!h) { await handleUnauthorized(); return; }
+  
   try {
     const { ok, data } = await apiJson("/api/doctor-prep/history", { headers: h });
     if (!ok || !data?.preps?.length) {
@@ -321,10 +335,11 @@ function askAboutReport(f) { switchView("chat"); setTimeout(() => sendMessage(`S
 /* ═══ HISTORY ═══ */
 async function loadHistory() {
   const list = el("historyList");
-  // Visual indicator that the server might be waking up
   if (list) list.innerHTML = '<div class="sb-empty"><i class="fa-solid fa-spinner fa-spin"></i> Waking secure server...</div>';
   
-  const h = await headers(); if (!h) return;
+  const h = await headers(); 
+  if (!h) { await handleUnauthorized(); return; }
+  
   try {
     let { ok, status, data } = await apiJson("/history", { method: "POST", headers: h, body: JSON.stringify({}) });
     if (status === 401) {
@@ -367,7 +382,10 @@ async function openConversation(id) {
   if (el("chatDisplay")) el("chatDisplay").innerHTML = "";
   document.querySelectorAll(".hist-item").forEach(e => e.classList.toggle("active", e.dataset.id === id));
   closeSidebar();
-  const h = await headers(); if (!h) return;
+  
+  const h = await headers(); 
+  if (!h) { await handleUnauthorized(); return; }
+  
   try {
     const { ok, data } = await apiJson("/conversation", { method: "POST", headers: h, body: JSON.stringify({ conversation_id: id }) });
     if (ok && Array.isArray(data)) { data.forEach(m => appendMsg(m.content, m.role === "user" ? "user" : "ai")); scrollBottom(); }
@@ -378,6 +396,7 @@ async function deleteConversation(id, e) {
   e?.stopPropagation();
   document.querySelector(`.hist-item[data-id="${id}"]`)?.remove();
   if (id === _convId) resetChat();
+  
   const h = await headers();
   if (h) await apiFetch("/delete", { method: "POST", headers: h, body: JSON.stringify({ conversation_id: id }) }).catch(() => {});
   toast("Conversation deleted");
@@ -399,23 +418,27 @@ function showChat()    { el("welcomeScreen")?.classList.add("hidden");    el("ch
 async function createConversation() {
   await saveConsents().catch(() => {});
   const h = await headers();
-  if (!h) { toast("Session expired.", "err"); doSignOut(); return null; }
+  if (!h) { await handleUnauthorized(); return null; }
+  
   const doCreate = async (hdr) => apiJson("/conversation/create", { method: "POST", headers: hdr, body: JSON.stringify({}) });
   let { ok, status, data } = await doCreate(h);
+  
   if (!ok && status === 403) {
     _consentsSaved = false;
     await saveConsents().catch(() => {});
     const h2 = await headers();
     if (h2) ({ ok, status, data } = await doCreate(h2));
   }
+  
   if (!ok && status === 401) { await handleUnauthorized(); return null; }
   if (ok && data?.conversation_id) {
     _convId = data.conversation_id;
     prependHistory(_convId, "New Conversation");
     return _convId;
   }
-  if (IS_LOCAL) { _convId = "local-" + Date.now(); return _convId; }
-  throw new Error(`Failed to start conversation. Server returned ${status}`);
+  
+  toast("Could not start conversation. Please check your connection.", "err");
+  return null;
 }
 
 function prependHistory(id, title) {
@@ -441,7 +464,7 @@ async function renameConversation(id, title) {
   await apiFetch("/rename", { method: "POST", headers: h, body: JSON.stringify({ conversation_id: id, title: short }) }).catch(() => {});
 }
 
-/* ═══ THE BULLETPROOF SEND FIX ═══ */
+/* ═══ SEND MESSAGE ═══ */
 async function handleSend() {
   if (_isSending) return;
   const ta = el("chatInput");
@@ -512,6 +535,7 @@ async function sendMessage(text) {
       if (userMsgs?.length === 1 && _convId) renameConversation(_convId, text);
       if (_docCtx.hasDoc) setTimeout(loadMarkersData, 2000);
     } else {
+      if (res.status === 401) await handleUnauthorized();
       throw new Error(`Server Error (${res.status}): ${txt.slice(0, 150)}`);
     }
 
@@ -523,7 +547,6 @@ async function sendMessage(text) {
       toast(err.message, "err");
     }
   } finally {
-    // ALWAYS reset UI state so button never hangs
     _isSending = false; 
     setSendingState(false); 
     scrollBottom();
@@ -566,17 +589,19 @@ function clearFilePreview() {
 }
 
 async function processUpload(file) {
-  const s = await session(); if (!s) { toast("Session expired.", "err"); return null; }
-  const doUp = (token) => fetch(API + "/analyze", {
-    method: "POST", headers: { Authorization: `Bearer ${token}` }, body: (() => { const f = new FormData(); f.append("file", file); return f; })()
+  const s = await headers(); 
+  if (!s) { await handleUnauthorized(); return null; }
+  
+  const doUp = (hdr) => fetch(API + "/analyze", {
+    method: "POST", headers: hdr, body: (() => { const f = new FormData(); f.append("file", file); return f; })()
   });
 
   try {
-    let res = await Promise.race([doUp(s.access_token), new Promise((_, r) => setTimeout(() => r(new Error("timed out")), 65000))]);
+    let res = await Promise.race([doUp(s), new Promise((_, r) => setTimeout(() => r(new Error("timed out")), 65000))]);
     if (res.status === 401) { await handleUnauthorized(); return null; }
     if (res.status === 403) {
       _consentsSaved = false; await saveConsents().catch(() => {});
-      const s2 = await session(); if (s2) res = await doUp(s2.access_token);
+      const s2 = await headers(); if (s2) res = await doUp(s2);
     }
     if (res.status === 413) { toast("File too large (max 20MB).", "err"); return null; }
     if (!res.ok) { const d = await res.json().catch(() => ({})); toast(d.error || `Upload failed (${res.status}).`, "err"); return null; }
