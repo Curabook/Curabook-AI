@@ -1,6 +1,6 @@
 /**
- * script.js — Curabook PHI v5.0 (Production Master)
- * Guaranteed UI Hydration | Stateless Sync | Batch Startup Routing
+ * script.js — Curabook PHI v5.0 (The Final Master Version)
+ * All features fully restored. Render sleep cold-start fixed. Bulletproof chat routing.
  */
 "use strict";
 
@@ -72,13 +72,13 @@ async function handleLogout() {
 
 /* ═══ WAKE UP PING ═══ */
 function wakeUpServer() {
-  // Safe ping to wake Render server without 401s
-  fetch(API + "/", { method: "GET" }).catch(() => {});
+  // Silently kicks the Render backend to wake it up from sleep
+  fetch(API + "/startup", { method: "GET" }).catch(() => {});
 }
 
 /* ═══ BOOT ═══ */
 async function boot() {
-  wakeUpServer(); 
+  wakeUpServer(); // Instantly wake up the backend!
   try {
     _sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
       auth: { detectSessionInUrl: true, persistSession: true, autoRefreshToken: true }
@@ -93,16 +93,15 @@ async function boot() {
     _sb.auth.onAuthStateChange(async (event, session) => {
       if (event === "SIGNED_IN" && session?.user && !_initialized) await onSignIn(session.user);
       if (event === "TOKEN_REFRESHED" && session?.user) _user = session.user;
-      
       if (event === "SIGNED_OUT" && !_redirecting) {
         _redirecting = true; _initialized = false; _user = null; _convId = null;
         window.location.replace("/login");
       }
     });
 
-    const { data: { session } } = await _sb.auth.getSession();
-    if (session?.user) {
-      if (!_initialized) await onSignIn(session.user);
+    const { data } = await _sb.auth.getSession();
+    if (data?.session?.user) {
+      if (!_initialized) await onSignIn(data.session.user);
     } else {
       if (!IS_LOCAL) window.location.replace("/login");
     }
@@ -112,7 +111,6 @@ async function boot() {
   }
 }
 
-/* ═══ STARTUP DATA LOADER ═══ */
 async function onSignIn(user) {
   if (_initialized) return;
   _initialized = true;
@@ -124,98 +122,45 @@ async function onSignIn(user) {
 
   setText("userEmail", user.email);
   setText("welcomeName", _userName);
-  if (el("userAvatar")) el("userAvatar").textContent = _userName[0].toUpperCase();
+  const av = el("userAvatar");
+  if (av) av.textContent = _userName[0].toUpperCase();
 
   const h = new Date().getHours();
   setText("timeGreeting", h < 12 ? "morning" : h < 17 ? "afternoon" : "evening");
 
-  saveConsents().catch(() => {});
+  await saveConsents().catch(() => {});
+  await loadHistory();
+  autoLoadShield().catch(() => {});
+  loadMarkersData().catch(() => {});
 
-  const headersObj = await headers();
-  if (headersObj) {
-    try {
-      const { ok, status, data } = await apiJson("/startup", { headers: headersObj });
-      
-      if (ok && data) {
-        // 1. Hydrate Chat History
-        renderHistory(data.history || []);
-        
-        // 2. Hydrate Health Markers
-        if (data.markers && data.markers.length > 0) {
-            renderMarkers(data.markers);
-            runCliffDetection(data.markers); 
-        } else {
-            if (el("markersGrid")) {
-                el("markersGrid").innerHTML = '<div class="markers-empty">Upload a lab report to see your markers</div>';
-            }
-        }
-
-        // 3. Hydrate the Shield
-        const today = new Date().toISOString().slice(0, 10);
-        if (data.behavioral_today && Array.isArray(data.behavioral_today)) {
-            const getLog = m => { 
-                const log = data.behavioral_today.find(x => x.metric_name === m); 
-                return log && !isNaN(parseFloat(log.value)) ? parseFloat(log.value) : 0; 
-            };
-            const p = getLog("protein"), s = getLog("steps"), sl = getLog("sleep");
-            
-            if (p > 0 && el("inputProtein")) el("inputProtein").value = p;
-            if (s > 0 && el("inputSteps")) el("inputSteps").value = s;
-            if (sl > 0 && el("inputSleep")) el("inputSleep").value = sl;
-            
-            if (data.behavioral_today.length > 0) {
-                const lastLog = data.behavioral_today[0]; 
-                const w = new Date(lastLog.created_at);
-                setText("shieldLastLogged", `Last logged: ${lastLog.date === today ? `Today at ${w.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}` : w.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`);
-            }
-            renderShield(p, s, sl, today);
-        } else {
-            renderShield(0, 0, 0, today);
-        }
-
-        // 4. Set Goal Weight
-        let gw = data.goal_weight || localStorage.getItem("phi_goal_wt");
-        if (gw) {
-            if (el("inputGoalWt")) el("inputGoalWt").value = gw;
-            if (el("proteinInput")) el("proteinInput").value = gw;
-            calcProteinDisplay(parseFloat(gw), false);
-        }
-        
-        console.log(`[PHI] Batch Startup Complete in ${data.elapsed_ms || 0}ms`);
-      } else if (status === 401) {
-          await handleUnauthorized();
-      } else {
-          // CRITICAL FIX: If the backend returns 404 or 500, we MUST throw an error
-          // so the app correctly triggers the fallback UI loads.
-          throw new Error(`Startup API failed with status ${status}`);
-      }
-    } catch (e) {
-      console.warn("[PHI] Batch startup failed, executing failsafe fallbacks...", e);
-      // Failsafe: ensure the UI completely unlocks even if the batch route is broken
-      await loadHistory();
-      autoLoadShield().catch(() => { renderShield(0, 0, 0, null); });
-      loadMarkersData().catch(() => {});
-    }
+  const gw = localStorage.getItem("phi_goal_wt");
+  if (gw) {
+    if (el("inputGoalWt")) el("inputGoalWt").value = gw;
+    if (el("proteinInput")) el("proteinInput").value = gw;
+    calcProteinDisplay(parseFloat(gw), false);
   }
 }
 
 /* ═══ API HELPERS ═══ */
-async function headers(ct = true) {
+async function session() {
   if (!_sb) return null;
-  const { data: { session }, error } = await _sb.auth.getSession();
-  
-  if (error || !session?.access_token) {
-      console.warn("[AUTH] Session expired or invalid locally.");
-      return null;
-  }
-  
-  const h = { Authorization: `Bearer ${session.access_token}` };
+  try {
+    const { data } = await _sb.auth.getSession();
+    return data?.session || null;
+  } catch(e) { return null; }
+}
+
+async function headers(ct = true) {
+  const s = await session();
+  if (!s?.access_token) return null;
+  const h = { Authorization: `Bearer ${s.access_token}` };
   if (ct) h["Content-Type"] = "application/json";
   return h;
 }
 
 async function apiFetch(path, opts = {}) {
   const ctrl = new AbortController();
+  // 65 SECOND TIMEOUT to allow Render Free Tier to fully boot up!
   const t = setTimeout(() => ctrl.abort(), 65000);
   try {
     const r = await fetch(API + path, { ...opts, signal: ctrl.signal });
@@ -238,14 +183,9 @@ async function apiJson(path, opts = {}) {
 
 async function handleUnauthorized() {
   try {
-    const { data, error } = await _sb.auth.refreshSession();
-    if (data?.session) { 
-        _user = data.session.user; 
-        return true; 
-    }
+    const { data } = await _sb.auth.refreshSession();
+    if (data?.session) { _user = data.session.user; return true; }
   } catch {}
-  
-  toast("Session expired. Please sign in again.", "err");
   await doSignOut();
   return false;
 }
@@ -300,9 +240,7 @@ function switchView(view) {
 async function loadHealthView() {
   const content = el("healthContent"); if (!content) return;
   content.innerHTML = `<div class="hv-empty"><i class="fa-solid fa-spinner fa-spin"></i>Loading your health picture…</div>`;
-  const h = await headers(); 
-  if (!h) { await handleUnauthorized(); return; }
-  
+  const h = await headers(); if (!h) return;
   try {
     const [mR, dR] = await Promise.allSettled([
       apiJson("/api/health-markers", { headers: h }),
@@ -364,9 +302,7 @@ function buildHealthViewHTML(markers, dashboard) {
 async function loadReportsView() {
   const list = el("reportsList"); if (!list) return;
   list.innerHTML = `<div class="hv-empty"><i class="fa-solid fa-spinner fa-spin"></i>Loading reports…</div>`;
-  const h = await headers(); 
-  if (!h) { await handleUnauthorized(); return; }
-  
+  const h = await headers(); if (!h) return;
   try {
     const { ok, data } = await apiJson("/api/doctor-prep/history", { headers: h });
     if (!ok || !data?.preps?.length) {
@@ -385,11 +321,10 @@ function askAboutReport(f) { switchView("chat"); setTimeout(() => sendMessage(`S
 /* ═══ HISTORY ═══ */
 async function loadHistory() {
   const list = el("historyList");
+  // Visual indicator that the server might be waking up
   if (list) list.innerHTML = '<div class="sb-empty"><i class="fa-solid fa-spinner fa-spin"></i> Waking secure server...</div>';
   
-  const h = await headers(); 
-  if (!h) { await handleUnauthorized(); return; }
-  
+  const h = await headers(); if (!h) return;
   try {
     let { ok, status, data } = await apiJson("/history", { method: "POST", headers: h, body: JSON.stringify({}) });
     if (status === 401) {
@@ -397,12 +332,8 @@ async function loadHistory() {
       const h2 = await headers(); if (!h2) return;
       ({ ok, data } = await apiJson("/history", { method: "POST", headers: h2, body: JSON.stringify({}) }));
     }
-    // Ensures history completely clears if DB returns empty
     if (ok && Array.isArray(data)) renderHistory(data);
-    else renderHistory([]);
-  } catch(e) { 
-      if (list) list.innerHTML = '<div class="sb-empty">No conversations yet</div>'; 
-  }
+  } catch(e) { if (list) list.innerHTML = '<div class="sb-empty">Failed to load history.</div>'; }
 }
 
 function renderHistory(convs) {
@@ -436,10 +367,7 @@ async function openConversation(id) {
   if (el("chatDisplay")) el("chatDisplay").innerHTML = "";
   document.querySelectorAll(".hist-item").forEach(e => e.classList.toggle("active", e.dataset.id === id));
   closeSidebar();
-  
-  const h = await headers(); 
-  if (!h) { await handleUnauthorized(); return; }
-  
+  const h = await headers(); if (!h) return;
   try {
     const { ok, data } = await apiJson("/conversation", { method: "POST", headers: h, body: JSON.stringify({ conversation_id: id }) });
     if (ok && Array.isArray(data)) { data.forEach(m => appendMsg(m.content, m.role === "user" ? "user" : "ai")); scrollBottom(); }
@@ -450,7 +378,6 @@ async function deleteConversation(id, e) {
   e?.stopPropagation();
   document.querySelector(`.hist-item[data-id="${id}"]`)?.remove();
   if (id === _convId) resetChat();
-  
   const h = await headers();
   if (h) await apiFetch("/delete", { method: "POST", headers: h, body: JSON.stringify({ conversation_id: id }) }).catch(() => {});
   toast("Conversation deleted");
@@ -472,27 +399,23 @@ function showChat()    { el("welcomeScreen")?.classList.add("hidden");    el("ch
 async function createConversation() {
   await saveConsents().catch(() => {});
   const h = await headers();
-  if (!h) { await handleUnauthorized(); return null; }
-  
+  if (!h) { toast("Session expired.", "err"); doSignOut(); return null; }
   const doCreate = async (hdr) => apiJson("/conversation/create", { method: "POST", headers: hdr, body: JSON.stringify({}) });
   let { ok, status, data } = await doCreate(h);
-  
   if (!ok && status === 403) {
     _consentsSaved = false;
     await saveConsents().catch(() => {});
     const h2 = await headers();
     if (h2) ({ ok, status, data } = await doCreate(h2));
   }
-  
   if (!ok && status === 401) { await handleUnauthorized(); return null; }
   if (ok && data?.conversation_id) {
     _convId = data.conversation_id;
     prependHistory(_convId, "New Conversation");
     return _convId;
   }
-  
-  toast("Could not start conversation. Please check your connection.", "err");
-  return null;
+  if (IS_LOCAL) { _convId = "local-" + Date.now(); return _convId; }
+  throw new Error(`Failed to start conversation. Server returned ${status}`);
 }
 
 function prependHistory(id, title) {
@@ -518,7 +441,7 @@ async function renameConversation(id, title) {
   await apiFetch("/rename", { method: "POST", headers: h, body: JSON.stringify({ conversation_id: id, title: short }) }).catch(() => {});
 }
 
-/* ═══ SEND MESSAGE ═══ */
+/* ═══ THE BULLETPROOF SEND FIX ═══ */
 async function handleSend() {
   if (_isSending) return;
   const ta = el("chatInput");
@@ -589,7 +512,6 @@ async function sendMessage(text) {
       if (userMsgs?.length === 1 && _convId) renameConversation(_convId, text);
       if (_docCtx.hasDoc) setTimeout(loadMarkersData, 2000);
     } else {
-      if (res.status === 401) await handleUnauthorized();
       throw new Error(`Server Error (${res.status}): ${txt.slice(0, 150)}`);
     }
 
@@ -601,6 +523,7 @@ async function sendMessage(text) {
       toast(err.message, "err");
     }
   } finally {
+    // ALWAYS reset UI state so button never hangs
     _isSending = false; 
     setSendingState(false); 
     scrollBottom();
@@ -643,19 +566,17 @@ function clearFilePreview() {
 }
 
 async function processUpload(file) {
-  const s = await headers(); 
-  if (!s) { await handleUnauthorized(); return null; }
-  
-  const doUp = (hdr) => fetch(API + "/analyze", {
-    method: "POST", headers: hdr, body: (() => { const f = new FormData(); f.append("file", file); return f; })()
+  const s = await session(); if (!s) { toast("Session expired.", "err"); return null; }
+  const doUp = (token) => fetch(API + "/analyze", {
+    method: "POST", headers: { Authorization: `Bearer ${token}` }, body: (() => { const f = new FormData(); f.append("file", file); return f; })()
   });
 
   try {
-    let res = await Promise.race([doUp(s), new Promise((_, r) => setTimeout(() => r(new Error("timed out")), 65000))]);
+    let res = await Promise.race([doUp(s.access_token), new Promise((_, r) => setTimeout(() => r(new Error("timed out")), 65000))]);
     if (res.status === 401) { await handleUnauthorized(); return null; }
     if (res.status === 403) {
       _consentsSaved = false; await saveConsents().catch(() => {});
-      const s2 = await headers(); if (s2) res = await doUp(s2);
+      const s2 = await session(); if (s2) res = await doUp(s2.access_token);
     }
     if (res.status === 413) { toast("File too large (max 20MB).", "err"); return null; }
     if (!res.ok) { const d = await res.json().catch(() => ({})); toast(d.error || `Upload failed (${res.status}).`, "err"); return null; }
@@ -784,21 +705,13 @@ function updateShield() {
   if (_user) logShieldData(p, s, sl);
 }
 
-// CRITICAL FIX: Graceful Shield Math Rendering
 function renderShield(p, s, sl, logDate) {
-  p = parseFloat(p) || 0;
-  s = parseFloat(s) || 0;
-  sl = parseFloat(sl) || 0;
-  const gw = parseFloat(_goalWt) || 165;
-  
+  const gw = _goalWt || 165;
   _proteinTarget = Math.round(gw * 0.545 * 10) / 10;
-  
-  // Safe math bounds to prevent NaN crashes
-  const pP = Math.min(100, Math.round((p  / (_proteinTarget || 90)) * 100)) || 0;
-  const mP = Math.min(100, Math.round((s  / 8000) * 100)) || 0;
-  const rP = Math.max(0, Math.min(100, Math.round(((sl - 4) / 5) * 100))) || 0;
-  const sc = Math.round((pP + mP + rP) / 3) || 0;
-  
+  const pP = Math.min(100, Math.round((p  / (_proteinTarget || 90)) * 100));
+  const mP = Math.min(100, Math.round((s  / 8000) * 100));
+  const rP = Math.max(0, Math.min(100, Math.round(((sl - 4) / 5) * 100)));
+  const sc = Math.round((pP + mP + rP) / 3);
   setRing("ringProtein",  440, pP);
   setRing("ringMovement", 346, mP);
   setRing("ringRecovery", 258, rP);

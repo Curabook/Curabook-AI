@@ -126,7 +126,7 @@ def check_rate_limit():
 from services.job_queue import init_workers
 init_workers(num_workers=_worker_count)
 
-# FIXED: Removed the duplicate api.auth_routes import to prevent route hijacking
+from api.auth_routes         import auth_bp
 from api.chat_routes         import chat_bp
 from api.document_routes     import document_bp
 from api.health_routes       import health_bp
@@ -137,6 +137,7 @@ from api.cron_routes         import cron_bp
 from api.startup_routes      import startup_bp
 
 # Register blueprints strictly at root to perfectly match frontend
+app.register_blueprint(auth_bp)
 app.register_blueprint(chat_bp)
 app.register_blueprint(document_bp)
 app.register_blueprint(health_bp)
