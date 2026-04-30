@@ -4,6 +4,7 @@ import traceback
 import unicodedata
 import json
 import threading
+import uuid
 from datetime import datetime
 from flask import Blueprint, request, jsonify
 
@@ -154,6 +155,7 @@ def _extract_and_log_metrics(user_message: str, user_id: str, supabase):
                     }).execute()
     except Exception as e: print(f"[ACTION ERROR] {e}")
 
+# SMART FIX: Unlocked memory extractor so it captures ALL context!
 def _extract_facts_quick(user_message: str, ai_reply: str) -> list[str]:
     lower = user_message.lower()
     facts = []
@@ -168,6 +170,7 @@ def _extract_facts_quick(user_message: str, ai_reply: str) -> list[str]:
         if nums: facts.append(f"User's goal weight is {nums[0]} lbs")
 
     openai_key = os.getenv("OPENAI_API_KEY")
+    # REMOVED THE KEYWORD LOCK! Now extracts facts from ANY message > 15 chars.
     if openai_key and len(user_message) > 15:
         try:
             from openai import OpenAI
@@ -187,6 +190,7 @@ def _extract_facts_quick(user_message: str, ai_reply: str) -> list[str]:
                 temperature=0.0, max_tokens=150,
             )
             raw = resp.choices[0].message.content.strip()
+            # Bulletproof JSON extraction
             match = re.search(r'\[.*\]', raw, re.DOTALL)
             if match:
                 parsed = json.loads(match.group(0))
@@ -214,10 +218,12 @@ def _run_background_ops(supabase, user_id, conversation_id, user_message, ai_rep
         save_chat_turn(supabase, user_id, conversation_id, user_message, ai_reply)
     except Exception as e: print(f"[BG] Chat save error: {e}")
 
+    # Extract markers first so memory cache invalidates correctly
     if doc_text_for_extraction:
         try: _extract_and_store_doc_markers(supabase, user_id, doc_text_for_extraction)
         except Exception: pass
 
+    # Extract facts without limits
     facts = []
     try: facts = _extract_facts_quick(user_message, ai_reply)
     except Exception: pass
@@ -275,11 +281,17 @@ def chat():
         enriched_message = f"The patient shared an image/document:\n[DOCUMENT_START]\n{document_text[:10000]}\n[DOCUMENT_END]\n\nUser Message: {message}\nAcknowledge the image and answer the user directly."
 
     messages = _build_messages_safe(supabase, user.id, conversation_id, enriched_message, has_documents or bool(document_text), health_context)
-    
-    # THE FIX: Generate the reply without the hallucination blocker.
     reply = _call_llm_safe(messages)
+
+    try:
+        from ai.system_prompt_v2 import validate_response, detect_hallucination_risk
+        if detect_hallucination_risk(reply, has_health_data):
+            reply = "I want to give accurate information, but I don't have health data stored for you yet. Tap the 📎 button to upload a lab report."
+        else:
+            reply, _ = validate_response(reply, has_health_data)
+    except Exception: pass
+
     final_reply = reply + MANDATORY_DISCLAIMER
-    
     doc_for_bg = document_text if is_fresh_document and not current_markers else None
     
     bg_thread = threading.Thread(
@@ -289,3 +301,96 @@ def chat():
     bg_thread.start()
 
     return jsonify({"reply": final_reply, "has_health_data": has_health_data, "markers_found": len(current_markers)})
+
+@chat_bp.route("/conversation/create", methods=["POST"])
+def create_conversation():
+    from app import supabase
+    from services.auth import get_authenticated_user
+    
+    user = get_authenticated_user(supabase)
+    if not user: 
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.json or {}
+    title = data.get("title", "New Conversation")
+    
+    new_conv_id = str(uuid.uuid4())
+    
+    try:
+        supabase.table("conversations").insert({
+            "id": new_conv_id, 
+            "user_id": user.id, 
+            "title": title
+        }).execute()
+        return jsonify({"conversation_id": new_conv_id})
+    except Exception as e:
+        print(f"[CREATE CONV WARNING] {e}")
+        return jsonify({"conversation_id": new_conv_id})
+
+@chat_bp.route("/history", methods=["POST"])
+def get_history():
+    from app import supabase
+    from services.auth import get_authenticated_user
+    user = get_authenticated_user(supabase)
+    if not user: return jsonify({"error": "Unauthorized"}), 401
+
+    try:
+        res = supabase.table("conversations").select("id,title,created_at").eq("user_id", user.id).order("created_at", desc=True).execute()
+        return jsonify(res.data or [])
+    except Exception as e: return jsonify({"error": str(e)}), 500
+
+@chat_bp.route("/conversation", methods=["POST"])
+def get_conversation():
+    from app import supabase
+    from services.auth import get_authenticated_user
+    user = get_authenticated_user(supabase)
+    if not user: return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.json or {}
+    conv_id = data.get("conversation_id")
+    if not conv_id: return jsonify({"error": "Missing conversation_id"}), 400
+
+    try:
+        res = supabase.table("chats").select("role,content,created_at").eq("conversation_id", conv_id).eq("user_id", user.id).order("created_at", desc=False).execute()
+        return jsonify(res.data or [])
+    except Exception as e: return jsonify({"error": str(e)}), 500
+
+@chat_bp.route("/rename", methods=["POST"])
+def rename_conversation():
+    from app import supabase
+    from services.auth import get_authenticated_user
+    user = get_authenticated_user(supabase)
+    if not user: return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.json or {}
+    conv_id = data.get("conversation_id")
+    title = data.get("title")
+    if not conv_id or not title: return jsonify({"error": "Missing parameters"}), 400
+
+    try:
+        supabase.table("conversations").update({"title": title[:50]}).eq("id", conv_id).eq("user_id", user.id).execute()
+        return jsonify({"success": True})
+    except Exception as e: return jsonify({"error": str(e)}), 500
+
+
+@chat_bp.route("/delete", methods=["POST"])
+def delete_conversation():
+    from app import supabase
+    from services.auth import get_authenticated_user
+    user = get_authenticated_user(supabase)
+    if not user: return jsonify({"error": "Unauthorized"}), 401
+
+    conv_id = (request.json or {}).get("conversation_id")
+    if not conv_id: return jsonify({"error": "Missing conversation_id"}), 400
+
+    try:
+        try:
+            supabase.table("conversation_memories").delete().eq("source_conversation", conv_id).execute()
+        except Exception:
+            pass
+        
+        supabase.table("conversations").delete().eq("id", conv_id).eq("user_id", user.id).execute()
+        return jsonify({"success": True})
+    except Exception as e:
+        print(f"[DELETE ERROR] {e}")
+        return jsonify({"error": str(e)}), 500

@@ -9,7 +9,13 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-    :root { --brand: #00BCD5; --brand-dark: #0097a7; --text: #111111; --muted: #6b7280; --border: #e5e7eb; --bg: #fafafa; --white: #ffffff; --font: 'Plus Jakarta Sans',sans-serif; --serif: 'Instrument Serif',serif; }
+    :root {
+        --brand: #00BCD5; --brand-dark: #0097a7;
+        --text: #111111; --muted: #6b7280; --border: #e5e7eb;
+        --bg: #fafafa; --white: #ffffff;
+        --font: 'Plus Jakarta Sans','Segoe UI',sans-serif;
+        --serif: 'Instrument Serif',Georgia,serif;
+    }
     body { font-family: var(--font); min-height: 100vh; display: flex; background: var(--bg); -webkit-font-smoothing: antialiased; }
     .left-panel { flex: 1; background: #0a0a0a; display: flex; flex-direction: column; justify-content: space-between; padding: 48px; position: relative; overflow: hidden; }
     .left-panel::before { content:''; position:absolute; top:-80px; right:-80px; width:380px; height:380px; background:radial-gradient(circle, rgba(0,188,213,.15) 0%, transparent 70%); pointer-events:none; }
@@ -453,7 +459,8 @@ async function finishOnboarding() {
     }
 
     localStorage.setItem('phi_goal_wt', String(ob.goalWeight || 165));
-    window.location.href = '/';
+    // ── FIX: Redirects directly to /app ─────────────────────────
+    setTimeout(() => { window.location.href = '/app'; }, 400);
 }
 
 document.getElementById('signupBtn').addEventListener('click', async () => {
@@ -513,12 +520,11 @@ document.getElementById('signupBtn').addEventListener('click', async () => {
     }
 });
 
-// OAuth Fix: Direct to signup to trigger the boot check
 document.getElementById('googleBtn').addEventListener('click', async () => {
     if (!supabaseClient) return;
     await supabaseClient.auth.signInWithOAuth({
         provider: 'google',
-        options: { redirectTo: `${window.location.origin}/signup` }, 
+        options: { redirectTo: `${window.location.origin}/app` },
     });
 });
 
@@ -528,30 +534,7 @@ document.addEventListener('keydown', e => {
     }
 });
 
-// Boot check: Differentiates between a returning Google user and a brand new Google user
-(async function boot() {
-    try {
-        initSupabase();
-        const { data: { session } } = await supabaseClient.auth.getSession();
-        
-        if (session?.user) {
-            const { data: profile } = await supabaseClient.from('user_profiles').select('goal_weight_lbs').eq('user_id', session.user.id).single();
-            
-            if (!profile) {
-                // New user via Google! Force onboarding.
-                _userId = session.user.id;
-                _accessToken = session.access_token;
-                document.getElementById('signupStep').style.display = 'none';
-                document.getElementById('onboardingStep').style.display = 'block';
-            } else {
-                // Existing user returning via the signup page. Send them to the app.
-                window.location.href = '/';
-            }
-        }
-    } catch(err) { 
-        setStatus('App failed to load. Please refresh.', 'error'); 
-    }
-})();
+try { initSupabase(); } catch(err) { setStatus('App failed to load. Please refresh.', 'error'); }
 </script>
 </body>
 </html>
