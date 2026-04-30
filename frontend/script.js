@@ -1,6 +1,6 @@
 /**
  * script.js — Curabook PHI v5.0 (Production Master)
- * Auth Loop Fixed | Stateless Sync | Batch Startup Routing
+ * Guaranteed UI Hydration | Stateless Sync | Batch Startup Routing
  */
 "use strict";
 
@@ -72,7 +72,7 @@ async function handleLogout() {
 
 /* ═══ WAKE UP PING ═══ */
 function wakeUpServer() {
-  // PRODUCTION FIX: Ping the root to wake the server without triggering 401s.
+  // Safe ping to wake Render server without 401s
   fetch(API + "/", { method: "GET" }).catch(() => {});
 }
 
@@ -94,7 +94,6 @@ async function boot() {
       if (event === "SIGNED_IN" && session?.user && !_initialized) await onSignIn(session.user);
       if (event === "TOKEN_REFRESHED" && session?.user) _user = session.user;
       
-      // ONLY redirect on explicit SIGNED_OUT events.
       if (event === "SIGNED_OUT" && !_redirecting) {
         _redirecting = true; _initialized = false; _user = null; _convId = null;
         window.location.replace("/login");
@@ -130,10 +129,8 @@ async function onSignIn(user) {
   const h = new Date().getHours();
   setText("timeGreeting", h < 12 ? "morning" : h < 17 ? "afternoon" : "evening");
 
-  // Fire off consent silently
   saveConsents().catch(() => {});
 
-  // PRODUCTION FIX: The Master Batch Load
   const headersObj = await headers();
   if (headersObj) {
     try {
@@ -153,12 +150,12 @@ async function onSignIn(user) {
             }
         }
 
-        // 3. Hydrate the Shield / Behavioral Logs
-        if (data.behavioral_today) {
-            const today = new Date().toISOString().slice(0, 10);
+        // 3. Hydrate the Shield
+        const today = new Date().toISOString().slice(0, 10);
+        if (data.behavioral_today && Array.isArray(data.behavioral_today)) {
             const getLog = m => { 
                 const log = data.behavioral_today.find(x => x.metric_name === m); 
-                return log ? parseFloat(log.value) : 0; 
+                return log && !isNaN(parseFloat(log.value)) ? parseFloat(log.value) : 0; 
             };
             const p = getLog("protein"), s = getLog("steps"), sl = getLog("sleep");
             
@@ -172,9 +169,11 @@ async function onSignIn(user) {
                 setText("shieldLastLogged", `Last logged: ${lastLog.date === today ? `Today at ${w.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}` : w.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`);
             }
             renderShield(p, s, sl, today);
+        } else {
+            renderShield(0, 0, 0, today);
         }
 
-        // 4. Set Goal Weight from Profile
+        // 4. Set Goal Weight
         let gw = data.goal_weight || localStorage.getItem("phi_goal_wt");
         if (gw) {
             if (el("inputGoalWt")) el("inputGoalWt").value = gw;
@@ -182,23 +181,25 @@ async function onSignIn(user) {
             calcProteinDisplay(parseFloat(gw), false);
         }
         
-        console.log(`[PHI] Batch Startup Complete in ${data.elapsed_ms}ms`);
+        console.log(`[PHI] Batch Startup Complete in ${data.elapsed_ms || 0}ms`);
       } else if (status === 401) {
           await handleUnauthorized();
+      } else {
+          // CRITICAL FIX: If the backend returns 404 or 500, we MUST throw an error
+          // so the app correctly triggers the fallback UI loads.
+          throw new Error(`Startup API failed with status ${status}`);
       }
     } catch (e) {
-      console.error("[PHI] Batch startup failed, falling back...", e);
-      // Failsafe in case the backend route crashes
+      console.warn("[PHI] Batch startup failed, executing failsafe fallbacks...", e);
+      // Failsafe: ensure the UI completely unlocks even if the batch route is broken
       await loadHistory();
-      autoLoadShield().catch(() => {});
+      autoLoadShield().catch(() => { renderShield(0, 0, 0, null); });
       loadMarkersData().catch(() => {});
     }
   }
 }
 
 /* ═══ API HELPERS ═══ */
-
-// FIX: Bulletproof header generation forces a check/refresh every time.
 async function headers(ct = true) {
   if (!_sb) return null;
   const { data: { session }, error } = await _sb.auth.getSession();
@@ -235,7 +236,6 @@ async function apiJson(path, opts = {}) {
   return { ok: res.ok, status: res.status, data };
 }
 
-// FIX: Aggressive refresh fallback
 async function handleUnauthorized() {
   try {
     const { data, error } = await _sb.auth.refreshSession();
@@ -397,8 +397,12 @@ async function loadHistory() {
       const h2 = await headers(); if (!h2) return;
       ({ ok, data } = await apiJson("/history", { method: "POST", headers: h2, body: JSON.stringify({}) }));
     }
+    // Ensures history completely clears if DB returns empty
     if (ok && Array.isArray(data)) renderHistory(data);
-  } catch(e) { if (list) list.innerHTML = '<div class="sb-empty">Failed to load history.</div>'; }
+    else renderHistory([]);
+  } catch(e) { 
+      if (list) list.innerHTML = '<div class="sb-empty">No conversations yet</div>'; 
+  }
 }
 
 function renderHistory(convs) {
@@ -780,13 +784,21 @@ function updateShield() {
   if (_user) logShieldData(p, s, sl);
 }
 
+// CRITICAL FIX: Graceful Shield Math Rendering
 function renderShield(p, s, sl, logDate) {
-  const gw = _goalWt || 165;
+  p = parseFloat(p) || 0;
+  s = parseFloat(s) || 0;
+  sl = parseFloat(sl) || 0;
+  const gw = parseFloat(_goalWt) || 165;
+  
   _proteinTarget = Math.round(gw * 0.545 * 10) / 10;
-  const pP = Math.min(100, Math.round((p  / (_proteinTarget || 90)) * 100));
-  const mP = Math.min(100, Math.round((s  / 8000) * 100));
-  const rP = Math.max(0, Math.min(100, Math.round(((sl - 4) / 5) * 100)));
-  const sc = Math.round((pP + mP + rP) / 3);
+  
+  // Safe math bounds to prevent NaN crashes
+  const pP = Math.min(100, Math.round((p  / (_proteinTarget || 90)) * 100)) || 0;
+  const mP = Math.min(100, Math.round((s  / 8000) * 100)) || 0;
+  const rP = Math.max(0, Math.min(100, Math.round(((sl - 4) / 5) * 100))) || 0;
+  const sc = Math.round((pP + mP + rP) / 3) || 0;
+  
   setRing("ringProtein",  440, pP);
   setRing("ringMovement", 346, mP);
   setRing("ringRecovery", 258, rP);
