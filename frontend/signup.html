@@ -180,7 +180,7 @@ async function finishOnboarding() {
         } catch(e) {}
     }
     localStorage.setItem('phi_goal_wt', String(ob.goalWeight || 165));
-    window.location.href = '/app';
+    window.location.href = '/';
 }
 
 document.getElementById('signupBtn').addEventListener('click', async () => {
@@ -198,11 +198,36 @@ document.getElementById('signupBtn').addEventListener('click', async () => {
 
 document.getElementById('googleBtn').addEventListener('click', async () => {
     if (!supabaseClient) return;
-    // IMPORTANT FIX: Return to /login so the Terms popup fires
-    await supabaseClient.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: `${window.location.origin}/login` } }); 
+    // We direct back to /signup. The boot listener will catch them, verify they are new, and show onboarding.
+    await supabaseClient.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: `${window.location.origin}/signup` } }); 
 });
 
-try { initSupabase(); } catch(err) { setStatus('App failed to load. Please refresh.', 'error'); }
+(async function boot() {
+    try {
+        initSupabase();
+        
+        // This solves the OAuth bug. When a user lands on this page with an active session,
+        // we check the database. If they are a new user, they get the Onboarding flow.
+        // If they are an existing user who clicked signup by mistake, they go to login.
+        const { data: { session } } = await supabaseClient.auth.getSession();
+        if (session?.user) {
+            const { data: profile } = await supabaseClient.from('user_profiles').select('goal_weight_lbs').eq('user_id', session.user.id).single();
+            
+            if (!profile) {
+                // New User! Force them to see the Onboarding questions.
+                _userId = session.user.id;
+                _accessToken = session.access_token;
+                document.getElementById('signupStep').style.display = 'none';
+                document.getElementById('onboardingStep').style.display = 'block';
+            } else {
+                // Returning User! They shouldn't be here, send them to login.
+                window.location.href = '/login';
+            }
+        }
+    } catch(err) { 
+        setStatus('App failed to load. Please refresh.', 'error'); 
+    }
+})();
 </script>
 </body>
 </html>
