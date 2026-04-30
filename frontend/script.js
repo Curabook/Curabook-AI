@@ -1,6 +1,6 @@
 /**
- * script.js — Curabook PHI v5.0
- * Auth Loop Fixed: Aggressive background token refreshing and stateless sync.
+ * script.js — Curabook PHI v5.0 (Production Master)
+ * Auth Loop Fixed | Stateless Sync | Batch Startup Routing
  */
 "use strict";
 
@@ -72,7 +72,8 @@ async function handleLogout() {
 
 /* ═══ WAKE UP PING ═══ */
 function wakeUpServer() {
-  fetch(API + "/startup", { method: "GET" }).catch(() => {});
+  // PRODUCTION FIX: Ping the root to wake the server without triggering 401s.
+  fetch(API + "/", { method: "GET" }).catch(() => {});
 }
 
 /* ═══ BOOT ═══ */
@@ -93,7 +94,7 @@ async function boot() {
       if (event === "SIGNED_IN" && session?.user && !_initialized) await onSignIn(session.user);
       if (event === "TOKEN_REFRESHED" && session?.user) _user = session.user;
       
-      // ONLY redirect on explicit SIGNED_OUT events. Do not trigger on token expirations.
+      // ONLY redirect on explicit SIGNED_OUT events.
       if (event === "SIGNED_OUT" && !_redirecting) {
         _redirecting = true; _initialized = false; _user = null; _convId = null;
         window.location.replace("/login");
@@ -112,6 +113,7 @@ async function boot() {
   }
 }
 
+/* ═══ STARTUP DATA LOADER ═══ */
 async function onSignIn(user) {
   if (_initialized) return;
   _initialized = true;
@@ -123,22 +125,74 @@ async function onSignIn(user) {
 
   setText("userEmail", user.email);
   setText("welcomeName", _userName);
-  const av = el("userAvatar");
-  if (av) av.textContent = _userName[0].toUpperCase();
+  if (el("userAvatar")) el("userAvatar").textContent = _userName[0].toUpperCase();
 
   const h = new Date().getHours();
   setText("timeGreeting", h < 12 ? "morning" : h < 17 ? "afternoon" : "evening");
 
-  await saveConsents().catch(() => {});
-  await loadHistory();
-  autoLoadShield().catch(() => {});
-  loadMarkersData().catch(() => {});
+  // Fire off consent silently
+  saveConsents().catch(() => {});
 
-  const gw = localStorage.getItem("phi_goal_wt");
-  if (gw) {
-    if (el("inputGoalWt")) el("inputGoalWt").value = gw;
-    if (el("proteinInput")) el("proteinInput").value = gw;
-    calcProteinDisplay(parseFloat(gw), false);
+  // PRODUCTION FIX: The Master Batch Load
+  const headersObj = await headers();
+  if (headersObj) {
+    try {
+      const { ok, status, data } = await apiJson("/startup", { headers: headersObj });
+      
+      if (ok && data) {
+        // 1. Hydrate Chat History
+        renderHistory(data.history || []);
+        
+        // 2. Hydrate Health Markers
+        if (data.markers && data.markers.length > 0) {
+            renderMarkers(data.markers);
+            runCliffDetection(data.markers); 
+        } else {
+            if (el("markersGrid")) {
+                el("markersGrid").innerHTML = '<div class="markers-empty">Upload a lab report to see your markers</div>';
+            }
+        }
+
+        // 3. Hydrate the Shield / Behavioral Logs
+        if (data.behavioral_today) {
+            const today = new Date().toISOString().slice(0, 10);
+            const getLog = m => { 
+                const log = data.behavioral_today.find(x => x.metric_name === m); 
+                return log ? parseFloat(log.value) : 0; 
+            };
+            const p = getLog("protein"), s = getLog("steps"), sl = getLog("sleep");
+            
+            if (p > 0 && el("inputProtein")) el("inputProtein").value = p;
+            if (s > 0 && el("inputSteps")) el("inputSteps").value = s;
+            if (sl > 0 && el("inputSleep")) el("inputSleep").value = sl;
+            
+            if (data.behavioral_today.length > 0) {
+                const lastLog = data.behavioral_today[0]; 
+                const w = new Date(lastLog.created_at);
+                setText("shieldLastLogged", `Last logged: ${lastLog.date === today ? `Today at ${w.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}` : w.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`);
+            }
+            renderShield(p, s, sl, today);
+        }
+
+        // 4. Set Goal Weight from Profile
+        let gw = data.goal_weight || localStorage.getItem("phi_goal_wt");
+        if (gw) {
+            if (el("inputGoalWt")) el("inputGoalWt").value = gw;
+            if (el("proteinInput")) el("proteinInput").value = gw;
+            calcProteinDisplay(parseFloat(gw), false);
+        }
+        
+        console.log(`[PHI] Batch Startup Complete in ${data.elapsed_ms}ms`);
+      } else if (status === 401) {
+          await handleUnauthorized();
+      }
+    } catch (e) {
+      console.error("[PHI] Batch startup failed, falling back...", e);
+      // Failsafe in case the backend route crashes
+      await loadHistory();
+      autoLoadShield().catch(() => {});
+      loadMarkersData().catch(() => {});
+    }
   }
 }
 
@@ -147,9 +201,6 @@ async function onSignIn(user) {
 // FIX: Bulletproof header generation forces a check/refresh every time.
 async function headers(ct = true) {
   if (!_sb) return null;
-  
-  // getSession() automatically looks at the token expiry and refreshes if needed 
-  // before returning the data to you.
   const { data: { session }, error } = await _sb.auth.getSession();
   
   if (error || !session?.access_token) {
@@ -194,7 +245,6 @@ async function handleUnauthorized() {
     }
   } catch {}
   
-  // Only sign out if the forced refresh explicitly fails
   toast("Session expired. Please sign in again.", "err");
   await doSignOut();
   return false;
