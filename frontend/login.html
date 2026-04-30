@@ -215,11 +215,12 @@ document.getElementById("loginBtn").addEventListener("click", async () => {
 document.addEventListener("keydown", e => { if (e.key === "Enter" && !document.querySelector(".terms-modal-overlay")) document.getElementById("loginBtn").click(); });
 
 document.getElementById("googleBtn").addEventListener("click", async () => {
-    if (!_supabase) return;
-    await _supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: { redirectTo: `${window.location.origin}/login` }, 
-    });
+    try {
+        await _supabase.auth.signInWithOAuth({
+            provider: "google",
+            options: { redirectTo: `${window.location.origin}/login` }, // FORCE BACK TO LOGIN FOR CONSENT
+        });
+    } catch { setStatus("Google sign-in unavailable.", "error"); }
 });
 
 (async function boot() {
@@ -228,25 +229,29 @@ document.getElementById("googleBtn").addEventListener("click", async () => {
             auth: { detectSessionInUrl: true, persistSession: true, flowType: "implicit" },
         });
 
-        const { data: { session } } = await _supabase.auth.getSession();
-        if (session?.user) {
-            
-            // This catches people who clicked "Login with Google" but are actually brand new users!
-            const { data: profile } = await _supabase.from('user_profiles').select('goal_weight_lbs').eq('user_id', session.user.id).single();
-            
-            if (!profile) {
-                // They are a NEW user! Kick them over to the signup page to answer the onboarding questions.
-                window.location.replace('/signup');
-                return;
+        _supabase.auth.onAuthStateChange(async (event, session) => {
+            if (event === "SIGNED_IN" && session?.user) {
+                const user = session.user;
+                const termsKey = `phi_terms_${user.id}`;
+                if (!localStorage.getItem(termsKey)) {
+                    showGoogleTermsModal(user, session);
+                    return;
+                }
+                doRedirect();
             }
+        });
 
-            // They are an existing user. Check their HIPAA terms.
-            const termsKey = `phi_terms_${session.user.id}`;
-            if (!localStorage.getItem(termsKey)) {
-                showGoogleTermsModal(session.user, session);
-                return;
+        const hasOAuthHash = window.location.hash.includes("access_token");
+        if (!hasOAuthHash) {
+            const { data: { session } } = await _supabase.auth.getSession();
+            if (session?.user) {
+                const termsKey = `phi_terms_${session.user.id}`;
+                if (!localStorage.getItem(termsKey)) {
+                    showGoogleTermsModal(session.user, session);
+                    return;
+                }
+                doRedirect();
             }
-            doRedirect();
         }
     } catch (err) { setStatus("App failed to load.", "error"); }
 })();
