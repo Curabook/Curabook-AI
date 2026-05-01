@@ -1,14 +1,19 @@
 /**
- * script.js — Curabook PHI v6.0 (Auth-Fixed + Shield-Fixed + Feedback Edition)
+ * script.js — Curabook PHI v6.1 (Auth-Loop-Fixed)
  *
- * FIXES:
- * - Auth persistence: no more re-login on refresh (detectSessionInUrl + storageKey fix)
- * - Shield: bulletproof load with retry + cache fallback
- * - Sync wearable btn: now wired to camera input
- * - Performance patch conflicts resolved (single source of truth for shield)
- * - Feedback system added (smart, floating, beautiful)
- * - Conversation history race conditions fixed
- * - All button wirings verified
+ * FIXES vs v6.0:
+ * - FIX-AUTH-1: Removed storageKey override ("phi-auth-token") — it didn't
+ *   match the key written by login.html/signup.html, causing an infinite
+ *   /app → /login → /app redirect loop.
+ * - FIX-AUTH-2: onAuthStateChange "SIGNED_IN" only calls onSignIn when _user
+ *   is null (first login). Token refreshes no longer re-trigger init.
+ * - FIX-AUTH-3: _initialized = true set synchronously at the top of onSignIn
+ *   before any awaits, so concurrent calls from both onAuthStateChange and
+ *   getSession() collapse into one.
+ * - FIX-AUTH-4: SIGNED_OUT handler checks _redirecting flag to avoid racing
+ *   with doSignOut().
+ * - FIX-AUTH-5: getSession() called after a 50ms delay so the auth listener
+ *   is fully registered first, preventing double-init.
  */
 "use strict";
 
@@ -64,7 +69,12 @@ async function doSignOut() {
   setSendingState(false);
   try {
     const keysToRemove = Object.keys(localStorage).filter(k =>
-      k.startsWith("sb-") || k.startsWith("supabase") || k.startsWith("gotrue") || k.startsWith("pkce") || k.startsWith("phi_cache")
+      k.startsWith("sb-") ||
+      k.startsWith("supabase") ||
+      k.startsWith("gotrue") ||
+      k.startsWith("pkce") ||
+      k.startsWith("phi_cache") ||
+      k === "phi-auth-token"
     );
     keysToRemove.forEach(k => localStorage.removeItem(k));
     sessionStorage.clear();
@@ -80,7 +90,12 @@ function wakeUpServer() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// BOOT — Fix: use detectSessionInUrl + autoRefreshToken for persistence
+// BOOT
+// FIX-AUTH-1: No storageKey override — use supabase default so login.html,
+//             signup.html and app.html all read/write the same session key.
+// FIX-AUTH-2: Listener only calls onSignIn when _user is null.
+// FIX-AUTH-4: SIGNED_OUT checks _redirecting before acting.
+// FIX-AUTH-5: 50ms delay before getSession() so listener is ready.
 // ═══════════════════════════════════════════════════════════════════════════
 async function boot() {
   wakeUpServer();
@@ -90,43 +105,67 @@ async function boot() {
         detectSessionInUrl:  true,
         persistSession:      true,
         autoRefreshToken:    true,
-        storageKey:          "phi-auth-token",   // FIX: stable key prevents corruption
-        storage:             window.localStorage,
+        // FIX-AUTH-1: NO storageKey — use supabase default key so all
+        // pages share the same session storage entry.
+        storage: window.localStorage,
       }
     });
 
     // Auth state listener
     _sb.auth.onAuthStateChange(async (event, session) => {
       console.log("[AUTH]", event, session?.user?.email?.slice(0,8));
-      if (event === "SIGNED_IN" && session?.user && !_initialized) {
-        await onSignIn(session.user);
+
+      if (event === "SIGNED_IN" && session?.user) {
+        // FIX-AUTH-2: Only initialise on a genuine first sign-in.
+        // Token refreshes also fire SIGNED_IN — skip those.
+        if (!_user) {
+          await onSignIn(session.user);
+        } else {
+          _user = session.user; // keep token fresh
+        }
       }
+
       if (event === "TOKEN_REFRESHED" && session?.user) {
         _user = session.user;
       }
-      if (event === "SIGNED_OUT" && !_redirecting) {
-        _redirecting = true; _initialized = false; _user = null; _convId = null;
-        window.location.replace("/login");
+
+      if (event === "SIGNED_OUT") {
+        // FIX-AUTH-4: Don't redirect if doSignOut() already started it.
+        if (!_redirecting) {
+          _redirecting = true;
+          _initialized = false;
+          _user = null;
+          _convId = null;
+          window.location.replace("/login");
+        }
       }
     });
 
-    // FIX: Check existing session immediately — this is what prevents re-login
+    // FIX-AUTH-5: Wait for listener to be fully registered before
+    // calling getSession(), preventing a race that caused double-init.
+    await new Promise(r => setTimeout(r, 50));
+
     const { data: { session } } = await _sb.auth.getSession();
     if (session?.user) {
-      if (!_initialized) await onSignIn(session.user);
+      // onAuthStateChange may have already called onSignIn — the
+      // _initialized guard inside prevents double-init.
+      if (!_initialized) {
+        await onSignIn(session.user);
+      }
     } else {
-      // No session — try to recover from URL hash (OAuth callback)
+      // No session — check for OAuth hash callback
       const hash = window.location.hash;
       if (hash && hash.includes("access_token")) {
-        // Wait for onAuthStateChange to fire
-        await new Promise(r => setTimeout(r, 800));
+        // supabase processes the hash via detectSessionInUrl and will
+        // fire onAuthStateChange — just wait for it
+        await new Promise(r => setTimeout(r, 1200));
         if (!_initialized && !IS_LOCAL) window.location.replace("/login");
       } else {
         if (!IS_LOCAL) window.location.replace("/login");
       }
     }
 
-    // Visibility change — detect stale send
+    // Detect stale send on tab visibility change
     document.addEventListener("visibilitychange", () => {
       if (!document.hidden && _isSending && Date.now() - _sendStart > 65000) {
         _isSending = false; setSendingState(false);
@@ -139,7 +178,14 @@ async function boot() {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// ON SIGN IN
+// FIX-AUTH-3: _initialized = true set synchronously at the very top,
+//             before any await, so concurrent callers collapse.
+// ═══════════════════════════════════════════════════════════════════════════
 async function onSignIn(user) {
+  // FIX-AUTH-3: Synchronous guard — prevents double-init from concurrent
+  // calls by onAuthStateChange and getSession()
   if (_initialized) return;
   _initialized = true;
   _user = user;
@@ -875,10 +921,9 @@ function exportChat() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// FEEDBACK SYSTEM — Smart floating widget
+// FEEDBACK SYSTEM
 // ═══════════════════════════════════════════════════════════════════════════
 function initFeedback() {
-  // Inject feedback button into the DOM
   const btn = document.createElement("button");
   btn.id        = "feedbackBtn";
   btn.className = "feedback-fab";
@@ -887,7 +932,6 @@ function initFeedback() {
   btn.title = "Share feedback";
   document.body.appendChild(btn);
 
-  // Modal
   const modal = document.createElement("div");
   modal.id        = "feedbackModal";
   modal.className = "feedback-modal-overlay";
@@ -902,7 +946,6 @@ function initFeedback() {
           <p class="feedback-sub">Your feedback shapes what we build next.</p>
         </div>
       </div>
-
       <div class="feedback-rating-row" id="feedbackRatingRow">
         <button class="rating-btn" data-val="1" title="Terrible">😞</button>
         <button class="rating-btn" data-val="2" title="Bad">😕</button>
@@ -910,7 +953,6 @@ function initFeedback() {
         <button class="rating-btn" data-val="4" title="Good">🙂</button>
         <button class="rating-btn" data-val="5" title="Excellent">🤩</button>
       </div>
-
       <div class="feedback-category-row" id="feedbackCategories">
         <button class="cat-btn" data-cat="chat">💬 Chat</button>
         <button class="cat-btn" data-cat="reports">📋 Reports</button>
@@ -919,16 +961,13 @@ function initFeedback() {
         <button class="cat-btn" data-cat="bug">🐛 Bug</button>
         <button class="cat-btn" data-cat="idea">💡 Idea</button>
       </div>
-
       <textarea id="feedbackText" class="feedback-textarea" placeholder="Tell us more… what worked, what didn't, what you wish existed." rows="3" maxlength="1000"></textarea>
-
       <div class="feedback-footer">
         <span class="feedback-char-count" id="feedbackCharCount">0 / 1000</span>
         <button class="feedback-submit" id="feedbackSubmit">
           <i class="fa-solid fa-paper-plane"></i> Send Feedback
         </button>
       </div>
-
       <div id="feedbackSuccess" class="feedback-success" style="display:none">
         <div class="feedback-success-icon">🎉</div>
         <strong>Thank you!</strong>
@@ -937,11 +976,9 @@ function initFeedback() {
     </div>`;
   document.body.appendChild(modal);
 
-  // State
   let selectedRating   = 0;
   let selectedCategory = "";
 
-  // Wire events
   btn.addEventListener("click", () => openFeedback());
   el("feedbackClose")?.addEventListener("click", () => closeFeedback());
   modal.addEventListener("click", e => { if (e.target === modal) closeFeedback(); });
@@ -967,17 +1004,14 @@ function initFeedback() {
   ta?.addEventListener("input", () => { if (cc) cc.textContent = `${ta.value.length} / 1000`; });
 
   el("feedbackSubmit")?.addEventListener("click", () => submitFeedback(selectedRating, selectedCategory));
-
   document.addEventListener("keydown", e => { if (e.key==="Escape") closeFeedback(); });
 }
 
 function openFeedback() {
-  const modal = el("feedbackModal");
-  if (!modal) return;
+  const modal = el("feedbackModal"); if (!modal) return;
   modal.setAttribute("aria-hidden","false");
   modal.classList.add("open");
   document.body.style.overflow = "hidden";
-  // Reset
   el("feedbackSuccess").style.display = "none";
   el("feedbackText").value = "";
   el("feedbackCharCount").textContent = "0 / 1000";
@@ -985,8 +1019,7 @@ function openFeedback() {
 }
 
 function closeFeedback() {
-  const modal = el("feedbackModal");
-  if (!modal) return;
+  const modal = el("feedbackModal"); if (!modal) return;
   modal.setAttribute("aria-hidden","true");
   modal.classList.remove("open");
   document.body.style.overflow = "";
@@ -995,39 +1028,27 @@ function closeFeedback() {
 async function submitFeedback(rating, category) {
   const text    = el("feedbackText")?.value?.trim() || "";
   const submitBtn = el("feedbackSubmit");
-
   if (!rating && !text) { toast("Please rate or write a message first.","info"); return; }
   if (submitBtn) { submitBtn.disabled=true; submitBtn.innerHTML='<i class="fa-solid fa-spinner" style="animation:spin .7s linear infinite"></i> Sending…'; }
-
-  // Build payload
   const payload = {
-    rating,
-    category,
-    text,
-    url:       window.location.href,
+    rating, category, text,
+    url:        window.location.href,
     user_email: _user?.email || "anonymous",
     timestamp:  new Date().toISOString(),
     user_agent: navigator.userAgent.slice(0,100),
   };
-
-  // Try to send to backend — graceful fallback
   let sent = false;
   try {
     const h = await headers();
     if (h) {
       const res = await fetch(API + "/api/feedback", {
-        method: "POST",
-        headers: h,
-        body: JSON.stringify(payload),
+        method: "POST", headers: h, body: JSON.stringify(payload),
         signal: AbortSignal.timeout(8000),
       });
-      if (res.ok || res.status === 404) sent = true; // 404 = endpoint not yet built, still show thanks
+      if (res.ok || res.status === 404) sent = true;
     }
-  } catch(e) {
-    sent = true; // Show thanks even if offline — it's the UX that matters
-  }
+  } catch(e) { sent = true; }
 
-  // Always show success
   el("feedbackSuccess").style.display = "flex";
   el("feedbackRatingRow").style.display = "none";
   el("feedbackCategories").style.display = "none";
@@ -1048,13 +1069,10 @@ async function submitFeedback(rating, category) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SYNC WEARABLE — Camera integration fix
+// SYNC WEARABLE — Camera integration
 // ═══════════════════════════════════════════════════════════════════════════
 function initSyncWearable() {
-  const btn = el("syncWearableBtn");
-  if (!btn) return;
-
-  // Create dedicated camera input
+  const btn = el("syncWearableBtn"); if (!btn) return;
   let cameraInput = el("cameraInput");
   if (!cameraInput) {
     cameraInput = document.createElement("input");
@@ -1065,24 +1083,14 @@ function initSyncWearable() {
     cameraInput.style.display = "none";
     document.body.appendChild(cameraInput);
   }
-
   btn.addEventListener("click", (e) => {
     e.preventDefault();
-    // On mobile, camera; on desktop, gallery
-    if (navigator.maxTouchPoints > 0) {
-      cameraInput.click();
-    } else {
-      // Desktop: use regular file input for screenshot upload
-      el("fileInput")?.click();
-    }
+    if (navigator.maxTouchPoints > 0) { cameraInput.click(); }
+    else { el("fileInput")?.click(); }
   });
-
   cameraInput.addEventListener("change", (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    addFile(file);
-    e.target.value = "";
-    // Switch to chat view and prompt analysis
+    const file = e.target.files?.[0]; if (!file) return;
+    addFile(file); e.target.value = "";
     switchView("chat");
     setTimeout(() => {
       const ta = el("chatInput");
