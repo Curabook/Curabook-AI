@@ -280,7 +280,46 @@ def call_llm(messages: List[Dict[str, str]], max_tokens: int = MAX_RESPONSE_TOKE
         return None
 
 def extract_conversation_memories(user_message: str, ai_reply: str) -> List[str]:
-    # (Memory code remains the same)
+    health_indicators = [
+        "supplement", "medication", "doctor", "appointment", "symptom", "fatigue",
+        "diet", "exercise", "concern", "worried", "sleep", "stress", "weight",
+        "insulin", "walking", "gym", "calories", "insurance", "denied", "glp",
+        "wegovy", "ozempic", "zepbound", "mounjaro", "prior auth",
+        "stopped", "off meds", "taper", "food noise", "hunger", "cravings",
+        "protein", "resistance training", "muscle", "plateau",
+    ]
+    combined = (user_message + " " + ai_reply).lower()
+    if not any(kw in combined for kw in health_indicators):
+        return []
+
+    prompt = f"""Extract 0-3 permanent health facts the USER revealed about themselves.
+USER SAID: {user_message[:800]}
+PHI REPLIED: {ai_reply[:400]}
+
+Rules:
+- Only facts the USER stated (e.g., conditions, medication changes, lifestyle habits).
+- Do not extract temporary feelings or questions.
+- Short, clear. Max 100 chars each.
+- Return ONLY a strict JSON array of strings. Empty array [] if no facts."""
+
+    openai_key = os.getenv("OPENAI_API_KEY")
+    if not openai_key: return []
+
+    try:
+        from openai import OpenAI
+        resp = OpenAI(api_key=openai_key).chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.0, max_tokens=250,
+        )
+        raw = resp.choices[0].message.content.strip()
+        match = re.search(r'\[.*\]', raw, re.DOTALL)
+        if match:
+            parsed = json.loads(match.group(0))
+            if isinstance(parsed, list):
+                return [str(f)[:200] for f in parsed if isinstance(f, str) and len(f) > 5]
+    except Exception as e:
+        print(f"[MEMORY] Extraction error: {e}")
     return []
 
 def save_chat_turn(supabase: Any, user_id: str, conversation_id: str,

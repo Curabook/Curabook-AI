@@ -260,13 +260,13 @@ async function headers(ct = true) {
   return h;
 }
 
-// FIX-5: retry once on 5xx (cold start / server wake-up)
+// FIX: Transparent 401 interceptor & 5xx retry
 async function apiFetch(path, opts = {}) {
-  const doFetch = async () => {
+  const doFetch = async (currentOpts) => {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 65000);
     try {
-      const r = await fetch(API + path, { ...opts, signal: ctrl.signal });
+      const r = await fetch(API + path, { ...currentOpts, signal: ctrl.signal });
       clearTimeout(t);
       return r;
     } catch(e) {
@@ -277,13 +277,26 @@ async function apiFetch(path, opts = {}) {
   };
 
   try {
-    const res = await doFetch();
-    // Retry once on 5xx (server cold start)
-    if (res.status >= 500) {
+    let res = await doFetch(opts);
+    
+    // AUTH FIX: If token is stale (401), silently refresh and retry the request once.
+    // This entirely cures the "Zombie State" on cold reloads and OAuth redirects.
+    if (res.status === 401 && !opts._isRetry) {
+        console.warn(`[AUTH] 401 on ${path}, attempting silent token refresh...`);
+        const refreshed = await handleUnauthorized();
+        if (refreshed) {
+            const newH = await headers(!!(opts.headers && opts.headers["Content-Type"]));
+            return doFetch({ ...opts, headers: newH, _isRetry: true });
+        }
+    }
+
+    // Cold start retry on 5xx
+    if (res.status >= 500 && !opts._isRetry) {
       console.warn(`[API] ${path} returned ${res.status}, retrying in 3s…`);
       await new Promise(r => setTimeout(r, 3000));
-      return doFetch();
+      return doFetch({ ...opts, _isRetry: true });
     }
+    
     return res;
   } catch(e) {
     throw e;
@@ -300,9 +313,14 @@ async function apiJson(path, opts = {}) {
 
 async function handleUnauthorized() {
   try {
-    const { data } = await _sb.auth.refreshSession();
-    if (data?.session) { _user = data.session.user; return true; }
+    const { data, error } = await _sb.auth.refreshSession();
+    if (data?.session) { 
+      _user = data.session.user; 
+      return true; // Successfully refreshed
+    }
   } catch {}
+  
+  // Only sign out if the refresh explicitly fails
   await doSignOut();
   return false;
 }

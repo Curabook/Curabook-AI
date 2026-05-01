@@ -119,25 +119,30 @@ def _call_llm_safe(messages: list) -> str:
 
     return "⚠️ I'm having trouble connecting to my AI engine. Please check your OPENAI_API_KEY."
 
-def _extract_and_log_metrics(user_message: str, user_id: str, supabase):
+def _extract_and_log_metrics(user_message: str, document_text: str, user_id: str, supabase):
     openai_key = os.getenv("OPENAI_API_KEY")
     if not openai_key: return
     
-    lower = user_message.lower()
-    if not any(kw in lower for kw in ["protein", "step", "sleep", "slept", "walk", "ate", "gram", "hr", "hour"]):
+    # SMART SHIELD FIX: Combine typed message AND extracted image/report text
+    combined_text = f"User Message: {user_message}\nDocument/Image Text: {document_text}"
+    lower = combined_text.lower()
+    
+    # Quick check to avoid unnecessary API calls
+    if not any(kw in lower for kw in ["protein", "step", "sleep", "slept", "walk", "ate", "gram", "hr", "hour", "routine", "screenshot"]):
         return
 
     prompt = """
-    The user is reporting daily health metrics in a chat. Extract quantifiable data for 'protein' (grams), 'steps' (count), or 'sleep' (hours).
-    Return ONLY a strict JSON array of objects with exactly these keys: "metric_name" (must be 'protein', 'steps', or 'sleep'), "value" (number), "unit" (string).
-    If no concrete numbers are reported, return an empty array [].
+    Analyze this message and/or image text. Extract ONLY daily routine metrics for TODAY: 'protein' (grams), 'steps' (count), or 'sleep' (hours).
+    Ignore historical data or general goals. 
+    Return ONLY a strict JSON array of objects: {"metric_name": "protein"|"steps"|"sleep", "value": number, "unit": string}.
+    If no metrics are found, return [].
     """
     try:
         from openai import OpenAI
         client = OpenAI(api_key=openai_key, timeout=10.0)
         resp = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[{"role": "system", "content": prompt}, {"role": "user", "content": user_message[:600]}],
+            messages=[{"role": "system", "content": prompt}, {"role": "user", "content": combined_text[:2000]}],
             temperature=0.0, max_tokens=150
         )
         raw = resp.choices[0].message.content.strip()
@@ -153,8 +158,9 @@ def _extract_and_log_metrics(user_message: str, user_id: str, supabase):
                     supabase.table("behavioral_logs").insert({
                         "user_id": user_id, "date": date_str, "metric_name": name, "value": float(val), "unit": unit
                     }).execute()
-    except Exception as e: print(f"[ACTION ERROR] {e}")
-
+    except Exception as e: 
+        print(f"[ACTION ERROR] {e}")
+        
 # SMART FIX: Unlocked memory extractor so it captures ALL context!
 def _extract_facts_quick(user_message: str, ai_reply: str) -> list[str]:
     lower = user_message.lower()
