@@ -1,3 +1,7 @@
+"""
+api/chat_routes.py — FIXED VERSION
+Integrates FIX_2 (memory) + FIX_3 (smart shield)
+"""
 import re
 import os
 import traceback
@@ -5,7 +9,7 @@ import unicodedata
 import json
 import threading
 import uuid
-from datetime import datetime
+from datetime import datetime, date
 from flask import Blueprint, request, jsonify
 
 chat_bp = Blueprint("chat", __name__)
@@ -77,7 +81,6 @@ def _build_context(supabase, user_id: str, user_message: str = "") -> tuple[str,
         return "", False
 
     parts = [p for p in [stored_block, rag_block] if p and p.strip()]
-    
     header = (
         "╔══════════════════════════════════════════╗\n"
         "║  PHI HEALTH MEMORY — GLP-1 CLIFF ACTIVE  ║\n"
@@ -128,180 +131,196 @@ def _build_messages_safe(supabase, user_id, conversation_id, enriched_message, h
 def _call_llm_safe(messages: list) -> str:
     if not messages:
         return "I couldn't process that request. Please try again."
-    
     openai_key = os.getenv("OPENAI_API_KEY")
     if openai_key:
         try:
             from openai import OpenAI
             client = OpenAI(api_key=openai_key, timeout=60.0)
             resp = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=messages,
-                temperature=0.35,
-                max_tokens=1200
+                model="gpt-4o-mini", messages=messages, temperature=0.35, max_tokens=1200
             )
             return resp.choices[0].message.content.strip()
         except Exception as e:
             print(f"[LLM ERROR] {e}")
             return f"⚠️ **OpenAI Error:** {str(e)}\n\n*(Check your API Key and billing status)*"
-
     return "⚠️ I'm having trouble connecting to my AI engine. Please check your OPENAI_API_KEY."
 
-# ─── FIXED: Smart behavioral extraction from combined user + doc text ──────────
-# Bug was: _extract_and_log_metrics(user_message, user_id, supabase) — wrong arg order
-# was being called as _extract_and_log_metrics(user_message, user_id, supabase) in bg ops
 
-def _extract_and_log_metrics(user_message: str, document_text: str, user_id: str, supabase):
-    """
-    SMART: Only extract if user is explicitly reporting today's behavioral data.
-    Don't extract from questions, medical reports, or historical context.
-    """
-    openai_key = os.getenv("OPENAI_API_KEY")
-    if not openai_key:
-        return
+# ════════════════════════════════════════════════════════════════
+# FIX_3: SMART SHIELD — behavioral parsing from messages
+# ════════════════════════════════════════════════════════════════
 
-    # Combined text for extraction
-    combined_text = f"User Message: {user_message}\nDocument/Image Text: {document_text}"
-    lower = combined_text.lower()
+def _parse_behavioral_from_message(user_message: str, document_text: str = "") -> dict:
+    """Parse behavioral data from user message + document text."""
+    combined = f"{user_message}\n{document_text}".lower()
+    today = date.today().isoformat()
+    metrics = {}
 
-    # Quick check — only proceed if behavioral keywords present AND it's a report/statement
-    behavioral_kw = ["protein", "step", "sleep", "slept", "walk", "ate", "gram", "hr", "hour"]
-    report_kw = ["today", "this morning", "just had", "i ate", "i slept", "screenshot", "routine", "logged"]
-    
-    has_behavioral = any(kw in lower for kw in behavioral_kw)
-    has_report_context = any(kw in lower for kw in report_kw) or document_text.strip()
-    
-    if not (has_behavioral and has_report_context):
-        return
+    report_signals = [
+        "today", "this morning", "last night", "just had", "i ate",
+        "i slept", "i walked", "i did", "logged", "screenshot",
+        "my sleep", "my steps", "my protein", "ate", "steps were",
+        "slept", "walked", "grams of protein",
+    ]
+    is_reporting = any(kw in combined for kw in report_signals) or bool(document_text.strip())
+    if not is_reporting:
+        return {}
 
-    prompt = """
-Analyze this message and/or image text. Extract ONLY daily routine metrics being REPORTED FOR TODAY:
-- 'protein' (grams consumed today)
-- 'steps' (steps walked today)  
-- 'sleep' (hours slept last night)
+    # Protein
+    for pattern in [
+        r'(\d{2,3})\s*(?:g|grams?)\s+(?:of\s+)?protein',
+        r'protein[:\s]+(\d{2,3})\s*(?:g|grams?)',
+        r'protein[:\s=]+(\d{2,3})',
+    ]:
+        m = re.search(pattern, combined)
+        if m:
+            val = int(m.group(1))
+            if 10 <= val <= 400:
+                metrics["protein"] = {"value": val, "unit": "g", "date": today}
+                break
 
-RULES:
-- Only extract if the user is actively reporting/logging their data
-- Do NOT extract from questions ("how much protein should I eat?")
-- Do NOT extract from historical/goal data ("my goal is 90g protein")
-- Do NOT extract from medical lab reports (those are lab markers, not behavioral logs)
-- If unsure, return []
+    # Steps
+    for pattern in [
+        r'(\d{3,6})\s+steps',
+        r'steps[:\s]+(\d{3,6})',
+        r'walked\s+(\d{3,6})',
+    ]:
+        m = re.search(pattern, combined)
+        if m:
+            val = int(m.group(1))
+            if 0 <= val <= 100000:
+                metrics["steps"] = {"value": val, "unit": "steps", "date": today}
+                break
 
-Return ONLY a strict JSON array: [{"metric_name": "protein"|"steps"|"sleep", "value": number, "unit": string}]
-If no today-specific behavioral metrics found, return [].
-"""
-    try:
-        from openai import OpenAI
-        client = OpenAI(api_key=openai_key, timeout=10.0)
-        resp = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": prompt},
-                {"role": "user", "content": combined_text[:2000]}
-            ],
-            temperature=0.0,
-            max_tokens=150
-        )
-        raw = resp.choices[0].message.content.strip()
-        match = re.search(r'\[.*\]', raw, re.DOTALL)
-        if not match:
-            return
-        
-        metrics = json.loads(match.group(0))
-        if not metrics:
-            return
-            
-        date_str = datetime.now().strftime("%Y-%m-%d")
-        for m in metrics:
-            name = m.get("metric_name")
-            val  = m.get("value")
-            unit = m.get("unit", "")
-            if name in ["protein", "steps", "sleep"] and isinstance(val, (int, float)):
-                try:
-                    supabase.table("behavioral_logs").insert({
-                        "user_id":     user_id,
-                        "date":        date_str,
-                        "metric_name": name,
-                        "value":       float(val),
-                        "unit":        unit
-                    }).execute()
-                    print(f"[METRICS] Logged {name}: {val} for {user_id[:8]}")
-                except Exception as e:
-                    print(f"[METRICS] Log error: {e}")
-    except Exception as e:
-        print(f"[METRICS ERROR] {e}")
+    # Sleep
+    for pattern in [
+        r'slept?\s+(\d+(?:\.\d)?)\s*(?:h(?:ours?)?|hrs?)',
+        r'sleep[:\s]+(\d+(?:\.\d)?)\s*(?:h(?:ours?)?|hrs?)',
+        r'(\d+(?:\.\d)?)\s*(?:h(?:ours?)?|hrs?)\s+(?:of\s+)?sleep',
+    ]:
+        m = re.search(pattern, combined)
+        if m:
+            val = float(m.group(1))
+            if 0 <= val <= 14:
+                metrics["sleep"] = {"value": round(val, 1), "unit": "hours", "date": today}
+                break
 
-# ─── SMART MEMORY: Context-aware, avoid noise ─────────────────────────────────
+    return metrics
 
-# Patterns indicating AI learned a permanent fact about the user
-_AI_LEARNED_SIGNALS = [
-    r"i'?ve (noted|recorded|saved|stored|updated|logged)",
-    r"(noted|stored|saved|recorded) (that|your|this)",
-    r"added to your (health memory|profile|records)",
-    r"i'?ll (remember|keep in mind|note)",
+
+def _store_behavioral_metrics(supabase, user_id: str, metrics: dict) -> dict:
+    """Store parsed behavioral metrics to behavioral_logs, return what was stored."""
+    if not metrics:
+        return {}
+    stored = {}
+    for metric_name, data in metrics.items():
+        try:
+            supabase.table("behavioral_logs").insert({
+                "user_id":     user_id,
+                "date":        data["date"],
+                "metric_name": metric_name,
+                "value":       float(data["value"]),
+                "unit":        data["unit"],
+                "created_at":  datetime.now().isoformat(),
+            }).execute()
+            stored[metric_name] = data["value"]
+            print(f"[SMART-SHIELD] {metric_name}: {data['value']} for {user_id[:8]}")
+        except Exception as e:
+            print(f"[SMART-SHIELD] Store error {metric_name}: {e}")
+    return stored
+
+
+# ════════════════════════════════════════════════════════════════
+# FIX_2: MEMORY — improved extraction functions
+# ════════════════════════════════════════════════════════════════
+
+_HEALTH_FACT_KEYWORDS = [
+    "stopped", "started", "taking", "wegovy", "zepbound", "ozempic", "mounjaro",
+    "tirzepatide", "semaglutide", "metformin", "insulin", "glp-1", "glp1",
+    "goal weight", "goal is", "i weigh", "my weight", "pounds", "lbs",
+    "i have", "diagnosed", "diabetes", "prediabetes", "cholesterol",
+    "doctor said", "my doctor", "insurance", "denied", "prior auth",
+    "food noise", "hungry", "craving", "tired", "fatigue",
 ]
-_AI_LEARNED_RE = re.compile("|".join(_AI_LEARNED_SIGNALS), re.I)
 
-# Context that means user revealed something permanent about themselves
-_PERMANENT_FACT_KW = [
-    "stopped", "started", "diagnosed", "taking", "my medication", "my condition",
-    "i have", "i was told", "my doctor said", "my goal", "i'm trying",
-    "insurance denied", "prior auth", "goal weight", "goal is",
-    "i weigh", "my weight", "pounds", "kg", "bmi",
+_TRIVIAL_PATTERNS = [
+    r"^(hi|hello|hey|thanks|thank you|ok|okay|got it|sounds good)[\s!.?]*$",
+    r"^(yes|no|sure|please|maybe)[\s!.?]*$",
+    r"^\?+$",
 ]
 
 def _should_extract_memory(user_message: str, ai_reply: str) -> bool:
-    """Only extract memory when there's strong signal user revealed permanent info."""
-    lower_user = user_message.lower()
+    lower_user = user_message.lower().strip()
     lower_ai   = ai_reply.lower()
-    
-    # Must have either: AI confirmed it learned something, OR user stated a permanent fact
-    ai_learned = bool(_AI_LEARNED_RE.search(lower_ai))
-    user_stated_fact = any(kw in lower_user for kw in _PERMANENT_FACT_KW)
-    
-    return ai_learned or user_stated_fact
+    for pattern in _TRIVIAL_PATTERNS:
+        if re.match(pattern, lower_user, re.IGNORECASE):
+            return False
+    if len(lower_user) < 15 and not any(kw in lower_user for kw in _HEALTH_FACT_KEYWORDS):
+        return False
+    if any(kw in lower_user for kw in _HEALTH_FACT_KEYWORDS):
+        return True
+    ai_health_signals = [
+        "protein target", "muscle defense", "glp-1", "wegovy", "zepbound",
+        "ozempic", "your goal weight", "cliff alert", "rebound",
+        "i've noted", "i've stored", "i'll remember",
+    ]
+    return any(sig in lower_ai for sig in ai_health_signals)
 
 def _extract_facts_quick(user_message: str, ai_reply: str) -> list[str]:
-    """
-    Smart memory extraction — only when user revealed something permanent.
-    Quality over quantity: 0 facts is better than 10 wrong ones.
-    """
-    # Gate: only extract if there's real signal
     if not _should_extract_memory(user_message, ai_reply):
         return []
 
     lower = user_message.lower()
     facts = []
 
-    # High-confidence rule-based extraction first
+    # GLP-1 medication status
     for med in ["zepbound", "wegovy", "ozempic", "mounjaro", "tirzepatide", "semaglutide"]:
-        if med in lower and any(kw in lower for kw in ["stopped", "off", "discontinued", "ended"]):
-            facts.append(f"User stopped {med.title()} (self-reported)")
-            break
-        if med in lower and any(kw in lower for kw in ["taking", "started", "on ", "using"]):
-            facts.append(f"User is taking {med.title()} (self-reported)")
-            break
+        if med in lower:
+            if any(kw in lower for kw in ["stopped", "off", "discontinued", "ended", "quit", "coming off"]):
+                facts.append(f"User stopped {med.title()} (self-reported)")
+                break
+            elif any(kw in lower for kw in ["taking", "started", "on ", "using", "injecting", "dose"]):
+                facts.append(f"User is taking {med.title()} (self-reported)")
+                break
+            elif any(kw in lower for kw in ["tapering", "reducing", "every other week", "microdose"]):
+                facts.append(f"User is tapering {med.title()} (self-reported)")
+                break
 
-    # Goal weight — high confidence regex
-    gw_match = re.search(r'\b(\d{2,3})\s*(?:lbs?|pounds?)\b.*(?:goal|target|want to)', lower)
-    gw_match2 = re.search(r'goal.*?\b(\d{2,3})\s*(?:lbs?|pounds?)\b', lower)
-    gw = gw_match or gw_match2
-    if gw:
-        facts.append(f"User's goal weight is {gw.group(1)} lbs")
+    # Goal weight
+    for pattern in [
+        r'goal\s+weight\s+(?:is\s+)?(\d{2,3})\s*(?:lbs?|pounds?)',
+        r'(\d{2,3})\s*(?:lbs?|pounds?)\s+(?:is\s+)?(?:my\s+)?(?:goal|target)',
+        r'want\s+to\s+(?:be|weigh|get\s+to)\s+(\d{2,3})\s*(?:lbs?|pounds?)',
+    ]:
+        m = re.search(pattern, lower)
+        if m:
+            gw = int(m.group(1))
+            if 80 <= gw <= 400:
+                facts.append(f"User's goal weight is {gw} lbs (protein target: {round(gw * 0.545, 1)}g/day)")
+                break
 
+    # Insurance denial
+    if any(kw in lower for kw in ["insurance denied", "prior auth denied", "pa denied"]):
+        for med in ["zepbound", "wegovy", "ozempic", "mounjaro", "glp-1"]:
+            if med in lower:
+                facts.append(f"User's insurance denied prior authorization for {med.title()}")
+                break
+        else:
+            facts.append("User's insurance denied prior authorization for GLP-1 medication")
+
+    # LLM extraction for nuanced facts
     openai_key = os.getenv("OPENAI_API_KEY")
     if openai_key and len(user_message) > 20:
         try:
             from openai import OpenAI
             client = OpenAI(api_key=openai_key, timeout=8.0)
             prompt = (
-                "Extract 0-2 PERMANENT health facts the USER revealed about themselves.\n"
-                "PERMANENT = ongoing conditions, medications, diagnoses, established goals, chronic symptoms.\n"
-                "NOT PERMANENT = questions, temporary feelings, one-time events, today's food/steps.\n"
-                "EXAMPLES of permanent: 'User has Type 2 diabetes', 'User stopped Wegovy 3 weeks ago', "
-                "'User's goal weight is 158 lbs', 'User has history of high cholesterol'.\n"
-                "EXAMPLES of NOT permanent: 'User ate 90g protein today', 'User asked about sleep', 'User feels tired'.\n"
-                "Return ONLY a strict JSON array of strings. Empty [] if no permanent facts."
+                "Extract 0-3 PERMANENT health facts the USER revealed.\n"
+                "PERMANENT = ongoing conditions, medications, stopped meds, diagnoses, "
+                "health goals, insurance status for medications.\n"
+                "NOT PERMANENT = questions, temporary feelings, today's food/steps/sleep.\n"
+                "Return ONLY a JSON array of strings. No markdown, no extra text.\n"
+                "Empty [] if no permanent facts."
             )
             resp = client.chat.completions.create(
                 model="gpt-4o-mini",
@@ -309,11 +328,13 @@ def _extract_facts_quick(user_message: str, ai_reply: str) -> list[str]:
                     {"role": "system", "content": prompt},
                     {"role": "user", "content": f"User said: {user_message[:600]}"}
                 ],
-                temperature=0.0,
-                max_tokens=120,
+                temperature=0.0, max_tokens=150,
             )
-            raw = resp.choices[0].message.content.strip()
-            match = re.search(r'\[.*\]', raw, re.DOTALL)
+            raw = (resp.choices[0].message.content or "").strip()
+            # FIX-MEM-2: Robust JSON parsing
+            raw = re.sub(r'^```(?:json)?\s*', '', raw, flags=re.MULTILINE)
+            raw = re.sub(r'\s*```$', '', raw, flags=re.MULTILINE)
+            match = re.search(r'\[.*\]', raw.strip(), re.DOTALL)
             if match:
                 parsed = json.loads(match.group(0))
                 if isinstance(parsed, list):
@@ -321,8 +342,117 @@ def _extract_facts_quick(user_message: str, ai_reply: str) -> list[str]:
         except Exception as e:
             print(f"[MEMORY] Extraction error: {e}")
 
-    # Deduplicate and cap
-    return list(set(facts))[:3]
+    seen = set()
+    deduped = []
+    for f in facts:
+        key = f.lower()[:50]
+        if key not in seen:
+            seen.add(key)
+            deduped.append(f)
+    return deduped[:3]
+
+
+def _extract_and_log_metrics(user_message: str, document_text: str, user_id: str, supabase):
+    """Smart behavioral extraction — only logs when user is reporting today's data."""
+    openai_key = os.getenv("OPENAI_API_KEY")
+    if not openai_key:
+        return
+    combined_text = f"User Message: {user_message}\nDocument/Image Text: {document_text}"
+    lower = combined_text.lower()
+    behavioral_kw = ["protein", "step", "sleep", "slept", "walk", "ate", "gram", "hr", "hour"]
+    report_kw = ["today", "this morning", "just had", "i ate", "i slept", "screenshot", "routine", "logged"]
+    has_behavioral = any(kw in lower for kw in behavioral_kw)
+    has_report_context = any(kw in lower for kw in report_kw) or document_text.strip()
+    if not (has_behavioral and has_report_context):
+        return
+    prompt = """Analyze this. Extract ONLY daily routine metrics being REPORTED FOR TODAY:
+- 'protein' (grams today), 'steps' (steps today), 'sleep' (hours last night)
+Only extract if user is actively reporting/logging. NOT from questions or goals.
+Return ONLY a strict JSON array: [{"metric_name": "protein"|"steps"|"sleep", "value": number, "unit": string}]
+Empty [] if nothing found."""
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=openai_key, timeout=10.0)
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "system", "content": prompt},
+                      {"role": "user", "content": combined_text[:2000]}],
+            temperature=0.0, max_tokens=150
+        )
+        raw = (resp.choices[0].message.content or "").strip()
+        raw = re.sub(r'^```(?:json)?\s*', '', raw, flags=re.MULTILINE)
+        raw = re.sub(r'\s*```$', '', raw, flags=re.MULTILINE)
+        match = re.search(r'\[.*\]', raw.strip(), re.DOTALL)
+        if not match:
+            return
+        metrics = json.loads(match.group(0))
+        if not metrics:
+            return
+        date_str = date.today().isoformat()
+        for m in metrics:
+            name = m.get("metric_name")
+            val  = m.get("value")
+            unit = m.get("unit", "")
+            if name in ["protein", "steps", "sleep"] and isinstance(val, (int, float)):
+                try:
+                    supabase.table("behavioral_logs").insert({
+                        "user_id": user_id, "date": date_str,
+                        "metric_name": name, "value": float(val), "unit": unit
+                    }).execute()
+                    print(f"[METRICS] {name}: {val} for {user_id[:8]}")
+                except Exception as e:
+                    print(f"[METRICS] Log error: {e}")
+    except Exception as e:
+        print(f"[METRICS ERROR] {e}")
+
+
+# FIX-MEM-3: Robust 3-tier memory save
+def _save_memory_robust(supabase, user_id: str, facts: list[str], conversation_id: str) -> int:
+    if not facts:
+        return 0
+    now = datetime.now().isoformat()
+    saved = 0
+    for fact in facts:
+        fact = fact.strip()
+        if not fact or len(fact) < 8:
+            continue
+        # Tier 1: full insert
+        try:
+            supabase.table("conversation_memories").insert({
+                "user_id": user_id, "fact": fact[:500],
+                "source_conversation": conversation_id or None,
+                "category": "health", "created_at": now, "is_active": True,
+            }).execute()
+            saved += 1
+            continue
+        except Exception as e1:
+            pass
+        # Tier 2: without FK
+        try:
+            supabase.table("conversation_memories").insert({
+                "user_id": user_id, "fact": fact[:500],
+                "category": "health", "created_at": now, "is_active": True,
+            }).execute()
+            saved += 1
+            continue
+        except Exception as e2:
+            pass
+        # Tier 3: minimal
+        try:
+            supabase.table("conversation_memories").insert({
+                "user_id": user_id, "fact": fact[:500],
+            }).execute()
+            saved += 1
+        except Exception as e3:
+            print(f"[MEMORY] All tiers failed: {e3}")
+    if saved > 0:
+        try:
+            from health_memory.memory import _invalidate_context_cache
+            _invalidate_context_cache(user_id)
+        except Exception:
+            pass
+    return saved
+
 
 def _extract_and_store_doc_markers(supabase, user_id, doc_text):
     try:
@@ -337,11 +467,9 @@ def _extract_and_store_doc_markers(supabase, user_id, doc_text):
     except Exception as e:
         print(f"[CHAT] Doc marker extract error: {e}")
 
+
 def _run_background_ops(supabase, user_id, conversation_id, user_message, ai_reply, doc_text_for_extraction):
-    """
-    Background operations — runs after response is sent to user.
-    Order matters: save chat → extract markers → extract facts → log metrics.
-    """
+    """Background operations — runs after response is sent."""
     # 1. Save chat turn
     try:
         from ai.chat import save_chat_turn
@@ -349,14 +477,14 @@ def _run_background_ops(supabase, user_id, conversation_id, user_message, ai_rep
     except Exception as e:
         print(f"[BG] Chat save error: {e}")
 
-    # 2. Extract and store document markers (if doc was uploaded)
+    # 2. Extract and store document markers
     if doc_text_for_extraction:
         try:
             _extract_and_store_doc_markers(supabase, user_id, doc_text_for_extraction)
         except Exception:
             pass
 
-    # 3. Smart memory extraction — only permanent facts
+    # 3. Smart memory extraction (FIX_2)
     facts = []
     try:
         facts = _extract_facts_quick(user_message, ai_reply)
@@ -365,14 +493,12 @@ def _run_background_ops(supabase, user_id, conversation_id, user_message, ai_rep
 
     if facts:
         try:
-            from health_memory.memory import save_conversation_memory
-            saved = save_conversation_memory(supabase, user_id, facts, conversation_id)
-            print(f"[BG] Saved {saved} memory facts for {user_id[:8]}")
+            saved = _save_memory_robust(supabase, user_id, facts, conversation_id)
+            print(f"[BG] Memory: {saved} facts saved for {user_id[:8]}")
         except Exception as e:
             print(f"[BG] Memory save error: {e}")
 
-    # 4. FIXED: Correct argument order — (user_message, document_text, user_id, supabase)
-    # Only attempt if user is reporting behavioral data (not just asking questions)
+    # 4. Behavioral metrics from LLM
     doc_text_for_metrics = doc_text_for_extraction or ""
     try:
         _extract_and_log_metrics(user_message, doc_text_for_metrics, user_id, supabase)
@@ -452,7 +578,16 @@ def chat():
 
     final_reply = reply + MANDATORY_DISCLAIMER
 
-    # Only send doc to background if it wasn't already processed into markers
+    # ── FIX_3: Smart shield parsing from user message ─────────────────────
+    shield_update = {}
+    try:
+        parsed_metrics = _parse_behavioral_from_message(message, document_text)
+        if parsed_metrics:
+            shield_update = _store_behavioral_metrics(supabase, user.id, parsed_metrics)
+    except Exception as e:
+        print(f"[SMART-SHIELD] Parse error: {e}")
+
+    # Only send doc to background if not already processed into markers
     doc_for_bg = document_text if (is_fresh_document and not current_markers) else None
 
     bg_thread = threading.Thread(
@@ -465,7 +600,9 @@ def chat():
     return jsonify({
         "reply": final_reply,
         "has_health_data": has_health_data,
-        "markers_found": len(current_markers)
+        "markers_found": len(current_markers),
+        "shield_update": shield_update,            # FIX_3: direct shield data
+        "behavioral_logged": bool(shield_update),  # FIX_3: tells frontend to refresh
     })
 
 
@@ -473,24 +610,19 @@ def chat():
 def create_conversation():
     from app import supabase
     from services.auth import get_authenticated_user
-    
     user = get_authenticated_user(supabase)
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
-
     data = request.json or {}
     title = data.get("title", "New Conversation")
     new_conv_id = str(uuid.uuid4())
-    
     try:
         supabase.table("conversations").insert({
-            "id": new_conv_id,
-            "user_id": user.id,
-            "title": title
+            "id": new_conv_id, "user_id": user.id, "title": title
         }).execute()
         return jsonify({"conversation_id": new_conv_id})
     except Exception as e:
-        print(f"[CREATE CONV WARNING] {e}")
+        print(f"[CREATE CONV] {e}")
         return jsonify({"conversation_id": new_conv_id})
 
 
@@ -501,7 +633,6 @@ def get_history():
     user = get_authenticated_user(supabase)
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
-
     try:
         res = supabase.table("conversations").select("id,title,created_at").eq("user_id", user.id).order("created_at", desc=True).execute()
         return jsonify(res.data or [])
@@ -516,12 +647,10 @@ def get_conversation():
     user = get_authenticated_user(supabase)
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
-
     data = request.json or {}
     conv_id = data.get("conversation_id")
     if not conv_id:
         return jsonify({"error": "Missing conversation_id"}), 400
-
     try:
         res = supabase.table("chats").select("role,content,created_at").eq("conversation_id", conv_id).eq("user_id", user.id).order("created_at", desc=False).execute()
         return jsonify(res.data or [])
@@ -536,13 +665,11 @@ def rename_conversation():
     user = get_authenticated_user(supabase)
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
-
     data = request.json or {}
     conv_id = data.get("conversation_id")
     title = data.get("title")
     if not conv_id or not title:
         return jsonify({"error": "Missing parameters"}), 400
-
     try:
         supabase.table("conversations").update({"title": title[:50]}).eq("id", conv_id).eq("user_id", user.id).execute()
         return jsonify({"success": True})
@@ -557,11 +684,9 @@ def delete_conversation():
     user = get_authenticated_user(supabase)
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
-
     conv_id = (request.json or {}).get("conversation_id")
     if not conv_id:
         return jsonify({"error": "Missing conversation_id"}), 400
-
     try:
         try:
             supabase.table("conversation_memories").delete().eq("source_conversation", conv_id).execute()
