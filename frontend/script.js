@@ -1,43 +1,55 @@
 /**
- * script.js — Curabook PHI v6.2 (Auth-Completely-Fixed)
+ * script.js — Curabook PHI v7.0 (Auth-Hardened + Smart Shield)
  *
- * ROOT CAUSES FIXED:
+ * FIXES IN THIS VERSION:
  *
- * FIX-1: INITIAL_SESSION event not handled.
- *   Supabase fires "INITIAL_SESSION" (not "SIGNED_IN") when an existing
- *   session is restored on page load — e.g. after a refresh, or after OAuth
- *   redirect. The previous code only listened for "SIGNED_IN", so refreshing
- *   the page after Google OAuth would appear to work (getSession fallback)
- *   but the auth listener would then fire TOKEN_REFRESHED and not re-init.
- *   FIX: Handle INITIAL_SESSION the same as SIGNED_IN.
+ * FIX-AUTH-1: Auth race condition between performance_patch.js and script.js.
+ *   performance_patch.js fired _fetchFresh() immediately using raw localStorage
+ *   tokens before the Supabase client in script.js was ready. This caused the
+ *   shield and history to either render with stale/zero data or not render at all.
+ *   FIX: script.js now owns all data fetching. performance_patch.js is demoted to
+ *   cache-render only (no network calls). A single authoritative init flow runs
+ *   after the Supabase client confirms a valid session.
  *
- * FIX-2: performance_patch.js race condition.
- *   performance_patch.js ran _fetchFresh() immediately using a raw token
- *   from localStorage, before the Supabase client in script.js was ready.
- *   If the server was cold (Render free tier), the fetch would 401/fail,
- *   set _perf_patch_failed_auth=true, and script.js would never retry.
- *   FIX: performance_patch.js now waits for window.__phi_auth_ready signal.
- *   script.js sets window.__phi_auth_ready = true after onSignIn() completes,
- *   and dispatches a custom event "phi:authed" so the patch can respond.
+ * FIX-AUTH-2: INITIAL_SESSION not handled for page revisits.
+ *   On OAuth revisit, Supabase fires INITIAL_SESSION (not SIGNED_IN).
+ *   This was handled but the 80ms delay before getSession() created a window
+ *   where INITIAL_SESSION fired first, onSignIn() ran, then getSession()
+ *   ran again and called onSignIn() a second time (double-init).
+ *   FIX: Single init path - onAuthStateChange handles everything. getSession()
+ *   is only used as a fallback if no event fires within 2000ms.
  *
- * FIX-3: Shield not loading on traditional (email/password) login.
- *   autoLoadShield() was called in onSignIn(), but if _shieldLoaded was
- *   already truthy from a performance_patch pre-render, it would skip.
- *   Also, if the first call failed silently, no retry was attempted.
- *   FIX: Reset _shieldLoaded on every sign-in. Add retry with backoff.
+ * FIX-AUTH-3: Token refresh after cold-start 401.
+ *   If the first API call gets a 401 (token expired, cold server), the entire
+ *   init was silently abandoned. FIX: handleUnauthorized() now automatically
+ *   refreshes the Supabase session and retries the original operation.
  *
- * FIX-4: Duplicate conversation/history routes between auth_routes.py
- *   and chat_routes.py causing unpredictable 404s.
- *   FIX: Unified endpoint — always try /history (POST) then /api/history (GET)
- *   as fallback. Same for conversation create.
+ * FIX-SHIELD-1: Shield not updating after chat or document upload.
+ *   Chat responses that contain behavioral data (sleep, steps, protein) are now
+ *   detected and trigger a shield refresh. Document uploads also trigger refresh.
+ *   FIX: refreshShieldIfNeeded() called after every chat response and upload.
  *
- * FIX-5: Token refresh loop on cold-start.
- *   apiFetch had a 65s timeout but no retry for 503/502 (cold start).
- *   FIX: Added one automatic retry with 3s delay for 5xx errors.
+ * FIX-SHIELD-2: Shield race condition with performance_patch.
+ *   perf_patch called renderShield(0,0,0,null) from cached zeros, then
+ *   autoLoadShield() ran in parallel. Whichever finished last won.
+ *   FIX: performance_patch.js only renders from cache. script.js owns live data.
  *
- * FIX-6: doSignOut race condition.
- *   _redirecting flag was set but SIGNED_OUT handler didn't always see it
- *   because of async gaps. FIX: Use a module-level synchronous flag.
+ * FIX-MEMORY-1: Memory facts not being saved.
+ *   save_conversation_memory() failed on the source_conversation FK constraint
+ *   in some Supabase setups. The fallback worked but wasn't always reached.
+ *   FIX: chat_routes.py now sends the conversation_id reliably, and the backend
+ *   strips the FK column if it causes an error (pure text storage).
+ *
+ * FIX-MEMORY-2: Facts extracted from every message, even trivial ones.
+ *   _extract_facts_quick() called OpenAI on every single chat message.
+ *   FIX: Only extract facts when the AI response indicates health data was
+ *   discussed (detect keywords in the reply, not the user message alone).
+ *
+ * FIX-SMART-1: Shield updates from chat behavioral data.
+ *   When a user reports "I slept 8 hours" or "did 10,000 steps", the backend
+ *   already logs this to behavioral_logs. But the frontend never re-fetched.
+ *   FIX: After each chat response, scan AI reply for behavioral keywords and
+ *   call a lightweight shield refresh if found.
  */
 "use strict";
 
@@ -61,9 +73,20 @@ let _docCtx        = { text: null, hasDoc: false, filename: "" };
 let _initialized   = false;
 let _consentsSaved = false;
 let _consentsPromise = null;
-let _redirecting   = false;   // synchronous flag — set before any await
+let _redirecting   = false;
 let _shieldLoaded  = false;
 let _shieldRetries = 0;
+
+// FIX-AUTH-1: Single init guard with timestamp to detect stale state
+let _initTimestamp = 0;
+
+// FIX-SHIELD-1: Behavioral keywords that indicate shield-relevant data in AI reply
+const _SHIELD_KEYWORDS = [
+  "protein", "grams", "g/day", "g protein",
+  "steps", "walked", "walking",
+  "sleep", "slept", "hours of sleep",
+  "logged", "recorded", "stored your"
+];
 
 // ── Theme ──────────────────────────────────────────────────────────────────
 function initTheme() { applyTheme(localStorage.getItem("phi_theme") || "dark"); }
@@ -84,13 +107,14 @@ function applyTheme(t) {
 // ── Sign Out ───────────────────────────────────────────────────────────────
 async function doSignOut() {
   if (_redirecting) return;
-  _redirecting  = true;   // synchronous — no await before this
-  _initialized  = false;
-  _user         = null;
-  _convId       = null;
-  _isSending    = false;
+  _redirecting   = true;
+  _initialized   = false;
+  _initTimestamp = 0;
+  _user          = null;
+  _convId        = null;
+  _isSending     = false;
   _consentsSaved = false;
-  _shieldLoaded = false;
+  _shieldLoaded  = false;
   _shieldRetries = 0;
   window.__phi_auth_ready = false;
   setSendingState(false);
@@ -111,13 +135,13 @@ async function doSignOut() {
 }
 async function handleLogout() { closeUserMenu(); await doSignOut(); }
 
-// ── Wake up server ping ────────────────────────────────────────────────────
+// ── Server wake ping ───────────────────────────────────────────────────────
 function wakeUpServer() {
   fetch(API + "/health", { method: "GET" }).catch(() => {});
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// BOOT — the entry point
+// BOOT — FIX-AUTH-2: Single authoritative init path
 // ══════════════════════════════════════════════════════════════════════════════
 async function boot() {
   wakeUpServer();
@@ -132,56 +156,59 @@ async function boot() {
       }
     });
 
-    // FIX-1: Handle INITIAL_SESSION (fires on page load / refresh with existing session)
-    // and SIGNED_IN (fires after explicit login). Both trigger onSignIn.
+    // FIX-AUTH-2: onAuthStateChange is the ONLY trigger for init.
+    // We do NOT call getSession() first to avoid double-init.
     _sb.auth.onAuthStateChange(async (event, session) => {
       console.log("[AUTH]", event, session?.user?.email?.slice(0,8) ?? "none");
 
-      if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && session?.user) {
-        if (!_user) {
-          // Genuine first auth on this page load
-          await onSignIn(session.user);
-        } else {
-          // Token refresh came through as SIGNED_IN — just update token
-          _user = session.user;
+      if (event === "SIGNED_OUT") {
+        if (!_redirecting) {
+          _redirecting   = true;
+          _initialized   = false;
+          _initTimestamp = 0;
+          _user          = null;
+          _convId        = null;
+          window.location.replace("/login");
         }
+        return;
       }
 
       if (event === "TOKEN_REFRESHED" && session?.user) {
+        // Update user reference but don't re-init
         _user = session.user;
+        return;
       }
 
-      if (event === "SIGNED_OUT") {
-        // FIX-6: Only redirect if we didn't initiate the sign-out ourselves
-        if (!_redirecting) {
-          _redirecting  = true;
-          _initialized  = false;
-          _user         = null;
-          _convId       = null;
-          window.location.replace("/login");
+      if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && session?.user) {
+        // FIX-AUTH-2: Guard against double-init from race between
+        // onAuthStateChange and the getSession fallback below.
+        if (_initialized && _user?.id === session.user.id) {
+          console.log("[AUTH] Already initialized for this user, skipping.");
+          return;
         }
+        await onSignIn(session.user, session);
+        return;
       }
     });
 
-    // Small delay so the listener is registered before getSession()
-    await new Promise(r => setTimeout(r, 80));
+    // FIX-AUTH-2: Fallback — if no auth event fires within 2s (can happen
+    // on some browser/OAuth configurations), check session manually.
+    await new Promise(r => setTimeout(r, 2000));
 
-    const { data: { session } } = await _sb.auth.getSession();
-    if (session?.user) {
-      // INITIAL_SESSION listener may have already called onSignIn.
-      // The _initialized guard prevents double-init.
-      if (!_initialized) {
-        await onSignIn(session.user);
-      }
-    } else {
-      // No session — check for OAuth hash (implicit flow)
-      const hash = window.location.hash;
-      if (hash && hash.includes("access_token")) {
-        // Supabase processes this via detectSessionInUrl and fires onAuthStateChange
-        await new Promise(r => setTimeout(r, 1500));
-        if (!_initialized && !IS_LOCAL) window.location.replace("/login");
+    if (!_initialized) {
+      console.log("[AUTH] No auth event fired after 2s, falling back to getSession()");
+      const { data: { session } } = await _sb.auth.getSession();
+      if (session?.user) {
+        await onSignIn(session.user, session);
       } else {
-        if (!IS_LOCAL) window.location.replace("/login");
+        const hash = window.location.hash;
+        if (hash && hash.includes("access_token")) {
+          // OAuth hash — Supabase will process it and fire SIGNED_IN
+          await new Promise(r => setTimeout(r, 2000));
+          if (!_initialized && !IS_LOCAL) window.location.replace("/login");
+        } else {
+          if (!IS_LOCAL) window.location.replace("/login");
+        }
       }
     }
 
@@ -199,12 +226,14 @@ async function boot() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// ON SIGN IN — single entry point for all auth paths
+// ON SIGN IN — FIX-AUTH-1: Single clean init, no race conditions
 // ══════════════════════════════════════════════════════════════════════════════
-async function onSignIn(user) {
-  if (_initialized) return;
-  _initialized  = true;
-  _shieldLoaded = false;   // FIX-3: Always reset so shield re-loads on fresh sign-in
+async function onSignIn(user, session) {
+  if (_initialized && _user?.id === user.id) return;
+
+  _initialized   = true;
+  _initTimestamp = Date.now();
+  _shieldLoaded  = false;
   _shieldRetries = 0;
   _user = user;
 
@@ -220,27 +249,29 @@ async function onSignIn(user) {
   const h = new Date().getHours();
   setText("timeGreeting", h < 12 ? "morning" : h < 17 ? "afternoon" : "evening");
 
-  // Run init tasks in parallel
+  // FIX-AUTH-1: Signal performance_patch that auth is ready BEFORE fetching.
+  // This prevents perf_patch from making its own competing API calls.
+  window.__phi_auth_ready = true;
+  window.dispatchEvent(new CustomEvent("phi:authed", { detail: { userId: user.id } }));
+
+  // Run init tasks — consent first (needed for other calls), then data in parallel
+  await saveConsents().catch(e => console.warn("[CONSENT]", e));
+
   await Promise.allSettled([
-    saveConsents(),
     loadHistory(),
     loadMarkersData(),
   ]);
 
-  // Shield loads after markers (needs goal weight from profile)
+  // Shield after markers (needs goal weight)
   await autoLoadShield();
 
-  // Restore goal weight
+  // Restore goal weight from profile or localStorage
   const gw = localStorage.getItem("phi_goal_wt");
   if (gw) {
-    if (el("inputGoalWt"))   el("inputGoalWt").value = gw;
-    if (el("proteinInput"))  el("proteinInput").value = gw;
+    if (el("inputGoalWt"))  el("inputGoalWt").value = gw;
+    if (el("proteinInput")) el("proteinInput").value = gw;
     calcProteinDisplay(parseFloat(gw), false);
   }
-
-  // FIX-2: Signal performance_patch.js that auth is ready
-  window.__phi_auth_ready = true;
-  window.dispatchEvent(new CustomEvent("phi:authed", { detail: { userId: user.id } }));
 }
 
 // ── API helpers ────────────────────────────────────────────────────────────
@@ -260,43 +291,29 @@ async function headers(ct = true) {
   return h;
 }
 
-// FIX: Transparent 401 interceptor & 5xx retry
+// FIX-AUTH-3: Retry once on 5xx (cold start), handle 401 by refreshing
 async function apiFetch(path, opts = {}) {
-  const doFetch = async (currentOpts) => {
+  const doFetch = async () => {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 65000);
     try {
-      const r = await fetch(API + path, { ...currentOpts, signal: ctrl.signal });
+      const r = await fetch(API + path, { ...opts, signal: ctrl.signal });
       clearTimeout(t);
       return r;
     } catch(e) {
       clearTimeout(t);
-      if (e.name === "AbortError") throw new Error("Server is waking up (~50s on free tier). Please try again.");
+      if (e.name === "AbortError") throw new Error("Server is waking up. Please try again in a moment.");
       throw e;
     }
   };
 
   try {
-    let res = await doFetch(opts);
-    
-    // AUTH FIX: If token is stale (401), silently refresh and retry the request once.
-    // This entirely cures the "Zombie State" on cold reloads and OAuth redirects.
-    if (res.status === 401 && !opts._isRetry) {
-        console.warn(`[AUTH] 401 on ${path}, attempting silent token refresh...`);
-        const refreshed = await handleUnauthorized();
-        if (refreshed) {
-            const newH = await headers(!!(opts.headers && opts.headers["Content-Type"]));
-            return doFetch({ ...opts, headers: newH, _isRetry: true });
-        }
-    }
-
-    // Cold start retry on 5xx
-    if (res.status >= 500 && !opts._isRetry) {
+    const res = await doFetch();
+    if (res.status >= 500) {
       console.warn(`[API] ${path} returned ${res.status}, retrying in 3s…`);
       await new Promise(r => setTimeout(r, 3000));
-      return doFetch({ ...opts, _isRetry: true });
+      return doFetch();
     }
-    
     return res;
   } catch(e) {
     throw e;
@@ -311,16 +328,19 @@ async function apiJson(path, opts = {}) {
   return { ok: res.ok, status: res.status, data };
 }
 
+// FIX-AUTH-3: Refresh session token and return whether successful
 async function handleUnauthorized() {
+  console.warn("[AUTH] 401 received, attempting token refresh…");
   try {
-    const { data, error } = await _sb.auth.refreshSession();
-    if (data?.session) { 
-      _user = data.session.user; 
-      return true; // Successfully refreshed
+    const { data } = await _sb.auth.refreshSession();
+    if (data?.session) {
+      _user = data.session.user;
+      console.log("[AUTH] Token refreshed successfully");
+      return true;
     }
-  } catch {}
-  
-  // Only sign out if the refresh explicitly fails
+  } catch(e) {
+    console.error("[AUTH] Token refresh failed:", e);
+  }
   await doSignOut();
   return false;
 }
@@ -465,21 +485,21 @@ async function loadHistory() {
   if (list) list.innerHTML = '<div class="sb-empty"><i class="fa-solid fa-spinner fa-spin"></i> Loading…</div>';
   const h = await headers(); if (!h) return;
 
-  // FIX-4: Try both route paths — auth_routes vs chat_routes may differ
-  let ok, status, data;
   try {
-    ({ ok, status, data } = await apiJson("/history", { method:"POST", headers:h, body:JSON.stringify({}) }));
+    const { ok, status, data } = await apiJson("/history", { method:"POST", headers:h, body:JSON.stringify({}) });
     if (status === 401) {
       const refreshed = await handleUnauthorized(); if (!refreshed) return;
       const h2 = await headers(); if (!h2) return;
-      ({ ok, status, data } = await apiJson("/history", { method:"POST", headers:h2, body:JSON.stringify({}) }));
+      const r2 = await apiJson("/history", { method:"POST", headers:h2, body:JSON.stringify({}) });
+      if (r2.ok && Array.isArray(r2.data)) { renderHistory(r2.data); return; }
     }
     if (ok && Array.isArray(data)) { renderHistory(data); return; }
   } catch(e) { console.warn("[HISTORY] /history failed:", e); }
 
-  // Fallback: try conversations list via startup data
+  // Fallback via /startup
   try {
-    const res = await apiJson("/startup", { headers: h });
+    const h2 = await headers(); if (!h2) return;
+    const res = await apiJson("/startup", { headers: h2 });
     if (res.ok && Array.isArray(res.data?.history)) {
       renderHistory(res.data.history); return;
     }
@@ -551,16 +571,25 @@ function showChat()    { el("welcomeScreen")?.classList.add("hidden");    el("ch
 async function createConversation() {
   await saveConsents().catch(()=>{});
   const h = await headers();
-  if (!h) { toast("Session expired.", "err"); doSignOut(); return null; }
+  if (!h) { toast("Session expired.", "err"); await doSignOut(); return null; }
+
   const doCreate = async (hdr) => apiJson("/conversation/create", { method:"POST", headers:hdr, body:JSON.stringify({}) });
   let { ok, status, data } = await doCreate(h);
+
+  if (status === 401) {
+    const refreshed = await handleUnauthorized();
+    if (!refreshed) return null;
+    const h2 = await headers(); if (!h2) return null;
+    ({ ok, status, data } = await doCreate(h2));
+  }
+
   if (!ok && status === 403) {
     _consentsSaved = false;
     await saveConsents().catch(()=>{});
     const h2 = await headers();
     if (h2) ({ ok, status, data } = await doCreate(h2));
   }
-  if (!ok && status === 401) { await handleUnauthorized(); return null; }
+
   if (ok && data?.conversation_id) {
     _convId = data.conversation_id;
     prependHistory(_convId, "New Conversation");
@@ -604,6 +633,20 @@ async function handleSend() {
   await sendMessage(text);
 }
 
+// FIX-SHIELD-1: Detect if AI reply contains behavioral data that should update shield
+function _replyHasShieldData(reply) {
+  const lower = reply.toLowerCase();
+  return _SHIELD_KEYWORDS.some(kw => lower.includes(kw));
+}
+
+// FIX-SHIELD-1: Detect if AI reply confirms markers were stored (from doc upload)
+function _replyHasMarkerData(reply) {
+  const lower = reply.toLowerCase();
+  return lower.includes("stored") || lower.includes("markers") ||
+         lower.includes("uploaded") || lower.includes("analyzed") ||
+         lower.includes("report") || lower.includes("lab");
+}
+
 async function sendMessage(text) {
   if (_isSending || !text) return;
   _isSending = true; _sendStart = Date.now();
@@ -634,8 +677,14 @@ async function sendMessage(text) {
     botRow = appendTyping();
     scrollBottom();
 
-    const h = await headers();
-    if (!h) { await handleUnauthorized(); throw new Error("Session expired. Please sign in."); }
+    // FIX-AUTH-3: Get fresh headers before each API call
+    let h = await headers();
+    if (!h) {
+      const refreshed = await handleUnauthorized();
+      if (!refreshed) throw new Error("Session expired. Please sign in.");
+      h = await headers();
+      if (!h) throw new Error("Session expired. Please sign in.");
+    }
 
     const payload = {
       conversation_id: _convId,
@@ -653,15 +702,32 @@ async function sendMessage(text) {
     const res = await fetch(API + "/chat", { method:"POST", headers:h, body:JSON.stringify(payload) });
     clearInterval(typingInterval);
 
+    if (res.status === 401) {
+      const refreshed = await handleUnauthorized();
+      if (!refreshed) throw new Error("Session expired. Please sign in again.");
+      // Retry with fresh token
+      const h2 = await headers();
+      if (h2) {
+        const res2 = await fetch(API + "/chat", { method:"POST", headers:h2, body:JSON.stringify(payload) });
+        const txt2 = await res2.text();
+        let data2 = null;
+        try { data2 = JSON.parse(txt2); } catch {}
+        if (res2.ok && data2?.reply) {
+          updateMsg(botRow, data2.reply);
+          await _postChatActions(data2.reply, text);
+          return;
+        }
+      }
+      throw new Error("Authentication failed. Please refresh the page.");
+    }
+
     const txt = await res.text();
     let data = null;
     try { data = JSON.parse(txt); } catch(e) {}
 
     if (res.ok && data?.reply) {
       updateMsg(botRow, data.reply);
-      const userMsgs = el("chatDisplay")?.querySelectorAll(".chat-msg.user-msg");
-      if (userMsgs?.length === 1 && _convId) renameConversation(_convId, text);
-      if (_docCtx.hasDoc) setTimeout(loadMarkersData, 2000);
+      await _postChatActions(data.reply, text);
     } else {
       throw new Error(`Server Error (${res.status}): ${txt.slice(0,150)}`);
     }
@@ -677,6 +743,61 @@ async function sendMessage(text) {
     _isSending = false;
     setSendingState(false);
     scrollBottom();
+  }
+}
+
+// FIX-SHIELD-1 + FIX-MEMORY-2: Actions to run after every successful chat response
+async function _postChatActions(reply, userText) {
+  // Rename conversation on first message
+  const userMsgs = el("chatDisplay")?.querySelectorAll(".chat-msg.user-msg");
+  if (userMsgs?.length === 1 && _convId) renameConversation(_convId, userText);
+
+  // FIX-SHIELD-1: If doc was just uploaded, refresh markers AND shield
+  if (_docCtx.hasDoc && _replyHasMarkerData(reply)) {
+    setTimeout(async () => {
+      await loadMarkersData();
+      // Brief delay so backend has finished storing markers
+      setTimeout(() => refreshShieldFromBehavioral(), 1500);
+    }, 1000);
+  }
+
+  // FIX-SHIELD-1: If reply mentions behavioral metrics, refresh shield
+  if (_replyHasShieldData(reply)) {
+    setTimeout(() => refreshShieldFromBehavioral(), 800);
+  }
+}
+
+// FIX-SHIELD-1: Lightweight shield refresh — only fetches today's behavioral logs
+async function refreshShieldFromBehavioral() {
+  const h = await headers(); if (!h) return;
+  try {
+    const today = new Date().toISOString().slice(0,10);
+    const { ok, data } = await apiJson(`/api/behavioral-logs?days=1`, { headers: h });
+    if (!ok || !Array.isArray(data)) return;
+
+    const tl  = data.filter(l => l.date === today);
+    const get  = m => {
+      const l = tl.filter(x => x.metric_name === m).sort((a,b) => a.created_at < b.created_at ? 1 : -1)[0];
+      return l ? parseFloat(l.value) : 0;
+    };
+    const p = get("protein"), s = get("steps"), sl = get("sleep");
+
+    // Only update if we have actual data
+    if (p > 0 || s > 0 || sl > 0) {
+      if (p > 0 && el("inputProtein")) el("inputProtein").value = p;
+      if (s > 0 && el("inputSteps"))   el("inputSteps").value   = s;
+      if (sl > 0 && el("inputSleep"))  el("inputSleep").value   = sl;
+      renderShield(p, s, sl, today);
+
+      if (tl.length > 0) {
+        const last = tl.sort((a,b) => a.created_at < b.created_at ? 1 : -1)[0];
+        const w = new Date(last.created_at);
+        setText("shieldLastLogged", `Last logged: Today at ${w.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}`);
+      }
+      _shieldLoaded = true;
+    }
+  } catch(e) {
+    console.warn("[SHIELD] Refresh failed:", e.message);
   }
 }
 
@@ -716,21 +837,44 @@ function clearFilePreview() {
 }
 
 async function processUpload(file) {
-  const s = await session(); if (!s) { toast("Session expired.","err"); return null; }
+  // FIX-AUTH-3: Always get fresh session for uploads
+  let s = await session();
+  if (!s) {
+    const refreshed = await handleUnauthorized();
+    if (!refreshed) { toast("Session expired.","err"); return null; }
+    s = await session();
+    if (!s) { toast("Session expired.","err"); return null; }
+  }
+
   const doUp = (token) => fetch(API+"/analyze", {
     method:"POST", headers:{ Authorization:`Bearer ${token}` },
     body:(() => { const f = new FormData(); f.append("file",file); return f; })()
   });
   try {
     let res = await Promise.race([doUp(s.access_token), new Promise((_,r) => setTimeout(()=>r(new Error("timed out")),65000))]);
-    if (res.status===401) { await handleUnauthorized(); return null; }
+
+    if (res.status === 401) {
+      const refreshed = await handleUnauthorized();
+      if (!refreshed) return null;
+      const s2 = await session();
+      if (s2) res = await doUp(s2.access_token);
+    }
     if (res.status===403) {
       _consentsSaved=false; await saveConsents().catch(()=>{});
       const s2=await session(); if (s2) res=await doUp(s2.access_token);
     }
     if (res.status===413) { toast("File too large (max 20MB).","err"); return null; }
     if (!res.ok) { const d=await res.json().catch(()=>{}); toast(d?.error||`Upload failed (${res.status}).`,"err"); return null; }
-    return await res.json();
+
+    const result = await res.json();
+
+    // FIX-SHIELD-1: After successful upload, trigger marker + shield refresh
+    setTimeout(async () => {
+      await loadMarkersData();
+      setTimeout(() => refreshShieldFromBehavioral(), 2000);
+    }, 2000);
+
+    return result;
   } catch(err) {
     toast(err.message?.includes("timed out")?"Upload timed out.":"Upload failed.","err"); return null;
   }
@@ -773,37 +917,62 @@ function renderAI(elem, text) {
 const scrollBottom = () => { const d = el("chatDisplay"); if (d) d.scrollTop=d.scrollHeight; };
 
 // ══════════════════════════════════════════════════════════════════════════════
-// SHIELD — Fixed: always retries, no silent failures
+// SHIELD — FIX-SHIELD-2: Single authoritative load, no racing
 // ══════════════════════════════════════════════════════════════════════════════
 async function autoLoadShield() {
-  // FIX-3: No longer bails early on _shieldLoaded — always attempts on sign-in
-  // (flag is reset in onSignIn). Subsequent calls from other places still respect it.
   const h = await headers();
   if (!h) { renderShield(0, 0, 0, null); return; }
   const today = new Date().toISOString().slice(0,10);
 
-  // Strategy 1: /startup endpoint (fastest — batches everything)
+  // Strategy 1: /startup endpoint (batches everything)
   try {
     const ctrl = new AbortController();
-    const timeout = setTimeout(() => ctrl.abort(), 8000);
+    const timeout = setTimeout(() => ctrl.abort(), 10000);
     const res = await fetch(API + "/startup", { headers: h, signal: ctrl.signal });
     clearTimeout(timeout);
 
     if (res.ok) {
       const d = await res.json();
-      // Feed history and markers from startup too — avoids separate calls
+
+      // Populate history if not yet loaded
       if (Array.isArray(d.history) && d.history.length && !el("historyList")?.querySelector(".hist-item")) {
         renderHistory(d.history);
       }
+
+      // Populate markers
       if (Array.isArray(d.markers) && d.markers.length) {
         renderMarkers(d.markers);
         runCliffDetection(d.markers);
       }
+
+      // Populate cliff alerts from startup
+      if (Array.isArray(d.cliff_alerts)) {
+        _renderStartupAlerts(d.cliff_alerts);
+      }
+
+      // Populate goal weight from profile
+      if (d.goal_weight && !localStorage.getItem("phi_goal_wt")) {
+        localStorage.setItem("phi_goal_wt", String(d.goal_weight));
+        _goalWt = parseFloat(d.goal_weight);
+        if (el("inputGoalWt")) el("inputGoalWt").value = d.goal_weight;
+        if (el("proteinInput")) el("proteinInput").value = d.goal_weight;
+        calcProteinDisplay(parseFloat(d.goal_weight), false);
+      }
+
+      // Populate shield from today's behavioral logs
       if (Array.isArray(d.behavioral_today) && d.behavioral_today.length > 0) {
         const logs = d.behavioral_today.filter(l => l.date === today);
-        const get  = m => { const l=logs.filter(x=>x.metric_name===m).sort((a,b)=>a.created_at<b.created_at?1:-1)[0]; return l?parseFloat(l.value):0; };
+        const get  = m => {
+          const l = logs.filter(x => x.metric_name === m).sort((a,b) => a.created_at < b.created_at ? 1 : -1)[0];
+          return l ? parseFloat(l.value) : 0;
+        };
         const p=get("protein"), s=get("steps"), sl=get("sleep");
         _applyShieldValues(p, s, sl, today);
+        _shieldLoaded = true;
+        return;
+      } else {
+        // No behavioral data today — still render shield at zeros (clean state)
+        renderShield(0, 0, 0, today);
         _shieldLoaded = true;
         return;
       }
@@ -821,19 +990,21 @@ async function autoLoadShield() {
     if (!Array.isArray(data)) throw new Error("Non-array response");
 
     const tl  = data.filter(l => l.date === today);
-    const get  = m => { const l=tl.filter(x=>x.metric_name===m).sort((a,b)=>a.created_at<b.created_at?1:-1)[0]; return l?parseFloat(l.value):0; };
+    const get  = m => {
+      const l = tl.filter(x => x.metric_name === m).sort((a,b) => a.created_at < b.created_at ? 1 : -1)[0];
+      return l ? parseFloat(l.value) : 0;
+    };
     const p=get("protein"), s=get("steps"), sl=get("sleep");
     _applyShieldValues(p, s, sl, today);
 
     if (tl.length > 0) {
-      const last = data.sort((a,b)=>a.created_at<b.created_at?1:-1)[0];
+      const last = data.sort((a,b) => a.created_at < b.created_at ? 1 : -1)[0];
       const w = new Date(last.created_at);
       setText("shieldLastLogged", `Last logged: ${last.date===today?`Today at ${w.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}`:w.toLocaleDateString("en-US",{month:"short",day:"numeric"})}`);
     }
     _shieldLoaded = true;
   } catch(e) {
     console.warn("[SHIELD] /api/behavioral-logs failed:", e.message);
-    // FIX-3: Retry once after 4s if we've tried less than 2 times
     if (_shieldRetries < 2) {
       _shieldRetries++;
       setTimeout(() => autoLoadShield(), 4000);
@@ -841,6 +1012,18 @@ async function autoLoadShield() {
       renderShield(0, 0, 0, null);
     }
   }
+}
+
+function _renderStartupAlerts(alerts) {
+  const c = el("cliffAlerts"); if (!c) return;
+  if (!alerts?.length) return; // Don't clear existing — let runCliffDetection handle it
+  c.innerHTML = alerts.map(a => {
+    const cls   = a.severity === "high" ? "ca-danger" : "ca-warn";
+    const icon  = a.severity === "high" ? "🚨" : "⚠️";
+    const title  = String(a.headline || a.marker || "").replace(/</g,"&lt;");
+    const detail = String(a.detail   || "").replace(/</g,"&lt;");
+    return `<div class="ca-item ${cls}"><div class="ca-title">${icon} ${title}</div>${detail ? `<div class="ca-desc">${detail}</div>` : ""}</div>`;
+  }).join("");
 }
 
 function _applyShieldValues(p, s, sl, today) {
@@ -872,9 +1055,9 @@ function renderShield(p, s, sl, logDate) {
   setRing("ringRecovery", 258, rP);
   setText("shieldScore", sc + "%");
   setText("shieldBadge", sc + "%");
-  setText("proteinLegend",  p>0  ? `${p}g / ${_proteinTarget}g (${pP}%)` : `Target: ${_proteinTarget}g — not logged`);
-  setText("movementLegend", s>0  ? `${s.toLocaleString()} steps (${mP}%)` : "Steps — not logged");
-  setText("recoveryLegend", sl>0 ? `${sl}h sleep (${rP}%)` : "Sleep — not logged");
+  setText("proteinLegend",  p>0  ? `${p}g / ${_proteinTarget}g (${pP}%)` : `Target: ${_proteinTarget}g — not logged yet`);
+  setText("movementLegend", s>0  ? `${s.toLocaleString()} steps (${mP}%)` : "Steps — not logged yet");
+  setText("recoveryLegend", sl>0 ? `${sl}h sleep (${rP}%)` : "Sleep — not logged yet");
   setBarPct("proteinBar", pP); setBarPct("movementBar", mP); setBarPct("recoveryBar", rP);
 }
 
@@ -1011,7 +1194,7 @@ function exportChat() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// FEEDBACK SYSTEM (unchanged)
+// FEEDBACK SYSTEM
 // ══════════════════════════════════════════════════════════════════════════════
 function initFeedback() {
   const btn = document.createElement("button");
@@ -1127,17 +1310,15 @@ async function submitFeedback(rating, category) {
     timestamp:  new Date().toISOString(),
     user_agent: navigator.userAgent.slice(0,100),
   };
-  let sent = false;
   try {
     const h = await headers();
     if (h) {
-      const res = await fetch(API + "/api/feedback", {
+      await fetch(API + "/api/feedback", {
         method: "POST", headers: h, body: JSON.stringify(payload),
         signal: AbortSignal.timeout(8000),
       });
-      if (res.ok || res.status === 404) sent = true;
     }
-  } catch(e) { sent = true; }
+  } catch(e) {}
 
   el("feedbackSuccess").style.display = "flex";
   el("feedbackRatingRow").style.display = "none";
@@ -1158,9 +1339,7 @@ async function submitFeedback(rating, category) {
   }, 3500);
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// SYNC WEARABLE — Camera integration
-// ══════════════════════════════════════════════════════════════════════════════
+// ── Sync Wearable ──────────────────────────────────────────────────────────
 function initSyncWearable() {
   const btn = el("syncWearableBtn"); if (!btn) return;
   let cameraInput = el("cameraInput");
@@ -1206,7 +1385,7 @@ function toast(msg, type="ok") {
   setTimeout(() => { t.style.opacity="0"; t.style.transition="opacity .3s"; setTimeout(()=>t.remove(),300); }, 3800);
 }
 
-// ─── Wire all events ───────────────────────────────────────────────────────
+// ── Wire all events ────────────────────────────────────────────────────────
 function wireEvents() {
   document.querySelectorAll(".nav-item[data-view]").forEach(btn => btn.addEventListener("click", () => { switchView(btn.dataset.view); closeSidebar(); }));
   el("newChatBtn")?.addEventListener("click", () => { resetChat(); switchView("chat"); });
