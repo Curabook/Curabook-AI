@@ -1,68 +1,37 @@
 /**
- * script.js — Curabook PHI v8.0 (Auth-Hardened + Smart Memory + Shield Sync)
+ * script.js — Curabook PHI v9.0
  *
- * ROOT CAUSE FIXES:
+ * FIXES IN THIS VERSION:
  *
- * FIX-AUTH-1: OAuth revisit / stale session bug.
- *   The `_initialized` flag was keyed on boolean + user.id but on a page
- *   REVISIT the Supabase client fires INITIAL_SESSION first (with a valid
- *   session) then SIGNED_IN again. The guard `_initialized && _user.id ===`
- *   blocks the second call correctly — but on revisit from a new tab/window
- *   the flag is FALSE (fresh JS context) while the session IS valid. The bug
- *   was that `onSignIn()` ran, set `_initialized = true`, then the 2000ms
- *   fallback timer also ran `getSession()` and called `onSignIn()` AGAIN
- *   (because the first call may have been in-flight). Fixed by:
- *   - Replacing the 2000ms timer with a proper Promise race
- *   - Adding a `_initPromise` guard so onSignIn is NEVER called twice
- *   - Clearing ALL stale state on every fresh onSignIn call
+ * FIX-AUTH-PERSIST: Auth "forever" session.
+ *   Root cause: `__phi_auth_ready` flag + `_initPromise` guard was preventing
+ *   re-initialization on tab revisit because `_user` was null (fresh JS context)
+ *   but the Supabase session was valid. The fix: always run onSignIn() when a
+ *   valid session exists AND `window.__phi_auth_ready` is falsy — regardless of
+ *   any prior state. We also persist the user_id in localStorage so
+ *   performance_patch can render cached data instantly before auth resolves.
  *
- * FIX-AUTH-2: Clock skew warning ("Session issued in the future").
- *   This is a Supabase gotrue-js warning when device clock is ahead of
- *   server. It causes SIGNED_IN to fire 3-4 times. Fixed by debouncing
- *   the auth handler with a 300ms window — only the last event in a burst
- *   triggers onSignIn.
+ * FIX-HEALTH-MEMORY: Health context not reaching the AI.
+ *   Root cause: `conversation_memories` were being extracted in a background
+ *   thread AFTER the AI reply was already generated. So the NEXT message had
+ *   the context, not the current one. Fix: we now pass the user's auth token
+ *   in every /chat request so the backend can pull fresh memories synchronously
+ *   before calling the LLM. Additionally we pre-fetch and cache memories on
+ *   startup so they're ready immediately.
  *
- * FIX-AUTH-3: Email login re-visit same stale state.
- *   Exact same issue as OAuth — init guard blocked re-init on tab revisit.
- *   Fixed by the same _initPromise pattern.
+ * FIX-PAYMENT-TIERS: Free vs Pro gating with Razorpay International.
+ *   - Free tier: 1 report upload, unlimited chat (no markers = general advice)
+ *   - Pro tier: unlimited reports, full marker memory, advocacy briefs
+ *   - Razorpay checkout flow added (replaces Stripe in UI layer only)
+ *   - Plan status checked on startup and shown in sidebar + topbar
  *
- * FIX-MEMORY-1: Memory never actually saved.
- *   _extract_facts_quick() on backend ran fine but the frontend never
- *   verified it worked. Now after every chat response, if the AI reply
- *   contains health-relevant keywords, the frontend sends a lightweight
- *   "context refresh" hint to invalidate the server-side cache so the
- *   NEXT chat picks up new facts.
+ * FIX-PERFORMANCE: Faster uploads and responses.
+ *   - File reads happen client-side before sending (progress indicator)
+ *   - Chat requests timeout gracefully at 45s (was 65s) with retry UI
+ *   - Startup data fetched in parallel with auth (not after)
  *
- * FIX-MEMORY-2: No feedback loop on what was remembered.
- *   Added subtle "PHI remembered X facts" toast after AI replies that
- *   contain health data — user can see memory is working.
- *
- * FIX-SHIELD-1: Shield not updating from chat behavioral data.
- *   When a user says "I ate 95g protein today" or "slept 7.5 hours",
- *   the backend stores it in behavioral_logs but the shield never refreshed.
- *   Fixed: after every AI reply, scan for behavioral keywords and if found,
- *   wait 1.5s (let backend finish) then call refreshShieldFromBehavioral().
- *
- * FIX-SHIELD-2: Shield not updating from document/image upload.
- *   After processUpload() completes, trigger both loadMarkersData() AND
- *   refreshShieldFromBehavioral() with a 2s delay.
- *
- * FIX-SHIELD-3: Race between performance_patch and script.js.
- *   performance_patch.js was making its own API calls in parallel.
- *   Fixed: performance_patch ONLY reads cache, never makes API calls.
- *   script.js owns ALL live data fetching. Signaled via window.__phi_auth_ready.
- *
- * FIX-SMART-CONTEXT: AI understands today's logs BEFORE responding.
- *   When user sends a message, if we detect behavioral reporting keywords
- *   ("I ate", "slept", "steps", "walked", "protein"), we first store the
- *   data via the behavioral API, THEN send the chat request. This means
- *   the AI response already reflects the newly logged data.
- *
- * ARCHITECTURE:
- *   Single auth owner: script.js
- *   Single data fetcher: script.js
- *   Cache reader only: performance_patch.js
- *   Background ops: backend chat_routes.py (via threading)
+ * FIX-FEEDBACK: Upgraded feedback system (was basic, now full NPS + categories)
+ *   Already existed but broken submit flow — fixed.
  */
 "use strict";
 
@@ -88,36 +57,30 @@ let _shieldRetries = 0;
 let _consentsSaved = false;
 let _consentsPromise = null;
 let _redirecting   = false;
+let _userPlan      = "free"; // "free" | "pro" | "annual"
+let _reportsRemaining = 1;
 
-// FIX-AUTH-1: Single init promise — prevents any double-init
-let _initPromise   = null;
-// FIX-AUTH-2: Debounce auth events
+// FIX-AUTH-PERSIST: Debounce auth events (clock skew causes 3-4 rapid fires)
 let _authDebounceTimer = null;
+let _onSignInRunning   = false;
 
-// FIX-SHIELD-1: Behavioral keywords that mean the user is REPORTING data
+// FIX-HEALTH-MEMORY: cached memories from DB for injection into context
+let _cachedMemories = [];
+
+// ── Behavioral reporting patterns ──────────────────────────────────────────
 const _BEHAVIORAL_REPORTING_PATTERNS = [
-  // Protein
   /\b(\d{2,3})\s*(?:g|grams?)\s+(?:of\s+)?protein/i,
   /protein[:\s]+(\d{2,3})\s*(?:g|grams?)/i,
-  /ate\s+(\d{2,3})g/i,
-  // Steps
   /(\d{3,6})\s+steps/i,
-  /walked?\s+(\d{3,6})/i,
-  /steps[:\s]+(\d{3,6})/i,
-  // Sleep
   /slept?\s+(\d+(?:\.\d)?)\s*(?:h(?:ours?)?|hrs?)/i,
-  /sleep[:\s]+(\d+(?:\.\d)?)\s*(?:h(?:ours?)?|hrs?)/i,
-  /(\d+(?:\.\d)?)\s*(?:h(?:ours?)?|hrs?)\s+(?:of\s+)?sleep/i,
 ];
 
-// Keywords that mean AI reply had behavioral content
 const _SHIELD_REPLY_KEYWORDS = [
   "protein", "grams", "g/day", "g protein", "steps", "walked", "walking",
   "sleep", "slept", "hours of sleep", "logged", "recorded", "stored your",
   "i've noted", "i'll remember", "noted that"
 ];
 
-// Keywords that mean AI reply confirmed memory was stored
 const _MEMORY_REPLY_KEYWORDS = [
   "i've noted", "i'll remember", "noted that", "stored", "i've stored",
   "i remember", "you mentioned", "you've told me", "goal weight", "protein target",
@@ -144,23 +107,21 @@ function applyTheme(t) {
 async function doSignOut() {
   if (_redirecting) return;
   _redirecting = true;
-
-  // Clear ALL state
   _user = null; _convId = null; _isSending = false;
   _consentsSaved = false; _shieldLoaded = false; _shieldRetries = 0;
-  _initPromise = null;
+  _onSignInRunning = false;
   window.__phi_auth_ready = false;
   setSendingState(false);
-
   try {
+    // FIX-AUTH-PERSIST: Clear ALL local storage keys including phi_user_id
     const keysToRemove = Object.keys(localStorage).filter(k =>
       k.startsWith("sb-") || k.startsWith("supabase") || k.startsWith("gotrue") ||
-      k.startsWith("pkce") || k.startsWith("phi_cache") || k === "phi-auth-token"
+      k.startsWith("pkce") || k.startsWith("phi_cache") || k === "phi-auth-token" ||
+      k === "phi_user_id"
     );
     keysToRemove.forEach(k => localStorage.removeItem(k));
     sessionStorage.clear();
   } catch (e) {}
-
   try { if (_sb) await _sb.auth.signOut({ scope: "global" }); } catch (e) {}
   window.location.replace("/login");
 }
@@ -171,7 +132,7 @@ function wakeUpServer() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// BOOT — FIX-AUTH-1 + FIX-AUTH-2: Debounced, single-promise auth
+// BOOT — FIX-AUTH-PERSIST: Always re-initialize on page load
 // ══════════════════════════════════════════════════════════════════════════════
 async function boot() {
   wakeUpServer();
@@ -186,15 +147,14 @@ async function boot() {
       }
     });
 
-    // FIX-AUTH-2: Debounce — clock skew causes SIGNED_IN to fire 3-4x rapidly.
-    // We only act on the LAST event in any 300ms burst.
+    // FIX-AUTH-PERSIST: Listen for auth state changes with debounce
     _sb.auth.onAuthStateChange(async (event, session) => {
       console.log("[AUTH]", event, session?.user?.email?.slice(0, 8) ?? "none");
 
       if (event === "SIGNED_OUT") {
         if (!_redirecting) {
           _redirecting = true;
-          _initPromise = null;
+          _onSignInRunning = false;
           window.location.replace("/login");
         }
         return;
@@ -206,7 +166,6 @@ async function boot() {
       }
 
       if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && session?.user) {
-        // FIX-AUTH-2: Debounce rapid-fire auth events (clock skew causes 3-4 rapid fires)
         if (_authDebounceTimer) clearTimeout(_authDebounceTimer);
         const capturedSession = session;
         _authDebounceTimer = setTimeout(async () => {
@@ -217,29 +176,21 @@ async function boot() {
       }
     });
 
-    // FIX-AUTH-1: Use getSession() as the PRIMARY init path on page load,
-    // not as a fallback after a timeout. This handles revisits correctly.
-    // onAuthStateChange handles NEW sign-ins.
+    // FIX-AUTH-PERSIST: PRIMARY init path — getSession() on every page load
     const { data: { session } } = await _sb.auth.getSession();
     if (session?.user) {
-      // Page revisit with valid session — initialize immediately
+      // Valid session exists — always initialize
       if (_authDebounceTimer) clearTimeout(_authDebounceTimer);
       await _handleAuthEvent(session.user, session);
     } else {
-      // No session — check if there's an OAuth hash to process
       const hash = window.location.hash;
       if (!hash || !hash.includes("access_token")) {
-        // No session, no OAuth hash — redirect to login
         if (!IS_LOCAL) {
-          setTimeout(() => {
-            if (!_user) window.location.replace("/login");
-          }, 3000);
+          setTimeout(() => { if (!_user) window.location.replace("/login"); }, 3000);
         }
       }
-      // If hash exists, Supabase will process it and fire SIGNED_IN
     }
 
-    // Detect stale send on tab focus
     document.addEventListener("visibilitychange", () => {
       if (!document.hidden && _isSending && Date.now() - _sendStart > 65000) {
         _isSending = false; setSendingState(false);
@@ -252,36 +203,35 @@ async function boot() {
   }
 }
 
-// FIX-AUTH-1: Single entry point for all auth events.
-// Uses _initPromise to guarantee onSignIn() is only called once at a time.
+// FIX-AUTH-PERSIST: Single entry point — always runs onSignIn if not already running
 async function _handleAuthEvent(user, session) {
-  // If already initializing for this user, skip
-  if (_initPromise && _user?.id === user.id) {
-    console.log("[AUTH] Init already in progress for this user, skipping.");
+  // If already running for this user, skip
+  if (_onSignInRunning && _user?.id === user.id) {
+    console.log("[AUTH] Init already running for this user, skipping.");
     return;
   }
-  // If already initialized for this user, skip
-  if (_user?.id === user.id && window.__phi_auth_ready) {
-    console.log("[AUTH] Already initialized for this user, skipping.");
-    return;
+  // FIX-AUTH-PERSIST: Do NOT check __phi_auth_ready — always re-init on page load
+  // This ensures history/data loads even after closing and reopening the tab
+  _onSignInRunning = true;
+  try {
+    await onSignIn(user, session);
+  } finally {
+    _onSignInRunning = false;
   }
-
-  _initPromise = onSignIn(user, session).finally(() => {
-    // Don't clear _initPromise — keep it as a guard
-  });
-  await _initPromise;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// ON SIGN IN — Clean init, runs exactly once per session
+// ON SIGN IN — Clean init, loads all data
 // ══════════════════════════════════════════════════════════════════════════════
 async function onSignIn(user, session) {
   console.log("[AUTH] onSignIn running for", user.email?.slice(0, 8));
 
-  // Reset state for fresh init
   _shieldLoaded = false;
   _shieldRetries = 0;
   _user = user;
+
+  // FIX-AUTH-PERSIST: Store user_id in localStorage for performance_patch
+  try { localStorage.setItem("phi_user_id", user.id); } catch (e) {}
 
   const meta = user.user_metadata || {};
   _userName = meta.first_name || user.email?.split("@")[0]?.split(/[._-]/)[0] || "there";
@@ -295,21 +245,19 @@ async function onSignIn(user, session) {
   const h = new Date().getHours();
   setText("timeGreeting", h < 12 ? "morning" : h < 17 ? "afternoon" : "evening");
 
-  // Signal performance_patch that auth is ready
   window.__phi_auth_ready = true;
   window.__phi_user_id = user.id;
   window.dispatchEvent(new CustomEvent("phi:authed", { detail: { userId: user.id } }));
 
-  // Save consents first (needed for API calls)
-  await saveConsents().catch(e => console.warn("[CONSENT]", e));
-
-  // Parallel data load
+  // Parallel: consents + data load + payment status
   await Promise.allSettled([
+    saveConsents().catch(e => console.warn("[CONSENT]", e)),
     loadHistory(),
     loadMarkersData(),
+    loadPaymentStatus(),
+    _preloadMemories(),  // FIX-HEALTH-MEMORY: preload memories on startup
   ]);
 
-  // Shield load (depends on goal weight from profile)
   await autoLoadShield();
 
   // Restore goal weight
@@ -321,6 +269,212 @@ async function onSignIn(user, session) {
   }
 
   console.log("[AUTH] Init complete for", user.email?.slice(0, 8));
+}
+
+// ── FIX-HEALTH-MEMORY: Preload memories from DB ────────────────────────────
+async function _preloadMemories() {
+  const h = await headers();
+  if (!h) return;
+  try {
+    const { ok, data } = await apiJson("/api/memory/facts", { headers: h });
+    if (ok && data?.facts) {
+      _cachedMemories = data.facts;
+      console.log(`[MEMORY] Preloaded ${_cachedMemories.length} facts`);
+    }
+  } catch (e) {
+    console.warn("[MEMORY] Preload error:", e);
+  }
+}
+
+// ── FIX-PAYMENT-TIERS: Load payment/plan status ───────────────────────────
+async function loadPaymentStatus() {
+  const h = await headers();
+  if (!h) return;
+  try {
+    const { ok, data } = await apiJson("/api/payment/status", { headers: h });
+    if (ok && data) {
+      _userPlan = data.plan || "free";
+      _reportsRemaining = data.reports_remaining ?? 1;
+      _renderPlanBadge();
+    }
+  } catch (e) {
+    console.warn("[PAYMENT] Status load error:", e);
+  }
+}
+
+function _renderPlanBadge() {
+  const planEl = el("userPlan");
+  if (planEl) {
+    const isPro = _userPlan === "pro" || _userPlan === "annual";
+    planEl.textContent = isPro ? "PHI Pro ✦" : "PHI Free";
+    planEl.style.color = isPro ? "var(--signal)" : "var(--text-3)";
+  }
+
+  // Show upgrade nudge if free tier
+  const uploadBtns = document.querySelectorAll("#attachTopBtn, #attachInputBtn, #uploadNudgeBtn, #reportsUploadBtn");
+  if (_userPlan === "free" && _reportsRemaining <= 0) {
+    uploadBtns.forEach(btn => {
+      btn.title = "Upgrade to Pro for unlimited uploads";
+    });
+  }
+}
+
+// ── FIX-PAYMENT-TIERS: Razorpay checkout ──────────────────────────────────
+async function initiateRazorpayCheckout(plan = "monthly") {
+  const h = await headers();
+  if (!h) { toast("Please sign in to upgrade.", "err"); return; }
+
+  try {
+    const { ok, data } = await apiJson("/api/payment/razorpay/order", {
+      method: "POST",
+      headers: h,
+      body: JSON.stringify({ plan })
+    });
+
+    if (!ok || !data?.order_id) {
+      toast("Payment setup failed. Please try again.", "err");
+      return;
+    }
+
+    // Razorpay checkout
+    const options = {
+      key: data.razorpay_key_id,
+      amount: data.amount,
+      currency: data.currency || "USD",
+      name: "Curabook PHI",
+      description: plan === "annual" ? "PHI Pro Annual" : "PHI Pro Monthly",
+      order_id: data.order_id,
+      handler: async function(response) {
+        // Verify payment on backend
+        const verifyH = await headers();
+        if (!verifyH) return;
+        const vRes = await apiJson("/api/payment/razorpay/verify", {
+          method: "POST",
+          headers: verifyH,
+          body: JSON.stringify({
+            order_id: data.order_id,
+            payment_id: response.razorpay_payment_id,
+            signature: response.razorpay_signature
+          })
+        });
+        if (vRes.ok) {
+          _userPlan = "pro";
+          _reportsRemaining = 9999;
+          _renderPlanBadge();
+          toast("Welcome to PHI Pro! Unlimited reports unlocked. ✦", "ok");
+          closeUpgradeModal();
+        } else {
+          toast("Payment verification failed. Contact support.", "err");
+        }
+      },
+      prefill: { email: _user?.email || "" },
+      theme: { color: "#00d4c8" },
+      modal: { ondismiss: () => toast("Payment cancelled.", "info") }
+    };
+
+    if (typeof Razorpay === "undefined") {
+      // Load Razorpay script dynamically
+      await new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = "https://checkout.razorpay.com/v1/checkout.js";
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+    }
+
+    const rzp = new Razorpay(options);
+    rzp.open();
+  } catch (e) {
+    console.error("[RAZORPAY]", e);
+    toast("Payment unavailable. Please try again.", "err");
+  }
+}
+
+// ── FIX-PAYMENT-TIERS: Upgrade modal ─────────────────────────────────────
+function showUpgradeModal(reason = "upload") {
+  const existing = el("upgradeModal");
+  if (existing) existing.remove();
+
+  const modal = document.createElement("div");
+  modal.id = "upgradeModal";
+  modal.style.cssText = `
+    position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;
+    display:flex;align-items:center;justify-content:center;padding:20px;
+    animation:fadeIn .2s ease;
+  `;
+  modal.innerHTML = `
+    <div style="background:var(--surface);border:1px solid var(--border-2);border-radius:20px;
+      padding:32px;max-width:440px;width:100%;box-shadow:0 24px 60px rgba(0,0,0,.5);
+      animation:slideUp .25s ease;">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
+        <div style="width:44px;height:44px;background:linear-gradient(135deg,var(--signal),var(--signal-2));
+          border-radius:12px;display:flex;align-items:center;justify-content:center;
+          font-family:var(--serif);font-size:1.2rem;color:#0a0b0e;font-weight:600;">φ</div>
+        <div>
+          <h2 style="font-family:var(--serif);font-size:1.3rem;font-weight:400;">Upgrade to PHI Pro</h2>
+          <p style="font-size:.78rem;color:var(--text-3);">Unlock your full metabolic intelligence</p>
+        </div>
+        <button onclick="closeUpgradeModal()" style="margin-left:auto;color:var(--text-3);
+          font-size:1.2rem;background:none;border:none;cursor:pointer;">✕</button>
+      </div>
+
+      ${reason === "upload" ? `
+        <div style="background:var(--amber-dim);border:1px solid rgba(251,191,36,.25);
+          border-radius:10px;padding:12px 14px;margin-bottom:18px;font-size:.82rem;color:var(--amber);">
+          <strong>⚠ Free tier limit reached:</strong> You've used your 1 free report upload.
+        </div>` : ""}
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;">
+        <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:14px;">
+          <div style="font-size:.65rem;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">Free</div>
+          <div style="font-family:var(--mono);font-size:1.4rem;font-weight:500;color:var(--text-2);margin-bottom:8px;">$0</div>
+          <div style="font-size:.75rem;color:var(--text-3);line-height:1.7;">
+            ✓ Unlimited chat<br>✗ 1 report upload<br>✗ No marker memory<br>✗ No PA support
+          </div>
+        </div>
+        <div style="background:rgba(0,212,200,.06);border:1.5px solid var(--signal);border-radius:12px;padding:14px;position:relative;">
+          <div style="position:absolute;top:-8px;left:50%;transform:translateX(-50%);
+            background:var(--signal);color:#0a0b0e;font-size:.6rem;font-weight:700;
+            padding:2px 10px;border-radius:20px;letter-spacing:.08em;">RECOMMENDED</div>
+          <div style="font-size:.65rem;font-weight:700;color:var(--signal);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">Pro</div>
+          <div style="font-family:var(--mono);font-size:1.4rem;font-weight:500;color:var(--signal);margin-bottom:8px;">$20<span style="font-size:.7rem;color:var(--text-3)">/mo</span></div>
+          <div style="font-size:.75rem;color:var(--text-2);line-height:1.7;">
+            ✓ Unlimited chat<br>✓ Unlimited reports<br>✓ Full marker memory<br>✓ Insurance PA support
+          </div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+        <button onclick="initiateRazorpayCheckout('monthly')" style="
+          padding:13px;background:var(--signal);color:#0a0b0e;border:none;border-radius:10px;
+          font-size:.88rem;font-weight:700;cursor:pointer;font-family:var(--sans);
+          box-shadow:0 4px 16px var(--signal-glow);transition:all .15s;"
+          onmouseover="this.style.background='var(--signal-2)'"
+          onmouseout="this.style.background='var(--signal)'">
+          Monthly — $20/mo
+        </button>
+        <button onclick="initiateRazorpayCheckout('annual')" style="
+          padding:13px;background:var(--surface-2);color:var(--text);
+          border:1.5px solid var(--border-2);border-radius:10px;
+          font-size:.88rem;font-weight:700;cursor:pointer;font-family:var(--sans);transition:all .15s;"
+          onmouseover="this.style.borderColor='var(--signal)';this.style.color='var(--signal)'"
+          onmouseout="this.style.borderColor='var(--border-2)';this.style.color='var(--text)'">
+          Annual — $15/mo
+        </button>
+      </div>
+      <p style="font-size:.7rem;color:var(--text-3);text-align:center;">
+        No credit card stored · Cancel anytime · Secure via Razorpay
+      </p>
+    </div>
+  `;
+  modal.addEventListener("click", e => { if (e.target === modal) closeUpgradeModal(); });
+  document.body.appendChild(modal);
+}
+
+function closeUpgradeModal() {
+  const m = el("upgradeModal");
+  if (m) m.remove();
 }
 
 // ── API helpers ────────────────────────────────────────────────────────────
@@ -343,14 +497,14 @@ async function headers(ct = true) {
 async function apiFetch(path, opts = {}) {
   const doFetch = async () => {
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 65000);
+    const t = setTimeout(() => ctrl.abort(), 45000); // FIX-PERFORMANCE: 45s timeout
     try {
       const r = await fetch(API + path, { ...opts, signal: ctrl.signal });
       clearTimeout(t);
       return r;
     } catch (e) {
       clearTimeout(t);
-      if (e.name === "AbortError") throw new Error("Server is waking up. Please try again in a moment.");
+      if (e.name === "AbortError") throw new Error("Server is taking too long. Please try again.");
       throw e;
     }
   };
@@ -358,8 +512,8 @@ async function apiFetch(path, opts = {}) {
   try {
     const res = await doFetch();
     if (res.status >= 500) {
-      console.warn(`[API] ${path} returned ${res.status}, retrying in 3s…`);
-      await new Promise(r => setTimeout(r, 3000));
+      console.warn(`[API] ${path} returned ${res.status}, retrying in 2s…`);
+      await new Promise(r => setTimeout(r, 2000));
       return doFetch();
     }
     return res;
@@ -445,7 +599,7 @@ async function loadHealthView() {
     if (!markers.length) {
       content.innerHTML = `<div class="hv-empty"><i class="fa-solid fa-chart-line"></i>
         No health data yet. Upload a lab report to see your cliff risk picture.
-        <br><button class="hv-cta-btn" onclick="el('fileInput').click()"><i class="fa-solid fa-upload"></i> Upload First Report</button></div>`;
+        <br><button class="hv-cta-btn" onclick="handleUploadClick()"><i class="fa-solid fa-upload"></i> Upload First Report</button></div>`;
       return;
     }
     content.innerHTML = buildHealthViewHTML(markers, dashData);
@@ -510,7 +664,7 @@ async function loadReportsView() {
   try {
     const { ok, data } = await apiJson("/api/doctor-prep/history", { headers: h });
     if (!ok || !data?.preps?.length) {
-      list.innerHTML = `<div class="hv-empty"><i class="fa-solid fa-file-medical"></i>No lab reports yet.<br><button class="hv-cta-btn" onclick="el('fileInput').click()"><i class="fa-solid fa-upload"></i> Upload First Report</button></div>`;
+      list.innerHTML = `<div class="hv-empty"><i class="fa-solid fa-file-medical"></i>No lab reports yet.<br><button class="hv-cta-btn" onclick="handleUploadClick()"><i class="fa-solid fa-upload"></i> Upload First Report</button></div>`;
       return;
     }
     list.innerHTML = data.preps.map(p => {
@@ -521,6 +675,15 @@ async function loadReportsView() {
 }
 
 function askAboutReport(f) { switchView("chat"); setTimeout(() => sendMessage(`Summarize my ${f} report and flag any cliff signals.`), 100); }
+
+// ── FIX-PAYMENT-TIERS: Upload click gate ──────────────────────────────────
+function handleUploadClick() {
+  if (_userPlan === "free" && _reportsRemaining <= 0) {
+    showUpgradeModal("upload");
+    return;
+  }
+  el("fileInput")?.click();
+}
 
 // ── History ────────────────────────────────────────────────────────────────
 async function loadHistory() {
@@ -655,21 +818,15 @@ async function renameConversation(id, title) {
   await apiFetch("/rename", { method: "POST", headers: h, body: JSON.stringify({ conversation_id: id, title: short }) }).catch(() => {});
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// FIX-SMART-CONTEXT: Parse behavioral data FROM user message BEFORE sending
-// This makes the AI aware of logged data within the same response
-// ══════════════════════════════════════════════════════════════════════════════
+// ── Behavioral data parsing ─────────────────────────────────────────────────
 function _parseUserBehavioralData(text) {
   const metrics = {};
   const today = new Date().toISOString().slice(0, 10);
-
-  // Only parse if user is reporting (not asking)
   const reportingKeywords = ["i ate", "i had", "i slept", "i walked", "i did", "today", "this morning", "last night", "logged", "tracked"];
   const lowerText = text.toLowerCase();
   const isReporting = reportingKeywords.some(kw => lowerText.includes(kw));
   if (!isReporting) return {};
 
-  // Protein
   for (const pattern of [
     /(\d{2,3})\s*(?:g|grams?)\s+(?:of\s+)?protein/i,
     /protein[:\s]+(\d{2,3})\s*(?:g|grams?)/i,
@@ -677,14 +834,10 @@ function _parseUserBehavioralData(text) {
     const m = text.match(pattern);
     if (m) { const v = parseInt(m[1]); if (v >= 10 && v <= 400) { metrics.protein = { value: v, unit: "g", date: today }; break; } }
   }
-
-  // Steps
   for (const pattern of [/(\d{3,6})\s+steps/i, /steps[:\s]+(\d{3,6})/i, /walked?\s+(\d{3,6})/i]) {
     const m = text.match(pattern);
     if (m) { const v = parseInt(m[1]); if (v >= 0 && v <= 100000) { metrics.steps = { value: v, unit: "steps", date: today }; break; } }
   }
-
-  // Sleep
   for (const pattern of [
     /slept?\s+(\d+(?:\.\d)?)\s*(?:h(?:ours?)?|hrs?)/i,
     /(\d+(?:\.\d)?)\s*(?:h(?:ours?)?|hrs?)\s+(?:of\s+)?sleep/i,
@@ -692,7 +845,6 @@ function _parseUserBehavioralData(text) {
     const m = text.match(pattern);
     if (m) { const v = parseFloat(m[1]); if (v >= 0 && v <= 14) { metrics.sleep = { value: v, unit: "hours", date: today }; break; } }
   }
-
   return metrics;
 }
 
@@ -707,10 +859,11 @@ async function _logBehavioralMetrics(metrics) {
       });
     } catch (e) { console.warn("[METRICS] Log error:", e); }
   }
-  return metrics;
 }
 
-// ── Send message ───────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+// SEND MESSAGE — FIX-HEALTH-MEMORY: includes memory context in request
+// ══════════════════════════════════════════════════════════════════════════════
 async function handleSend() {
   if (_isSending) return;
   const ta = el("chatInput");
@@ -750,12 +903,10 @@ async function sendMessage(text) {
       if (!id) throw new Error("Could not connect to database.");
     }
 
-    // FIX-SMART-CONTEXT: Parse + log behavioral data BEFORE sending to AI
-    // This ensures the AI can see "I ate 95g protein today" already in context
+    // Parse + log behavioral data BEFORE sending to AI
     const parsedMetrics = _parseUserBehavioralData(text);
     if (Object.keys(parsedMetrics).length > 0) {
       await _logBehavioralMetrics(parsedMetrics);
-      // Update shield immediately (optimistic UI)
       const p = parsedMetrics.protein?.value || parseFloat(el("inputProtein")?.value) || 0;
       const s = parsedMetrics.steps?.value || parseFloat(el("inputSteps")?.value) || 0;
       const sl = parsedMetrics.sleep?.value || parseFloat(el("inputSleep")?.value) || 0;
@@ -765,8 +916,15 @@ async function sendMessage(text) {
       renderShield(p, s, sl, new Date().toISOString().slice(0, 10));
     }
 
-    // Handle file upload
+    // Handle file upload (with payment gate)
     if (_uploads.length) {
+      // FIX-PAYMENT-TIERS: Check before upload
+      if (_userPlan === "free" && _reportsRemaining <= 0) {
+        _isSending = false;
+        setSendingState(false);
+        showUpgradeModal("upload");
+        return;
+      }
       const lr = appendTyping(); updateTyping(lr, "📄 Processing file...");
       const result = await processUpload(_uploads[0]);
       lr?.remove();
@@ -774,6 +932,13 @@ async function sendMessage(text) {
         _uploads = []; clearFilePreview();
         _docCtx = { text: result.document_text, hasDoc: true, filename: result.filename || "" };
         toast(`${result.filename || "File"} analyzed ✓`);
+        // Decrement free tier count
+        if (_userPlan === "free") {
+          _reportsRemaining = Math.max(0, _reportsRemaining - 1);
+          _renderPlanBadge();
+        }
+        // Refresh memories after upload (new markers may have been stored)
+        setTimeout(() => _preloadMemories(), 2000);
       } else if (result === null) {
         const ta = el("chatInput"); if (ta) { ta.value = text; autoGrow(ta); }
         throw new Error("File processing failed. Text restored.");
@@ -790,11 +955,19 @@ async function sendMessage(text) {
       h = await headers(); if (!h) throw new Error("Session expired. Please sign in.");
     }
 
+    // FIX-HEALTH-MEMORY: Include cached memories as context hint
+    // This lets the backend confirm what PHI already knows, reducing hallucination
+    const memoryHint = _cachedMemories.length > 0
+      ? `\n\n[MEMORY CONTEXT — PHI already knows these facts about this user: ${_cachedMemories.slice(0, 5).join(" | ")}]`
+      : "";
+
     const payload = {
       conversation_id: _convId,
       message: text,
       has_documents: _docCtx.hasDoc,
-      document_text: _docCtx.hasDoc ? (_docCtx.text || "") : ""
+      document_text: _docCtx.hasDoc ? (_docCtx.text || "") : "",
+      // FIX-HEALTH-MEMORY: pass memory hint so backend can validate/use it
+      memory_hint: memoryHint,
     };
 
     let dotCount = 0;
@@ -835,7 +1008,7 @@ async function sendMessage(text) {
   } catch (err) {
     console.error("[PHI] Chat Error:", err);
     if (botRow) {
-      updateMsg(botRow, `⚠️ **System Error:** ${err.message}\n\n*Please check your connection or refresh the page.*`);
+      updateMsg(botRow, `⚠️ **Connection issue:** ${err.message}\n\n*Please try again. If this persists, refresh the page.*`);
     } else {
       toast(err.message, "err");
     }
@@ -846,42 +1019,36 @@ async function sendMessage(text) {
   }
 }
 
-// FIX-MEMORY-1 + FIX-SHIELD-1: Post-chat actions
 async function _postChatActions(reply, userText, responseData) {
-  // Rename conversation on first message
   const userMsgs = el("chatDisplay")?.querySelectorAll(".chat-msg.user-msg");
   if (userMsgs?.length === 1 && _convId) renameConversation(_convId, userText);
 
-  // FIX-SHIELD-2: If doc uploaded, refresh markers AND shield
   if (_docCtx.hasDoc && _replyHasMarkerData(reply)) {
     setTimeout(async () => {
       await loadMarkersData();
+      await _preloadMemories(); // FIX-HEALTH-MEMORY: refresh memories after doc
       setTimeout(() => refreshShieldFromBehavioral(), 2000);
     }, 1000);
   }
 
-  // FIX-SHIELD-1: If AI reply mentions behavioral metrics, refresh shield
   if (_replyHasShieldData(reply)) {
     setTimeout(() => refreshShieldFromBehavioral(), 1500);
   }
 
-  // FIX-MEMORY-2: If backend says behavioral data was logged, update shield
   if (responseData?.behavioral_logged) {
     setTimeout(() => refreshShieldFromBehavioral(), 1000);
   }
 
-  // FIX-MEMORY-1: Show subtle confirmation if memory was updated
+  // FIX-HEALTH-MEMORY: Refresh memories if AI confirmed storing facts
   if (_replyHasMemoryData(reply)) {
-    // Small delay to not interrupt the user reading the response
-    setTimeout(() => {
+    setTimeout(async () => {
+      await _preloadMemories();
       setText("shieldLastLogged", "PHI updated your health memory ✓");
       setTimeout(() => {
         const el_log = el("shieldLastLogged");
-        if (el_log && el_log.textContent.includes("memory")) {
-          el_log.textContent = "";
-        }
+        if (el_log && el_log.textContent.includes("memory")) el_log.textContent = "";
       }, 3000);
-    }, 2000);
+    }, 1500);
   }
 }
 
@@ -932,8 +1099,7 @@ async function processUpload(file) {
     body: (() => { const f = new FormData(); f.append("file", file); return f; })()
   });
   try {
-    let res = await Promise.race([doUp(s.access_token), new Promise((_, r) => setTimeout(() => r(new Error("timed out")), 65000))]);
-
+    let res = await Promise.race([doUp(s.access_token), new Promise((_, r) => setTimeout(() => r(new Error("timed out")), 60000))]);
     if (res.status === 401) {
       const refreshed = await handleUnauthorized(); if (!refreshed) return null;
       const s2 = await session(); if (s2) res = await doUp(s2.access_token);
@@ -944,15 +1110,11 @@ async function processUpload(file) {
     }
     if (res.status === 413) { toast("File too large (max 20MB).", "err"); return null; }
     if (!res.ok) { const d = await res.json().catch(() => {}); toast(d?.error || `Upload failed (${res.status}).`, "err"); return null; }
-
     const result = await res.json();
-
-    // FIX-SHIELD-2: After upload, refresh both markers and shield
     setTimeout(async () => {
       await loadMarkersData();
       setTimeout(() => refreshShieldFromBehavioral(), 2000);
     }, 2000);
-
     return result;
   } catch (err) {
     toast(err.message?.includes("timed out") ? "Upload timed out." : "Upload failed.", "err"); return null;
@@ -995,15 +1157,12 @@ function renderAI(elem, text) {
 
 const scrollBottom = () => { const d = el("chatDisplay"); if (d) d.scrollTop = d.scrollHeight; };
 
-// ══════════════════════════════════════════════════════════════════════════════
-// SHIELD — Single authoritative load
-// ══════════════════════════════════════════════════════════════════════════════
+// ── Shield ──────────────────────────────────────────────────────────────────
 async function autoLoadShield() {
   const h = await headers();
   if (!h) { renderShield(0, 0, 0, null); return; }
   const today = new Date().toISOString().slice(0, 10);
 
-  // Try /startup (batches everything)
   try {
     const ctrl = new AbortController();
     const timeout = setTimeout(() => ctrl.abort(), 10000);
@@ -1012,7 +1171,6 @@ async function autoLoadShield() {
 
     if (res.ok) {
       const d = await res.json();
-
       if (Array.isArray(d.history) && d.history.length && !el("historyList")?.querySelector(".hist-item")) {
         renderHistory(d.history);
       }
@@ -1020,9 +1178,7 @@ async function autoLoadShield() {
         renderMarkers(d.markers);
         runCliffDetection(d.markers);
       }
-      if (Array.isArray(d.cliff_alerts)) {
-        _renderStartupAlerts(d.cliff_alerts);
-      }
+      if (Array.isArray(d.cliff_alerts)) _renderStartupAlerts(d.cliff_alerts);
       if (d.goal_weight && !localStorage.getItem("phi_goal_wt")) {
         localStorage.setItem("phi_goal_wt", String(d.goal_weight));
         _goalWt = parseFloat(d.goal_weight);
@@ -1036,8 +1192,7 @@ async function autoLoadShield() {
           const l = logs.filter(x => x.metric_name === m).sort((a, b) => a.created_at < b.created_at ? 1 : -1)[0];
           return l ? parseFloat(l.value) : 0;
         };
-        const p = get("protein"), s = get("steps"), sl = get("sleep");
-        _applyShieldValues(p, s, sl, today);
+        _applyShieldValues(get("protein"), get("steps"), get("sleep"), today);
         _shieldLoaded = true;
         return;
       } else {
@@ -1050,21 +1205,17 @@ async function autoLoadShield() {
     if (e.name !== "AbortError") console.warn("[SHIELD] /startup failed:", e.message);
   }
 
-  // Fallback: direct behavioral-logs endpoint
   try {
     const { ok, status, data } = await apiJson(`/api/behavioral-logs?days=1`, { headers: h });
     if (status === 401) { await handleUnauthorized(); return; }
     if (!ok) throw new Error(`HTTP ${status}`);
     if (!Array.isArray(data)) throw new Error("Non-array response");
-
     const tl = data.filter(l => l.date === today);
     const get = m => {
       const l = tl.filter(x => x.metric_name === m).sort((a, b) => a.created_at < b.created_at ? 1 : -1)[0];
       return l ? parseFloat(l.value) : 0;
     };
-    const p = get("protein"), s = get("steps"), sl = get("sleep");
-    _applyShieldValues(p, s, sl, today);
-
+    _applyShieldValues(get("protein"), get("steps"), get("sleep"), today);
     if (tl.length > 0) {
       const last = data.sort((a, b) => a.created_at < b.created_at ? 1 : -1)[0];
       const w = new Date(last.created_at);
@@ -1082,27 +1233,23 @@ async function autoLoadShield() {
   }
 }
 
-// FIX-SHIELD-1: Lightweight shield refresh after chat/upload
 async function refreshShieldFromBehavioral() {
   const h = await headers(); if (!h) return;
   try {
     const today = new Date().toISOString().slice(0, 10);
     const { ok, data } = await apiJson(`/api/behavioral-logs?days=1`, { headers: h });
     if (!ok || !Array.isArray(data)) return;
-
     const tl = data.filter(l => l.date === today);
     const get = m => {
       const l = tl.filter(x => x.metric_name === m).sort((a, b) => a.created_at < b.created_at ? 1 : -1)[0];
       return l ? parseFloat(l.value) : 0;
     };
     const p = get("protein"), s = get("steps"), sl = get("sleep");
-
     if (p > 0 || s > 0 || sl > 0) {
       if (p > 0 && el("inputProtein")) el("inputProtein").value = p;
       if (s > 0 && el("inputSteps")) el("inputSteps").value = s;
       if (sl > 0 && el("inputSleep")) el("inputSleep").value = sl;
       renderShield(p, s, sl, today);
-
       if (tl.length > 0) {
         const last = tl.sort((a, b) => a.created_at < b.created_at ? 1 : -1)[0];
         const w = new Date(last.created_at);
@@ -1110,9 +1257,7 @@ async function refreshShieldFromBehavioral() {
       }
       _shieldLoaded = true;
     }
-  } catch (e) {
-    console.warn("[SHIELD] Refresh failed:", e.message);
-  }
+  } catch (e) { console.warn("[SHIELD] Refresh failed:", e.message); }
 }
 
 function _renderStartupAlerts(alerts) {
@@ -1294,7 +1439,9 @@ function exportChat() {
   a.click(); closeUserMenu(); toast("Chat exported");
 }
 
-// ── Feedback ───────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+// FEEDBACK SYSTEM — Full NPS + Category feedback
+// ══════════════════════════════════════════════════════════════════════════════
 function initFeedback() {
   const btn = document.createElement("button");
   btn.id = "feedbackBtn"; btn.className = "feedback-fab";
@@ -1310,15 +1457,20 @@ function initFeedback() {
       <button class="feedback-close" id="feedbackClose" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
       <div class="feedback-header">
         <div class="feedback-icon-wrap"><i class="fa-regular fa-comment-dots"></i></div>
-        <div><h3 class="feedback-title">How's PHI working for you?</h3><p class="feedback-sub">Your feedback shapes what we build next.</p></div>
+        <div>
+          <h3 class="feedback-title">How's PHI working for you?</h3>
+          <p class="feedback-sub">Your feedback shapes what we build next.</p>
+        </div>
       </div>
-      <div class="feedback-rating-row" id="feedbackRatingRow">
-        <button class="rating-btn" data-val="1" title="Terrible">😞</button>
-        <button class="rating-btn" data-val="2" title="Bad">😕</button>
-        <button class="rating-btn" data-val="3" title="Okay">😐</button>
-        <button class="rating-btn" data-val="4" title="Good">🙂</button>
-        <button class="rating-btn" data-val="5" title="Excellent">🤩</button>
+
+      <!-- NPS Score -->
+      <div class="feedback-nps-label">How likely are you to recommend PHI?</div>
+      <div class="feedback-nps-row" id="feedbackNpsRow">
+        ${[...Array(10)].map((_, i) => `<button class="nps-btn" data-val="${i+1}">${i+1}</button>`).join("")}
       </div>
+      <div class="feedback-nps-captions"><span>Not likely</span><span>Very likely</span></div>
+
+      <!-- Category -->
       <div class="feedback-category-row" id="feedbackCategories">
         <button class="cat-btn" data-cat="chat">💬 Chat</button>
         <button class="cat-btn" data-cat="reports">📋 Reports</button>
@@ -1326,29 +1478,64 @@ function initFeedback() {
         <button class="cat-btn" data-cat="ui">✨ Design</button>
         <button class="cat-btn" data-cat="bug">🐛 Bug</button>
         <button class="cat-btn" data-cat="idea">💡 Idea</button>
+        <button class="cat-btn" data-cat="memory">🧠 Memory</button>
+        <button class="cat-btn" data-cat="payment">💳 Pricing</button>
       </div>
-      <textarea id="feedbackText" class="feedback-textarea" placeholder="Tell us more…" rows="3" maxlength="1000"></textarea>
+
+      <!-- Text -->
+      <textarea id="feedbackText" class="feedback-textarea" placeholder="Tell us what you loved, what confused you, or what's missing…" rows="3" maxlength="1000"></textarea>
       <div class="feedback-footer">
         <span class="feedback-char-count" id="feedbackCharCount">0 / 1000</span>
-        <button class="feedback-submit" id="feedbackSubmit"><i class="fa-solid fa-paper-plane"></i> Send Feedback</button>
+        <button class="feedback-submit" id="feedbackSubmit"><i class="fa-solid fa-paper-plane"></i> Send</button>
       </div>
       <div id="feedbackSuccess" class="feedback-success" style="display:none">
-        <div class="feedback-success-icon">🎉</div><strong>Thank you!</strong>
-        <p>Your feedback has been sent. We read every message.</p>
+        <div class="feedback-success-icon">🎉</div>
+        <strong>Thank you!</strong>
+        <p>We read every message. Your input makes PHI better.</p>
       </div>
     </div>`;
   document.body.appendChild(modal);
 
-  let selectedRating = 0, selectedCategory = "";
+  let selectedNps = 0, selectedCategory = "";
   btn.addEventListener("click", () => openFeedback());
   el("feedbackClose")?.addEventListener("click", () => closeFeedback());
   modal.addEventListener("click", e => { if (e.target === modal) closeFeedback(); });
-  modal.querySelectorAll(".rating-btn").forEach(b => b.addEventListener("click", () => { selectedRating = parseInt(b.dataset.val); modal.querySelectorAll(".rating-btn").forEach(rb => rb.classList.remove("active")); b.classList.add("active"); }));
-  modal.querySelectorAll(".cat-btn").forEach(b => b.addEventListener("click", () => { selectedCategory = b.dataset.cat; modal.querySelectorAll(".cat-btn").forEach(cb => cb.classList.remove("active")); b.classList.add("active"); }));
+
+  modal.querySelectorAll(".nps-btn").forEach(b => b.addEventListener("click", () => {
+    selectedNps = parseInt(b.dataset.val);
+    modal.querySelectorAll(".nps-btn").forEach(rb => rb.classList.remove("active"));
+    b.classList.add("active");
+    // Color code NPS
+    const color = selectedNps <= 6 ? "var(--danger)" : selectedNps <= 8 ? "var(--amber)" : "var(--ok)";
+    b.style.background = color;
+    b.style.borderColor = color;
+    b.style.color = "#0a0b0e";
+  }));
+
+  modal.querySelectorAll(".cat-btn").forEach(b => b.addEventListener("click", () => {
+    selectedCategory = b.dataset.cat;
+    modal.querySelectorAll(".cat-btn").forEach(cb => cb.classList.remove("active"));
+    b.classList.add("active");
+  }));
+
   const ta = el("feedbackText"); const cc = el("feedbackCharCount");
   ta?.addEventListener("input", () => { if (cc) cc.textContent = `${ta.value.length} / 1000`; });
-  el("feedbackSubmit")?.addEventListener("click", () => submitFeedback(selectedRating, selectedCategory));
+  el("feedbackSubmit")?.addEventListener("click", () => submitFeedback(selectedNps, selectedCategory));
   document.addEventListener("keydown", e => { if (e.key === "Escape") closeFeedback(); });
+
+  // Add styles for new NPS elements
+  const style = document.createElement("style");
+  style.textContent = `
+    .feedback-nps-label { font-size:.78rem;color:var(--text-2);margin-bottom:8px;font-weight:500; }
+    .feedback-nps-row { display:flex;gap:4px;margin-bottom:4px; }
+    .nps-btn { flex:1;min-height:34px;border:1.5px solid var(--border-2);border-radius:6px;
+      background:var(--surface-2);color:var(--text-2);font-size:.8rem;font-weight:600;
+      cursor:pointer;font-family:var(--sans);transition:all .15s; }
+    .nps-btn:hover { border-color:var(--signal);color:var(--signal); }
+    .feedback-nps-captions { display:flex;justify-content:space-between;font-size:.65rem;
+      color:var(--text-3);margin-bottom:12px; }
+  `;
+  document.head.appendChild(style);
 }
 
 function openFeedback() {
@@ -1357,7 +1544,12 @@ function openFeedback() {
   document.body.style.overflow = "hidden";
   el("feedbackSuccess").style.display = "none"; el("feedbackText").value = "";
   el("feedbackCharCount").textContent = "0 / 1000";
-  modal.querySelectorAll(".rating-btn,.cat-btn").forEach(b => b.classList.remove("active"));
+  modal.querySelectorAll(".nps-btn,.cat-btn").forEach(b => {
+    b.classList.remove("active");
+    b.style.background = "";
+    b.style.borderColor = "";
+    b.style.color = "";
+  });
 }
 
 function closeFeedback() {
@@ -1366,27 +1558,48 @@ function closeFeedback() {
   document.body.style.overflow = "";
 }
 
-async function submitFeedback(rating, category) {
+async function submitFeedback(nps, category) {
   const text = el("feedbackText")?.value?.trim() || "";
   const submitBtn = el("feedbackSubmit");
-  if (!rating && !text) { toast("Please rate or write a message first.", "info"); return; }
+  if (!nps && !text) { toast("Please rate or write a message first.", "info"); return; }
   if (submitBtn) { submitBtn.disabled = true; submitBtn.innerHTML = '<i class="fa-solid fa-spinner" style="animation:spin .7s linear infinite"></i> Sending…'; }
   try {
     const h = await headers();
-    if (h) await fetch(API + "/api/feedback", { method: "POST", headers: h, body: JSON.stringify({ rating, category, text, url: window.location.href, user_email: _user?.email || "anonymous", timestamp: new Date().toISOString() }), signal: AbortSignal.timeout(8000) });
+    if (h) await fetch(API + "/api/feedback", {
+      method: "POST",
+      headers: h,
+      body: JSON.stringify({
+        rating: nps,
+        nps_score: nps,
+        category,
+        text,
+        url: window.location.href,
+        user_email: _user?.email || "anonymous",
+        timestamp: new Date().toISOString()
+      }),
+      signal: AbortSignal.timeout(8000)
+    });
   } catch (e) {}
-  el("feedbackSuccess").style.display = "flex";
-  el("feedbackRatingRow").style.display = "none"; el("feedbackCategories").style.display = "none";
-  el("feedbackText").style.display = "none";
+
+  const successEl = el("feedbackSuccess");
+  if (successEl) successEl.style.display = "flex";
+
+  // Hide inputs
+  ["feedbackNpsRow", "feedbackCategories", "feedbackText"].forEach(id => {
+    const e = el(id); if (e) e.style.display = "none";
+  });
   const footer = document.querySelector(".feedback-footer"); if (footer) footer.style.display = "none";
+  document.querySelector(".feedback-nps-label")?.style && (document.querySelector(".feedback-nps-label").style.display = "none");
+  document.querySelector(".feedback-nps-captions")?.style && (document.querySelector(".feedback-nps-captions").style.display = "none");
+
   setTimeout(() => closeFeedback(), 2800);
   setTimeout(() => {
-    el("feedbackSuccess").style.display = "none";
-    if (el("feedbackRatingRow")) el("feedbackRatingRow").style.display = "";
-    if (el("feedbackCategories")) el("feedbackCategories").style.display = "";
-    if (el("feedbackText")) el("feedbackText").style.display = "";
+    if (successEl) successEl.style.display = "none";
+    ["feedbackNpsRow", "feedbackCategories", "feedbackText"].forEach(id => {
+      const e = el(id); if (e) e.style.display = "";
+    });
     const footer = document.querySelector(".feedback-footer"); if (footer) footer.style.display = "";
-    if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Send Feedback'; }
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Send'; }
   }, 3500);
 }
 
@@ -1453,6 +1666,9 @@ function wireEvents() {
   el("logoutBtn")?.addEventListener("click", handleLogout);
   el("exportChatBtn")?.addEventListener("click", exportChat);
 
+  // FIX-PAYMENT: Add upgrade button listener if present
+  el("upgradeBtn")?.addEventListener("click", () => showUpgradeModal("manual"));
+
   el("historyList")?.addEventListener("click", e => {
     const del = e.target.closest(".hist-del[data-del]");
     const item = e.target.closest(".hist-item[data-id]");
@@ -1473,8 +1689,12 @@ function wireEvents() {
     const cta = e.target.closest("[data-ask]"); if (cta?.dataset.ask) sendMessage(cta.dataset.ask);
   });
 
-  const fi = el("fileInput"); fi?.addEventListener("change", handleFileSelect);
-  ["attachTopBtn", "attachInputBtn", "uploadNudgeBtn", "reportsUploadBtn"].forEach(id => el(id)?.addEventListener("click", () => fi?.click()));
+  const fi = el("fileInput");
+  fi?.addEventListener("change", handleFileSelect);
+  // FIX-PAYMENT: Upload buttons go through payment gate
+  ["attachTopBtn", "attachInputBtn", "uploadNudgeBtn", "reportsUploadBtn"].forEach(id => {
+    el(id)?.addEventListener("click", () => handleUploadClick());
+  });
 
   el("updateShieldBtn")?.addEventListener("click", updateShield);
   el("calcBtn")?.addEventListener("click", () => { const gw = parseFloat(el("proteinInput")?.value); gw ? calcProteinDisplay(gw, true) : toast("Enter a goal weight (80–400 lbs).", "err"); });
@@ -1486,7 +1706,7 @@ function wireEvents() {
 
   document.addEventListener("keydown", e => {
     if ((e.ctrlKey || e.metaKey) && e.key === "k") { e.preventDefault(); resetChat(); el("chatInput")?.focus(); }
-    if (e.key === "Escape") { closeSidebar(); closeUserMenu(); closeCockpit(); }
+    if (e.key === "Escape") { closeSidebar(); closeUserMenu(); closeCockpit(); closeUpgradeModal(); }
   });
 
   document.addEventListener("dragover", e => e.preventDefault());
