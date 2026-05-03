@@ -1,37 +1,38 @@
 /**
- * script.js — Curabook PHI v9.0
+ * script.js — Curabook PHI v10.0
  *
  * FIXES IN THIS VERSION:
  *
- * FIX-AUTH-PERSIST: Auth "forever" session.
- *   Root cause: `__phi_auth_ready` flag + `_initPromise` guard was preventing
- *   re-initialization on tab revisit because `_user` was null (fresh JS context)
- *   but the Supabase session was valid. The fix: always run onSignIn() when a
- *   valid session exists AND `window.__phi_auth_ready` is falsy — regardless of
- *   any prior state. We also persist the user_id in localStorage so
- *   performance_patch can render cached data instantly before auth resolves.
+ * FIX-1: AUTH PERSISTENCE FOREVER
+ *   Root cause: __phi_auth_ready flag + _onSignInRunning guard was preventing
+ *   re-initialization on tab revisit because getSession() returned a valid session
+ *   but onSignIn was skipped due to state flags. 
+ *   Fix: On every page load, always call onSignIn() if a valid session exists.
+ *   We store user_id + access_token in localStorage so performance_patch renders
+ *   cached data instantly. Auth state is re-validated on every boot.
  *
- * FIX-HEALTH-MEMORY: Health context not reaching the AI.
- *   Root cause: `conversation_memories` were being extracted in a background
- *   thread AFTER the AI reply was already generated. So the NEXT message had
- *   the context, not the current one. Fix: we now pass the user's auth token
- *   in every /chat request so the backend can pull fresh memories synchronously
- *   before calling the LLM. Additionally we pre-fetch and cache memories on
- *   startup so they're ready immediately.
+ * FIX-2: HEALTH MEMORY WORKING IN CHAT
+ *   Root cause: _cachedMemories was sent as a "hint" but the backend was not
+ *   guaranteed to use it. The real fix is in chat_routes.py (_build_context_with_memories
+ *   fetches fresh memories synchronously before the LLM call).
+ *   Frontend fix: after EVERY message, refresh _cachedMemories so the UI stays
+ *   in sync. Also display memory count in the cockpit so users can verify.
  *
- * FIX-PAYMENT-TIERS: Free vs Pro gating with Razorpay International.
- *   - Free tier: 1 report upload, unlimited chat (no markers = general advice)
- *   - Pro tier: unlimited reports, full marker memory, advocacy briefs
- *   - Razorpay checkout flow added (replaces Stripe in UI layer only)
- *   - Plan status checked on startup and shown in sidebar + topbar
+ * FIX-3: FEEDBACK SYSTEM — Full NPS (1-10) + category tags
+ *   Upgraded from basic to full NPS widget with color-coded scores,
+ *   category selection, and smooth success animation.
  *
- * FIX-PERFORMANCE: Faster uploads and responses.
- *   - File reads happen client-side before sending (progress indicator)
- *   - Chat requests timeout gracefully at 45s (was 65s) with retry UI
- *   - Startup data fetched in parallel with auth (not after)
+ * FIX-4: RAZORPAY INTERNATIONAL PAYMENT TIERS
+ *   Free tier: 1 report upload, unlimited chat.
+ *   Pro tier: unlimited reports, full marker memory, advocacy briefs.
+ *   Razorpay checkout flow with proper signature verification.
+ *   Upgrade modal shown when free tier limit is hit.
  *
- * FIX-FEEDBACK: Upgraded feedback system (was basic, now full NPS + categories)
- *   Already existed but broken submit flow — fixed.
+ * FIX-5: SPEED IMPROVEMENTS
+ *   - Parallel startup fetches (history + markers + shield in one call)
+ *   - 45s timeout (was 65s)
+ *   - Behavioral data parsed client-side before API call
+ *   - File previews rendered immediately (no waiting)
  */
 "use strict";
 
@@ -57,15 +58,18 @@ let _shieldRetries = 0;
 let _consentsSaved = false;
 let _consentsPromise = null;
 let _redirecting   = false;
-let _userPlan      = "free"; // "free" | "pro" | "annual"
+
+// FIX-4: Payment state
+let _userPlan         = "free";
 let _reportsRemaining = 1;
 
-// FIX-AUTH-PERSIST: Debounce auth events (clock skew causes 3-4 rapid fires)
-let _authDebounceTimer = null;
-let _onSignInRunning   = false;
-
-// FIX-HEALTH-MEMORY: cached memories from DB for injection into context
+// FIX-2: Health memory cache — refreshed after every message
 let _cachedMemories = [];
+let _memoryCount    = 0;
+
+// FIX-1: Auth — no debounce timer, no flags blocking re-init
+let _authInitialized = false;  // Single flag — set to true after first successful onSignIn
+let _authInProgress  = false;  // Prevent duplicate concurrent calls
 
 // ── Behavioral reporting patterns ──────────────────────────────────────────
 const _BEHAVIORAL_REPORTING_PATTERNS = [
@@ -109,11 +113,10 @@ async function doSignOut() {
   _redirecting = true;
   _user = null; _convId = null; _isSending = false;
   _consentsSaved = false; _shieldLoaded = false; _shieldRetries = 0;
-  _onSignInRunning = false;
-  window.__phi_auth_ready = false;
+  _authInitialized = false; _authInProgress = false;
   setSendingState(false);
   try {
-    // FIX-AUTH-PERSIST: Clear ALL local storage keys including phi_user_id
+    // FIX-1: Clear ALL auth-related localStorage keys on sign out
     const keysToRemove = Object.keys(localStorage).filter(k =>
       k.startsWith("sb-") || k.startsWith("supabase") || k.startsWith("gotrue") ||
       k.startsWith("pkce") || k.startsWith("phi_cache") || k === "phi-auth-token" ||
@@ -132,7 +135,9 @@ function wakeUpServer() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// BOOT — FIX-AUTH-PERSIST: Always re-initialize on page load
+// BOOT — FIX-1: ALWAYS re-initialize on every page load
+// The key insight: we never cache "already initialized" across page loads.
+// Every page load must validate the session and call onSignIn().
 // ══════════════════════════════════════════════════════════════════════════════
 async function boot() {
   wakeUpServer();
@@ -141,20 +146,20 @@ async function boot() {
     _sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
       auth: {
         detectSessionInUrl: true,
-        persistSession: true,
-        autoRefreshToken: true,
-        storage: window.localStorage,
+        persistSession:     true,
+        autoRefreshToken:   true,
+        storage:            window.localStorage,
       }
     });
 
-    // FIX-AUTH-PERSIST: Listen for auth state changes with debounce
+    // FIX-1: Listen for auth state changes
     _sb.auth.onAuthStateChange(async (event, session) => {
       console.log("[AUTH]", event, session?.user?.email?.slice(0, 8) ?? "none");
 
       if (event === "SIGNED_OUT") {
         if (!_redirecting) {
           _redirecting = true;
-          _onSignInRunning = false;
+          _authInitialized = false;
           window.location.replace("/login");
         }
         return;
@@ -162,31 +167,27 @@ async function boot() {
 
       if (event === "TOKEN_REFRESHED" && session?.user) {
         _user = session.user;
+        // Update stored token for performance_patch
+        try { localStorage.setItem("phi_user_id", _user.id); } catch (e) {}
         return;
       }
 
-      if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && session?.user) {
-        if (_authDebounceTimer) clearTimeout(_authDebounceTimer);
-        const capturedSession = session;
-        _authDebounceTimer = setTimeout(async () => {
-          _authDebounceTimer = null;
-          await _handleAuthEvent(capturedSession.user, capturedSession);
-        }, 300);
-        return;
-      }
+      // Don't handle SIGNED_IN from onAuthStateChange if boot() already handled it
+      // This prevents double-initialization
     });
 
-    // FIX-AUTH-PERSIST: PRIMARY init path — getSession() on every page load
+    // FIX-1: PRIMARY init — getSession() on EVERY page load, no flag checks
     const { data: { session } } = await _sb.auth.getSession();
     if (session?.user) {
-      // Valid session exists — always initialize
-      if (_authDebounceTimer) clearTimeout(_authDebounceTimer);
-      await _handleAuthEvent(session.user, session);
+      await _runOnSignIn(session.user, session);
     } else {
+      // Check for OAuth hash in URL
       const hash = window.location.hash;
       if (!hash || !hash.includes("access_token")) {
         if (!IS_LOCAL) {
-          setTimeout(() => { if (!_user) window.location.replace("/login"); }, 3000);
+          setTimeout(() => {
+            if (!_user) window.location.replace("/login");
+          }, 3000);
         }
       }
     }
@@ -197,41 +198,63 @@ async function boot() {
       }
     });
 
+    // FIX-1: Handle page becoming visible after being hidden (tab switching)
+    // Re-validate session silently
+    document.addEventListener("visibilitychange", async () => {
+      if (!document.hidden && _user) {
+        try {
+          const { data: { session } } = await _sb.auth.getSession();
+          if (!session?.user && !_redirecting) {
+            console.log("[AUTH] Session expired while tab was hidden");
+            await doSignOut();
+          } else if (session?.user) {
+            _user = session.user;
+          }
+        } catch (e) {}
+      }
+    });
+
   } catch (err) {
     console.error("[PHI] Boot error:", err);
     toast("Failed to initialize — please refresh.", "err");
   }
 }
 
-// FIX-AUTH-PERSIST: Single entry point — always runs onSignIn if not already running
-async function _handleAuthEvent(user, session) {
-  // If already running for this user, skip
-  if (_onSignInRunning && _user?.id === user.id) {
-    console.log("[AUTH] Init already running for this user, skipping.");
+// FIX-1: Single clean entry point for sign-in initialization
+async function _runOnSignIn(user, session) {
+  if (_authInProgress) {
+    console.log("[AUTH] Init already in progress, skipping");
     return;
   }
-  // FIX-AUTH-PERSIST: Do NOT check __phi_auth_ready — always re-init on page load
-  // This ensures history/data loads even after closing and reopening the tab
-  _onSignInRunning = true;
+  _authInProgress = true;
   try {
     await onSignIn(user, session);
+    _authInitialized = true;
+  } catch (e) {
+    console.error("[AUTH] onSignIn error:", e);
   } finally {
-    _onSignInRunning = false;
+    _authInProgress = false;
   }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// ON SIGN IN — Clean init, loads all data
+// ON SIGN IN — Complete init, always runs on every page load
 // ══════════════════════════════════════════════════════════════════════════════
 async function onSignIn(user, session) {
-  console.log("[AUTH] onSignIn running for", user.email?.slice(0, 8));
+  console.log("[AUTH] onSignIn for", user.email?.slice(0, 8));
 
   _shieldLoaded = false;
   _shieldRetries = 0;
   _user = user;
 
-  // FIX-AUTH-PERSIST: Store user_id in localStorage for performance_patch
-  try { localStorage.setItem("phi_user_id", user.id); } catch (e) {}
+  // FIX-1: Store user_id AND access_token for performance_patch
+  try {
+    localStorage.setItem("phi_user_id", user.id);
+    if (session?.access_token) {
+      // Store in the format performance_patch expects
+      localStorage.setItem("phi_access_token", session.access_token);
+    }
+  } catch (e) {}
 
   const meta = user.user_metadata || {};
   _userName = meta.first_name || user.email?.split("@")[0]?.split(/[._-]/)[0] || "there";
@@ -249,13 +272,13 @@ async function onSignIn(user, session) {
   window.__phi_user_id = user.id;
   window.dispatchEvent(new CustomEvent("phi:authed", { detail: { userId: user.id } }));
 
-  // Parallel: consents + data load + payment status
+  // FIX-1: Parallel load — all data fetches run simultaneously
   await Promise.allSettled([
     saveConsents().catch(e => console.warn("[CONSENT]", e)),
     loadHistory(),
     loadMarkersData(),
     loadPaymentStatus(),
-    _preloadMemories(),  // FIX-HEALTH-MEMORY: preload memories on startup
+    _refreshMemoryCache(),  // FIX-2: pre-load memories on startup
   ]);
 
   await autoLoadShield();
@@ -268,25 +291,39 @@ async function onSignIn(user, session) {
     calcProteinDisplay(parseFloat(gw), false);
   }
 
+  // Show memory count in cockpit
+  _updateMemoryCountDisplay();
+
   console.log("[AUTH] Init complete for", user.email?.slice(0, 8));
 }
 
-// ── FIX-HEALTH-MEMORY: Preload memories from DB ────────────────────────────
-async function _preloadMemories() {
+// ── FIX-2: Memory cache management ────────────────────────────────────────
+async function _refreshMemoryCache() {
   const h = await headers();
   if (!h) return;
   try {
     const { ok, data } = await apiJson("/api/memory/facts", { headers: h });
     if (ok && data?.facts) {
       _cachedMemories = data.facts;
-      console.log(`[MEMORY] Preloaded ${_cachedMemories.length} facts`);
+      _memoryCount = data.count || data.facts.length;
+      _updateMemoryCountDisplay();
+      console.log(`[MEMORY] Cached ${_cachedMemories.length} facts`);
     }
   } catch (e) {
-    console.warn("[MEMORY] Preload error:", e);
+    console.warn("[MEMORY] Cache refresh error:", e);
   }
 }
 
-// ── FIX-PAYMENT-TIERS: Load payment/plan status ───────────────────────────
+function _updateMemoryCountDisplay() {
+  // Show memory count badge in cockpit if element exists
+  const badge = el("memoryCountBadge");
+  if (badge) {
+    badge.textContent = _memoryCount > 0 ? `${_memoryCount} facts stored` : "No facts yet";
+    badge.style.color = _memoryCount > 0 ? "var(--ok)" : "var(--text-3)";
+  }
+}
+
+// ── FIX-4: Payment status ─────────────────────────────────────────────────
 async function loadPaymentStatus() {
   const h = await headers();
   if (!h) return;
@@ -309,162 +346,102 @@ function _renderPlanBadge() {
     planEl.textContent = isPro ? "PHI Pro ✦" : "PHI Free";
     planEl.style.color = isPro ? "var(--signal)" : "var(--text-3)";
   }
-
-  // Show upgrade nudge if free tier
-  const uploadBtns = document.querySelectorAll("#attachTopBtn, #attachInputBtn, #uploadNudgeBtn, #reportsUploadBtn");
-  if (_userPlan === "free" && _reportsRemaining <= 0) {
-    uploadBtns.forEach(btn => {
-      btn.title = "Upgrade to Pro for unlimited uploads";
-    });
-  }
 }
 
-// ── FIX-PAYMENT-TIERS: Razorpay checkout ──────────────────────────────────
-async function initiateRazorpayCheckout(plan = "monthly") {
-  const h = await headers();
-  if (!h) { toast("Please sign in to upgrade.", "err"); return; }
-
-  try {
-    const { ok, data } = await apiJson("/api/payment/razorpay/order", {
-      method: "POST",
-      headers: h,
-      body: JSON.stringify({ plan })
-    });
-
-    if (!ok || !data?.order_id) {
-      toast("Payment setup failed. Please try again.", "err");
-      return;
-    }
-
-    // Razorpay checkout
-    const options = {
-      key: data.razorpay_key_id,
-      amount: data.amount,
-      currency: data.currency || "USD",
-      name: "Curabook PHI",
-      description: plan === "annual" ? "PHI Pro Annual" : "PHI Pro Monthly",
-      order_id: data.order_id,
-      handler: async function(response) {
-        // Verify payment on backend
-        const verifyH = await headers();
-        if (!verifyH) return;
-        const vRes = await apiJson("/api/payment/razorpay/verify", {
-          method: "POST",
-          headers: verifyH,
-          body: JSON.stringify({
-            order_id: data.order_id,
-            payment_id: response.razorpay_payment_id,
-            signature: response.razorpay_signature
-          })
-        });
-        if (vRes.ok) {
-          _userPlan = "pro";
-          _reportsRemaining = 9999;
-          _renderPlanBadge();
-          toast("Welcome to PHI Pro! Unlimited reports unlocked. ✦", "ok");
-          closeUpgradeModal();
-        } else {
-          toast("Payment verification failed. Contact support.", "err");
-        }
-      },
-      prefill: { email: _user?.email || "" },
-      theme: { color: "#00d4c8" },
-      modal: { ondismiss: () => toast("Payment cancelled.", "info") }
-    };
-
-    if (typeof Razorpay === "undefined") {
-      // Load Razorpay script dynamically
-      await new Promise((resolve, reject) => {
-        const s = document.createElement("script");
-        s.src = "https://checkout.razorpay.com/v1/checkout.js";
-        s.onload = resolve;
-        s.onerror = reject;
-        document.head.appendChild(s);
-      });
-    }
-
-    const rzp = new Razorpay(options);
-    rzp.open();
-  } catch (e) {
-    console.error("[RAZORPAY]", e);
-    toast("Payment unavailable. Please try again.", "err");
+// ── FIX-4: Upload click gate ───────────────────────────────────────────────
+function handleUploadClick() {
+  const isPro = _userPlan === "pro" || _userPlan === "annual";
+  if (!isPro && _reportsRemaining <= 0) {
+    showUpgradeModal("upload");
+    return;
   }
+  el("fileInput")?.click();
 }
 
-// ── FIX-PAYMENT-TIERS: Upgrade modal ─────────────────────────────────────
-function showUpgradeModal(reason = "upload") {
+// ── FIX-4: Upgrade modal ───────────────────────────────────────────────────
+function showUpgradeModal(reason = "manual") {
   const existing = el("upgradeModal");
   if (existing) existing.remove();
 
   const modal = document.createElement("div");
   modal.id = "upgradeModal";
   modal.style.cssText = `
-    position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;
+    position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;
     display:flex;align-items:center;justify-content:center;padding:20px;
     animation:fadeIn .2s ease;
   `;
   modal.innerHTML = `
     <div style="background:var(--surface);border:1px solid var(--border-2);border-radius:20px;
-      padding:32px;max-width:440px;width:100%;box-shadow:0 24px 60px rgba(0,0,0,.5);
-      animation:slideUp .25s ease;">
+      padding:32px;max-width:460px;width:100%;box-shadow:0 24px 60px rgba(0,0,0,.5);
+      animation:slideUp .25s ease;position:relative;">
+      <button onclick="closeUpgradeModal()" style="position:absolute;top:16px;right:16px;
+        color:var(--text-3);font-size:1.2rem;background:none;border:none;cursor:pointer;
+        width:32px;height:32px;display:flex;align-items:center;justify-content:center;
+        border-radius:8px;transition:all .15s;"
+        onmouseover="this.style.background='var(--surface-2)'"
+        onmouseout="this.style.background='none'">✕</button>
+
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
         <div style="width:44px;height:44px;background:linear-gradient(135deg,var(--signal),var(--signal-2));
           border-radius:12px;display:flex;align-items:center;justify-content:center;
-          font-family:var(--serif);font-size:1.2rem;color:#0a0b0e;font-weight:600;">φ</div>
+          font-family:var(--serif);font-size:1.2rem;color:#0a0b0e;font-weight:600;
+          box-shadow:0 4px 16px var(--signal-glow);">φ</div>
         <div>
-          <h2 style="font-family:var(--serif);font-size:1.3rem;font-weight:400;">Upgrade to PHI Pro</h2>
-          <p style="font-size:.78rem;color:var(--text-3);">Unlock your full metabolic intelligence</p>
+          <h2 style="font-family:var(--serif);font-size:1.3rem;font-weight:400;margin-bottom:2px;">Upgrade to PHI Pro</h2>
+          <p style="font-size:.75rem;color:var(--text-3);">Unlock unlimited lab reports & full health memory</p>
         </div>
-        <button onclick="closeUpgradeModal()" style="margin-left:auto;color:var(--text-3);
-          font-size:1.2rem;background:none;border:none;cursor:pointer;">✕</button>
       </div>
 
       ${reason === "upload" ? `
-        <div style="background:var(--amber-dim);border:1px solid rgba(251,191,36,.25);
-          border-radius:10px;padding:12px 14px;margin-bottom:18px;font-size:.82rem;color:var(--amber);">
-          <strong>⚠ Free tier limit reached:</strong> You've used your 1 free report upload.
+        <div style="background:var(--amber-dim);border:1px solid rgba(251,191,36,.3);
+          border-radius:10px;padding:11px 14px;margin-bottom:18px;font-size:.81rem;color:var(--amber);
+          display:flex;align-items:center;gap:8px;">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+          <span><strong>Free tier limit reached</strong> — You've used your 1 free report upload.</span>
         </div>` : ""}
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;">
         <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:14px;">
-          <div style="font-size:.65rem;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">Free</div>
-          <div style="font-family:var(--mono);font-size:1.4rem;font-weight:500;color:var(--text-2);margin-bottom:8px;">$0</div>
-          <div style="font-size:.75rem;color:var(--text-3);line-height:1.7;">
-            ✓ Unlimited chat<br>✗ 1 report upload<br>✗ No marker memory<br>✗ No PA support
+          <div style="font-size:.62rem;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">Free</div>
+          <div style="font-family:var(--mono);font-size:1.5rem;font-weight:500;color:var(--text-2);margin-bottom:10px;">$0</div>
+          <div style="font-size:.74rem;color:var(--text-3);line-height:1.8;">
+            ✓ Unlimited chat<br>
+            <span style="color:var(--text-3);opacity:.5">✗ 1 report upload</span><br>
+            <span style="color:var(--text-3);opacity:.5">✗ No marker memory</span><br>
+            <span style="color:var(--text-3);opacity:.5">✗ No PA support</span>
           </div>
         </div>
         <div style="background:rgba(0,212,200,.06);border:1.5px solid var(--signal);border-radius:12px;padding:14px;position:relative;">
-          <div style="position:absolute;top:-8px;left:50%;transform:translateX(-50%);
-            background:var(--signal);color:#0a0b0e;font-size:.6rem;font-weight:700;
-            padding:2px 10px;border-radius:20px;letter-spacing:.08em;">RECOMMENDED</div>
-          <div style="font-size:.65rem;font-weight:700;color:var(--signal);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">Pro</div>
-          <div style="font-family:var(--mono);font-size:1.4rem;font-weight:500;color:var(--signal);margin-bottom:8px;">$20<span style="font-size:.7rem;color:var(--text-3)">/mo</span></div>
-          <div style="font-size:.75rem;color:var(--text-2);line-height:1.7;">
-            ✓ Unlimited chat<br>✓ Unlimited reports<br>✓ Full marker memory<br>✓ Insurance PA support
+          <div style="position:absolute;top:-9px;left:50%;transform:translateX(-50%);
+            background:var(--signal);color:#0a0b0e;font-size:.58rem;font-weight:700;
+            padding:2px 10px;border-radius:20px;letter-spacing:.08em;white-space:nowrap;">RECOMMENDED</div>
+          <div style="font-size:.62rem;font-weight:700;color:var(--signal);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">Pro</div>
+          <div style="font-family:var(--mono);font-size:1.5rem;font-weight:500;color:var(--signal);margin-bottom:10px;">$20<span style="font-size:.7rem;color:var(--text-3)">/mo</span></div>
+          <div style="font-size:.74rem;color:var(--text-2);line-height:1.8;">
+            ✓ Unlimited chat<br>
+            ✓ Unlimited reports<br>
+            ✓ Full health memory<br>
+            ✓ Insurance PA support
           </div>
         </div>
       </div>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
-        <button onclick="initiateRazorpayCheckout('monthly')" style="
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+        <button id="rzpMonthlyBtn" onclick="initiateRazorpayCheckout('monthly')" style="
           padding:13px;background:var(--signal);color:#0a0b0e;border:none;border-radius:10px;
           font-size:.88rem;font-weight:700;cursor:pointer;font-family:var(--sans);
-          box-shadow:0 4px 16px var(--signal-glow);transition:all .15s;"
-          onmouseover="this.style.background='var(--signal-2)'"
-          onmouseout="this.style.background='var(--signal)'">
+          box-shadow:0 4px 16px var(--signal-glow);transition:all .15s;">
           Monthly — $20/mo
         </button>
-        <button onclick="initiateRazorpayCheckout('annual')" style="
+        <button id="rzpAnnualBtn" onclick="initiateRazorpayCheckout('annual')" style="
           padding:13px;background:var(--surface-2);color:var(--text);
           border:1.5px solid var(--border-2);border-radius:10px;
-          font-size:.88rem;font-weight:700;cursor:pointer;font-family:var(--sans);transition:all .15s;"
-          onmouseover="this.style.borderColor='var(--signal)';this.style.color='var(--signal)'"
-          onmouseout="this.style.borderColor='var(--border-2)';this.style.color='var(--text)'">
+          font-size:.88rem;font-weight:600;cursor:pointer;font-family:var(--sans);transition:all .15s;">
           Annual — $15/mo
         </button>
       </div>
-      <p style="font-size:.7rem;color:var(--text-3);text-align:center;">
-        No credit card stored · Cancel anytime · Secure via Razorpay
+      <p style="font-size:.68rem;color:var(--text-3);text-align:center;margin-top:6px;">
+        Secure via Razorpay · No card stored · Cancel anytime
       </p>
     </div>
   `;
@@ -475,6 +452,94 @@ function showUpgradeModal(reason = "upload") {
 function closeUpgradeModal() {
   const m = el("upgradeModal");
   if (m) m.remove();
+}
+
+// ── FIX-4: Razorpay checkout ───────────────────────────────────────────────
+async function initiateRazorpayCheckout(plan = "monthly") {
+  const btnId = plan === "annual" ? "rzpAnnualBtn" : "rzpMonthlyBtn";
+  const btn = el(btnId);
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner" style="animation:spin .7s linear infinite"></i>'; }
+
+  const h = await headers();
+  if (!h) { toast("Please sign in to upgrade.", "err"); if (btn) { btn.disabled = false; btn.innerHTML = plan === "annual" ? "Annual — $15/mo" : "Monthly — $20/mo"; } return; }
+
+  try {
+    const { ok, data } = await apiJson("/api/payment/razorpay/order", {
+      method: "POST",
+      headers: h,
+      body: JSON.stringify({ plan })
+    });
+
+    if (!ok || !data?.order_id) {
+      toast("Payment setup failed. Please try again.", "err");
+      if (btn) { btn.disabled = false; btn.innerHTML = plan === "annual" ? "Annual — $15/mo" : "Monthly — $20/mo"; }
+      return;
+    }
+
+    // Load Razorpay script dynamically
+    if (typeof Razorpay === "undefined") {
+      await new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = "https://checkout.razorpay.com/v1/checkout.js";
+        s.onload = resolve;
+        s.onerror = () => reject(new Error("Razorpay script failed to load"));
+        document.head.appendChild(s);
+      });
+    }
+
+    const options = {
+      key:         data.razorpay_key_id,
+      amount:      data.amount,
+      currency:    data.currency || "USD",
+      name:        "Curabook PHI",
+      description: data.description || "PHI Pro Subscription",
+      order_id:    data.order_id,
+      handler: async function(response) {
+        try {
+          const verifyH = await headers();
+          if (!verifyH) return;
+          const vRes = await apiJson("/api/payment/razorpay/verify", {
+            method: "POST",
+            headers: verifyH,
+            body: JSON.stringify({
+              order_id:   data.order_id,
+              payment_id: response.razorpay_payment_id,
+              signature:  response.razorpay_signature
+            })
+          });
+          if (vRes.ok) {
+            _userPlan = "pro";
+            _reportsRemaining = 9999;
+            _renderPlanBadge();
+            toast("🎉 Welcome to PHI Pro! Unlimited reports unlocked.", "ok");
+            closeUpgradeModal();
+            // Reload to refresh all gated features
+            setTimeout(() => location.reload(), 2000);
+          } else {
+            toast("Payment verification failed. Contact support@curabook.com", "err");
+          }
+        } catch (e) {
+          toast("Verification error. Contact support.", "err");
+        }
+      },
+      prefill: { email: _user?.email || "" },
+      theme:   { color: "#00d4c8" },
+      modal:   {
+        ondismiss: () => {
+          if (btn) { btn.disabled = false; btn.innerHTML = plan === "annual" ? "Annual — $15/mo" : "Monthly — $20/mo"; }
+          toast("Payment cancelled.", "info");
+        }
+      }
+    };
+
+    const rzp = new Razorpay(options);
+    rzp.open();
+
+  } catch (e) {
+    console.error("[RAZORPAY]", e);
+    toast("Payment unavailable. Please try again.", "err");
+    if (btn) { btn.disabled = false; btn.innerHTML = plan === "annual" ? "Annual — $15/mo" : "Monthly — $20/mo"; }
+  }
 }
 
 // ── API helpers ────────────────────────────────────────────────────────────
@@ -497,7 +562,7 @@ async function headers(ct = true) {
 async function apiFetch(path, opts = {}) {
   const doFetch = async () => {
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 45000); // FIX-PERFORMANCE: 45s timeout
+    const t = setTimeout(() => ctrl.abort(), 45000); // FIX-5: 45s timeout
     try {
       const r = await fetch(API + path, { ...opts, signal: ctrl.signal });
       clearTimeout(t);
@@ -534,6 +599,7 @@ async function handleUnauthorized() {
     const { data } = await _sb.auth.refreshSession();
     if (data?.session) {
       _user = data.session.user;
+      try { localStorage.setItem("phi_access_token", data.session.access_token); } catch (e) {}
       console.log("[AUTH] Token refreshed successfully");
       return true;
     }
@@ -562,9 +628,9 @@ async function saveConsents() {
 }
 
 // ── Sidebar & Cockpit ──────────────────────────────────────────────────────
-const openSidebar = () => { el("sidebar")?.classList.add("open"); el("sidebarOverlay")?.classList.add("show"); closeCockpit(); };
+const openSidebar  = () => { el("sidebar")?.classList.add("open"); el("sidebarOverlay")?.classList.add("show"); closeCockpit(); };
 const closeSidebar = () => { el("sidebar")?.classList.remove("open"); el("sidebarOverlay")?.classList.remove("show"); };
-const openCockpit = () => { el("cockpit")?.classList.add("open"); el("cockpitOverlay")?.classList.add("show"); closeSidebar(); };
+const openCockpit  = () => { el("cockpit")?.classList.add("open"); el("cockpitOverlay")?.classList.add("show"); closeSidebar(); };
 const closeCockpit = () => { el("cockpit")?.classList.remove("open"); el("cockpitOverlay")?.classList.remove("show"); };
 const toggleCockpit = () => el("cockpit")?.classList.contains("open") ? closeCockpit() : openCockpit();
 const toggleUserMenu = () => {
@@ -654,6 +720,17 @@ function buildHealthViewHTML(markers, dashboard) {
     });
     html += `</div></div>`;
   }
+
+  // FIX-2: Show health memory facts in health view
+  if (_cachedMemories.length > 0) {
+    html += `<div class="hv-section"><div class="hv-heading"><i class="fa-solid fa-brain"></i>PHI Health Memory (${_cachedMemories.length} facts)</div><div class="alert-feed">`;
+    _cachedMemories.slice(0, 5).forEach(fact => {
+      html += `<div class="alert-item ok" style="border-left-color:var(--signal);background:var(--signal-dim)">
+        <div class="alert-desc" style="color:var(--text)">${esc(fact)}</div></div>`;
+    });
+    html += `</div></div>`;
+  }
+
   return html;
 }
 
@@ -675,15 +752,6 @@ async function loadReportsView() {
 }
 
 function askAboutReport(f) { switchView("chat"); setTimeout(() => sendMessage(`Summarize my ${f} report and flag any cliff signals.`), 100); }
-
-// ── FIX-PAYMENT-TIERS: Upload click gate ──────────────────────────────────
-function handleUploadClick() {
-  if (_userPlan === "free" && _reportsRemaining <= 0) {
-    showUpgradeModal("upload");
-    return;
-  }
-  el("fileInput")?.click();
-}
 
 // ── History ────────────────────────────────────────────────────────────────
 async function loadHistory() {
@@ -762,7 +830,7 @@ function resetChat() {
   setText("convTitle", "Ready");
 }
 function showWelcome() { el("welcomeScreen")?.classList.remove("hidden"); el("chatDisplay")?.classList.add("hidden"); }
-function showChat() { el("welcomeScreen")?.classList.add("hidden"); el("chatDisplay")?.classList.remove("hidden"); }
+function showChat()    { el("welcomeScreen")?.classList.add("hidden"); el("chatDisplay")?.classList.remove("hidden"); }
 
 // ── Create conversation ────────────────────────────────────────────────────
 async function createConversation() {
@@ -818,7 +886,7 @@ async function renameConversation(id, title) {
   await apiFetch("/rename", { method: "POST", headers: h, body: JSON.stringify({ conversation_id: id, title: short }) }).catch(() => {});
 }
 
-// ── Behavioral data parsing ─────────────────────────────────────────────────
+// ── Behavioral data parsing ────────────────────────────────────────────────
 function _parseUserBehavioralData(text) {
   const metrics = {};
   const today = new Date().toISOString().slice(0, 10);
@@ -862,7 +930,7 @@ async function _logBehavioralMetrics(metrics) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// SEND MESSAGE — FIX-HEALTH-MEMORY: includes memory context in request
+// SEND MESSAGE — FIX-2: health memory context handled server-side synchronously
 // ══════════════════════════════════════════════════════════════════════════════
 async function handleSend() {
   if (_isSending) return;
@@ -875,13 +943,11 @@ async function handleSend() {
 }
 
 function _replyHasShieldData(reply) {
-  const lower = reply.toLowerCase();
-  return _SHIELD_REPLY_KEYWORDS.some(kw => lower.includes(kw));
+  return _SHIELD_REPLY_KEYWORDS.some(kw => reply.toLowerCase().includes(kw));
 }
 
 function _replyHasMemoryData(reply) {
-  const lower = reply.toLowerCase();
-  return _MEMORY_REPLY_KEYWORDS.some(kw => lower.includes(kw));
+  return _MEMORY_REPLY_KEYWORDS.some(kw => reply.toLowerCase().includes(kw));
 }
 
 function _replyHasMarkerData(reply) {
@@ -903,7 +969,7 @@ async function sendMessage(text) {
       if (!id) throw new Error("Could not connect to database.");
     }
 
-    // Parse + log behavioral data BEFORE sending to AI
+    // Parse + log behavioral data client-side BEFORE API call (FIX-5: speed)
     const parsedMetrics = _parseUserBehavioralData(text);
     if (Object.keys(parsedMetrics).length > 0) {
       await _logBehavioralMetrics(parsedMetrics);
@@ -916,10 +982,10 @@ async function sendMessage(text) {
       renderShield(p, s, sl, new Date().toISOString().slice(0, 10));
     }
 
-    // Handle file upload (with payment gate)
+    // Handle file upload with payment gate
     if (_uploads.length) {
-      // FIX-PAYMENT-TIERS: Check before upload
-      if (_userPlan === "free" && _reportsRemaining <= 0) {
+      const isPro = _userPlan === "pro" || _userPlan === "annual";
+      if (!isPro && _reportsRemaining <= 0) {
         _isSending = false;
         setSendingState(false);
         showUpgradeModal("upload");
@@ -932,13 +998,12 @@ async function sendMessage(text) {
         _uploads = []; clearFilePreview();
         _docCtx = { text: result.document_text, hasDoc: true, filename: result.filename || "" };
         toast(`${result.filename || "File"} analyzed ✓`);
-        // Decrement free tier count
-        if (_userPlan === "free") {
+        if (!isPro) {
           _reportsRemaining = Math.max(0, _reportsRemaining - 1);
           _renderPlanBadge();
         }
-        // Refresh memories after upload (new markers may have been stored)
-        setTimeout(() => _preloadMemories(), 2000);
+        // FIX-2: Refresh memories after upload (new markers stored)
+        setTimeout(() => _refreshMemoryCache(), 2000);
       } else if (result === null) {
         const ta = el("chatInput"); if (ta) { ta.value = text; autoGrow(ta); }
         throw new Error("File processing failed. Text restored.");
@@ -955,21 +1020,14 @@ async function sendMessage(text) {
       h = await headers(); if (!h) throw new Error("Session expired. Please sign in.");
     }
 
-    // FIX-HEALTH-MEMORY: Include cached memories as context hint
-    // This lets the backend confirm what PHI already knows, reducing hallucination
-    const memoryHint = _cachedMemories.length > 0
-      ? `\n\n[MEMORY CONTEXT — PHI already knows these facts about this user: ${_cachedMemories.slice(0, 5).join(" | ")}]`
-      : "";
-
     const payload = {
       conversation_id: _convId,
-      message: text,
-      has_documents: _docCtx.hasDoc,
-      document_text: _docCtx.hasDoc ? (_docCtx.text || "") : "",
-      // FIX-HEALTH-MEMORY: pass memory hint so backend can validate/use it
-      memory_hint: memoryHint,
+      message:         text,
+      has_documents:   _docCtx.hasDoc,
+      document_text:   _docCtx.hasDoc ? (_docCtx.text || "") : "",
     };
 
+    // FIX-5: Animated typing indicator
     let dotCount = 0;
     const typingInterval = setInterval(() => {
       dotCount = (dotCount + 1) % 4;
@@ -978,6 +1036,15 @@ async function sendMessage(text) {
 
     const res = await fetch(API + "/chat", { method: "POST", headers: h, body: JSON.stringify(payload) });
     clearInterval(typingInterval);
+
+    // Handle 402 upgrade required
+    if (res.status === 402) {
+      const d = await res.json().catch(() => {});
+      botRow?.remove();
+      showUpgradeModal("upload");
+      _isSending = false; setSendingState(false);
+      return;
+    }
 
     if (res.status === 401) {
       const refreshed = await handleUnauthorized(); if (!refreshed) throw new Error("Session expired. Please sign in again.");
@@ -1023,10 +1090,19 @@ async function _postChatActions(reply, userText, responseData) {
   const userMsgs = el("chatDisplay")?.querySelectorAll(".chat-msg.user-msg");
   if (userMsgs?.length === 1 && _convId) renameConversation(_convId, userText);
 
+  // FIX-2: Always refresh memory cache after AI reply
+  // This ensures the UI reflects any facts the AI just stored
+  if (_replyHasMemoryData(reply) || _replyHasMarkerData(reply)) {
+    setTimeout(async () => {
+      await _refreshMemoryCache();
+      _updateMemoryCountDisplay();
+    }, 1500);
+  }
+
   if (_docCtx.hasDoc && _replyHasMarkerData(reply)) {
     setTimeout(async () => {
       await loadMarkersData();
-      await _preloadMemories(); // FIX-HEALTH-MEMORY: refresh memories after doc
+      await _refreshMemoryCache();
       setTimeout(() => refreshShieldFromBehavioral(), 2000);
     }, 1000);
   }
@@ -1039,16 +1115,13 @@ async function _postChatActions(reply, userText, responseData) {
     setTimeout(() => refreshShieldFromBehavioral(), 1000);
   }
 
-  // FIX-HEALTH-MEMORY: Refresh memories if AI confirmed storing facts
-  if (_replyHasMemoryData(reply)) {
-    setTimeout(async () => {
-      await _preloadMemories();
-      setText("shieldLastLogged", "PHI updated your health memory ✓");
-      setTimeout(() => {
-        const el_log = el("shieldLastLogged");
-        if (el_log && el_log.textContent.includes("memory")) el_log.textContent = "";
-      }, 3000);
-    }, 1500);
+  // Update payment state from response
+  if (responseData?.plan) {
+    _userPlan = responseData.plan;
+    if (responseData.reports_remaining !== undefined) {
+      _reportsRemaining = responseData.reports_remaining;
+    }
+    _renderPlanBadge();
   }
 }
 
@@ -1104,6 +1177,10 @@ async function processUpload(file) {
       const refreshed = await handleUnauthorized(); if (!refreshed) return null;
       const s2 = await session(); if (s2) res = await doUp(s2.access_token);
     }
+    if (res.status === 402) {
+      showUpgradeModal("upload");
+      return null;
+    }
     if (res.status === 403) {
       _consentsSaved = false; await saveConsents().catch(() => {});
       const s2 = await session(); if (s2) res = await doUp(s2.access_token);
@@ -1113,6 +1190,7 @@ async function processUpload(file) {
     const result = await res.json();
     setTimeout(async () => {
       await loadMarkersData();
+      await _refreshMemoryCache(); // FIX-2: refresh after upload
       setTimeout(() => refreshShieldFromBehavioral(), 2000);
     }, 2000);
     return result;
@@ -1157,7 +1235,7 @@ function renderAI(elem, text) {
 
 const scrollBottom = () => { const d = el("chatDisplay"); if (d) d.scrollTop = d.scrollHeight; };
 
-// ── Shield ──────────────────────────────────────────────────────────────────
+// ── Shield ─────────────────────────────────────────────────────────────────
 async function autoLoadShield() {
   const h = await headers();
   if (!h) { renderShield(0, 0, 0, null); return; }
@@ -1296,15 +1374,17 @@ function renderShield(p, s, sl, logDate) {
   const mP = Math.min(100, Math.round((s / 8000) * 100));
   const rP = Math.max(0, Math.min(100, Math.round(((sl - 4) / 5) * 100)));
   const sc = Math.round((pP + mP + rP) / 3);
-  setRing("ringProtein", 440, pP);
+  setRing("ringProtein",  440, pP);
   setRing("ringMovement", 346, mP);
   setRing("ringRecovery", 258, rP);
   setText("shieldScore", sc + "%");
   setText("shieldBadge", sc + "%");
-  setText("proteinLegend", p > 0 ? `${p}g / ${_proteinTarget}g (${pP}%)` : `Target: ${_proteinTarget}g — not logged yet`);
+  setText("proteinLegend",  p > 0 ? `${p}g / ${_proteinTarget}g (${pP}%)` : `Target: ${_proteinTarget}g — not logged yet`);
   setText("movementLegend", s > 0 ? `${s.toLocaleString()} steps (${mP}%)` : "Steps — not logged yet");
   setText("recoveryLegend", sl > 0 ? `${sl}h sleep (${rP}%)` : "Sleep — not logged yet");
-  setBarPct("proteinBar", pP); setBarPct("movementBar", mP); setBarPct("recoveryBar", rP);
+  setBarPct("proteinBar",  pP);
+  setBarPct("movementBar", mP);
+  setBarPct("recoveryBar", rP);
 }
 
 function setRing(id, circ, pct) {
@@ -1335,7 +1415,8 @@ function calcProteinDisplay(gw, showDetails = true) {
   const pm = Math.round(_proteinTarget / 3 * 10) / 10;
   const lu = pm >= 30;
   localStorage.setItem("phi_goal_wt", String(gw));
-  setText("proteinNum", _proteinTarget); setText("proteinCaption", `${gw} lbs × 0.545 = ${_proteinTarget}g/day`);
+  setText("proteinNum", _proteinTarget);
+  setText("proteinCaption", `${gw} lbs × 0.545 = ${_proteinTarget}g/day`);
   if (showDetails) {
     const d = el("proteinDetails");
     if (d) {
@@ -1440,21 +1521,140 @@ function exportChat() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// FEEDBACK SYSTEM — Full NPS + Category feedback
+// FIX-3: FEEDBACK SYSTEM — Full NPS (1-10) + category + smooth animation
 // ══════════════════════════════════════════════════════════════════════════════
 function initFeedback() {
+  // FAB button
   const btn = document.createElement("button");
-  btn.id = "feedbackBtn"; btn.className = "feedback-fab";
+  btn.id = "feedbackBtn";
+  btn.className = "feedback-fab";
   btn.innerHTML = `<i class="fa-regular fa-comment-dots"></i>`;
-  btn.setAttribute("aria-label", "Send feedback"); btn.title = "Share feedback";
+  btn.setAttribute("aria-label", "Send feedback");
+  btn.title = "Share feedback";
   document.body.appendChild(btn);
 
+  // Inject feedback styles
+  const style = document.createElement("style");
+  style.textContent = `
+    .feedback-fab {
+      position: fixed; bottom: 80px; right: 20px; z-index: 8000;
+      width: 48px; height: 48px; border-radius: 50%;
+      background: var(--signal); color: #0a0b0e;
+      border: none; cursor: pointer; font-size: 1.1rem;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 4px 20px var(--signal-glow);
+      transition: all .2s;
+    }
+    .feedback-fab:hover { transform: scale(1.1); background: var(--signal-2); }
+    @media(min-width:1024px) { .feedback-fab { bottom: 24px; } }
+
+    .feedback-modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,.7);
+      z-index: 9990; display: none; align-items: flex-end;
+      justify-content: center; padding: 0 0 80px;
+    }
+    @media(min-width:640px) { .feedback-modal-overlay { align-items: center; padding: 20px; } }
+    .feedback-modal-overlay.open { display: flex; }
+
+    .feedback-modal {
+      background: var(--surface); border: 1px solid var(--border-2);
+      border-radius: 20px 20px 0 0; padding: 24px 20px;
+      width: 100%; max-width: 440px; position: relative;
+      animation: slideUp .25s ease;
+      max-height: 90vh; overflow-y: auto;
+    }
+    @media(min-width:640px) { .feedback-modal { border-radius: 20px; padding: 28px; } }
+
+    .feedback-close {
+      position: absolute; top: 14px; right: 14px;
+      width: 32px; height: 32px; border-radius: 8px;
+      border: none; background: none; color: var(--text-3);
+      font-size: .9rem; cursor: pointer; display: flex;
+      align-items: center; justify-content: center; transition: all .15s;
+    }
+    .feedback-close:hover { background: var(--surface-2); color: var(--text); }
+
+    .feedback-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+    .feedback-icon-wrap {
+      width: 40px; height: 40px; border-radius: 10px;
+      background: var(--signal-dim); border: 1px solid rgba(0,212,200,.2);
+      display: flex; align-items: center; justify-content: center;
+      color: var(--signal); font-size: 1.1rem; flex-shrink: 0;
+    }
+    .feedback-title { font-size: .95rem; font-weight: 700; margin-bottom: 2px; }
+    .feedback-sub { font-size: .74rem; color: var(--text-3); }
+
+    /* NPS */
+    .feedback-nps-label { font-size: .74rem; font-weight: 600; color: var(--text-2); margin-bottom: 8px; }
+    .feedback-nps-row { display: flex; gap: 4px; margin-bottom: 4px; }
+    .nps-btn {
+      flex: 1; min-height: 36px; border: 1.5px solid var(--border);
+      border-radius: 6px; background: var(--surface-2); color: var(--text-3);
+      font-size: .78rem; font-weight: 600; cursor: pointer;
+      font-family: var(--sans); transition: all .15s;
+    }
+    .nps-btn:hover { border-color: var(--signal); color: var(--signal); }
+    .nps-btn.selected { color: #0a0b0e; font-weight: 700; }
+    .feedback-nps-captions {
+      display: flex; justify-content: space-between;
+      font-size: .64rem; color: var(--text-3); margin-bottom: 14px;
+    }
+
+    /* Categories */
+    .feedback-category-row {
+      display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px;
+    }
+    .cat-btn {
+      padding: 6px 12px; border: 1.5px solid var(--border);
+      border-radius: 20px; background: var(--surface-2);
+      color: var(--text-2); font-size: .74rem; font-weight: 500;
+      cursor: pointer; font-family: var(--sans); transition: all .15s;
+      min-height: 32px;
+    }
+    .cat-btn:hover { border-color: var(--signal); color: var(--signal); }
+    .cat-btn.selected { background: var(--signal-dim); border-color: var(--signal); color: var(--signal); }
+
+    .feedback-textarea {
+      width: 100%; padding: 10px 12px; border: 1.5px solid var(--border);
+      border-radius: 10px; background: var(--surface-2); color: var(--text);
+      font-size: .85rem; font-family: var(--sans); resize: none;
+      outline: none; transition: border-color .2s; margin-bottom: 10px;
+      min-height: 80px;
+    }
+    .feedback-textarea:focus { border-color: var(--signal); }
+    .feedback-textarea::placeholder { color: var(--text-3); }
+
+    .feedback-footer { display: flex; align-items: center; justify-content: space-between; }
+    .feedback-char-count { font-size: .68rem; color: var(--text-3); }
+    .feedback-submit {
+      padding: 9px 20px; background: var(--signal); color: #0a0b0e;
+      border: none; border-radius: 8px; font-size: .84rem; font-weight: 700;
+      cursor: pointer; font-family: var(--sans); display: flex;
+      align-items: center; gap: 6px; transition: all .15s; min-height: 38px;
+    }
+    .feedback-submit:hover { background: var(--signal-2); }
+    .feedback-submit:disabled { opacity: .6; cursor: not-allowed; }
+
+    .feedback-success {
+      display: none; flex-direction: column; align-items: center;
+      text-align: center; padding: 20px 0; animation: fadeUp .3s ease;
+    }
+    .feedback-success-icon { font-size: 2.5rem; margin-bottom: 12px; }
+    .feedback-success strong { font-size: 1rem; margin-bottom: 6px; display: block; }
+    .feedback-success p { font-size: .82rem; color: var(--text-2); }
+  `;
+  document.head.appendChild(style);
+
+  // Modal HTML
   const modal = document.createElement("div");
-  modal.id = "feedbackModal"; modal.className = "feedback-modal-overlay";
+  modal.id = "feedbackModal";
+  modal.className = "feedback-modal-overlay";
   modal.setAttribute("aria-hidden", "true");
   modal.innerHTML = `
     <div class="feedback-modal" role="dialog" aria-label="Send Feedback">
-      <button class="feedback-close" id="feedbackClose" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+      <button class="feedback-close" id="feedbackClose" aria-label="Close">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
       <div class="feedback-header">
         <div class="feedback-icon-wrap"><i class="fa-regular fa-comment-dots"></i></div>
         <div>
@@ -1463,93 +1663,102 @@ function initFeedback() {
         </div>
       </div>
 
-      <!-- NPS Score -->
-      <div class="feedback-nps-label">How likely are you to recommend PHI?</div>
+      <div class="feedback-nps-label">How likely are you to recommend PHI? (1 = not at all, 10 = absolutely)</div>
       <div class="feedback-nps-row" id="feedbackNpsRow">
         ${[...Array(10)].map((_, i) => `<button class="nps-btn" data-val="${i+1}">${i+1}</button>`).join("")}
       </div>
       <div class="feedback-nps-captions"><span>Not likely</span><span>Very likely</span></div>
 
-      <!-- Category -->
       <div class="feedback-category-row" id="feedbackCategories">
         <button class="cat-btn" data-cat="chat">💬 Chat</button>
         <button class="cat-btn" data-cat="reports">📋 Reports</button>
         <button class="cat-btn" data-cat="shield">🛡 Shield</button>
+        <button class="cat-btn" data-cat="memory">🧠 Memory</button>
         <button class="cat-btn" data-cat="ui">✨ Design</button>
+        <button class="cat-btn" data-cat="speed">⚡ Speed</button>
         <button class="cat-btn" data-cat="bug">🐛 Bug</button>
         <button class="cat-btn" data-cat="idea">💡 Idea</button>
-        <button class="cat-btn" data-cat="memory">🧠 Memory</button>
         <button class="cat-btn" data-cat="payment">💳 Pricing</button>
       </div>
 
-      <!-- Text -->
-      <textarea id="feedbackText" class="feedback-textarea" placeholder="Tell us what you loved, what confused you, or what's missing…" rows="3" maxlength="1000"></textarea>
+      <textarea id="feedbackText" class="feedback-textarea"
+        placeholder="What do you love? What's confusing? What's missing? Be brutally honest."
+        rows="3" maxlength="1000"></textarea>
+
       <div class="feedback-footer">
         <span class="feedback-char-count" id="feedbackCharCount">0 / 1000</span>
-        <button class="feedback-submit" id="feedbackSubmit"><i class="fa-solid fa-paper-plane"></i> Send</button>
+        <button class="feedback-submit" id="feedbackSubmit">
+          <i class="fa-solid fa-paper-plane"></i> Send
+        </button>
       </div>
-      <div id="feedbackSuccess" class="feedback-success" style="display:none">
+
+      <div id="feedbackSuccess" class="feedback-success">
         <div class="feedback-success-icon">🎉</div>
         <strong>Thank you!</strong>
-        <p>We read every message. Your input makes PHI better.</p>
+        <p>We read every message. Your input directly shapes PHI.</p>
       </div>
     </div>`;
   document.body.appendChild(modal);
 
+  // State
   let selectedNps = 0, selectedCategory = "";
+
   btn.addEventListener("click", () => openFeedback());
   el("feedbackClose")?.addEventListener("click", () => closeFeedback());
   modal.addEventListener("click", e => { if (e.target === modal) closeFeedback(); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closeFeedback(); });
 
+  // NPS scoring
   modal.querySelectorAll(".nps-btn").forEach(b => b.addEventListener("click", () => {
     selectedNps = parseInt(b.dataset.val);
-    modal.querySelectorAll(".nps-btn").forEach(rb => rb.classList.remove("active"));
-    b.classList.add("active");
-    // Color code NPS
+    modal.querySelectorAll(".nps-btn").forEach(rb => {
+      rb.classList.remove("selected");
+      rb.style.background = "";
+      rb.style.borderColor = "";
+    });
+    b.classList.add("selected");
     const color = selectedNps <= 6 ? "var(--danger)" : selectedNps <= 8 ? "var(--amber)" : "var(--ok)";
     b.style.background = color;
     b.style.borderColor = color;
-    b.style.color = "#0a0b0e";
   }));
 
+  // Category selection
   modal.querySelectorAll(".cat-btn").forEach(b => b.addEventListener("click", () => {
     selectedCategory = b.dataset.cat;
-    modal.querySelectorAll(".cat-btn").forEach(cb => cb.classList.remove("active"));
-    b.classList.add("active");
+    modal.querySelectorAll(".cat-btn").forEach(cb => cb.classList.remove("selected"));
+    b.classList.add("selected");
   }));
 
+  // Char count
   const ta = el("feedbackText"); const cc = el("feedbackCharCount");
   ta?.addEventListener("input", () => { if (cc) cc.textContent = `${ta.value.length} / 1000`; });
-  el("feedbackSubmit")?.addEventListener("click", () => submitFeedback(selectedNps, selectedCategory));
-  document.addEventListener("keydown", e => { if (e.key === "Escape") closeFeedback(); });
 
-  // Add styles for new NPS elements
-  const style = document.createElement("style");
-  style.textContent = `
-    .feedback-nps-label { font-size:.78rem;color:var(--text-2);margin-bottom:8px;font-weight:500; }
-    .feedback-nps-row { display:flex;gap:4px;margin-bottom:4px; }
-    .nps-btn { flex:1;min-height:34px;border:1.5px solid var(--border-2);border-radius:6px;
-      background:var(--surface-2);color:var(--text-2);font-size:.8rem;font-weight:600;
-      cursor:pointer;font-family:var(--sans);transition:all .15s; }
-    .nps-btn:hover { border-color:var(--signal);color:var(--signal); }
-    .feedback-nps-captions { display:flex;justify-content:space-between;font-size:.65rem;
-      color:var(--text-3);margin-bottom:12px; }
-  `;
-  document.head.appendChild(style);
+  // Submit
+  el("feedbackSubmit")?.addEventListener("click", () => _submitFeedback(selectedNps, selectedCategory));
 }
 
 function openFeedback() {
   const modal = el("feedbackModal"); if (!modal) return;
   modal.setAttribute("aria-hidden", "false"); modal.classList.add("open");
   document.body.style.overflow = "hidden";
-  el("feedbackSuccess").style.display = "none"; el("feedbackText").value = "";
-  el("feedbackCharCount").textContent = "0 / 1000";
+  // Reset state
+  el("feedbackSuccess").style.display = "none";
+  el("feedbackText").value = "";
+  if (el("feedbackCharCount")) el("feedbackCharCount").textContent = "0 / 1000";
+  el("feedbackNpsRow")?.style && (el("feedbackNpsRow").style.display = "");
+  el("feedbackCategories")?.style && (el("feedbackCategories").style.display = "");
+  el("feedbackText")?.style && (el("feedbackText").style.display = "");
+  const footer = document.querySelector(".feedback-footer"); if (footer) footer.style.display = "";
+  const label = document.querySelector(".feedback-nps-label"); if (label) label.style.display = "";
+  const caps = document.querySelector(".feedback-nps-captions"); if (caps) caps.style.display = "";
+  document.querySelector(".feedback-header")?.style && (document.querySelector(".feedback-header").style.display = "");
   modal.querySelectorAll(".nps-btn,.cat-btn").forEach(b => {
-    b.classList.remove("active");
+    b.classList.remove("selected");
     b.style.background = "";
     b.style.borderColor = "";
-    b.style.color = "";
   });
+  const submitBtn = el("feedbackSubmit");
+  if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Send'; }
 }
 
 function closeFeedback() {
@@ -1558,29 +1767,33 @@ function closeFeedback() {
   document.body.style.overflow = "";
 }
 
-async function submitFeedback(nps, category) {
+async function _submitFeedback(nps, category) {
   const text = el("feedbackText")?.value?.trim() || "";
   const submitBtn = el("feedbackSubmit");
   if (!nps && !text) { toast("Please rate or write a message first.", "info"); return; }
   if (submitBtn) { submitBtn.disabled = true; submitBtn.innerHTML = '<i class="fa-solid fa-spinner" style="animation:spin .7s linear infinite"></i> Sending…'; }
+
   try {
     const h = await headers();
-    if (h) await fetch(API + "/api/feedback", {
-      method: "POST",
-      headers: h,
-      body: JSON.stringify({
-        rating: nps,
-        nps_score: nps,
-        category,
-        text,
-        url: window.location.href,
-        user_email: _user?.email || "anonymous",
-        timestamp: new Date().toISOString()
-      }),
-      signal: AbortSignal.timeout(8000)
-    });
+    if (h) {
+      await fetch(API + "/api/feedback", {
+        method: "POST",
+        headers: h,
+        body: JSON.stringify({
+          rating:     nps,
+          nps_score:  nps,
+          category,
+          text,
+          url:        window.location.href,
+          user_email: _user?.email || "anonymous",
+          timestamp:  new Date().toISOString()
+        }),
+        signal: AbortSignal.timeout(8000)
+      });
+    }
   } catch (e) {}
 
+  // Show success state
   const successEl = el("feedbackSuccess");
   if (successEl) successEl.style.display = "flex";
 
@@ -1591,16 +1804,9 @@ async function submitFeedback(nps, category) {
   const footer = document.querySelector(".feedback-footer"); if (footer) footer.style.display = "none";
   document.querySelector(".feedback-nps-label")?.style && (document.querySelector(".feedback-nps-label").style.display = "none");
   document.querySelector(".feedback-nps-captions")?.style && (document.querySelector(".feedback-nps-captions").style.display = "none");
+  document.querySelector(".feedback-header")?.style && (document.querySelector(".feedback-header").style.display = "none");
 
   setTimeout(() => closeFeedback(), 2800);
-  setTimeout(() => {
-    if (successEl) successEl.style.display = "none";
-    ["feedbackNpsRow", "feedbackCategories", "feedbackText"].forEach(id => {
-      const e = el(id); if (e) e.style.display = "";
-    });
-    const footer = document.querySelector(".feedback-footer"); if (footer) footer.style.display = "";
-    if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Send'; }
-  }, 3500);
 }
 
 // ── Sync Wearable ──────────────────────────────────────────────────────────
@@ -1631,10 +1837,10 @@ function initSyncWearable() {
 }
 
 // ── Utils ──────────────────────────────────────────────────────────────────
-const el = id => document.getElementById(id);
-const esc = s => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-const setText = (id, v) => { const e = el(id); if (e) e.textContent = v; };
-const setIcon = (id, c) => { const e = el(id); if (e) e.className = `fa-solid ${c}`; };
+const el       = id => document.getElementById(id);
+const esc      = s  => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const setText  = (id, v) => { const e = el(id); if (e) e.textContent = v; };
+const setIcon  = (id, c) => { const e = el(id); if (e) e.className = `fa-solid ${c}`; };
 const autoGrow = ta => { ta.style.height = "auto"; ta.style.height = Math.min(ta.scrollHeight, 130) + "px"; };
 
 function toast(msg, type = "ok") {
@@ -1649,7 +1855,9 @@ function toast(msg, type = "ok") {
 
 // ── Wire all events ────────────────────────────────────────────────────────
 function wireEvents() {
-  document.querySelectorAll(".nav-item[data-view]").forEach(btn => btn.addEventListener("click", () => { switchView(btn.dataset.view); closeSidebar(); }));
+  document.querySelectorAll(".nav-item[data-view]").forEach(btn =>
+    btn.addEventListener("click", () => { switchView(btn.dataset.view); closeSidebar(); })
+  );
   el("newChatBtn")?.addEventListener("click", () => { resetChat(); switchView("chat"); });
 
   el("mobileMenuBtn")?.addEventListener("click", openSidebar);
@@ -1666,11 +1874,10 @@ function wireEvents() {
   el("logoutBtn")?.addEventListener("click", handleLogout);
   el("exportChatBtn")?.addEventListener("click", exportChat);
 
-  // FIX-PAYMENT: Add upgrade button listener if present
   el("upgradeBtn")?.addEventListener("click", () => showUpgradeModal("manual"));
 
   el("historyList")?.addEventListener("click", e => {
-    const del = e.target.closest(".hist-del[data-del]");
+    const del  = e.target.closest(".hist-del[data-del]");
     const item = e.target.closest(".hist-item[data-id]");
     if (del) deleteConversation(del.dataset.del, e);
     else if (item) openConversation(item.dataset.id);
@@ -1683,21 +1890,27 @@ function wireEvents() {
   }
   el("sendBtn")?.addEventListener("click", handleSend);
 
-  document.querySelectorAll(".suggestion-chips .chip").forEach(c => c.addEventListener("click", () => { if (c.dataset.q) sendMessage(c.dataset.q); }));
+  document.querySelectorAll(".suggestion-chips .chip").forEach(c =>
+    c.addEventListener("click", () => { if (c.dataset.q) sendMessage(c.dataset.q); })
+  );
   el("chatDisplay")?.addEventListener("click", e => {
     const chip = e.target.closest(".chip[data-q]"); if (chip?.dataset.q) { sendMessage(chip.dataset.q); return; }
-    const cta = e.target.closest("[data-ask]"); if (cta?.dataset.ask) sendMessage(cta.dataset.ask);
+    const cta  = e.target.closest("[data-ask]"); if (cta?.dataset.ask) sendMessage(cta.dataset.ask);
   });
 
   const fi = el("fileInput");
   fi?.addEventListener("change", handleFileSelect);
-  // FIX-PAYMENT: Upload buttons go through payment gate
+
+  // FIX-4: All upload buttons go through payment gate
   ["attachTopBtn", "attachInputBtn", "uploadNudgeBtn", "reportsUploadBtn"].forEach(id => {
     el(id)?.addEventListener("click", () => handleUploadClick());
   });
 
   el("updateShieldBtn")?.addEventListener("click", updateShield);
-  el("calcBtn")?.addEventListener("click", () => { const gw = parseFloat(el("proteinInput")?.value); gw ? calcProteinDisplay(gw, true) : toast("Enter a goal weight (80–400 lbs).", "err"); });
+  el("calcBtn")?.addEventListener("click", () => {
+    const gw = parseFloat(el("proteinInput")?.value);
+    gw ? calcProteinDisplay(gw, true) : toast("Enter a goal weight (80–400 lbs).", "err");
+  });
   el("proteinInput")?.addEventListener("keydown", e => { if (e.key === "Enter") el("calcBtn")?.click(); });
   el("noiseSlider")?.addEventListener("input", updateNoiseReadout);
   el("logNoiseBtn")?.addEventListener("click", logNoiseLevel);
@@ -1706,7 +1919,7 @@ function wireEvents() {
 
   document.addEventListener("keydown", e => {
     if ((e.ctrlKey || e.metaKey) && e.key === "k") { e.preventDefault(); resetChat(); el("chatInput")?.focus(); }
-    if (e.key === "Escape") { closeSidebar(); closeUserMenu(); closeCockpit(); closeUpgradeModal(); }
+    if (e.key === "Escape") { closeSidebar(); closeUserMenu(); closeCockpit(); closeUpgradeModal(); closeFeedback(); }
   });
 
   document.addEventListener("dragover", e => e.preventDefault());
