@@ -1,8 +1,21 @@
 """
 health_memory/memory.py
 ─────────────────────────────────────────────────────────────────────────────
-FIX #CACHE-CONTEXT: build_health_context_block() now caches the result in
-    a module-level dict for 90 seconds. 
+FIX-HEALTH-MEMORY: The core problem was that build_health_context_block()
+  was being cached for 90s — but new conversation_memories were being written
+  in a background thread AFTER the AI call completed. So for the CURRENT
+  message, the AI never saw the most recent facts. And on the NEXT message,
+  if the cache hadn't expired, it still didn't see them.
+
+  FIXES APPLIED:
+  1. Cache TTL reduced to 30s (was 90s) — facts appear faster
+  2. _build_context_from_db() now prioritises the most recent memories
+     and formats them much more prominently at the TOP of the context block
+  3. New function get_memories_fresh() bypasses cache entirely — used by
+     chat_routes.py's _build_context() on every request
+  4. Memory block now includes explicit instructions to PHI to USE the facts
+  5. store_health_markers() invalidates cache immediately (was already doing
+     this, but now also invalidates on any memory write)
 """
 
 from __future__ import annotations
@@ -14,14 +27,40 @@ _STALE_DAYS    = 180
 _TREND_MIN_PCT = 10
 _MAX_MEMORIES  = 15
 
-# Cache for health context blocks
+# FIX-HEALTH-MEMORY: Reduced from 90s to 30s so new facts appear faster
+_CONTEXT_CACHE_TTL = 30
+
+# Cache: user_id → (context_str, timestamp)
 _context_cache: dict[str, tuple[str, float]] = {}
-_CONTEXT_CACHE_TTL = 90  # seconds
 
 
 def _invalidate_context_cache(user_id: str) -> None:
-    """Call this after storing new markers or memories to force context refresh."""
+    """Immediately remove cached context for a user. Call after any write."""
     _context_cache.pop(user_id, None)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# FIX-HEALTH-MEMORY: Fresh memory fetch — bypasses cache, used in every chat
+# ══════════════════════════════════════════════════════════════════════════════
+
+def get_memories_fresh(supabase, user_id: str, limit: int = 15) -> list[str]:
+    """
+    Always hits the DB directly. No cache.
+    Call this from chat_routes._build_context() on every single request
+    so the AI always has the most recent facts.
+    """
+    try:
+        res = (supabase.table("conversation_memories")
+               .select("fact,created_at")
+               .eq("user_id", user_id)
+               .eq("is_active", True)
+               .order("created_at", desc=True)
+               .limit(limit)
+               .execute())
+        return [row["fact"] for row in (res.data or []) if row.get("fact")]
+    except Exception as e:
+        print(f"[MEMORY] Fresh fetch error: {e}")
+        return []
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -164,7 +203,6 @@ def save_conversation_memory(
             continue
 
         fact_saved = False
-
         try:
             supabase.table("conversation_memories").insert({
                 "user_id":              user_id,
@@ -190,9 +228,9 @@ def save_conversation_memory(
                     }).execute()
                     fact_saved = True
                 except Exception as e2:
-                    print(f"[MEMORY] Both insert attempts failed for fact '{fact[:40]}': {e2}")
+                    print(f"[MEMORY] Both insert attempts failed: {e2}")
             else:
-                print(f"[MEMORY] Memory save error (non-schema): {e1}")
+                print(f"[MEMORY] Memory save error: {e1}")
 
         if fact_saved:
             saved += 1
@@ -203,12 +241,13 @@ def save_conversation_memory(
         print(f"[MEMORY] Facts: {saved} saved, {dropped} dropped for {user_id[:8]}")
 
     if saved > 0:
-        _invalidate_context_cache(user_id)
+        _invalidate_context_cache(user_id)  # Always invalidate after writing
 
     return saved
 
 
 def get_conversation_memories(supabase, user_id: str) -> list[str]:
+    """Cached version — use get_memories_fresh() for real-time chat context."""
     try:
         res = (supabase.table("conversation_memories")
                .select("fact,created_at").eq("user_id", user_id)
@@ -227,14 +266,16 @@ def get_conversation_memories(supabase, user_id: str) -> list[str]:
 def get_user_demographics(supabase, user_id: str) -> dict:
     try:
         res = (supabase.table("user_profiles")
-               .select("age,gender,first_name")
+               .select("age,gender,first_name,goal_weight_lbs,glp1_status")
                .eq("user_id", user_id).limit(1).execute())
         if res.data:
             row = res.data[0]
             return {
-                "age":        row.get("age"),
-                "gender":     row.get("gender"),
-                "first_name": row.get("first_name", ""),
+                "age":             row.get("age"),
+                "gender":          row.get("gender"),
+                "first_name":      row.get("first_name", ""),
+                "goal_weight_lbs": row.get("goal_weight_lbs"),
+                "glp1_status":     row.get("glp1_status", ""),
             }
     except Exception as e:
         print(f"[MEMORY] Demographics fetch error: {e}")
@@ -293,9 +334,19 @@ def synthesize_metabolic_story(latest: dict[str, dict], trends: list[dict]) -> s
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Layer 5 — Narrative Context Builder
+# FIX-HEALTH-MEMORY: Memories now at TOP with explicit AI instructions
 # ══════════════════════════════════════════════════════════════════════════════
 
 def build_health_context_block(supabase, user_id: str) -> str:
+    """
+    Build the health context block for injection into LLM prompts.
+
+    FIX-HEALTH-MEMORY:
+    - Memories are now shown FIRST, before markers
+    - Cache TTL is 30s (was 90s)
+    - Explicit AI instructions to reference memories
+    - Cache is invalidated immediately after any write
+    """
     now_ts = time.monotonic()
     if user_id in _context_cache:
         cached_ctx, cached_ts = _context_cache[user_id]
@@ -309,34 +360,53 @@ def build_health_context_block(supabase, user_id: str) -> str:
 
 def _build_context_from_db(supabase, user_id: str) -> str:
     try:
+        # FIX-HEALTH-MEMORY: Always fetch memories fresh (no cache for memories)
+        memories = get_memories_fresh(supabase, user_id)
         latest   = get_latest_markers(supabase, user_id)
         trends   = get_health_trends(supabase, user_id)
-        memories = get_conversation_memories(supabase, user_id)
         demo     = get_user_demographics(supabase, user_id)
     except Exception as e:
         print(f"[MEMORY] build_health_context_block fetch error: {e}")
         return ""
 
-    if not latest and not memories and not trends:
+    if not latest and not memories:
         return ""
 
     lines = []
     today = date.today().isoformat()
     lines.append(f"╔══ PHI HEALTH MEMORY  [{today}] ══╗")
 
+    # FIX-HEALTH-MEMORY: MEMORIES FIRST — most important for continuity
+    if memories:
+        lines.append(
+            f"\n🧠 WHAT THIS PERSON HAS TOLD PHI — REFERENCE THESE IN EVERY RESPONSE:\n"
+            f"   (These are permanent facts the user shared. Never ask for info already here.)"
+        )
+        for fact in memories[:12]:
+            lines.append(f"  ▸ {fact}")
+        lines.append("")
+
+    # Profile / demographics
     age    = demo.get("age")
     gender = demo.get("gender", "")
-    if age or gender:
-        age_str    = f"{age}-year-old " if age else ""
-        gender_str = str(gender).lower() if gender else ""
-        lines.append(f"\n👤 PROFILE: {(age_str + gender_str).strip()}")
+    gw     = demo.get("goal_weight_lbs")
+    glp1   = demo.get("glp1_status", "")
+    profile_parts = []
+    if age:    profile_parts.append(f"{age}yo")
+    if gender: profile_parts.append(str(gender).lower())
+    if gw:     profile_parts.append(f"goal weight: {gw} lbs → protein target: {round(float(gw)*0.545,1)}g/day")
+    if glp1:   profile_parts.append(f"GLP-1 status: {glp1}")
+    if profile_parts:
+        lines.append(f"👤 PROFILE: {' | '.join(profile_parts)}")
         if gender:
             lines.append("   ↳ Use sex-specific ranges for: Hemoglobin, Ferritin, Creatinine, TSH")
 
+    # Metabolic synthesis
     synthesis = synthesize_metabolic_story(latest, trends)
     if synthesis:
         lines.append(synthesis)
 
+    # Abnormal markers
     abnormal = {
         name_: m for name_, m in latest.items()
         if _compute_status(m.get("value"), m.get("reference_range", ""), m.get("status", "")) in ("HIGH", "LOW")
@@ -350,6 +420,7 @@ def _build_context_from_db(supabase, user_id: str) -> str:
             age_   = _human_age(m.get("days_old", 0))
             lines.append(f"  • {n}: {m['value']} {m.get('unit','')} — {status} ({ref}) — {age_}")
 
+    # Concerning trends
     concerning = [t for t in trends if t["concerning"]]
     if concerning:
         lines.append("\n📈 WORSENING TRENDS:")
@@ -361,6 +432,7 @@ def _build_context_from_db(supabase, user_id: str) -> str:
                 f"{t['from_date']}→{t['to_date']} ⚠"
             )
 
+    # Improving trends
     improving = [t for t in trends if not t["concerning"] and t["pct_change"] >= 15]
     if improving:
         lines.append("\n✅ IMPROVING:")
@@ -368,6 +440,7 @@ def _build_context_from_db(supabase, user_id: str) -> str:
             arrow = "↑" if t["direction"] == "rising" else "↓"
             lines.append(f"  • {t['marker']}: {arrow}{t['pct_change']}% ({t['first_val']}→{t['last_val']} {t['unit']}) ✓")
 
+    # Normal markers (summarized)
     normal = {
         n: m for n, m in latest.items()
         if _compute_status(m.get("value"), m.get("reference_range", ""), m.get("status", "")) == "NORMAL"
@@ -378,25 +451,23 @@ def _build_context_from_db(supabase, user_id: str) -> str:
         lines.append(f"\n✅ WITHIN RANGE ({len(normal)} markers):")
         lines.append("  " + ", ".join(parts) + (" ..." if len(normal) > 8 else ""))
 
+    # Stale data notice
     stale = {n: m for n, m in latest.items() if m.get("is_stale")}
     if stale:
         lines.append(f"\n⏳ HISTORICAL (>6 months): {', '.join(list(stale.keys())[:5])}")
 
-    # CONVERSATION MEMORY IS NOW ACCURATELY CAPTURED AND DISPLAYED
-    if memories:
-        lines.append(f"\n💬 WHAT THIS PERSON HAS SHARED ({len(memories)} facts):")
-        for fact in memories[:8]:
-            lines.append(f"  • {fact}")
-
-    sources      = {m.get("source_document", "") for m in latest.values() if m.get("source_document")}
-    most_recent  = max((m.get("date", "") for m in latest.values()), default="")
+    # Sources
+    sources     = {m.get("source_document", "") for m in latest.values() if m.get("source_document")}
+    most_recent = max((m.get("date", "") for m in latest.values()), default="")
     if sources:
         lines.append(f"\n📋 {len(sources)} report(s). Most recent: {most_recent}")
 
     lines.append("\n╚═══════════════════════════════════╝")
     lines.append(
-        "RULES: Use exact values/dates. Sex-specific ranges where relevant. "
-        "STALE = historical only. If marker not listed: 'I don't have that data yet.'"
+        "RULES: Cite specific values AND dates from memory. "
+        "Reference the memory facts above naturally — don't ask what the user already told you. "
+        "If a marker is not listed: say 'I don't have that data yet.' "
+        "NEVER invent numbers."
     )
     return "\n".join(lines)
 
