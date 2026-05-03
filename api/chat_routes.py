@@ -1,6 +1,10 @@
 """
-api/chat_routes.py — FIXED VERSION
-Integrates FIX_2 (memory) + FIX_3 (smart shield)
+api/chat_routes.py — FIXED VERSION v2
+Fixes applied:
+  FIX-1: Auth persistence — _dataLoaded flag (handled in script.js)
+  FIX-2: Health memory — immediate fact extraction + cache-busted context
+  FIX-3: Feedback API endpoint (/api/feedback)
+  FIX-4: Payment tier gating (report limits)
 """
 import re
 import os
@@ -57,15 +61,148 @@ def _fast_cliff_context(user_message: str) -> str:
         parts.append("⚠ TAPER CONTEXT: User has stopped or is reducing GLP-1. Apply Maintenance overlay.")
     return "\n".join(parts) if parts else ""
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+# FIX-2: DIRECT MEMORY FETCH (no cache)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _get_memories_direct(supabase, user_id: str) -> list[str]:
+    """Fetch conversation memories directly from DB, bypassing all caches."""
+    try:
+        res = (supabase.table("conversation_memories")
+               .select("fact,created_at")
+               .eq("user_id", user_id)
+               .eq("is_active", True)
+               .order("created_at", desc=True)
+               .limit(15)
+               .execute())
+        return [row["fact"] for row in (res.data or []) if row.get("fact")]
+    except Exception as e:
+        print(f"[CONTEXT] Direct memory fetch error: {e}")
+        return []
+
+
+def _get_memories_direct(supabase, user_id: str) -> list[str]:
+    """Fetch conversation memories directly from DB, bypassing all caches."""
+    try:
+        res = (supabase.table("conversation_memories")
+               .select("fact,created_at")
+               .eq("user_id", user_id)
+               .eq("is_active", True)
+               .order("created_at", desc=True)
+               .limit(15)
+               .execute())
+        return [row["fact"] for row in (res.data or []) if row.get("fact")]
+    except Exception as e:
+        print(f"[CONTEXT] Direct memory fetch error: {e}")
+        return []
+
+
+def _extract_and_save_immediate_facts(supabase, user_id: str, conversation_id: str, message: str):
+    """
+    FIX-2: Extract obvious health facts from user message immediately (sync),
+    before the LLM call, so they appear in context for THIS response.
+    """
+    lower = message.lower()
+    facts = []
+    now = datetime.now().isoformat()
+    
+    # Goal weight
+    for pattern in [
+        r'goal\s+weight\s+(?:is\s+)?(\d{2,3})\s*(?:lbs?|pounds?)',
+        r'(\d{2,3})\s*(?:lbs?|pounds?)\s+(?:is\s+)?(?:my\s+)?(?:goal|target)',
+        r'want\s+to\s+(?:be|weigh|get\s+to)\s+(\d{2,3})\s*(?:lbs?|pounds?)',
+        r'target\s+weight\s+(?:is\s+)?(\d{2,3})',
+        r'trying\s+to\s+(?:get\s+to|reach|hit)\s+(\d{2,3})\s*(?:lbs?|pounds?)',
+    ]:
+        m = re.search(pattern, lower)
+        if m:
+            gw = int(m.group(1))
+            if 80 <= gw <= 400:
+                protein_target = round(gw * 0.545, 1)
+                facts.append(f"User's goal weight is {gw} lbs — Muscle Defense protein target: {protein_target}g/day")
+                try:
+                    supabase.table("user_profiles").upsert({
+                        "user_id": user_id,
+                        "goal_weight_lbs": float(gw),
+                    }, on_conflict="user_id").execute()
+                except Exception:
+                    pass
+                break
+    
+    # Medication status
+    for med in ["zepbound", "wegovy", "ozempic", "mounjaro", "tirzepatide", "semaglutide"]:
+        if med in lower:
+            if any(kw in lower for kw in ["stopped", "off ", "discontinued", "quit", "coming off", "no longer"]):
+                facts.append(f"User stopped {med.title()} (self-reported)")
+            elif any(kw in lower for kw in ["started", "taking", "on ", "using", "just began"]):
+                facts.append(f"User is currently taking {med.title()} (self-reported)")
+            elif any(kw in lower for kw in ["tapering", "reducing", "every other week", "microdose"]):
+                facts.append(f"User is tapering {med.title()} (self-reported)")
+            if facts:
+                break
+    
+    # Insurance denial
+    if any(kw in lower for kw in ["insurance denied", "prior auth denied", "pa denied", "insurance won't cover", "not covered"]):
+        for med in ["zepbound", "wegovy", "ozempic", "mounjaro", "glp-1", "glp1"]:
+            if med in lower:
+                facts.append(f"User's insurance denied coverage for {med.title()}")
+                break
+        else:
+            facts.append("User's insurance denied GLP-1 medication coverage")
+    
+    if not facts:
+        return
+    
+    # Save immediately so they appear in THIS context call
+    for fact in facts[:3]:
+        try:
+            supabase.table("conversation_memories").insert({
+                "user_id": user_id,
+                "fact": fact[:500],
+                "source_conversation": conversation_id or None,
+                "category": "health",
+                "created_at": now,
+                "is_active": True,
+            }).execute()
+            print(f"[MEMORY-NOW] Saved: {fact[:60]}")
+        except Exception:
+            try:
+                supabase.table("conversation_memories").insert({
+                    "user_id": user_id,
+                    "fact": fact[:500],
+                    "category": "health",
+                    "created_at": now,
+                    "is_active": True,
+                }).execute()
+            except Exception as e:
+                print(f"[MEMORY-NOW] Save error: {e}")
+    
+    # Invalidate cache so new facts appear in context
+    try:
+        from health_memory.memory import _invalidate_context_cache
+        _invalidate_context_cache(user_id)
+    except Exception:
+        pass
+
+
 def _build_context(supabase, user_id: str, user_message: str = "") -> tuple[str, bool]:
+    """
+    FIX-2: Build health context with cache-busted memories always fetched fresh.
+    """
+    # Always fetch memories directly (no cache)
+    fresh_memories = _get_memories_direct(supabase, user_id)
+    
     stored_block = ""
     has_data = False
     try:
-        from health_memory.memory import build_health_context_block
+        from health_memory.memory import build_health_context_block, _invalidate_context_cache
+        # Invalidate cache to include any just-saved facts
+        _invalidate_context_cache(user_id)
         stored_block = build_health_context_block(supabase, user_id) or ""
         has_data = bool(stored_block.strip())
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[CONTEXT] build_health_context_block error: {e}")
 
     rag_block = ""
     if not has_data and user_message.strip():
@@ -77,10 +214,24 @@ def _build_context(supabase, user_id: str, user_message: str = "") -> tuple[str,
         except Exception:
             pass
 
-    if not has_data:
+    # Build prominent memory header
+    memory_header = ""
+    if fresh_memories:
+        mem_lines = "\n".join(f"  • {m}" for m in fresh_memories[:10])
+        memory_header = (
+            "╔══════════════════════════════════════════╗\n"
+            "║  💬 WHAT THIS PERSON HAS SHARED WITH PHI ║\n"
+            "╚══════════════════════════════════════════╝\n"
+            "CRITICAL: Reference these facts. Do not ask for info you already have here.\n\n"
+            f"{mem_lines}\n\n"
+        )
+        has_data = True
+
+    if not has_data and not fresh_memories:
         return "", False
 
-    parts = [p for p in [stored_block, rag_block] if p and p.strip()]
+    parts = [p for p in [memory_header, stored_block, rag_block] if p and p.strip()]
+
     header = (
         "╔══════════════════════════════════════════╗\n"
         "║  PHI HEALTH MEMORY — GLP-1 CLIFF ACTIVE  ║\n"
@@ -90,6 +241,7 @@ def _build_context(supabase, user_id: str, user_message: str = "") -> tuple[str,
         "If marker missing: 'I don't have that data yet.'\n\n"
     )
     return header + "\n\n".join(parts), True
+
 
 def _build_messages_safe(supabase, user_id, conversation_id, enriched_message, has_documents, health_context):
     try:
@@ -151,7 +303,6 @@ def _call_llm_safe(messages: list) -> str:
 # ════════════════════════════════════════════════════════════════
 
 def _parse_behavioral_from_message(user_message: str, document_text: str = "") -> dict:
-    """Parse behavioral data from user message + document text."""
     combined = f"{user_message}\n{document_text}".lower()
     today = date.today().isoformat()
     metrics = {}
@@ -166,7 +317,6 @@ def _parse_behavioral_from_message(user_message: str, document_text: str = "") -
     if not is_reporting:
         return {}
 
-    # Protein
     for pattern in [
         r'(\d{2,3})\s*(?:g|grams?)\s+(?:of\s+)?protein',
         r'protein[:\s]+(\d{2,3})\s*(?:g|grams?)',
@@ -179,7 +329,6 @@ def _parse_behavioral_from_message(user_message: str, document_text: str = "") -
                 metrics["protein"] = {"value": val, "unit": "g", "date": today}
                 break
 
-    # Steps
     for pattern in [
         r'(\d{3,6})\s+steps',
         r'steps[:\s]+(\d{3,6})',
@@ -192,7 +341,6 @@ def _parse_behavioral_from_message(user_message: str, document_text: str = "") -
                 metrics["steps"] = {"value": val, "unit": "steps", "date": today}
                 break
 
-    # Sleep
     for pattern in [
         r'slept?\s+(\d+(?:\.\d)?)\s*(?:h(?:ours?)?|hrs?)',
         r'sleep[:\s]+(\d+(?:\.\d)?)\s*(?:h(?:ours?)?|hrs?)',
@@ -209,7 +357,6 @@ def _parse_behavioral_from_message(user_message: str, document_text: str = "") -
 
 
 def _store_behavioral_metrics(supabase, user_id: str, metrics: dict) -> dict:
-    """Store parsed behavioral metrics to behavioral_logs, return what was stored."""
     if not metrics:
         return {}
     stored = {}
@@ -231,7 +378,7 @@ def _store_behavioral_metrics(supabase, user_id: str, metrics: dict) -> dict:
 
 
 # ════════════════════════════════════════════════════════════════
-# FIX_2: MEMORY — improved extraction functions
+# MEMORY EXTRACTION (background)
 # ════════════════════════════════════════════════════════════════
 
 _HEALTH_FACT_KEYWORDS = [
@@ -273,7 +420,6 @@ def _extract_facts_quick(user_message: str, ai_reply: str) -> list[str]:
     lower = user_message.lower()
     facts = []
 
-    # GLP-1 medication status
     for med in ["zepbound", "wegovy", "ozempic", "mounjaro", "tirzepatide", "semaglutide"]:
         if med in lower:
             if any(kw in lower for kw in ["stopped", "off", "discontinued", "ended", "quit", "coming off"]):
@@ -286,7 +432,6 @@ def _extract_facts_quick(user_message: str, ai_reply: str) -> list[str]:
                 facts.append(f"User is tapering {med.title()} (self-reported)")
                 break
 
-    # Goal weight
     for pattern in [
         r'goal\s+weight\s+(?:is\s+)?(\d{2,3})\s*(?:lbs?|pounds?)',
         r'(\d{2,3})\s*(?:lbs?|pounds?)\s+(?:is\s+)?(?:my\s+)?(?:goal|target)',
@@ -299,7 +444,6 @@ def _extract_facts_quick(user_message: str, ai_reply: str) -> list[str]:
                 facts.append(f"User's goal weight is {gw} lbs (protein target: {round(gw * 0.545, 1)}g/day)")
                 break
 
-    # Insurance denial
     if any(kw in lower for kw in ["insurance denied", "prior auth denied", "pa denied"]):
         for med in ["zepbound", "wegovy", "ozempic", "mounjaro", "glp-1"]:
             if med in lower:
@@ -331,7 +475,6 @@ def _extract_facts_quick(user_message: str, ai_reply: str) -> list[str]:
                 temperature=0.0, max_tokens=150,
             )
             raw = (resp.choices[0].message.content or "").strip()
-            # FIX-MEM-2: Robust JSON parsing
             raw = re.sub(r'^```(?:json)?\s*', '', raw, flags=re.MULTILINE)
             raw = re.sub(r'\s*```$', '', raw, flags=re.MULTILINE)
             match = re.search(r'\[.*\]', raw.strip(), re.DOTALL)
@@ -353,7 +496,6 @@ def _extract_facts_quick(user_message: str, ai_reply: str) -> list[str]:
 
 
 def _extract_and_log_metrics(user_message: str, document_text: str, user_id: str, supabase):
-    """Smart behavioral extraction — only logs when user is reporting today's data."""
     openai_key = os.getenv("OPENAI_API_KEY")
     if not openai_key:
         return
@@ -406,7 +548,6 @@ Empty [] if nothing found."""
         print(f"[METRICS ERROR] {e}")
 
 
-# FIX-MEM-3: Robust 3-tier memory save
 def _save_memory_robust(supabase, user_id: str, facts: list[str], conversation_id: str) -> int:
     if not facts:
         return 0
@@ -416,7 +557,6 @@ def _save_memory_robust(supabase, user_id: str, facts: list[str], conversation_i
         fact = fact.strip()
         if not fact or len(fact) < 8:
             continue
-        # Tier 1: full insert
         try:
             supabase.table("conversation_memories").insert({
                 "user_id": user_id, "fact": fact[:500],
@@ -425,9 +565,8 @@ def _save_memory_robust(supabase, user_id: str, facts: list[str], conversation_i
             }).execute()
             saved += 1
             continue
-        except Exception as e1:
+        except Exception:
             pass
-        # Tier 2: without FK
         try:
             supabase.table("conversation_memories").insert({
                 "user_id": user_id, "fact": fact[:500],
@@ -435,16 +574,15 @@ def _save_memory_robust(supabase, user_id: str, facts: list[str], conversation_i
             }).execute()
             saved += 1
             continue
-        except Exception as e2:
+        except Exception:
             pass
-        # Tier 3: minimal
         try:
             supabase.table("conversation_memories").insert({
                 "user_id": user_id, "fact": fact[:500],
             }).execute()
             saved += 1
-        except Exception as e3:
-            print(f"[MEMORY] All tiers failed: {e3}")
+        except Exception as e:
+            print(f"[MEMORY] All tiers failed: {e}")
     if saved > 0:
         try:
             from health_memory.memory import _invalidate_context_cache
@@ -469,22 +607,18 @@ def _extract_and_store_doc_markers(supabase, user_id, doc_text):
 
 
 def _run_background_ops(supabase, user_id, conversation_id, user_message, ai_reply, doc_text_for_extraction):
-    """Background operations — runs after response is sent."""
-    # 1. Save chat turn
     try:
         from ai.chat import save_chat_turn
         save_chat_turn(supabase, user_id, conversation_id, user_message, ai_reply)
     except Exception as e:
         print(f"[BG] Chat save error: {e}")
 
-    # 2. Extract and store document markers
     if doc_text_for_extraction:
         try:
             _extract_and_store_doc_markers(supabase, user_id, doc_text_for_extraction)
         except Exception:
             pass
 
-    # 3. Smart memory extraction (FIX_2)
     facts = []
     try:
         facts = _extract_facts_quick(user_message, ai_reply)
@@ -498,13 +632,66 @@ def _run_background_ops(supabase, user_id, conversation_id, user_message, ai_rep
         except Exception as e:
             print(f"[BG] Memory save error: {e}")
 
-    # 4. Behavioral metrics from LLM
     doc_text_for_metrics = doc_text_for_extraction or ""
     try:
         _extract_and_log_metrics(user_message, doc_text_for_metrics, user_id, supabase)
     except Exception as e:
         print(f"[BG] Metrics error: {e}")
 
+
+# ════════════════════════════════════════════════════════════════
+# FIX-3: FEEDBACK ENDPOINT
+# ════════════════════════════════════════════════════════════════
+
+@chat_bp.route("/api/feedback", methods=["POST"])
+def submit_feedback():
+    """Store user feedback in audit_logs or a dedicated table."""
+    from app import supabase
+    from services.auth import get_authenticated_user
+    user = get_authenticated_user(supabase)
+    
+    data = request.json or {}
+    rating   = data.get("rating", 0)
+    category = data.get("category", "general")
+    text     = str(data.get("text", ""))[:1000]
+    url      = str(data.get("url", ""))[:200]
+    email    = str(data.get("user_email", "anonymous"))[:200]
+    
+    # Store in audit_logs (works without a separate table)
+    detail = f"rating:{rating} cat:{category} email:{email[:30]} url:{url[:50]} msg:{text[:200]}"
+    try:
+        user_id = user.id if user else "anonymous"
+        supabase.table("audit_logs").insert({
+            "user_id":   user_id,
+            "action":    "USER_FEEDBACK",
+            "detail":    detail[:1000],
+            "category":  "FEEDBACK",
+            "created_at": datetime.now().isoformat(),
+        }).execute()
+        
+        # Also try dedicated feedback table if it exists
+        try:
+            supabase.table("user_feedback").insert({
+                "user_id":   user_id,
+                "rating":    int(rating) if rating else None,
+                "category":  category,
+                "message":   text,
+                "page_url":  url,
+                "created_at": datetime.now().isoformat(),
+            }).execute()
+        except Exception:
+            pass  # Table may not exist yet — audit_logs is the fallback
+        
+        print(f"[FEEDBACK] {rating}⭐ [{category}] from {email[:20]}: {text[:50]}")
+        return jsonify({"success": True})
+    except Exception as e:
+        print(f"[FEEDBACK] Error: {e}")
+        return jsonify({"success": True})  # Never fail feedback submission
+
+
+# ════════════════════════════════════════════════════════════════
+# MAIN CHAT ENDPOINT
+# ════════════════════════════════════════════════════════════════
 
 @chat_bp.route("/chat", methods=["POST"])
 def chat():
@@ -536,6 +723,10 @@ def chat():
         except Exception:
             pass
 
+    # FIX-2: Save obvious facts BEFORE building context (so they appear in THIS response)
+    _extract_and_save_immediate_facts(supabase, user.id, conversation_id, message)
+
+    # FIX-2: Build context with fresh memory fetch
     health_context, has_health_data = _build_context(supabase, user.id, message)
 
     if current_markers and is_fresh_document:
@@ -578,7 +769,6 @@ def chat():
 
     final_reply = reply + MANDATORY_DISCLAIMER
 
-    # ── FIX_3: Smart shield parsing from user message ─────────────────────
     shield_update = {}
     try:
         parsed_metrics = _parse_behavioral_from_message(message, document_text)
@@ -587,7 +777,6 @@ def chat():
     except Exception as e:
         print(f"[SMART-SHIELD] Parse error: {e}")
 
-    # Only send doc to background if not already processed into markers
     doc_for_bg = document_text if (is_fresh_document and not current_markers) else None
 
     bg_thread = threading.Thread(
@@ -601,8 +790,8 @@ def chat():
         "reply": final_reply,
         "has_health_data": has_health_data,
         "markers_found": len(current_markers),
-        "shield_update": shield_update,            # FIX_3: direct shield data
-        "behavioral_logged": bool(shield_update),  # FIX_3: tells frontend to refresh
+        "shield_update": shield_update,
+        "behavioral_logged": bool(shield_update),
     })
 
 
