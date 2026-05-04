@@ -1,10 +1,15 @@
 """
 app.py — Safety-hardened & Route-Synchronized
+CHANGES FROM PREVIOUS VERSION:
+  - Razorpay payment blueprint registered (replaces Stripe)
+  - payment_routes now always loaded (was optional try/except)
+  - retention_bp registered (was missing, caused /api/appointment-prep 404)
+  - demo_routes registered conditionally (DEMO_MODE env var)
+  - Worker count capped at 4 to avoid Render free-tier OOM
 """
 
 import os
 import time
-from collections import defaultdict
 from threading import Lock
 from flask import Flask, jsonify, request, make_response
 from flask_cors import CORS
@@ -14,9 +19,9 @@ from supabase import create_client, Client
 load_dotenv()
 print("🚀 Using environment variables")
 
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+SUPABASE_URL  = os.getenv("SUPABASE_URL")
+SUPABASE_KEY  = os.getenv("SUPABASE_KEY")
+GROQ_API_KEY  = os.getenv("GROQ_API_KEY")
 ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")
 
 if not ENCRYPTION_KEY:
@@ -24,6 +29,7 @@ if not ENCRYPTION_KEY:
 if not SUPABASE_URL or not SUPABASE_KEY:
     raise EnvironmentError("❌ Missing SUPABASE_URL / SUPABASE_KEY in .env")
 
+# Service role key — needed for admin operations (account deletion, etc.)
 SUPABASE_SERVICE_KEY = (
     os.getenv("SUPABASE_SERVICE_KEY") or
     os.getenv("SUPABASE_SERVICE_ROLE_KEY") or
@@ -41,6 +47,14 @@ _groq_key   = os.getenv("GROQ_API_KEY")
 
 if _openai_key: print("✅ OpenAI configured (primary AI)")
 elif _groq_key: print("✅ Groq configured")
+else:           print("⚠️ No AI key set — chat will not work")
+
+# Razorpay config check
+_razorpay_key = os.getenv("RAZORPAY_KEY_ID")
+if _razorpay_key:
+    print(f"✅ Razorpay configured ({'live' if 'live' in _razorpay_key else 'test'} mode)")
+else:
+    print("⚠️ RAZORPAY_KEY_ID not set — payment endpoints will return 503")
 
 try:
     from groq import Groq
@@ -51,7 +65,8 @@ except Exception:
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 print("✅ Supabase ready")
 
-_worker_count = int(os.getenv("WORKER_COUNT", "1"))
+# ── Rate limiter ──────────────────────────────────────────────────────────────
+_worker_count = min(int(os.getenv("WORKER_COUNT", "1")), 4)  # cap at 4
 from services.rate_limiter import get_rate_limiter
 _limiter = get_rate_limiter()
 
@@ -60,6 +75,7 @@ RATE_LIMITS = {
     "/conversation/create": (10, 60),
     "/history":             (120, 60),
     "/analyze":             (10, 60),
+    "/api/payment/razorpay/order": (5, 60),
 }
 
 def get_client_key(route: str) -> str:
@@ -73,6 +89,7 @@ def track(key: str, inc: int = 1):
     with _stats_lock:
         _stats[key] = _stats.get(key, 0) + inc
 
+# ── Flask app ─────────────────────────────────────────────────────────────────
 app = Flask(__name__)
 _allowed_origins = ["*"]
 CORS(
@@ -123,9 +140,11 @@ def check_rate_limit():
             resp.status_code = 429
             return _apply_cors(resp)
 
+# ── Background workers ────────────────────────────────────────────────────────
 from services.job_queue import init_workers
 init_workers(num_workers=_worker_count)
 
+# ── Blueprint registration ────────────────────────────────────────────────────
 from api.auth_routes         import auth_bp
 from api.chat_routes         import chat_bp
 from api.document_routes     import document_bp
@@ -135,8 +154,8 @@ from api.profile_routes      import profile_bp
 from api.intelligence_routes import intelligence_bp
 from api.cron_routes         import cron_bp
 from api.startup_routes      import startup_bp
+from api.retention_routes    import retention_bp  # was missing — caused 404 on appointment prep
 
-# Register blueprints strictly at root to perfectly match frontend
 app.register_blueprint(auth_bp)
 app.register_blueprint(chat_bp)
 app.register_blueprint(document_bp)
@@ -146,13 +165,23 @@ app.register_blueprint(profile_bp)
 app.register_blueprint(intelligence_bp)
 app.register_blueprint(cron_bp)
 app.register_blueprint(startup_bp)
+app.register_blueprint(retention_bp)
 
-try:
-    from api.payment_routes import payment_bp
-    app.register_blueprint(payment_bp)
-except ImportError:
-    pass
+# Payment routes — Razorpay (required, not optional)
+from api.payment_routes import payment_bp
+app.register_blueprint(payment_bp)
+print("✅ Razorpay payment routes registered")
 
+# Demo routes — only if DEMO_MODE=true
+if os.getenv("DEMO_MODE", "false").lower() == "true":
+    try:
+        from api.demo_routes import demo_bp
+        app.register_blueprint(demo_bp)
+        print("✅ Demo mode enabled")
+    except ImportError:
+        print("⚠️ Demo routes not found")
+
+# ── Error handlers ────────────────────────────────────────────────────────────
 @app.errorhandler(429)
 def too_many_requests(e):
     resp = jsonify({"error": "Too many requests."})
@@ -167,7 +196,7 @@ def not_found(e):
 
 @app.errorhandler(413)
 def too_large(e):
-    resp = jsonify({"error": "File too large. Maximum 5MB."})
+    resp = jsonify({"error": "File too large. Maximum 20MB."})
     resp.status_code = 413
     return _apply_cors(resp)
 
@@ -180,6 +209,7 @@ def handle_exception(e):
     resp.status_code = 500
     return _apply_cors(resp)
 
+# ── Utility routes ────────────────────────────────────────────────────────────
 @app.route("/debug/routes")
 def debug_routes():
     routes = [(r.rule, sorted(r.methods - {"HEAD", "OPTIONS"})) for r in app.url_map.iter_rules()]
@@ -187,11 +217,27 @@ def debug_routes():
 
 @app.route("/health", methods=["GET"])
 def health_check():
-    return jsonify({"status": "healthy", "openai": bool(_openai_key), "groq": bool(_groq_key)})
+    return jsonify({
+        "status":   "healthy",
+        "openai":   bool(_openai_key),
+        "groq":     bool(_groq_key),
+        "razorpay": bool(_razorpay_key),
+        "workers":  _worker_count,
+    })
+
+@app.route("/api/stats", methods=["GET"])
+def api_stats():
+    """Internal stats endpoint for monitoring."""
+    from services.job_queue import queue_stats
+    return jsonify({
+        **_stats,
+        "uptime_seconds": int(time.time() - _stats["start_time"]),
+        "queue": queue_stats(),
+    })
 
 @app.route("/")
 def home():
-    return {"status": "Curabook.com backend running 🚀"}
+    return {"status": "Curabook PHI backend running 🚀"}
 
 if __name__ == "__main__":
     print("🚀 Curabook PHI starting…")

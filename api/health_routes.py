@@ -1,15 +1,12 @@
 """
-api/health_routes.py — Complete with memory context API + behavioral logs stub
+api/health_routes.py
 ─────────────────────────────────────────────────────────────────────────────
-FIX B-04: _compute_status imported and called with correct signature.
-FIX LOGS-1: Added /api/behavioral-logs GET+POST stub so the frontend
-            cockpit can log protein, steps, sleep, and food_noise without
-            a 404. The full implementation lives in intelligence_routes.py
-            (/api/behavioral-logs), but this stub handles the POST from
-            script.js's logShieldData() and logNoiseLevel() gracefully
-            when the intelligence blueprint isn't registered or available.
-            If the full route IS registered, these stubs are never reached
-            (Flask matches the first registered route). Safe to keep both.
+FIX-HEALTH-MEMORY: /api/memory/facts now calls get_memories_fresh() which
+  always hits the DB directly (no cache). This is the endpoint script.js
+  calls at startup to pre-load memories into _cachedMemories[].
+
+FIX B-04 (preserved): _compute_status imported and called correctly.
+FIX LOGS-1 (preserved): /api/behavioral-logs GET+POST stub for cockpit.
 
 Endpoints:
   GET  /api/health-timeline     — chronological marker readings for charts
@@ -18,9 +15,10 @@ Endpoints:
   GET  /api/dashboard           — full dashboard data (stats + feed + trends)
   POST /api/doctor-brief        — generate doctor visit prep
   GET  /api/memory/context      — structured JSON health context
-  GET  /api/memory/facts        — conversation memory facts
-  GET  /api/behavioral-logs     — fetch behavioral logs (stub/fallback)
-  POST /api/behavioral-logs     — store behavioral log entry (stub/fallback)
+  GET  /api/memory/facts        — conversation memory facts (FRESH, no cache)
+  DELETE /api/memory/facts/<id> — soft-delete a memory fact
+  GET  /api/behavioral-logs     — fetch behavioral logs
+  POST /api/behavioral-logs     — store behavioral log entry
 """
 
 from flask import Blueprint, request, jsonify
@@ -30,10 +28,7 @@ health_bp = Blueprint("health", __name__)
 
 
 def _resolve_status(value, reference_range: str, existing_status: str = "") -> str:
-    """
-    FIX B-04: Local copy of status resolution — avoids importing a private
-    function from another module. Keeps this module self-contained.
-    """
+    """Local status resolution — avoids importing private function from another module."""
     if existing_status in ("HIGH", "LOW", "NORMAL"):
         return existing_status
     try:
@@ -44,7 +39,7 @@ def _resolve_status(value, reference_range: str, existing_status: str = "") -> s
         if r.startswith("<"):
             return "HIGH" if v > float(r[1:]) else "NORMAL"
         if r.startswith(">"):
-            return "LOW"  if v < float(r[1:]) else "NORMAL"
+            return "LOW" if v < float(r[1:]) else "NORMAL"
         if "-" in r:
             lo, hi = r.split("-", 1)
             if v < float(lo): return "LOW"
@@ -157,6 +152,7 @@ def doctor_brief():
     from services.auth        import get_authenticated_user
     from services.compliance  import audit_log, verify_user_consent
     from health_memory.memory import get_latest_markers
+    from ai.chat              import call_llm
 
     user = get_authenticated_user(supabase)
     if not user:
@@ -195,8 +191,7 @@ Sections:
 
 Plain language. End: "⚕️ For informational purposes only. Always follow your doctor's advice."
 """
-    from ai.chat import call_llm
-    brief = call_llm(groq_client, [{"role": "user", "content": prompt}], max_tokens=1200)
+    brief = call_llm([{"role": "user", "content": prompt}], max_tokens=1200)
 
     if not brief:
         brief = "Unable to generate brief — AI service unavailable. Please try again."
@@ -210,17 +205,13 @@ Plain language. End: "⚕️ For informational purposes only. Always follow your
 
 @health_bp.route("/api/memory/context", methods=["GET"])
 def memory_context():
-    """
-    Returns the user's complete health context as structured JSON.
-    FIX B-04: Uses local _resolve_status() instead of importing private
-    _compute_status from health_memory.memory.
-    """
+    """Returns the user's complete health context as structured JSON."""
     from app import supabase
     from services.auth        import get_authenticated_user
     from services.compliance  import audit_log
     from health_memory.memory import (
         get_latest_markers, get_health_trends,
-        get_conversation_memories, get_user_markers,
+        get_memories_fresh, get_user_markers,
     )
 
     user = get_authenticated_user(supabase)
@@ -230,7 +221,8 @@ def memory_context():
     try:
         latest    = get_latest_markers(supabase, user.id)
         trends    = get_health_trends(supabase, user.id)
-        memories  = get_conversation_memories(supabase, user.id)
+        # FIX-HEALTH-MEMORY: always fresh, no cache
+        memories  = get_memories_fresh(supabase, user.id)
         all_marks = get_user_markers(supabase, user.id, limit=1000)
 
         if not latest and not memories:
@@ -313,13 +305,13 @@ def memory_context():
             summary = f"All {len(latest)} tracked markers are within normal range."
         else:
             trend_note = f" {concerning_ct} showing a worsening trend." if concerning_ct else ""
-            summary    = (
+            summary = (
                 f"{abnormal_count} marker{'s' if abnormal_count > 1 else ''} need attention.{trend_note} "
                 f"Data from {report_count} report{'s' if report_count > 1 else ''}."
             )
 
         audit_log(supabase, user.id, "MEMORY_CONTEXT_ACCESSED",
-                  f"markers:{len(latest)} trends:{len(trends)}", "PHI")
+                  f"markers:{len(latest)} trends:{len(trends)} memories:{len(memories)}", "PHI")
 
         return jsonify({
             "conditions":         conditions,
@@ -345,15 +337,20 @@ def memory_context():
 
 @health_bp.route("/api/memory/facts", methods=["GET"])
 def memory_facts():
+    """
+    FIX-HEALTH-MEMORY: Always returns fresh facts (no cache).
+    Called by script.js at startup to pre-load _cachedMemories[].
+    """
     from app import supabase
     from services.auth        import get_authenticated_user
-    from health_memory.memory import get_conversation_memories
+    # FIX-HEALTH-MEMORY: use fresh fetch, not cached get_conversation_memories
+    from health_memory.memory import get_memories_fresh
 
     user = get_authenticated_user(supabase)
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
 
-    facts = get_conversation_memories(supabase, user.id)
+    facts = get_memories_fresh(supabase, user.id, limit=15)
     return jsonify({"facts": facts, "count": len(facts)})
 
 
@@ -375,25 +372,20 @@ def delete_memory_fact(fact_id: str):
             .eq("id",      fact_id)\
             .eq("user_id", user.id)\
             .execute()
+        # Invalidate cache after deletion
+        from health_memory.memory import _invalidate_context_cache
+        _invalidate_context_cache(user.id)
         audit_log(supabase, user.id, "MEMORY_FACT_DELETED", f"id:{fact_id}", "PHI")
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
-# ── Behavioral Logs — Stub/Fallback ──────────────────────────────────────────
-# FIX-LOGS-1: These endpoints handle the cockpit's logShieldData() and
-# logNoiseLevel() calls. The full implementation is in intelligence_routes.py.
-# This stub is a safe fallback if that blueprint isn't registered, and also
-# acts as documentation of the expected request/response shape.
+# ── Behavioral Logs ───────────────────────────────────────────────────────────
 
 @health_bp.route("/api/behavioral-logs", methods=["GET"])
 def behavioral_logs_get():
-    """
-    Fetch behavioral logs for the authenticated user.
-    Full implementation: intelligence_routes.py /api/behavioral-logs GET
-    This stub provides a safe fallback.
-    """
+    """Fetch behavioral logs for the authenticated user."""
     from app import supabase
     from services.auth import get_authenticated_user
 
@@ -416,10 +408,9 @@ def behavioral_logs_get():
              .limit(500))
         if metric:
             q = q.ilike("metric_name", f"%{metric}%")
-        res  = q.execute()
+        res = q.execute()
         return jsonify(res.data or [])
     except Exception as e:
-        # If the table doesn't exist yet, return empty rather than 500
         if "does not exist" in str(e).lower():
             return jsonify([])
         return jsonify({"error": str(e)}), 500
@@ -428,19 +419,16 @@ def behavioral_logs_get():
 @health_bp.route("/api/behavioral-logs", methods=["POST"])
 def behavioral_logs_post():
     """
-    Store a behavioral log entry (protein, steps, sleep, food_noise, weight).
+    Store a behavioral log entry.
 
     Expected body:
     {
-        "date":        "2026-04-20",
+        "date":        "2026-05-04",
         "metric_name": "protein",
         "value":       95.0,
         "unit":        "g",
-        "notes":       ""       (optional)
+        "notes":       ""
     }
-
-    Full implementation: intelligence_routes.py /api/behavioral-logs POST
-    This stub provides a safe fallback for the cockpit.
     """
     from app import supabase
     from services.auth import get_authenticated_user
@@ -464,11 +452,11 @@ def behavioral_logs_post():
     except (TypeError, ValueError):
         return jsonify({"error": "value must be numeric"}), 400
 
-    # Validate metric names to prevent unexpected writes
-    VALID_METRICS = {"protein", "steps", "sleep", "stress", "weight", "food_noise",
-                     "calories", "water", "exercise_minutes"}
+    VALID_METRICS = {
+        "protein", "steps", "sleep", "stress", "weight", "food_noise",
+        "calories", "water", "exercise_minutes"
+    }
     if metric_name.lower() not in VALID_METRICS:
-        # Accept it anyway but log a warning — don't block the frontend
         print(f"[BEHAVIORAL-LOGS] Unknown metric: {metric_name} (user: {user.id[:8]})")
 
     try:
@@ -485,9 +473,7 @@ def behavioral_logs_post():
     except Exception as e:
         err_str = str(e).lower()
         if "does not exist" in err_str:
-            # behavioral_logs table not yet created — return 200 silently
-            # so the frontend cockpit doesn't show errors
-            print(f"[BEHAVIORAL-LOGS] Table not found — run schema.sql first. Silently ignoring.")
+            print("[BEHAVIORAL-LOGS] Table not found — run schema.sql first.")
             return jsonify({"success": False, "reason": "behavioral_logs table not created yet"}), 200
         print(f"[BEHAVIORAL-LOGS] Insert error: {e}")
         return jsonify({"error": f"Could not save log: {type(e).__name__}"}), 500
