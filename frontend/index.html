@@ -335,7 +335,7 @@ section { padding: 100px 0; }
 .final-cta .section-tag { color: var(--accent); justify-content: center; }
 .final-cta .section-tag::before { background: var(--accent); }
 .final-cta .section-h { color: var(--white); text-align: center; }
-.final-cta .section-body { color: var(--gray-5); max-width: 480px; margin: 0 auto 40px; text-align: center; }
+.final-cta .section-body { color: var(--gray-5); max-width: 520px; margin: 0 auto 40px; text-align: center; }
 .final-cta-badges { display: flex; align-items: center; justify-content: center; gap: 24px; flex-wrap: wrap; margin-top: 32px; font-family: var(--body); font-size: 0.78rem; color: var(--gray-5); }
 .final-cta-badges span { display: flex; align-items: center; gap: 6px; }
 .badge-icon { color: var(--accent); font-size: 10px; }
@@ -396,7 +396,6 @@ footer { background: var(--black); border-top: 1px solid var(--gray-2); padding:
       <li><a href="#trust">Privacy</a></li>
       <li><a href="/login">Sign In</a></li>
     </ul>
-    <!-- FIX: nav CTA now goes to /signup -->
     <a href="/signup" class="btn-nav">Start Free</a>
   </div>
 </nav>
@@ -428,7 +427,6 @@ footer { background: var(--black); border-top: 1px solid var(--gray-2); padding:
     </p>
 
     <div class="hero-cta-row">
-      <!-- FIX: both buttons now link to /signup -->
       <a href="/signup" class="btn-primary btn-primary--accent">
         Start Free — No Card Needed
       </a>
@@ -442,7 +440,6 @@ footer { background: var(--black); border-top: 1px solid var(--gray-2); padding:
       <div class="hero-trust-item"><div class="trust-check">✓</div>Data never sold</div>
     </div>
 
-    <!-- App preview — static only, no fake live data -->
     <div class="hero-shield-preview fade-in-up">
       <div class="shield-window-dots"><span></span><span></span><span></span></div>
       <div class="shield-stat-row">
@@ -635,26 +632,26 @@ footer { background: var(--black); border-top: 1px solid var(--gray-2); padding:
   <div class="container">
     <div class="container--narrow fade-in-up" style="text-align:center;margin:0 auto 0;">
       <div class="section-tag" style="justify-content:center;">Pricing</div>
-      <h2 class="section-h" style="text-align:center;">Less than one week of<br><em>GLP-1 medication.</em></h2>
-      <p class="section-body" style="text-align:center;margin:0 auto;">Wegovy costs $1,350/month. Zepbound costs $1,060/month. PHI costs a fraction of that — and protects the results you worked hard to earn.</p>
+      <h2 class="section-h" style="text-align:center;">Less than 3 days of<br><em>GLP-1 medication.</em></h2>
+      <p class="section-body" style="text-align:center;">Wegovy costs $617/month. Zepbound costs $725/month. PHI monitors your metabolic health for 93% less — and protects the results you worked for.</p>
     </div>
 
     <div class="pricing-grid">
+
       <!-- Free -->
       <div class="price-card fade-in-up fade-in-up-delay-1">
         <div class="price-tier price-tier--free">Free</div>
         <div class="price-amount">$0</div>
         <div class="price-period">Forever</div>
         <div class="price-anchor">&nbsp;</div>
-        <div class="price-desc price-desc--light">Try PHI with your first lab report. Get your initial Metabolic Shield™ score at no cost.</div>
+        <div class="price-desc price-desc--light">Try PHI with your first lab report. Get your initial Metabolic Shield™ score and cliff risk picture at no cost.</div>
         <ul class="price-features">
           <li class="price-feature price-feature--light"><i class="feat-ok">✓</i> Upload 1 lab report</li>
           <li class="price-feature price-feature--light"><i class="feat-ok">✓</i> Initial Metabolic Shield™ score</li>
           <li class="price-feature price-feature--light"><i class="feat-ok">✓</i> Unlimited chat with PHI</li>
           <li class="price-feature price-feature--light"><i class="feat-no" style="background:var(--gray-7);color:var(--gray-5)">–</i><span style="color:var(--gray-5)">No ongoing monitoring</span></li>
-          <li class="price-feature price-feature--light"><i class="feat-no" style="background:var(--gray-7);color:var(--gray-5)">–</i><span style="color:var(--gray-5)">No weekly guidance</span></li>
+          <li class="price-feature price-feature--light"><i class="feat-no" style="background:var(--gray-7);color:var(--gray-5)">–</i><span style="color:var(--gray-5)">No weekly alerts or guidance</span></li>
         </ul>
-        <!-- FIX: links to /signup -->
         <a href="/signup" class="price-btn price-btn--outline">Get Started Free</a>
       </div>
 
@@ -662,46 +659,53 @@ footer { background: var(--black); border-top: 1px solid var(--gray-2); padding:
       <div class="price-card price-card--featured fade-in-up fade-in-up-delay-2">
         <div class="price-badge">Most Popular</div>
         <div class="price-tier price-tier--main">Shield Core</div>
-        <div class="price-amount price-amount--dark">$20</div>
-        <div class="price-period price-period--dark">per month · or $180/yr (save 25%)</div>
-        <div class="price-anchor">Less than one week of GLP-1 medication</div>
-        <div class="price-desc price-desc--dark">Continuous monitoring, unlimited labs, and weekly guidance — everything you need to stay ahead of regain.</div>
+        <div class="price-amount price-amount--dark">$49</div>
+        <div class="price-period price-period--dark">per month · or $399/yr — save 32%</div>
+        <div class="price-anchor">Less than 3 days of Wegovy or Zepbound</div>
+        <div class="price-desc price-desc--dark">Continuous monitoring, unlimited labs, weekly cliff alerts, and your Muscle Defense Protocol — everything you need to keep the weight off after GLP-1.</div>
         <ul class="price-features">
           <li class="price-feature price-feature--dark"><i class="feat-ok-dark">✓</i> Unlimited lab report uploads</li>
           <li class="price-feature price-feature--dark"><i class="feat-ok-dark">✓</i> Full Metabolic Shield™ monitoring</li>
-          <li class="price-feature price-feature--dark"><i class="feat-ok-dark">✓</i> Weekly rebound signal alerts</li>
-          <li class="price-feature price-feature--dark"><i class="feat-ok-dark">✓</i> Behavior-to-marker connection</li>
-          <li class="price-feature price-feature--dark"><i class="feat-ok-dark">✓</i> Weekly personalized guidance</li>
+          <li class="price-feature price-feature--dark"><i class="feat-ok-dark">✓</i> Weekly cliff &amp; rebound alerts</li>
+          <li class="price-feature price-feature--dark"><i class="feat-ok-dark">✓</i> Muscle Defense Protocol</li>
+          <li class="price-feature price-feature--dark"><i class="feat-ok-dark">✓</i> Behavior-to-marker tracking</li>
           <li class="price-feature price-feature--dark"><i class="feat-ok-dark">✓</i> Doctor visit prep brief</li>
+          <li class="price-feature price-feature--dark"><i class="feat-ok-dark">✓</i> Ghrelin surge log + analysis</li>
         </ul>
-        <!-- FIX: links to /signup with plan param -->
         <a href="/signup?plan=monthly" class="price-btn price-btn--accent">Start Shield Core</a>
       </div>
 
-      <!-- Shield Pro -->
+      <!-- Shield Clinical -->
       <div class="price-card fade-in-up fade-in-up-delay-3">
-        <div class="price-tier price-tier--premium">Shield Pro</div>
-        <div class="price-amount">$149</div>
+        <div class="price-tier price-tier--premium">Shield Clinical</div>
+        <div class="price-amount">$99</div>
         <div class="price-period">per month</div>
-        <div class="price-anchor">&nbsp;</div>
-        <div class="price-desc price-desc--light">For those navigating insurance denials, active rebound, or who want the complete clinical picture.</div>
+        <div class="price-anchor">The cost of one therapy copay</div>
+        <div class="price-desc price-desc--light">For active rebound, insurance denials, or anyone who wants the complete clinical intelligence picture — PA support, cross-marker patterns, and body composition analysis.</div>
         <ul class="price-features">
           <li class="price-feature price-feature--light"><i class="feat-ok">✓</i> Everything in Shield Core</li>
           <li class="price-feature price-feature--light"><i class="feat-ok">✓</i> Insurance PA support builder</li>
-          <li class="price-feature price-feature--light"><i class="feat-ok">✓</i> Body composition trend analysis</li>
           <li class="price-feature price-feature--light"><i class="feat-ok">✓</i> Cross-marker pattern insights</li>
+          <li class="price-feature price-feature--light"><i class="feat-ok">✓</i> Body composition trend analysis</li>
+          <li class="price-feature price-feature--light"><i class="feat-ok">✓</i> Metabolic correlation engine</li>
           <li class="price-feature price-feature--light"><i class="feat-ok">✓</i> Priority support</li>
         </ul>
-        <!-- FIX: links to /signup with plan param -->
-        <a href="/signup?plan=annual" class="price-btn price-btn--outline">Start Shield Pro</a>
+        <a href="/signup?plan=clinical" class="price-btn price-btn--outline">Start Shield Clinical</a>
       </div>
+
     </div>
 
     <div class="pricing-note fade-in-up">
       <span><span class="pricing-note-dot"></span> No credit card for free tier</span>
       <span><span class="pricing-note-dot"></span> Cancel anytime</span>
       <span><span class="pricing-note-dot"></span> AES-256 encrypted</span>
-      <span><span class="pricing-note-dot"></span> Employer plans available</span>
+      <span><span class="pricing-note-dot"></span> Employer &amp; team plans available</span>
+    </div>
+    <div class="pricing-note fade-in-up" style="margin-top: 14px;">
+      <span style="font-size: 0.78rem; color: var(--gray-4); max-width: 600px; text-align: center; line-height: 1.6;">
+        Annual plan saves 32% vs monthly. Wegovy costs $617/month. Zepbound costs $725/month.
+        PHI protects those results for a fraction of that — and it works whether you're still on medication or coming off.
+      </span>
     </div>
   </div>
 </section>
@@ -713,7 +717,7 @@ footer { background: var(--black); border-top: 1px solid var(--gray-2); padding:
 <section id="trust">
   <div class="container">
     <div class="container--narrow fade-in-up">
-      <div class="section-tag">Privacy & Safety</div>
+      <div class="section-tag">Privacy &amp; Safety</div>
       <h2 class="section-h">Your data belongs to you.<br><em>Full stop.</em></h2>
       <p class="section-body">PHI is an educational wellness tool — not a medical device, not a diagnostic service. We help you understand your own health data. Every clinical decision stays between you and your healthcare provider.</p>
     </div>
@@ -751,10 +755,9 @@ footer { background: var(--black); border-top: 1px solid var(--gray-2); padding:
       You worked hard to<br>lose that weight.<br><em>Don't lose it again.</em>
     </h2>
     <p class="section-body">
-      PHI's Metabolic Shield™ is free to start. Upload your first lab report and see your rebound risk in minutes. No credit card. No commitment.
+      PHI's Metabolic Shield™ is free to start. Upload your first lab report and see your rebound risk in minutes. If you decide to stay, Shield Core is $49/month — less than 3 days of the medication it protects. No credit card. No commitment.
     </p>
     <div style="text-align:center;">
-      <!-- FIX: linked to /signup -->
       <a href="/signup" class="btn-primary btn-primary--accent">
         Start Free — Upload Your Labs
       </a>
@@ -800,7 +803,6 @@ footer { background: var(--black); border-top: 1px solid var(--gray-2); padding:
     nav.style.boxShadow = window.scrollY > 60 ? '0 4px 24px rgba(0,0,0,0.08)' : 'none';
   });
 
-  /* Smooth scroll for anchor links */
   document.querySelectorAll('a[href^="#"]').forEach(a => {
     a.addEventListener('click', e => {
       const target = document.querySelector(a.getAttribute('href'));
