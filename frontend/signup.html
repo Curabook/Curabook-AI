@@ -191,13 +191,12 @@
                 <div class="op-dot" id="dot2"></div>
                 <div class="op-dot" id="dot3"></div>
                 <div class="op-dot" id="dot4"></div>
-                <div class="op-dot" id="dot5"></div>
             </div>
 
             <div id="panelA">
                 <div class="onboarding-header">
-                    <h2>One last thing</h2>
-                    <p>PHI uses this to set your Cliff Risk baseline the moment you log in. Takes 60 seconds.</p>
+                    <h2>One quick question</h2>
+                    <p>PHI uses this to set your Cliff Risk baseline the moment you log in. Takes 30 seconds.</p>
                 </div>
                 <div class="form-label" style="margin-bottom:10px">Where are you in your GLP-1 journey?</div>
                 <div class="glp1-option-grid">
@@ -229,33 +228,8 @@
 
             <div id="panelB" style="display:none">
                 <div class="onboarding-header">
-                    <h2>Which medication?</h2>
-                    <p>PHI uses the drug name to track your tapering timeline and predict rebound windows.</p>
-                </div>
-                <div class="form-group">
-                    <select id="medName" class="form-input" style="cursor:pointer">
-                        <option value="">Select medication…</option>
-                        <option value="Zepbound">Zepbound (tirzepatide)</option>
-                        <option value="Wegovy">Wegovy (semaglutide)</option>
-                        <option value="Ozempic">Ozempic (semaglutide)</option>
-                        <option value="Mounjaro">Mounjaro (tirzepatide)</option>
-                        <option value="Saxenda">Saxenda (liraglutide)</option>
-                        <option value="Rybelsus">Rybelsus (oral semaglutide)</option>
-                        <option value="Victoza">Victoza (liraglutide)</option>
-                        <option value="Other">Other / Compounded</option>
-                        <option value="Not sure">Not sure</option>
-                    </select>
-                </div>
-                <div class="onboarding-nav">
-                    <button class="btn-back" onclick="goToPanel('A')">← Back</button>
-                    <button class="btn-next" id="nextB" onclick="goToPanel('C')" disabled>Continue →</button>
-                </div>
-            </div>
-
-            <div id="panelC" style="display:none">
-                <div class="onboarding-header">
-                    <h2>What's your goal weight?</h2>
-                    <p>PHI uses this to calculate your Muscle Defense protein target — the amount of daily protein you need to preserve lean mass through the cliff.</p>
+                    <h2>Your goal weight?</h2>
+                    <p>PHI uses this to calculate your daily Muscle Defense protein target immediately on login.</p>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Goal weight (lbs) <span class="optional">— or your current weight if unsure</span></label>
@@ -266,12 +240,12 @@
                     <strong id="proteinCalc"></strong> — your daily Muscle Defense target
                 </div>
                 <div class="onboarding-nav">
-                    <button class="btn-back" onclick="goToPanel('B')">← Back</button>
-                    <button class="btn-next" id="nextC" onclick="goToPanel('D')" disabled>Continue →</button>
+                    <button class="btn-back" onclick="goToPanel('A')">← Back</button>
+                    <button class="btn-next" id="nextB" onclick="goToPanel('C')" disabled>Continue →</button>
                 </div>
             </div>
 
-            <div id="panelD" style="display:none">
+            <div id="panelC" style="display:none">
                 <div class="onboarding-header">
                     <h2>Biggest concern right now?</h2>
                     <p>PHI will surface the most relevant insights and alerts for what matters most to you.</p>
@@ -299,8 +273,8 @@
                     </button>
                 </div>
                 <div class="onboarding-nav">
-                    <button class="btn-back" onclick="goToPanel('C')">← Back</button>
-                    <button class="btn-next" id="nextD" onclick="finishOnboarding()" disabled>Start PHI →</button>
+                    <button class="btn-back" onclick="goToPanel('B')">← Back</button>
+                    <button class="btn-next" id="nextC" onclick="finishOnboarding()" disabled>Start PHI →</button>
                 </div>
             </div>
         </div>
@@ -320,32 +294,38 @@
 </div>
 
 <script>
-const API_BASE = "https://api.curabook.com";
+// ── Config ────────────────────────────────────────────────────────────────────
+const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? 'http://localhost:5000'
+    : 'https://api.curabook.com';
+
+const SUPABASE_URL = "https://pbeaawlxdcrdbvlmpqhc.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBiZWFhd2x4ZGNyZGJ2bG1wcWhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwMDk0MzksImV4cCI6MjA5MTU4NTQzOX0.6bUpYrDbe0mQjjBHX8Qscj-5R8i4-SqAtW_Z1UFzJ10";
+
 let supabaseClient = null;
 let _userId = null;
 let _accessToken = null;
+let _redirecting = false;
 
-const ob = { glp1Status: null, medName: null, goalWeight: null, concern: null };
+const ob = { glp1Status: null, goalWeight: null, concern: null };
 
 function initSupabase() {
-    const SUPABASE_URL = "https://pbeaawlxdcrdbvlmpqhc.supabase.co";
-    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBiZWFhd2x4ZGNyZGJ2bG1wcWhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwMDk0MzksImV4cCI6MjA5MTU4NTQzOX0.6bUpYrDbe0mQjjBHX8Qscj-5R8i4-SqAtW_Z1UFzJ10";
     supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
         auth: { detectSessionInUrl: true, persistSession: true }
     });
 }
 
-function setStatus(msg, type='') {
+function setStatus(msg, type = '') {
     const el = document.getElementById('status-msg');
     el.textContent = msg;
     el.className = 'status-msg ' + type;
 }
 
 function goToPanel(panel) {
-    ['A','B','C','D'].forEach(p => {
+    ['A', 'B', 'C'].forEach(p => {
         document.getElementById('panel' + p).style.display = p === panel ? 'block' : 'none';
     });
-    const idx = {'A':0,'B':1,'C':2,'D':3}[panel];
+    const idx = { 'A': 0, 'B': 1, 'C': 2 }[panel];
     document.querySelectorAll('.op-dot').forEach((dot, i) => {
         dot.classList.toggle('active', i <= idx);
     });
@@ -360,111 +340,157 @@ function selectOption(btn, field) {
 
     if (field === 'glp1Status') {
         document.getElementById('nextA').disabled = false;
-        if (ob.glp1Status === 'never') ob.medName = 'none';
     }
     if (field === 'concern') {
-        document.getElementById('nextD').disabled = false;
+        document.getElementById('nextC').disabled = false;
     }
 }
 
+// ── FIXED: Consent is saved BEFORE redirect, with await ──────────────────────
+async function saveConsentToBackend(token) {
+    if (!token) {
+        console.warn('[CONSENT] No token — cannot save consent');
+        return false;
+    }
+    try {
+        const resp = await fetch(`${API_BASE}/api/consent`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + token
+            },
+            body: JSON.stringify({
+                consents: ['data_processing', 'ai_processing', 'document_processing']
+            })
+        });
+        if (resp.ok) {
+            console.log('[CONSENT] Saved successfully');
+            return true;
+        } else {
+            const data = await resp.json().catch(() => ({}));
+            console.warn('[CONSENT] Backend error:', resp.status, data);
+            return false;
+        }
+    } catch (err) {
+        console.warn('[CONSENT] Network error (non-fatal):', err);
+        return false;
+    }
+}
+
+async function saveOnboardingData() {
+    if (!_userId || !supabaseClient) return;
+
+    try {
+        // Save GLP-1 onboarding record
+        await supabaseClient.from('glp1_onboarding').upsert({
+            user_id:         _userId,
+            glp1_status:     ob.glp1Status,
+            goal_weight_lbs: ob.goalWeight,
+            primary_concern: ob.concern,
+        }, { onConflict: 'user_id' });
+
+        // Save profile (goal weight + status)
+        if (ob.goalWeight) {
+            await supabaseClient.from('user_profiles').upsert({
+                user_id:         _userId,
+                goal_weight_lbs: ob.goalWeight,
+                glp1_status:     ob.glp1Status,
+            }, { onConflict: 'user_id' });
+        }
+
+        // Save initial memory facts
+        const facts = [];
+        if (ob.glp1Status && ob.glp1Status !== 'never') {
+            facts.push(`User's GLP-1 status: ${ob.glp1Status} (from onboarding)`);
+        }
+        if (ob.goalWeight) {
+            const protein = Math.round(ob.goalWeight * 0.545 * 10) / 10;
+            facts.push(
+                `User's goal weight is ${ob.goalWeight} lbs — Muscle Defense protein target: ${protein}g/day`
+            );
+        }
+        if (ob.concern) {
+            const labels = {
+                'food_noise':    'User reports food noise/ghrelin surge as primary concern',
+                'weight_regain': 'User is concerned about weight regain after stopping GLP-1',
+                'insurance':     'User has insurance/prior authorization concerns for GLP-1',
+                'muscle_loss':   'User is concerned about muscle loss and body composition',
+                'labs':          'User wants help understanding their lab results'
+            };
+            if (labels[ob.concern]) facts.push(labels[ob.concern]);
+        }
+
+        const now = new Date().toISOString();
+        for (const fact of facts) {
+            await supabaseClient.from('conversation_memories').insert({
+                user_id:   _userId,
+                fact:      fact,
+                category:  'onboarding',
+                is_active: true,          // FIX-MEM-1: explicit always
+                created_at: now,
+            }).catch(e => console.warn('[MEMORY] Onboarding fact save error:', e));
+        }
+
+        console.log('[ONBOARDING] Data saved');
+    } catch (e) {
+        console.warn('[ONBOARDING] Save error (non-fatal):', e);
+    }
+}
+
+async function finishOnboarding() {
+    const btn = document.getElementById('nextC');
+    if (btn) { btn.disabled = true; btn.textContent = 'Setting up PHI…'; }
+
+    // FIXED: Save consent FIRST, then onboarding data, then redirect
+    // All awaited — nothing happens until consent is confirmed
+    await saveConsentToBackend(_accessToken);
+    await saveOnboardingData();
+
+    // Store goal weight in localStorage for immediate UI use
+    if (ob.goalWeight) {
+        localStorage.setItem('phi_goal_wt', String(ob.goalWeight));
+    }
+
+    // Mark terms accepted
+    if (_userId) {
+        try { localStorage.setItem(`phi_terms_${_userId}`, Date.now().toString()); } catch (e) {}
+    }
+
+    // Now redirect
+    if (!_redirecting) {
+        _redirecting = true;
+        window.location.href = '/app';
+    }
+}
+
+// ── Goal weight calculator ────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
     const gwInput = document.getElementById('goalWeight');
     if (gwInput) {
         gwInput.addEventListener('input', () => {
             const gw = parseFloat(gwInput.value);
             const preview = document.getElementById('proteinPreview');
-            const calc    = document.getElementById('proteinCalc');
-            const nextC   = document.getElementById('nextC');
+            const calc = document.getElementById('proteinCalc');
+            const nextB = document.getElementById('nextB');
             if (gw >= 80 && gw <= 400) {
                 const target = Math.round(gw * 0.545 * 10) / 10;
                 const perMeal = Math.round(target / 3 * 10) / 10;
                 calc.textContent = `${target}g protein/day (${perMeal}g per meal)`;
                 preview.style.display = 'block';
-                nextC.disabled = false;
+                nextB.disabled = false;
                 ob.goalWeight = gw;
             } else {
                 preview.style.display = 'none';
-                nextC.disabled = true;
+                nextB.disabled = true;
             }
-        });
-    }
-
-    const medSelect = document.getElementById('medName');
-    if (medSelect) {
-        medSelect.addEventListener('change', () => {
-            ob.medName = medSelect.value || null;
-            document.getElementById('nextB').disabled = !medSelect.value;
         });
     }
 });
 
-async function finishOnboarding() {
-    const btn = document.getElementById('nextD');
-    btn.disabled = true;
-    btn.textContent = 'Setting up PHI…';
-
-    if (_accessToken) {
-        try {
-            await fetch(`${API_BASE}/api/consent`, {
-                method: 'POST',
-                headers: {'Content-Type':'application/json','Authorization':'Bearer '+_accessToken},
-                body: JSON.stringify({consents:['data_processing','ai_processing','document_processing']})
-            });
-        } catch(e) {}
-    }
-
-    if (_userId && _accessToken) {
-        try {
-            await supabaseClient.from('glp1_onboarding').upsert({
-                user_id:         _userId,
-                glp1_status:     ob.glp1Status,
-                medication_name: ob.medName,
-                goal_weight_lbs: ob.goalWeight,
-                primary_concern: ob.concern,
-            }, {onConflict:'user_id'});
-
-            if (ob.goalWeight) {
-                await supabaseClient.from('user_profiles').upsert({
-                    user_id:         _userId,
-                    goal_weight_lbs: ob.goalWeight,
-                    glp1_status:     ob.glp1Status,
-                }, {onConflict:'user_id'});
-            }
-
-            const facts = [];
-            if (ob.glp1Status !== 'never' && ob.medName && ob.medName !== 'none') {
-                facts.push(`User is on/was on ${ob.medName} — GLP-1 status: ${ob.glp1Status}`);
-            }
-            if (ob.goalWeight) {
-                facts.push(`User's goal weight is ${ob.goalWeight} lbs — Muscle Defense protein target: ${Math.round(ob.goalWeight * 0.545 * 10)/10}g/day`);
-            }
-            if (ob.concern) {
-                const concernLabels = {
-                    'food_noise':    'User reports food noise/ghrelin surge as primary concern',
-                    'weight_regain': 'User is concerned about weight regain after stopping GLP-1',
-                    'insurance':     'User has insurance/prior authorization concerns for GLP-1',
-                    'muscle_loss':   'User is concerned about muscle loss and body composition',
-                    'labs':          'User wants help understanding their lab results'
-                };
-                if (concernLabels[ob.concern]) facts.push(concernLabels[ob.concern]);
-            }
-            for (const fact of facts) {
-                await supabaseClient.from('conversation_memories').insert({
-                    user_id: _userId, fact, category:'onboarding', is_active:true
-                }).catch(()=>{});
-            }
-        } catch(e) {
-            console.warn('[ONBOARDING] Save error (non-fatal):', e);
-        }
-    }
-
-    localStorage.setItem('phi_goal_wt', String(ob.goalWeight || 165));
-    // ── FIX: Redirects directly to /app ─────────────────────────
-    setTimeout(() => { window.location.href = '/app'; }, 400);
-}
-
+// ── FIXED: Email signup — consent saved properly ──────────────────────────────
 document.getElementById('signupBtn').addEventListener('click', async () => {
     if (!supabaseClient) { setStatus("Loading… please wait", "error"); return; }
+
     const firstName = document.getElementById('firstName').value.trim();
     const lastName  = document.getElementById('lastName').value.trim();
     const email     = document.getElementById('email').value.trim();
@@ -474,17 +500,19 @@ document.getElementById('signupBtn').addEventListener('click', async () => {
 
     if (!email || !password) { setStatus('Please enter your email and password.', 'error'); return; }
     if (password.length < 8) { setStatus('Password must be at least 8 characters.', 'error'); return; }
-    if (!terms.checked) { setStatus('Please accept the Terms and Privacy Policy.', 'error'); return; }
+    if (!terms.checked) { setStatus('Please accept the Terms and Privacy Policy to continue.', 'error'); return; }
 
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span> Creating account…';
+    setStatus('', '');
 
     try {
         const { data, error } = await supabaseClient.auth.signUp({
-            email, password,
+            email,
+            password,
             options: {
                 data: { first_name: firstName, last_name: lastName },
-                redirectTo: `${window.location.origin}/login`,
+                emailRedirectTo: `${window.location.origin}/login`,
             },
         });
 
@@ -497,16 +525,25 @@ document.getElementById('signupBtn').addEventListener('click', async () => {
 
         if (data.user) {
             _userId = data.user.id;
-            localStorage.setItem(`phi_terms_${data.user.id}`, Date.now().toString());
-        }
-        if (data.session) {
-            _accessToken = data.session.access_token;
+            // Mark terms accepted locally immediately
+            try { localStorage.setItem(`phi_terms_${data.user.id}`, Date.now().toString()); } catch (e) {}
         }
 
         if (data.session) {
+            _accessToken = data.session.access_token;
+
+            // FIXED: Save consent SYNCHRONOUSLY before showing onboarding
+            // This ensures consent is stored even if user closes the tab
+            setStatus('Saving your preferences…', 'success');
+            await saveConsentToBackend(_accessToken);
+            setStatus('', '');
+
+            // Show onboarding
             document.getElementById('signupStep').style.display = 'none';
             document.getElementById('onboardingStep').style.display = 'block';
         } else {
+            // Email confirmation required — save consent via anonymous call won't work
+            // We'll save it when they log in via the login page
             document.getElementById('signupStep').style.display = 'none';
             document.getElementById('successState').style.display = 'block';
             if (firstName) document.getElementById('successTitle').textContent = `Almost there, ${firstName}!`;
@@ -520,8 +557,10 @@ document.getElementById('signupBtn').addEventListener('click', async () => {
     }
 });
 
+// ── Google signup ─────────────────────────────────────────────────────────────
 document.getElementById('googleBtn').addEventListener('click', async () => {
     if (!supabaseClient) return;
+    // Google OAuth — consent is saved in the onboarding flow after redirect
     await supabaseClient.auth.signInWithOAuth({
         provider: 'google',
         options: { redirectTo: `${window.location.origin}/app` },
@@ -534,7 +573,26 @@ document.addEventListener('keydown', e => {
     }
 });
 
-try { initSupabase(); } catch(err) { setStatus('App failed to load. Please refresh.', 'error'); }
+// ── Init ──────────────────────────────────────────────────────────────────────
+try {
+    initSupabase();
+
+    // Handle Google OAuth redirect — save consent after successful OAuth
+    supabaseClient.auth.onAuthStateChange(async (event, session) => {
+        if (event === 'SIGNED_IN' && session?.user && !_accessToken) {
+            _userId = session.user.id;
+            _accessToken = session.access_token;
+            const isGoogle = session.user.app_metadata?.provider === 'google';
+            if (isGoogle) {
+                // Save consent for Google users silently
+                await saveConsentToBackend(session.access_token);
+                try { localStorage.setItem(`phi_terms_${session.user.id}`, Date.now().toString()); } catch (e) {}
+            }
+        }
+    });
+} catch (err) {
+    setStatus('App failed to load. Please refresh.', 'error');
+}
 </script>
 </body>
 </html>
