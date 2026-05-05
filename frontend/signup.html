@@ -13,13 +13,10 @@
         --brand: #00BCD5; --brand-dark: #0097a7;
         --text: #111111; --muted: #6b7280; --border: #e5e7eb;
         --bg: #fafafa; --white: #ffffff;
-        --danger: #ef4444; --ok: #22c55e;
         --font: 'Plus Jakarta Sans','Segoe UI',sans-serif;
         --serif: 'Instrument Serif',Georgia,serif;
     }
     body { font-family: var(--font); min-height: 100vh; display: flex; background: var(--bg); -webkit-font-smoothing: antialiased; }
-
-    /* ── LEFT PANEL ── */
     .left-panel { flex: 1; background: #0a0a0a; display: flex; flex-direction: column; justify-content: space-between; padding: 48px; position: relative; overflow: hidden; }
     .left-panel::before { content:''; position:absolute; top:-80px; right:-80px; width:380px; height:380px; background:radial-gradient(circle, rgba(0,188,213,.15) 0%, transparent 70%); pointer-events:none; }
     .left-brand { display:flex; align-items:center; gap:12px; z-index:1; }
@@ -35,16 +32,12 @@
     .feature-icon { width:32px; height:32px; background:rgba(0,188,213,.15); border-radius:8px; display:flex; align-items:center; justify-content:center; color:var(--brand); font-size:13px; flex-shrink:0; }
     .feature-text h4 { font-size:13.5px; font-weight:600; color:rgba(255,255,255,.9); margin-bottom:2px; }
     .feature-text p { font-size:12px; color:rgba(255,255,255,.4); line-height:1.4; }
-
-    /* ── RIGHT PANEL ── */
     .right-panel { width:520px; background:var(--white); display:flex; align-items:center; justify-content:center; padding:48px 52px; }
     .form-container { width:100%; max-width:400px; }
     .form-header { margin-bottom:28px; }
     .form-title { font-family:var(--serif); font-size:1.8rem; font-weight:400; color:var(--text); letter-spacing:-.3px; margin-bottom:6px; }
     .form-sub { font-size:14px; color:var(--muted); }
     .form-sub a { color:var(--brand); text-decoration:none; font-weight:500; }
-
-    /* ── FORM ELEMENTS ── */
     .name-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
     .form-group { margin-bottom:16px; }
     .form-label { display:block; font-size:13px; font-weight:600; color:var(--text); margin-bottom:7px; }
@@ -52,81 +45,38 @@
     .form-input { width:100%; padding:11px 13px; border:1.5px solid var(--border); border-radius:10px; font-size:14.5px; font-family:var(--font); color:var(--text); background:var(--white); outline:none; transition:border-color .2s,box-shadow .2s; }
     .form-input:focus { border-color:var(--brand); box-shadow:0 0 0 3px rgba(0,188,213,.1); }
     .form-input::placeholder { color:#9ca3af; }
-    .form-input.error { border-color:var(--danger); }
     .password-hint { font-size:12px; color:var(--muted); margin-top:5px; }
-    .field-error { font-size:12px; color:var(--danger); margin-top:4px; display:none; }
-    .field-error.show { display:block; }
-
-    /* ── TERMS CHECKBOX ── */
     .terms-row { display:flex; align-items:flex-start; gap:9px; margin-bottom:18px; font-size:12.5px; color:var(--muted); line-height:1.5; }
-    .terms-row input[type="checkbox"] { margin-top:2px; accent-color:var(--brand); flex-shrink:0; width:14px; height:14px; cursor:pointer; }
+    .terms-row input[type="checkbox"] { margin-top:2px; accent-color:var(--brand); flex-shrink:0; width:14px; height:14px; }
     .terms-row a { color:var(--brand); text-decoration:none; }
-    .terms-error { font-size:12px; color:var(--danger); margin-bottom:12px; display:none; }
-    .terms-error.show { display:block; }
-
-    /* ── BUTTONS ── */
     .btn-primary { width:100%; padding:13px; background:var(--brand); color:white; border:none; border-radius:10px; font-size:15px; font-weight:600; font-family:var(--font); cursor:pointer; transition:all .15s; margin-bottom:16px; }
     .btn-primary:hover { background:var(--brand-dark); transform:translateY(-1px); }
     .btn-primary:disabled { opacity:.6; cursor:not-allowed; transform:none; }
     .divider { display:flex; align-items:center; gap:12px; margin-bottom:16px; font-size:12px; color:var(--muted); }
     .divider::before,.divider::after { content:''; flex:1; height:1px; background:var(--border); }
     .btn-google { width:100%; padding:12px; background:white; border:1.5px solid var(--border); border-radius:10px; font-size:14.5px; font-weight:500; font-family:var(--font); color:var(--text); cursor:pointer; display:flex; align-items:center; justify-content:center; gap:10px; transition:all .15s; margin-bottom:20px; }
-    .btn-google:hover { background:#f9fafb; border-color:#d1d5db; }
+    .btn-google:hover { background:#f9fafb; }
     .btn-google img { width:18px; height:18px; }
-
-    /* ── STATUS ── */
-    .status-msg { text-align:center; font-size:13.5px; min-height:20px; margin-bottom:10px; font-weight:500; padding:8px 12px; border-radius:8px; display:none; }
-    .status-msg.error   { display:block; background:rgba(239,68,68,.08); color:var(--danger); border:1px solid rgba(239,68,68,.2); }
-    .status-msg.success { display:block; background:rgba(0,188,213,.08); color:var(--brand); border:1px solid rgba(0,188,213,.2); }
+    .status-msg { text-align:center; font-size:13.5px; min-height:20px; margin-bottom:10px; font-weight:500; }
+    .status-msg.error { color:#ef4444; }
+    .status-msg.success { color:var(--brand); }
     .compliance-strip { text-align:center; font-size:11.5px; color:#9ca3af; padding-top:16px; border-top:1px solid var(--border); margin-top:4px; }
     .compliance-strip i { color:var(--brand); margin-right:4px; }
     .spinner { width:16px; height:16px; border:2px solid rgba(255,255,255,.4); border-top-color:white; border-radius:50%; animation:spin .6s linear infinite; display:inline-block; margin-right:6px; }
     @keyframes spin { to { transform:rotate(360deg); } }
 
-    /* ── GOOGLE TERMS MODAL ── */
-    .modal-overlay {
-        position:fixed; inset:0; background:rgba(0,0,0,.65); z-index:9999;
-        display:none; align-items:center; justify-content:center; padding:20px;
-    }
-    .modal-overlay.open { display:flex; }
-    .modal-box {
-        background:white; border-radius:16px; padding:32px; max-width:480px; width:100%;
-        box-shadow:0 20px 60px rgba(0,0,0,.2); animation:slideUp .25s ease;
-        position:relative;
-    }
-    @keyframes slideUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
-    .modal-close {
-        position:absolute; top:14px; right:14px; width:32px; height:32px;
-        border-radius:8px; border:none; background:none; cursor:pointer;
-        color:var(--muted); font-size:.9rem; display:flex; align-items:center; justify-content:center;
-        transition:all .15s;
-    }
-    .modal-close:hover { background:#f3f4f6; color:var(--text); }
-    .modal-box h3 { font-family:var(--serif); font-size:1.4rem; font-weight:400; margin-bottom:10px; color:var(--text); }
-    .modal-box p { font-size:13.5px; color:var(--muted); margin-bottom:14px; line-height:1.6; }
-    .modal-box ul { margin:10px 0 14px 18px; font-size:13px; color:var(--muted); line-height:1.9; }
-    .consent-badge { background:rgba(0,188,213,.07); border:1px solid rgba(0,188,213,.2); border-radius:8px; padding:10px 14px; font-size:12px; color:var(--brand); font-weight:600; text-align:center; margin-bottom:16px; }
-    .modal-terms-row { display:flex; align-items:flex-start; gap:9px; margin-bottom:20px; font-size:12.5px; color:var(--muted); line-height:1.5; }
-    .modal-terms-row input[type="checkbox"] { margin-top:2px; accent-color:var(--brand); flex-shrink:0; width:14px; height:14px; cursor:pointer; }
-    .modal-terms-row a { color:var(--brand); text-decoration:none; }
-    .modal-terms-error { font-size:12px; color:var(--danger); margin-bottom:10px; display:none; }
-    .modal-terms-error.show { display:block; }
-    .modal-actions { display:flex; gap:10px; }
-    .btn-decline { flex:1; padding:11px; background:none; border:1.5px solid var(--border); border-radius:8px; font-size:14px; font-family:var(--font); cursor:pointer; color:var(--muted); transition:all .15s; }
-    .btn-decline:hover { border-color:var(--danger); color:var(--danger); }
-    .btn-accept { flex:2; padding:11px; background:var(--brand); border:none; border-radius:8px; font-size:14px; font-weight:600; font-family:var(--font); color:white; cursor:pointer; transition:all .15s; }
-    .btn-accept:hover { background:var(--brand-dark); }
-    .btn-accept:disabled { opacity:.6; cursor:not-allowed; }
-
-    /* ── ONBOARDING ── */
-    #onboardingStep { display:none; animation:fadeIn .35s ease; }
+    /* ── ONBOARDING STEP ──────────────────────────────────────────────── */
+    #onboardingStep { display: none; animation: fadeIn .35s ease; }
     @keyframes fadeIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+
     .onboarding-header { margin-bottom:24px; }
     .onboarding-header h2 { font-family:var(--serif); font-size:1.6rem; font-weight:400; margin-bottom:6px; color:var(--text); }
     .onboarding-header p { font-size:13.5px; color:var(--muted); line-height:1.6; }
+
     .onboarding-progress { display:flex; gap:4px; margin-bottom:24px; }
     .op-dot { flex:1; height:3px; background:var(--border); border-radius:2px; transition:background .3s; }
     .op-dot.active { background:var(--brand); }
+
     .glp1-option-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:4px; }
     .glp1-option { border:1.5px solid var(--border); border-radius:10px; padding:12px; cursor:pointer; transition:all .15s; text-align:left; background:white; font-family:var(--font); }
     .glp1-option:hover { border-color:var(--brand); background:rgba(0,188,213,.03); }
@@ -134,6 +84,7 @@
     .glp1-option-icon { font-size:1.4rem; margin-bottom:6px; }
     .glp1-option-label { font-size:13px; font-weight:600; color:var(--text); display:block; }
     .glp1-option-desc { font-size:11.5px; color:var(--muted); }
+
     .concern-list { display:flex; flex-direction:column; gap:7px; }
     .concern-item { border:1.5px solid var(--border); border-radius:10px; padding:11px 14px; cursor:pointer; transition:all .15s; text-align:left; background:white; font-family:var(--font); display:flex; align-items:center; gap:10px; }
     .concern-item:hover { border-color:var(--brand); }
@@ -141,15 +92,15 @@
     .concern-item i { width:18px; color:var(--muted); font-size:.9rem; }
     .concern-item.selected i { color:var(--brand); }
     .concern-label { font-size:13.5px; font-weight:500; color:var(--text); }
+
     .onboarding-nav { display:flex; gap:10px; margin-top:20px; }
     .btn-back { flex:1; padding:12px; background:none; border:1.5px solid var(--border); border-radius:10px; font-size:14px; font-family:var(--font); color:var(--muted); cursor:pointer; transition:all .15s; }
     .btn-back:hover { border-color:var(--text); color:var(--text); }
     .btn-next { flex:2; padding:12px; background:var(--brand); border:none; border-radius:10px; font-size:14px; font-weight:600; font-family:var(--font); color:white; cursor:pointer; transition:all .15s; }
     .btn-next:hover { background:var(--brand-dark); }
     .btn-next:disabled { opacity:.5; cursor:not-allowed; }
-    .protein-preview { display:none; background:#f0fffe; border:1px solid rgba(0,188,213,.25); border-radius:10px; padding:12px 14px; font-size:13px; color:#0097a7; margin-top:-8px; margin-bottom:8px; }
 
-    /* ── SUCCESS STATE ── */
+    /* ── SUCCESS STATE ────────────────────────────────────────────────── */
     .success-state { display:none; text-align:center; padding:24px 0; animation:fadeIn .4s ease; }
     .success-icon { width:64px; height:64px; border-radius:50%; background:rgba(0,188,213,.12); border:2px solid var(--brand); display:flex; align-items:center; justify-content:center; margin:0 auto 20px; font-size:28px; color:var(--brand); }
     .success-title { font-family:var(--serif); font-size:1.7rem; font-weight:400; color:var(--text); margin-bottom:10px; }
@@ -163,7 +114,6 @@
 </head>
 <body>
 
-<!-- ── LEFT PANEL ── -->
 <div class="left-panel">
     <div class="left-brand">
         <div class="left-brand-icon"><i class="fa-solid fa-heart-pulse"></i></div>
@@ -190,18 +140,15 @@
     </div>
 </div>
 
-<!-- ── RIGHT PANEL ── -->
 <div class="right-panel">
     <div class="form-container">
 
-        <!-- SIGNUP STEP -->
         <div id="signupStep">
             <div class="form-header">
                 <h2 class="form-title">Create your account</h2>
                 <p class="form-sub">Already have one? <a href="/login">Sign in</a></p>
             </div>
-
-            <div id="statusMsg" class="status-msg"></div>
+            <p id="status-msg" class="status-msg"></p>
 
             <div class="name-row">
                 <div class="form-group">
@@ -213,56 +160,46 @@
                     <input type="text" id="lastName" class="form-input" placeholder="M." autocomplete="family-name">
                 </div>
             </div>
-
             <div class="form-group">
                 <label class="form-label" for="email">Email address</label>
                 <input type="email" id="email" class="form-input" placeholder="you@example.com" autocomplete="email" spellcheck="false">
-                <div class="field-error" id="emailError">Please enter a valid email address.</div>
             </div>
-
             <div class="form-group">
                 <label class="form-label" for="password">Password</label>
                 <input type="password" id="password" class="form-input" placeholder="At least 8 characters" autocomplete="new-password">
                 <p class="password-hint">At least 8 characters with a mix of letters and numbers</p>
-                <div class="field-error" id="passwordError">Password must be at least 8 characters.</div>
             </div>
-
             <div class="terms-row">
                 <input type="checkbox" id="termsCheck">
                 <span>I agree to the <a href="/terms" target="_blank">Terms of Service</a> and <a href="/privacy" target="_blank">Privacy Policy</a>. I consent to Curabook PHI processing my health data as described. My data will be anonymized before AI processing and never sold.</span>
             </div>
-            <div class="terms-error" id="termsError">You must accept the Terms to create an account.</div>
-
             <button id="signupBtn" class="btn-primary">Create Free Account</button>
-
             <div class="divider">or</div>
-
             <button id="googleBtn" class="btn-google">
                 <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google">
                 Continue with Google
             </button>
-
             <div class="compliance-strip">
                 <i class="fa-solid fa-shield-halved"></i>
                 Free to start &nbsp;·&nbsp; No credit card &nbsp;·&nbsp; AES-256 encrypted
             </div>
         </div>
 
-        <!-- ONBOARDING STEP (shown after email signup) -->
         <div id="onboardingStep">
             <div class="onboarding-progress">
                 <div class="op-dot active" id="dot1"></div>
                 <div class="op-dot" id="dot2"></div>
                 <div class="op-dot" id="dot3"></div>
                 <div class="op-dot" id="dot4"></div>
+                <div class="op-dot" id="dot5"></div>
             </div>
 
-            <!-- Panel A: GLP-1 status -->
             <div id="panelA">
                 <div class="onboarding-header">
-                    <h2>Where are you in your GLP-1 journey?</h2>
-                    <p>PHI uses this to set your Cliff Risk baseline the moment you log in.</p>
+                    <h2>One last thing</h2>
+                    <p>PHI uses this to set your Cliff Risk baseline the moment you log in. Takes 60 seconds.</p>
                 </div>
+                <div class="form-label" style="margin-bottom:10px">Where are you in your GLP-1 journey?</div>
                 <div class="glp1-option-grid">
                     <button class="glp1-option" data-val="active" onclick="selectOption(this,'glp1Status')">
                         <div class="glp1-option-icon">💉</div>
@@ -290,11 +227,10 @@
                 </div>
             </div>
 
-            <!-- Panel B: Medication name -->
             <div id="panelB" style="display:none">
                 <div class="onboarding-header">
                     <h2>Which medication?</h2>
-                    <p>PHI uses this to track your tapering timeline and predict rebound windows.</p>
+                    <p>PHI uses the drug name to track your tapering timeline and predict rebound windows.</p>
                 </div>
                 <div class="form-group">
                     <select id="medName" class="form-input" style="cursor:pointer">
@@ -305,6 +241,7 @@
                         <option value="Mounjaro">Mounjaro (tirzepatide)</option>
                         <option value="Saxenda">Saxenda (liraglutide)</option>
                         <option value="Rybelsus">Rybelsus (oral semaglutide)</option>
+                        <option value="Victoza">Victoza (liraglutide)</option>
                         <option value="Other">Other / Compounded</option>
                         <option value="Not sure">Not sure</option>
                     </select>
@@ -315,19 +252,17 @@
                 </div>
             </div>
 
-            <!-- Panel C: Goal weight -->
             <div id="panelC" style="display:none">
                 <div class="onboarding-header">
                     <h2>What's your goal weight?</h2>
-                    <p>PHI uses this to calculate your Muscle Defense protein target.</p>
+                    <p>PHI uses this to calculate your Muscle Defense protein target — the amount of daily protein you need to preserve lean mass through the cliff.</p>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Goal weight (lbs) <span class="optional">— or current weight if unsure</span></label>
-                    <input type="number" id="goalWeight" class="form-input"
-                        placeholder="e.g. 165" min="80" max="400"
+                    <label class="form-label">Goal weight (lbs) <span class="optional">— or your current weight if unsure</span></label>
+                    <input type="number" id="goalWeight" class="form-input" placeholder="e.g. 165" min="80" max="400"
                         style="font-size:1.3rem;font-weight:600;text-align:center;">
                 </div>
-                <div class="protein-preview" id="proteinPreview">
+                <div id="proteinPreview" style="display:none;background:#f0fffe;border:1px solid rgba(0,188,213,.25);border-radius:10px;padding:12px 14px;font-size:13px;color:#0097a7;margin-top:-8px;margin-bottom:8px;">
                     <strong id="proteinCalc"></strong> — your daily Muscle Defense target
                 </div>
                 <div class="onboarding-nav">
@@ -336,32 +271,31 @@
                 </div>
             </div>
 
-            <!-- Panel D: Primary concern -->
             <div id="panelD" style="display:none">
                 <div class="onboarding-header">
                     <h2>Biggest concern right now?</h2>
-                    <p>PHI will surface the most relevant insights for what matters most to you.</p>
+                    <p>PHI will surface the most relevant insights and alerts for what matters most to you.</p>
                 </div>
                 <div class="concern-list">
                     <button class="concern-item" data-val="food_noise" onclick="selectOption(this,'concern')">
                         <i class="fa-solid fa-brain"></i>
-                        <span class="concern-label">Food noise / hunger returning</span>
+                        <span class="concern-label">Food noise / hunger returning — it feels relentless</span>
                     </button>
                     <button class="concern-item" data-val="weight_regain" onclick="selectOption(this,'concern')">
                         <i class="fa-solid fa-scale-balanced"></i>
-                        <span class="concern-label">Weight coming back after stopping</span>
+                        <span class="concern-label">Weight coming back after stopping or reducing</span>
                     </button>
                     <button class="concern-item" data-val="insurance" onclick="selectOption(this,'concern')">
                         <i class="fa-solid fa-shield-halved"></i>
-                        <span class="concern-label">Insurance / prior auth denied</span>
+                        <span class="concern-label">Insurance — prior auth denied or worried about coverage</span>
                     </button>
                     <button class="concern-item" data-val="muscle_loss" onclick="selectOption(this,'concern')">
                         <i class="fa-solid fa-dumbbell"></i>
-                        <span class="concern-label">Muscle loss / body composition</span>
+                        <span class="concern-label">Muscle loss / body composition while losing weight</span>
                     </button>
                     <button class="concern-item" data-val="labs" onclick="selectOption(this,'concern')">
                         <i class="fa-solid fa-flask"></i>
-                        <span class="concern-label">Understanding my lab results</span>
+                        <span class="concern-label">Understanding my lab results and what they mean</span>
                     </button>
                 </div>
                 <div class="onboarding-nav">
@@ -371,11 +305,10 @@
             </div>
         </div>
 
-        <!-- SUCCESS STATE (email confirmation required) -->
         <div id="successState" class="success-state">
             <div class="success-icon"><i class="fa-solid fa-envelope-open-text"></i></div>
             <h2 class="success-title" id="successTitle">Almost there!</h2>
-            <p class="success-body" id="successBody">Check your email to activate your account, then sign in to continue.</p>
+            <p class="success-body" id="successBody">Check your email to activate your account, then sign in.</p>
             <div class="success-check-badge">
                 <i class="fa-solid fa-inbox"></i>
                 <span id="successEmail">Check your inbox</span>
@@ -383,503 +316,225 @@
             <p class="success-link">Already confirmed? <a href="/login">Sign in →</a></p>
         </div>
 
-    </div><!-- /.form-container -->
-</div><!-- /.right-panel -->
-
-<!-- ═══════════════════════════════════════════════════════════════════════
-     GOOGLE OAUTH TERMS MODAL
-     Shown when Google OAuth completes but user hasn't accepted terms yet.
-     This gates EVERY Google sign-in until terms are explicitly accepted.
-═══════════════════════════════════════════════════════════════════════ -->
-<div id="termsModal" class="modal-overlay" role="dialog" aria-modal="true" aria-label="Terms of Service">
-    <div class="modal-box">
-        <button class="modal-close" id="modalCloseBtn" aria-label="Close">
-            <i class="fa-solid fa-xmark"></i>
-        </button>
-
-        <h3>Before you continue with Google</h3>
-        <p>
-            Curabook PHI stores and analyzes your personal health data.
-            Please review our data practices and accept before accessing your account.
-        </p>
-        <ul>
-            <li>Health data encrypted at rest (AES-256) and in transit</li>
-            <li>Your name and ID removed before any AI processing</li>
-            <li>Data never sold to advertisers or third parties</li>
-            <li>Export or delete all your data at any time</li>
-        </ul>
-
-        <div class="consent-badge">
-            <i class="fa-solid fa-shield-halved"></i>
-            GDPR Compliant &nbsp;·&nbsp; AES-256 Encrypted &nbsp;·&nbsp; No Data Selling
-        </div>
-
-        <label class="modal-terms-row">
-            <input type="checkbox" id="modalTermsCheck">
-            <span>
-                I agree to the <a href="/terms" target="_blank">Terms of Service</a>
-                and <a href="/privacy" target="_blank">Privacy Policy</a>, and consent to
-                Curabook PHI processing my health data as described above.
-            </span>
-        </label>
-        <div class="modal-terms-error" id="modalTermsError">
-            You must check this box to continue.
-        </div>
-
-        <div class="modal-actions">
-            <button class="btn-decline" id="modalDeclineBtn">Decline &amp; Sign Out</button>
-            <button class="btn-accept" id="modalAcceptBtn">Accept &amp; Enter PHI</button>
-        </div>
     </div>
 </div>
 
 <script>
-// ═══════════════════════════════════════════════════════════════════════════
-// CONFIGURATION
-// ═══════════════════════════════════════════════════════════════════════════
-const API_BASE     = "https://api.curabook.com";
-const SUPABASE_URL = "https://pbeaawlxdcrdbvlmpqhc.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBiZWFhd2x4ZGNyZGJ2bG1wcWhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwMDk0MzksImV4cCI6MjA5MTU4NTQzOX0.6bUpYrDbe0mQjjBHX8Qscj-5R8i4-SqAtW_Z1UFzJ10";
-
-// ═══════════════════════════════════════════════════════════════════════════
-// STATE
-// ═══════════════════════════════════════════════════════════════════════════
-let _sb          = null;
-let _userId      = null;
+const API_BASE = "https://api.curabook.com";
+let supabaseClient = null;
+let _userId = null;
 let _accessToken = null;
-let _pendingGoogleUser    = null;
-let _pendingGoogleSession = null;
-let _redirecting = false;
 
 const ob = { glp1Status: null, medName: null, goalWeight: null, concern: null };
 
-// ═══════════════════════════════════════════════════════════════════════════
-// UTILITIES
-// ═══════════════════════════════════════════════════════════════════════════
-function showStatus(msg, type = "error") {
-    const el = document.getElementById("statusMsg");
-    el.textContent = msg;
-    el.className   = "status-msg " + type;
-}
-function clearStatus() {
-    const el = document.getElementById("statusMsg");
-    el.className = "status-msg";
-}
-function showFieldError(id, show) {
-    const el = document.getElementById(id);
-    if (el) el.classList.toggle("show", show);
-    const input = document.getElementById(id.replace("Error", ""));
-    if (input) input.classList.toggle("error", show);
-}
-function setLoading(btn, loading, label = "Create Free Account") {
-    btn.disabled  = loading;
-    btn.innerHTML = loading
-        ? '<span class="spinner"></span> Creating account…'
-        : label;
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// REDIRECT — central place, only runs once
-// ═══════════════════════════════════════════════════════════════════════════
-function doRedirect() {
-    if (_redirecting) return;
-    _redirecting = true;
-    window.location.href = "/app";
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// CONSENT — save to backend
-// ═══════════════════════════════════════════════════════════════════════════
-async function saveConsentToBackend(token) {
-    if (!token) return;
-    try {
-        await fetch(`${API_BASE}/api/consent`, {
-            method:  "POST",
-            headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
-            body:    JSON.stringify({
-                consents: ["data_processing", "ai_processing", "document_processing"]
-            }),
-        });
-    } catch (e) {
-        console.warn("[CONSENT] Backend consent save error (non-fatal):", e);
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// TERMS CHECK KEY — localStorage key for accepted status
-// ═══════════════════════════════════════════════════════════════════════════
-function termsKey(uid) { return `phi_terms_${uid}`; }
-function hasAcceptedTerms(uid) { return !!localStorage.getItem(termsKey(uid)); }
-function markTermsAccepted(uid) { localStorage.setItem(termsKey(uid), Date.now().toString()); }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// GOOGLE TERMS MODAL
-// ═══════════════════════════════════════════════════════════════════════════
-function openTermsModal(user, session) {
-    _pendingGoogleUser    = user;
-    _pendingGoogleSession = session;
-
-    const modal = document.getElementById("termsModal");
-    modal.classList.add("open");
-    document.getElementById("modalTermsCheck").checked = false;
-    document.getElementById("modalTermsError").classList.remove("show");
-}
-
-function closeTermsModal() {
-    const modal = document.getElementById("termsModal");
-    modal.classList.remove("open");
-    _pendingGoogleUser    = null;
-    _pendingGoogleSession = null;
-}
-
-document.getElementById("modalCloseBtn").addEventListener("click", async () => {
-    closeTermsModal();
-    // Sign them out if they close without accepting
-    try { await _sb.auth.signOut(); } catch (e) {}
-});
-
-document.getElementById("modalDeclineBtn").addEventListener("click", async () => {
-    closeTermsModal();
-    try { await _sb.auth.signOut(); } catch (e) {}
-    showStatus("You must accept the Terms of Service to use Curabook PHI.", "error");
-});
-
-document.getElementById("modalAcceptBtn").addEventListener("click", async () => {
-    const checked = document.getElementById("modalTermsCheck").checked;
-    if (!checked) {
-        document.getElementById("modalTermsError").classList.add("show");
-        return;
-    }
-
-    const btn  = document.getElementById("modalAcceptBtn");
-    btn.disabled  = true;
-    btn.innerHTML = '<span class="spinner"></span> Saving…';
-
-    const user    = _pendingGoogleUser;
-    const session = _pendingGoogleSession;
-
-    if (!user) { closeTermsModal(); return; }
-
-    // Mark accepted locally
-    markTermsAccepted(user.id);
-
-    // Save consent to backend
-    const token = session?.access_token;
-    if (token) {
-        await saveConsentToBackend(token);
-    }
-
-    closeTermsModal();
-    doRedirect();
-});
-
-// ═══════════════════════════════════════════════════════════════════════════
-// EMAIL SIGNUP
-// ═══════════════════════════════════════════════════════════════════════════
-document.getElementById("signupBtn").addEventListener("click", async () => {
-    if (!_sb) { showStatus("App is loading — please wait a moment."); return; }
-
-    clearStatus();
-
-    const firstName = document.getElementById("firstName").value.trim();
-    const lastName  = document.getElementById("lastName").value.trim();
-    const email     = document.getElementById("email").value.trim();
-    const password  = document.getElementById("password").value;
-    const terms     = document.getElementById("termsCheck").checked;
-    const btn       = document.getElementById("signupBtn");
-
-    // Validate
-    let hasErrors = false;
-    const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-    showFieldError("emailError", !emailValid);
-    if (!emailValid) hasErrors = true;
-
-    showFieldError("passwordError", password.length < 8);
-    if (password.length < 8) hasErrors = true;
-
-    const termsErrEl = document.getElementById("termsError");
-    if (!terms) {
-        termsErrEl.classList.add("show");
-        hasErrors = true;
-    } else {
-        termsErrEl.classList.remove("show");
-    }
-
-    if (hasErrors) return;
-
-    setLoading(btn, true);
-
-    try {
-        const { data, error } = await _sb.auth.signUp({
-            email,
-            password,
-            options: {
-                data:       { first_name: firstName, last_name: lastName },
-                redirectTo: `${window.location.origin}/login`,
-            },
-        });
-
-        if (error) {
-            showStatus(error.message);
-            setLoading(btn, false);
-            return;
-        }
-
-        if (data.user) {
-            _userId = data.user.id;
-            markTermsAccepted(_userId);
-        }
-        if (data.session) {
-            _accessToken = data.session.access_token;
-            await saveConsentToBackend(_accessToken);
-        }
-
-        // If session exists immediately (email confirmation disabled in Supabase)
-        if (data.session) {
-            document.getElementById("signupStep").style.display = "none";
-            document.getElementById("onboardingStep").style.display = "block";
-        } else {
-            // Email confirmation required
-            document.getElementById("signupStep").style.display = "none";
-            document.getElementById("successState").style.display = "block";
-            if (firstName) {
-                document.getElementById("successTitle").textContent = `Almost there, ${firstName}!`;
-            }
-            document.getElementById("successEmail").textContent = email;
-        }
-
-    } catch (err) {
-        console.error("[SIGNUP]", err);
-        showStatus("Something went wrong. Please try again.");
-        setLoading(btn, false);
-    }
-});
-
-// Enter key on form
-document.addEventListener("keydown", e => {
-    if (e.key === "Enter" && document.getElementById("signupStep").style.display !== "none") {
-        e.preventDefault();
-        document.getElementById("signupBtn").click();
-    }
-});
-
-// ═══════════════════════════════════════════════════════════════════════════
-// GOOGLE OAUTH
-// FIX: Google OAuth now ALWAYS shows terms modal for new users.
-// For returning users who already accepted, it goes straight to /app.
-// ═══════════════════════════════════════════════════════════════════════════
-document.getElementById("googleBtn").addEventListener("click", async () => {
-    if (!_sb) return;
-    try {
-        // Redirect to Google — callback handled by onAuthStateChange below
-        await _sb.auth.signInWithOAuth({
-            provider: "google",
-            options: {
-                // Redirect back to THIS page so we can intercept and show terms
-                redirectTo: `${window.location.origin}/signup`,
-            },
-        });
-    } catch (e) {
-        showStatus("Google sign-in unavailable. Please use email instead.");
-    }
-});
-
-// ═══════════════════════════════════════════════════════════════════════════
-// AUTH STATE HANDLER
-// This handles both:
-//   1. Fresh Google OAuth callback (SIGNED_IN after redirect)
-//   2. Existing session on page load
-// ═══════════════════════════════════════════════════════════════════════════
-async function handleAuthState(event, session) {
-    if (!session?.user) return;
-
-    const user      = session.user;
-    const isGoogle  = user.app_metadata?.provider === "google" ||
-                      (user.app_metadata?.providers || []).includes("google");
-
-    // For Google users: enforce terms gate
-    if (isGoogle) {
-        if (!hasAcceptedTerms(user.id)) {
-            // Show terms modal — do NOT redirect yet
-            openTermsModal(user, session);
-            return;
-        }
-        // Already accepted → go to app
-        doRedirect();
-        return;
-    }
-
-    // For email users: they already checked the box during signup
-    // Only redirect if they somehow end up here with a valid session
-    if (event === "SIGNED_IN") {
-        doRedirect();
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// ONBOARDING
-// ═══════════════════════════════════════════════════════════════════════════
-function goToPanel(panel) {
-    ["A","B","C","D"].forEach(p => {
-        document.getElementById("panel" + p).style.display = p === panel ? "block" : "none";
+function initSupabase() {
+    const SUPABASE_URL = "https://pbeaawlxdcrdbvlmpqhc.supabase.co";
+    const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBiZWFhd2x4ZGNyZGJ2bG1wcWhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwMDk0MzksImV4cCI6MjA5MTU4NTQzOX0.6bUpYrDbe0mQjjBHX8Qscj-5R8i4-SqAtW_Z1UFzJ10";
+    supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+        auth: { detectSessionInUrl: true, persistSession: true }
     });
-    const idx = {"A":0,"B":1,"C":2,"D":3}[panel];
-    document.querySelectorAll(".op-dot").forEach((dot, i) => {
-        dot.classList.toggle("active", i <= idx);
+}
+
+function setStatus(msg, type='') {
+    const el = document.getElementById('status-msg');
+    el.textContent = msg;
+    el.className = 'status-msg ' + type;
+}
+
+function goToPanel(panel) {
+    ['A','B','C','D'].forEach(p => {
+        document.getElementById('panel' + p).style.display = p === panel ? 'block' : 'none';
+    });
+    const idx = {'A':0,'B':1,'C':2,'D':3}[panel];
+    document.querySelectorAll('.op-dot').forEach((dot, i) => {
+        dot.classList.toggle('active', i <= idx);
     });
 }
 
 function selectOption(btn, field) {
-    btn.closest(".glp1-option-grid, .concern-list")
-       .querySelectorAll(".glp1-option, .concern-item")
-       .forEach(el => el.classList.remove("selected"));
-    btn.classList.add("selected");
+    btn.closest('.glp1-option-grid, .concern-list')
+       .querySelectorAll('.glp1-option, .concern-item')
+       .forEach(el => el.classList.remove('selected'));
+    btn.classList.add('selected');
     ob[field] = btn.dataset.val;
-    if (field === "glp1Status") {
-        document.getElementById("nextA").disabled = false;
-        if (ob.glp1Status === "never") ob.medName = "none";
+
+    if (field === 'glp1Status') {
+        document.getElementById('nextA').disabled = false;
+        if (ob.glp1Status === 'never') ob.medName = 'none';
     }
-    if (field === "concern") {
-        document.getElementById("nextD").disabled = false;
+    if (field === 'concern') {
+        document.getElementById('nextD').disabled = false;
     }
 }
 
-// Goal weight input
-document.addEventListener("DOMContentLoaded", () => {
-    const gwInput = document.getElementById("goalWeight");
+document.addEventListener('DOMContentLoaded', () => {
+    const gwInput = document.getElementById('goalWeight');
     if (gwInput) {
-        gwInput.addEventListener("input", () => {
-            const gw      = parseFloat(gwInput.value);
-            const preview = document.getElementById("proteinPreview");
-            const calc    = document.getElementById("proteinCalc");
-            const nextC   = document.getElementById("nextC");
+        gwInput.addEventListener('input', () => {
+            const gw = parseFloat(gwInput.value);
+            const preview = document.getElementById('proteinPreview');
+            const calc    = document.getElementById('proteinCalc');
+            const nextC   = document.getElementById('nextC');
             if (gw >= 80 && gw <= 400) {
-                const target  = Math.round(gw * 0.545 * 10) / 10;
+                const target = Math.round(gw * 0.545 * 10) / 10;
                 const perMeal = Math.round(target / 3 * 10) / 10;
-                calc.textContent          = `${target}g protein/day (${perMeal}g per meal)`;
-                preview.style.display     = "block";
-                nextC.disabled            = false;
-                ob.goalWeight             = gw;
+                calc.textContent = `${target}g protein/day (${perMeal}g per meal)`;
+                preview.style.display = 'block';
+                nextC.disabled = false;
+                ob.goalWeight = gw;
             } else {
-                preview.style.display = "none";
-                nextC.disabled        = true;
+                preview.style.display = 'none';
+                nextC.disabled = true;
             }
         });
     }
 
-    const medSelect = document.getElementById("medName");
+    const medSelect = document.getElementById('medName');
     if (medSelect) {
-        medSelect.addEventListener("change", () => {
+        medSelect.addEventListener('change', () => {
             ob.medName = medSelect.value || null;
-            document.getElementById("nextB").disabled = !medSelect.value;
+            document.getElementById('nextB').disabled = !medSelect.value;
         });
     }
 });
 
 async function finishOnboarding() {
-    const btn = document.getElementById("nextD");
-    btn.disabled  = true;
-    btn.innerHTML = "Setting up PHI…";
+    const btn = document.getElementById('nextD');
+    btn.disabled = true;
+    btn.textContent = 'Setting up PHI…';
 
-    // Save consent
     if (_accessToken) {
-        await saveConsentToBackend(_accessToken);
+        try {
+            await fetch(`${API_BASE}/api/consent`, {
+                method: 'POST',
+                headers: {'Content-Type':'application/json','Authorization':'Bearer '+_accessToken},
+                body: JSON.stringify({consents:['data_processing','ai_processing','document_processing']})
+            });
+        } catch(e) {}
     }
 
-    // Save onboarding data
-    if (_userId) {
+    if (_userId && _accessToken) {
         try {
-            await _sb.from("glp1_onboarding").upsert({
+            await supabaseClient.from('glp1_onboarding').upsert({
                 user_id:         _userId,
                 glp1_status:     ob.glp1Status,
                 medication_name: ob.medName,
                 goal_weight_lbs: ob.goalWeight,
                 primary_concern: ob.concern,
-            }, { onConflict: "user_id" });
+            }, {onConflict:'user_id'});
 
             if (ob.goalWeight) {
-                await _sb.from("user_profiles").upsert({
+                await supabaseClient.from('user_profiles').upsert({
                     user_id:         _userId,
                     goal_weight_lbs: ob.goalWeight,
                     glp1_status:     ob.glp1Status,
-                }, { onConflict: "user_id" });
+                }, {onConflict:'user_id'});
             }
 
-            // Store onboarding facts in memory
             const facts = [];
-            if (ob.glp1Status !== "never" && ob.medName && ob.medName !== "none") {
+            if (ob.glp1Status !== 'never' && ob.medName && ob.medName !== 'none') {
                 facts.push(`User is on/was on ${ob.medName} — GLP-1 status: ${ob.glp1Status}`);
             }
             if (ob.goalWeight) {
-                const pt = Math.round(ob.goalWeight * 0.545 * 10) / 10;
-                facts.push(`User's goal weight is ${ob.goalWeight} lbs — Muscle Defense protein target: ${pt}g/day`);
+                facts.push(`User's goal weight is ${ob.goalWeight} lbs — Muscle Defense protein target: ${Math.round(ob.goalWeight * 0.545 * 10)/10}g/day`);
             }
-            const concernLabels = {
-                food_noise:    "User reports food noise/ghrelin surge as primary concern",
-                weight_regain: "User is concerned about weight regain after stopping GLP-1",
-                insurance:     "User has insurance/prior authorization concerns for GLP-1",
-                muscle_loss:   "User is concerned about muscle loss and body composition",
-                labs:          "User wants help understanding their lab results",
-            };
-            if (ob.concern && concernLabels[ob.concern]) {
-                facts.push(concernLabels[ob.concern]);
+            if (ob.concern) {
+                const concernLabels = {
+                    'food_noise':    'User reports food noise/ghrelin surge as primary concern',
+                    'weight_regain': 'User is concerned about weight regain after stopping GLP-1',
+                    'insurance':     'User has insurance/prior authorization concerns for GLP-1',
+                    'muscle_loss':   'User is concerned about muscle loss and body composition',
+                    'labs':          'User wants help understanding their lab results'
+                };
+                if (concernLabels[ob.concern]) facts.push(concernLabels[ob.concern]);
             }
             for (const fact of facts) {
-                await _sb.from("conversation_memories").insert({
-                    user_id:   _userId,
-                    fact,
-                    category:  "onboarding",
-                    is_active: true,
-                }).catch(() => {});
+                await supabaseClient.from('conversation_memories').insert({
+                    user_id: _userId, fact, category:'onboarding', is_active:true
+                }).catch(()=>{});
             }
-        } catch (e) {
-            console.warn("[ONBOARDING] Save error (non-fatal):", e);
+        } catch(e) {
+            console.warn('[ONBOARDING] Save error (non-fatal):', e);
         }
     }
 
-    if (ob.goalWeight) {
-        localStorage.setItem("phi_goal_wt", String(ob.goalWeight));
-    }
-
-    doRedirect();
+    localStorage.setItem('phi_goal_wt', String(ob.goalWeight || 165));
+    // ── FIX: Redirects directly to /app ─────────────────────────
+    setTimeout(() => { window.location.href = '/app'; }, 400);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// BOOT
-// ═══════════════════════════════════════════════════════════════════════════
-(async function boot() {
+document.getElementById('signupBtn').addEventListener('click', async () => {
+    if (!supabaseClient) { setStatus("Loading… please wait", "error"); return; }
+    const firstName = document.getElementById('firstName').value.trim();
+    const lastName  = document.getElementById('lastName').value.trim();
+    const email     = document.getElementById('email').value.trim();
+    const password  = document.getElementById('password').value;
+    const terms     = document.getElementById('termsCheck');
+    const btn       = document.getElementById('signupBtn');
+
+    if (!email || !password) { setStatus('Please enter your email and password.', 'error'); return; }
+    if (password.length < 8) { setStatus('Password must be at least 8 characters.', 'error'); return; }
+    if (!terms.checked) { setStatus('Please accept the Terms and Privacy Policy.', 'error'); return; }
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Creating account…';
+
     try {
-        _sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
-            auth: {
-                detectSessionInUrl: true,
-                persistSession:     true,
-                autoRefreshToken:   true,
-                flowType:           "implicit",
+        const { data, error } = await supabaseClient.auth.signUp({
+            email, password,
+            options: {
+                data: { first_name: firstName, last_name: lastName },
+                redirectTo: `${window.location.origin}/login`,
             },
         });
 
-        // Listen for auth changes (handles OAuth callback redirect)
-        _sb.auth.onAuthStateChange(async (event, session) => {
-            console.log("[SIGNUP AUTH]", event, session?.user?.email?.slice(0, 8) ?? "none");
-            if (event === "SIGNED_IN" && session?.user) {
-                await handleAuthState(event, session);
-            }
-        });
-
-        // Check for existing session (OAuth redirect lands back here)
-        const hasOAuthHash = window.location.hash.includes("access_token");
-        if (!hasOAuthHash) {
-            const { data: { session } } = await _sb.auth.getSession();
-            if (session?.user) {
-                await handleAuthState("SIGNED_IN", session);
-            }
+        if (error) {
+            setStatus(error.message, 'error');
+            btn.disabled = false;
+            btn.innerHTML = 'Create Free Account';
+            return;
         }
 
+        if (data.user) {
+            _userId = data.user.id;
+            localStorage.setItem(`phi_terms_${data.user.id}`, Date.now().toString());
+        }
+        if (data.session) {
+            _accessToken = data.session.access_token;
+        }
+
+        if (data.session) {
+            document.getElementById('signupStep').style.display = 'none';
+            document.getElementById('onboardingStep').style.display = 'block';
+        } else {
+            document.getElementById('signupStep').style.display = 'none';
+            document.getElementById('successState').style.display = 'block';
+            if (firstName) document.getElementById('successTitle').textContent = `Almost there, ${firstName}!`;
+            document.getElementById('successEmail').textContent = email;
+        }
     } catch (err) {
-        console.error("[SIGNUP BOOT]", err);
-        showStatus("App failed to load. Please refresh the page.");
+        console.error('[SIGNUP]', err);
+        setStatus('Something went wrong. Please try again.', 'error');
+        btn.disabled = false;
+        btn.innerHTML = 'Create Free Account';
     }
-})();
+});
+
+document.getElementById('googleBtn').addEventListener('click', async () => {
+    if (!supabaseClient) return;
+    await supabaseClient.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: `${window.location.origin}/app` },
+    });
+});
+
+document.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && document.getElementById('signupStep').style.display !== 'none') {
+        document.getElementById('signupBtn').click();
+    }
+});
+
+try { initSupabase(); } catch(err) { setStatus('App failed to load. Please refresh.', 'error'); }
 </script>
 </body>
 </html>
