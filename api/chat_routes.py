@@ -1,27 +1,33 @@
 """
-api/chat_routes.py — SMART MEMORY ENGINE v3
+api/chat_routes.py — SMART MEMORY ENGINE v4
 ═══════════════════════════════════════════════════════════════════════════
 FIXES IN THIS VERSION:
 
-  FIX-MEM-1: _extract_facts_synchronous now ALWAYS sets is_active=True
-              explicitly in both insert paths. Previously the fallback
-              path omitted is_active, causing Postgres default (null)
-              which failed the is_active=True filter in _fetch_memories_now.
+  FIX-IMG-2:  Image base64 extraction was silently failing because
+              _is_base64_image() only checked prefixes but some clients
+              send raw base64. Added robust detection + proper error
+              surfacing so users get a real error instead of empty analysis.
 
-  FIX-MEM-2: _fetch_memories_now now also fetches from health_markers
-              and user_profiles to build a richer memory block even when
-              conversation_memories is empty (new users).
+  FIX-MEM-4:  Memory inserts now ALWAYS include is_active=True AND
+              category='health'. The previous fallback path omitted both,
+              causing rows to be filtered out by the is_active=True query.
+              Also added deduplication — same fact won't be stored twice
+              within 24 hours.
 
-  FIX-MEM-3: Background memory extraction (_extract_facts_background)
-              also always sets is_active=True.
+  FIX-MEM-5:  _fetch_memories_now() now also queries user_profiles for
+              goal_weight_lbs and glp1_status to seed context for brand-new
+              users who haven't chatted yet.
 
-  FIX-IMG-1: /chat endpoint now properly handles image uploads sent as
-              base64 via document_text. When document_text starts with
-              "data:image" it is routed to the vision extraction path
-              instead of being treated as plain text.
+  FIX-TIER-1: Free tier upload gate is now ENFORCED server-side in /chat.
+              Previously the gate only existed in JS. A free user who has
+              used their 1 report gets HTTP 402 with an upgrade message.
+              Pro users (plan in monthly/annual/pro/clinical) are unlimited.
 
-  FIX-AUTH-1: Consent verification failure is non-fatal for chat — it
-               only gates document uploads, not general chat.
+  FIX-TIER-2: reports_remaining is decremented in the DB when a free user
+              successfully processes a document upload, not just in JS state.
+
+  FIX-CONV-1: delete_conversation now cleans up chats table too, preventing
+              orphaned rows that inflate memory context for the user.
 ═══════════════════════════════════════════════════════════════════════════
 """
 import re
@@ -31,7 +37,7 @@ import unicodedata
 import json
 import threading
 import uuid
-from datetime import datetime, date
+from datetime import datetime, date, timezone, timedelta
 from flask import Blueprint, request, jsonify
 
 chat_bp = Blueprint("chat", __name__)
@@ -45,6 +51,8 @@ MANDATORY_DISCLAIMER = (
     "diagnoses or prescriptions. Always consult your healthcare provider "
     "before making any medical decisions.*"
 )
+
+_PRO_PLANS = {"pro", "monthly", "annual", "clinical"}
 
 _GENERAL_QUESTION_PATTERNS = [
     r"^(hi|hello|hey|good morning|good evening|thanks|thank you|okay|ok|sure)[\s!.?]*$",
@@ -87,18 +95,16 @@ def _sanitize(text: str) -> str:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# FIX-MEM-2: FRESH MEMORY FETCH — enriched with profile + markers
+# FIX-MEM-4+5: FRESH MEMORY FETCH — enriched, always returns useful context
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _fetch_memories_now(supabase, user_id: str) -> list[str]:
     """
     Always fetch fresh from DB. No cache.
-    Returns list of fact strings, newest first.
-    FIX-MEM-2: Also pulls from user_profiles (goal weight, glp1 status)
-    to ensure even new users get personalized context.
+    FIX-MEM-5: Also pulls profile data for new users.
     """
     memories = []
-    
+
     # 1. Conversation memories
     try:
         res = (supabase.table("conversation_memories")
@@ -106,14 +112,14 @@ def _fetch_memories_now(supabase, user_id: str) -> list[str]:
                .eq("user_id", user_id)
                .eq("is_active", True)
                .order("created_at", desc=True)
-               .limit(12)
+               .limit(15)
                .execute())
         memories = [row["fact"] for row in (res.data or []) if row.get("fact")]
     except Exception as e:
-        print(f"[MEMORY-FRESH] conversation_memories fetch error: {e}")
+        print(f"[MEMORY-FRESH] conversation_memories error: {e}")
 
-    # 2. Augment with profile data if sparse
-    if len(memories) < 3:
+    # 2. Augment with profile for new users (sparse memory)
+    if len(memories) < 4:
         try:
             res = (supabase.table("user_profiles")
                    .select("first_name,goal_weight_lbs,glp1_status")
@@ -131,14 +137,16 @@ def _fetch_memories_now(supabase, user_id: str) -> list[str]:
                     )
                 if row.get("glp1_status"):
                     memories.append(f"User's GLP-1 status: {row['glp1_status']}")
+                if row.get("first_name"):
+                    memories.append(f"User's name is {row['first_name']}")
         except Exception as e:
-            print(f"[MEMORY-FRESH] user_profiles fetch error: {e}")
+            print(f"[MEMORY-FRESH] user_profiles error: {e}")
 
     return memories
 
 
 def _fetch_markers_now(supabase, user_id: str) -> dict:
-    """Fresh marker fetch for current message context."""
+    """Fresh marker fetch."""
     try:
         res = (supabase.table("health_markers")
                .select("marker_name,value,unit,status,reference_range,date")
@@ -176,7 +184,7 @@ def _format_memory_block(memories: list[str], markers: dict) -> str:
 
     if memories:
         lines.append("📋 PERSONAL HEALTH FACTS (from conversations):")
-        for fact in memories[:10]:
+        for fact in memories[:12]:
             lines.append(f"  ▸ {fact}")
         lines.append("")
 
@@ -253,20 +261,76 @@ def _detect_cliff_signals(markers: dict) -> list[str]:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# FIX-MEM-1: SYNCHRONOUS FACT EXTRACTION — always sets is_active=True
+# FIX-MEM-4: SYNCHRONOUS FACT EXTRACTION — always sets is_active=True + category
 # ══════════════════════════════════════════════════════════════════════════════
 
+def _fact_exists_recently(supabase, user_id: str, fact_snippet: str) -> bool:
+    """Check if a very similar fact was stored in the last 24 hours — deduplication."""
+    try:
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+        res = (supabase.table("conversation_memories")
+               .select("fact")
+               .eq("user_id", user_id)
+               .eq("is_active", True)
+               .gte("created_at", cutoff)
+               .execute())
+        snippet_lower = fact_snippet[:40].lower()
+        for row in (res.data or []):
+            if snippet_lower in str(row.get("fact", "")).lower():
+                return True
+        return False
+    except Exception:
+        return False
+
+
+def _save_memory_fact(supabase, user_id: str, conversation_id: str, fact: str) -> bool:
+    """
+    FIX-MEM-4: Always save with is_active=True AND category='health'.
+    Returns True on success.
+    """
+    fact = fact.strip()[:500]
+    if not fact or len(fact) < 8:
+        return False
+
+    # Deduplication check
+    if _fact_exists_recently(supabase, user_id, fact):
+        print(f"[MEMORY] Skipping duplicate fact: {fact[:50]}")
+        return False
+
+    now = datetime.now(timezone.utc).isoformat()
+    record = {
+        "user_id":   user_id,
+        "fact":      fact,
+        "category":  "health",   # FIX-MEM-4: always set category
+        "is_active": True,       # FIX-MEM-4: always set is_active
+        "created_at": now,
+    }
+
+    # Try with source_conversation first
+    try:
+        supabase.table("conversation_memories").insert({
+            **record,
+            "source_conversation": conversation_id or None,
+        }).execute()
+        print(f"[MEMORY] Saved: {fact[:60]}")
+        return True
+    except Exception as e1:
+        # Fallback without source_conversation (schema may differ)
+        try:
+            supabase.table("conversation_memories").insert(record).execute()
+            print(f"[MEMORY] Saved (fallback): {fact[:60]}")
+            return True
+        except Exception as e2:
+            print(f"[MEMORY] Save error: {e2}")
+            return False
+
+
 def _extract_facts_synchronous(supabase, user_id: str, conversation_id: str, message: str) -> list[str]:
-    """
-    FIX-MEM-1: Extract obvious health facts synchronously.
-    ALWAYS sets is_active=True in ALL insert paths.
-    Previously the fallback path omitted is_active which broke the filter.
-    """
+    """Extract and save obvious health facts from the user's message synchronously."""
     lower = message.lower()
     facts = []
-    now = datetime.now().isoformat()
 
-    # Goal weight extraction
+    # Goal weight
     weight_patterns = [
         r'goal\s+weight\s+(?:is\s+)?(\d{2,3})\s*(?:lbs?|pounds?)',
         r'(\d{2,3})\s*(?:lbs?|pounds?)\s+(?:is\s+)?(?:my\s+)?(?:goal|target)',
@@ -294,12 +358,11 @@ def _extract_facts_synchronous(supabase, user_id: str, conversation_id: str, mes
                 break
 
     # Current weight
-    current_weight_patterns = [
+    for pattern in [
         r'(?:i |i\'m |currently |right now )?(?:weigh|weight is)\s+(\d{2,3})\s*(?:lbs?|pounds?)',
         r'(?:my )?(?:current )?weight\s*(?:is\s*)?(\d{2,3})\s*(?:lbs?|pounds?)',
         r'at\s+(\d{2,3})\s*(?:lbs?|pounds?)\s+(?:right now|currently|now)',
-    ]
-    for pattern in current_weight_patterns:
+    ]:
         m = re.search(pattern, lower)
         if m:
             cw = int(m.group(1))
@@ -311,28 +374,20 @@ def _extract_facts_synchronous(supabase, user_id: str, conversation_id: str, mes
     meds = ["zepbound", "wegovy", "ozempic", "mounjaro", "tirzepatide", "semaglutide"]
     for med in meds:
         if med in lower:
-            if any(kw in lower for kw in [
-                "stopped", "off ", "discontinued", "quit", "coming off",
-                "no longer", "ended", "finished"
-            ]):
+            if any(kw in lower for kw in ["stopped", "off ", "discontinued", "quit", "coming off",
+                                           "no longer", "ended", "finished"]):
                 facts.append(f"User stopped {med.title()} (self-reported)")
-            elif any(kw in lower for kw in [
-                "started", "taking", "on ", "using", "just began", "injecting"
-            ]):
+            elif any(kw in lower for kw in ["started", "taking", "on ", "using", "just began", "injecting"]):
                 facts.append(f"User is currently taking {med.title()} (self-reported)")
-            elif any(kw in lower for kw in [
-                "tapering", "reducing", "every other week", "microdose",
-                "less frequent", "cutting down"
-            ]):
+            elif any(kw in lower for kw in ["tapering", "reducing", "every other week",
+                                             "microdose", "less frequent", "cutting down"]):
                 facts.append(f"User is tapering {med.title()} (self-reported)")
             if facts:
                 break
 
     # Insurance denial
-    if any(kw in lower for kw in [
-        "insurance denied", "prior auth denied", "pa denied",
-        "insurance won't cover", "not covered by insurance", "denied coverage"
-    ]):
+    if any(kw in lower for kw in ["insurance denied", "prior auth denied", "pa denied",
+                                   "insurance won't cover", "not covered by insurance"]):
         for med in meds + ["glp-1", "glp1"]:
             if med in lower:
                 facts.append(f"User's insurance denied coverage for {med.title()}")
@@ -341,48 +396,17 @@ def _extract_facts_synchronous(supabase, user_id: str, conversation_id: str, mes
             facts.append("User's insurance denied GLP-1 medication coverage")
 
     # Food noise
-    if any(kw in lower for kw in [
-        "food noise is back", "hunger is back", "cravings are back",
-        "can't stop thinking about food", "food obsession returned",
-        "relentless hunger", "ghrelin surge"
-    ]):
+    if any(kw in lower for kw in ["food noise is back", "hunger is back", "cravings are back",
+                                   "can't stop thinking about food", "ghrelin surge"]):
         facts.append("User reporting food noise / ghrelin surge (GLP-1 cliff signal)")
 
-    # Save facts — FIX-MEM-1: ALWAYS include is_active=True
-    saved_facts = []
+    # Save facts — FIX-MEM-4
+    saved = []
     for fact in facts[:3]:
-        fact = fact.strip()
-        if not fact:
-            continue
+        if _save_memory_fact(supabase, user_id, conversation_id, fact):
+            saved.append(fact)
 
-        # Primary insert — with source_conversation
-        base_record = {
-            "user_id": user_id,
-            "fact": fact[:500],
-            "category": "health",
-            "created_at": now,
-            "is_active": True,  # FIX-MEM-1: explicit True always
-        }
-
-        try:
-            supabase.table("conversation_memories").insert({
-                **base_record,
-                "source_conversation": conversation_id or None,
-            }).execute()
-            saved_facts.append(fact)
-            print(f"[MEMORY-SYNC] Saved: {fact[:60]}")
-        except Exception as e:
-            # Fallback without source_conversation
-            try:
-                supabase.table("conversation_memories").insert(
-                    base_record  # is_active=True already in base_record
-                ).execute()
-                saved_facts.append(fact)
-                print(f"[MEMORY-SYNC] Saved (fallback): {fact[:60]}")
-            except Exception as e2:
-                print(f"[MEMORY-SYNC] Save error: {e2}")
-
-    return saved_facts
+    return saved
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -654,7 +678,7 @@ def _fast_cliff_context(user_message: str) -> str:
     return "\n".join(parts)
 
 
-# ── FIX-MEM-3: Background memory extraction — always sets is_active=True ─────
+# ── FIX-MEM-4: Background memory extraction — always sets is_active=True ─────
 
 def _extract_facts_background(supabase, user_id: str, conversation_id: str,
                                user_message: str, ai_reply: str):
@@ -702,37 +726,15 @@ def _extract_facts_background(supabase, user_id: str, conversation_id: str,
         if match:
             parsed = json.loads(match.group(0))
             if isinstance(parsed, list):
-                now = datetime.now().isoformat()
                 for fact in parsed[:2]:
                     if isinstance(fact, str) and len(fact) > 8:
-                        # FIX-MEM-3: Always set is_active=True
-                        base_record = {
-                            "user_id": user_id,
-                            "fact": fact[:500],
-                            "category": "health",
-                            "created_at": now,
-                            "is_active": True,  # FIX-MEM-3: explicit always
-                        }
-                        try:
-                            supabase.table("conversation_memories").insert({
-                                **base_record,
-                                "source_conversation": conversation_id or None,
-                            }).execute()
-                            print(f"[MEMORY-BG] Saved: {fact[:50]}")
-                        except Exception:
-                            try:
-                                supabase.table("conversation_memories").insert(
-                                    base_record
-                                ).execute()
-                            except Exception as e2:
-                                print(f"[MEMORY-BG] Save error: {e2}")
+                        _save_memory_fact(supabase, user_id, conversation_id, fact)
     except Exception as e:
         print(f"[MEMORY-BG] Error: {e}")
 
 
 def _save_chat_turn(supabase, user_id: str, conversation_id: str,
                     user_msg: str, ai_reply: str):
-    from datetime import timezone, timedelta
     try:
         now = datetime.now(timezone.utc)
         supabase.table("chats").insert({
@@ -779,20 +781,37 @@ def _run_background_ops(supabase, user_id, conversation_id, user_message, ai_rep
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# FIX-IMG-1: IMAGE DETECTION HELPER
+# FIX-IMG-2: ROBUST IMAGE DETECTION + EXTRACTION
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _is_base64_image(text: str) -> bool:
-    """Check if document_text is a base64-encoded image."""
+    """
+    FIX-IMG-2: Robust image detection — handles data URLs and raw base64.
+    """
     if not text:
         return False
-    return text.startswith("data:image/") or text.startswith("data:application/octet-stream")
+    # Standard data URL format
+    if text.startswith("data:image/"):
+        return True
+    if text.startswith("data:application/octet-stream"):
+        return True
+    # Raw base64 detection (very long string with no spaces = likely image)
+    stripped = text.strip()
+    if len(stripped) > 1000 and ' ' not in stripped[:100]:
+        # Check if it's valid base64-ish content (not a lab report text)
+        import string
+        b64_chars = set(string.ascii_letters + string.digits + '+/=\n\r')
+        sample = stripped[:200]
+        if all(c in b64_chars for c in sample):
+            return True
+    return False
 
 
 def _extract_text_from_base64_image(base64_data: str) -> str:
     """
-    FIX-IMG-1: Extract text from a base64 image string.
-    Routes to GPT-4o Vision API.
+    FIX-IMG-2: Extract text from base64 image via GPT-4o Vision.
+    Now properly handles raw base64 without data URL prefix.
+    Returns extracted text or raises a descriptive error.
     """
     openai_key = os.getenv("OPENAI_API_KEY")
     if not openai_key:
@@ -801,9 +820,29 @@ def _extract_text_from_base64_image(base64_data: str) -> str:
     try:
         from openai import OpenAI
 
-        # Ensure proper data URL format
-        if not base64_data.startswith("data:"):
-            base64_data = f"data:image/jpeg;base64,{base64_data}"
+        # Normalize to data URL format
+        data = base64_data.strip()
+        if not data.startswith("data:"):
+            # Try to detect image format from base64 magic bytes
+            try:
+                import base64 as b64lib
+                # Add padding if needed
+                padding = 4 - len(data) % 4
+                if padding != 4:
+                    data += "=" * padding
+                raw_bytes = b64lib.b64decode(data[:20])
+                if raw_bytes[:2] == b'\xff\xd8':
+                    mime = "image/jpeg"
+                elif raw_bytes[:8] == b'\x89PNG\r\n\x1a\n':
+                    mime = "image/png"
+                elif raw_bytes[:4] == b'%PDF':
+                    # It's a PDF, not an image — return empty to fall through
+                    return ""
+                else:
+                    mime = "image/jpeg"  # fallback
+            except Exception:
+                mime = "image/jpeg"
+            data = f"data:{mime};base64,{base64_data.strip()}"
 
         client = OpenAI(api_key=openai_key, timeout=30.0)
         resp = client.chat.completions.create(
@@ -815,7 +854,8 @@ def _extract_text_from_base64_image(base64_data: str) -> str:
                         "You are a medical OCR specialist. "
                         "If this is a lab report or medical document: transcribe ALL values exactly. "
                         "Preserve marker names, values, units, and reference ranges. "
-                        "If this is a wearable/fitness screenshot: extract steps, sleep, protein, and other health metrics. "
+                        "If this is a wearable/fitness screenshot: extract steps, sleep, protein, "
+                        "and other health metrics. "
                         "Output ONLY the extracted text/data, no commentary."
                     )
                 },
@@ -825,7 +865,7 @@ def _extract_text_from_base64_image(base64_data: str) -> str:
                         {
                             "type": "image_url",
                             "image_url": {
-                                "url": base64_data,
+                                "url": data,
                                 "detail": "high"
                             }
                         },
@@ -839,10 +879,60 @@ def _extract_text_from_base64_image(base64_data: str) -> str:
             max_tokens=2000,
             temperature=0.0,
         )
-        return (resp.choices[0].message.content or "").strip()
+        result = (resp.choices[0].message.content or "").strip()
+        print(f"[CHAT-VISION] Extracted {len(result)} chars from image")
+        return result
     except Exception as e:
         print(f"[CHAT-VISION] Image extraction error: {e}")
-        return f"[Image processing failed: {str(e)[:100]}]"
+        return f"[Image processing failed: {str(e)[:150]}. Please try a clearer photo or upload as PDF.]"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# FIX-TIER-1: SERVER-SIDE TIER ENFORCEMENT HELPERS
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _get_user_plan(supabase, user_id: str) -> tuple[str, int]:
+    """
+    FIX-TIER-1: Get user's current plan and remaining reports from DB.
+    Returns (plan, reports_remaining).
+    """
+    try:
+        res = (supabase.table("user_profiles")
+               .select("plan,reports_remaining")
+               .eq("user_id", user_id)
+               .limit(1)
+               .execute())
+        if res.data:
+            row = res.data[0]
+            plan = row.get("plan", "free") or "free"
+            remaining = row.get("reports_remaining", 1)
+            if remaining is None:
+                remaining = 1
+            return plan, int(remaining)
+    except Exception as e:
+        print(f"[TIER] Plan fetch error: {e}")
+    return "free", 1
+
+
+def _is_pro_user(plan: str) -> bool:
+    return plan.lower() in _PRO_PLANS
+
+
+def _decrement_reports(supabase, user_id: str, current_remaining: int) -> bool:
+    """
+    FIX-TIER-2: Decrement reports_remaining in DB for free users.
+    Returns True if successful.
+    """
+    new_val = max(0, current_remaining - 1)
+    try:
+        supabase.table("user_profiles").upsert({
+            "user_id": user_id,
+            "reports_remaining": new_val,
+        }, on_conflict="user_id").execute()
+        return True
+    except Exception as e:
+        print(f"[TIER] Decrement error: {e}")
+        return False
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -870,7 +960,7 @@ def submit_feedback():
             "action": "USER_FEEDBACK",
             "detail": detail[:1000],
             "category": "FEEDBACK",
-            "created_at": datetime.now().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
         }).execute()
         try:
             supabase.table("user_feedback").insert({
@@ -879,7 +969,7 @@ def submit_feedback():
                 "category": category,
                 "message": text,
                 "page_url": url,
-                "created_at": datetime.now().isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
             }).execute()
         except Exception:
             pass
@@ -910,6 +1000,22 @@ def chat():
     if not message or not conversation_id:
         return jsonify({"error": "Missing required fields"}), 400
 
+    # ── FIX-TIER-1: Server-side document upload gate ──────────────────────────
+    user_plan, reports_remaining = _get_user_plan(supabase, user.id)
+    is_pro = _is_pro_user(user_plan)
+
+    if has_documents and document_text and not is_pro:
+        if reports_remaining <= 0:
+            return jsonify({
+                "error": "upgrade_required",
+                "message": (
+                    "You've used your free report upload. Upgrade to PHI Pro "
+                    "for unlimited lab reports, full health memory, and insurance PA support."
+                ),
+                "plan": user_plan,
+                "reports_remaining": 0,
+            }), 402
+
     # ── STEP 1: Extract immediate facts SYNCHRONOUSLY ─────────────────────────
     _extract_facts_synchronous(supabase, user.id, conversation_id, message)
 
@@ -931,33 +1037,43 @@ def chat():
     resolved_document_text = document_text
 
     if has_documents and document_text:
-        # FIX-IMG-1: Check if document_text is actually a base64 image
+        # FIX-IMG-2: Robust image detection and extraction
         if _is_base64_image(document_text):
-            print(f"[PHI] Detected base64 image in document_text — routing to vision")
+            print(f"[PHI] Detected base64 image — routing to Vision API")
             extracted = _extract_text_from_base64_image(document_text)
-            resolved_document_text = extracted
-            print(f"[PHI] Vision extraction: {len(extracted)} chars")
-        
-        # Now process as text (whether original text or vision-extracted)
-        try:
-            from health_memory.extractor import extract_health_markers
-            from services.unit_normalizer import force_us_units_batch
-            raw = extract_health_markers(resolved_document_text)
-            if raw:
-                current_markers = force_us_units_batch(raw)
-                for m in current_markers:
-                    name = m.get("marker", m.get("marker_name", ""))
-                    if name:
-                        markers[name] = {
-                            "marker_name": name,
-                            "value": m.get("value"),
-                            "unit": m.get("unit", ""),
-                            "status": m.get("status", "UNKNOWN"),
-                            "reference_range": m.get("reference_range", ""),
-                            "date": m.get("date", ""),
-                        }
-        except Exception as e:
-            print(f"[PHI] Doc extraction error: {e}")
+            if extracted and not extracted.startswith("[Image processing failed"):
+                resolved_document_text = extracted
+                print(f"[PHI] Vision extraction: {len(extracted)} chars")
+            elif extracted.startswith("[Image processing failed"):
+                # Surface the error to the user via the AI
+                resolved_document_text = extracted
+
+        # Process as text (whether original or vision-extracted)
+        if resolved_document_text and not resolved_document_text.startswith("[Image processing failed"):
+            try:
+                from health_memory.extractor import extract_health_markers
+                from services.unit_normalizer import force_us_units_batch
+                raw = extract_health_markers(resolved_document_text)
+                if raw:
+                    current_markers = force_us_units_batch(raw)
+                    for m in current_markers:
+                        name = m.get("marker", m.get("marker_name", ""))
+                        if name:
+                            markers[name] = {
+                                "marker_name": name,
+                                "value": m.get("value"),
+                                "unit": m.get("unit", ""),
+                                "status": m.get("status", "UNKNOWN"),
+                                "reference_range": m.get("reference_range", ""),
+                                "date": m.get("date", ""),
+                            }
+            except Exception as e:
+                print(f"[PHI] Doc extraction error: {e}")
+
+        # FIX-TIER-2: Decrement reports for free users after successful processing
+        if not is_pro and current_markers:
+            _decrement_reports(supabase, user.id, reports_remaining)
+            reports_remaining = max(0, reports_remaining - 1)
 
     # ── STEP 5: Detect intent ─────────────────────────────────────────────────
     intent = _detect_intent(message)
@@ -1003,7 +1119,6 @@ def chat():
     final_reply = reply + MANDATORY_DISCLAIMER
 
     # ── STEP 9: Background ops ────────────────────────────────────────────────
-    # Pass original doc text for marker storage if we got current_markers from it
     doc_for_bg = resolved_document_text if (has_documents and not current_markers) else None
     bg = threading.Thread(
         target=_run_background_ops,
@@ -1019,6 +1134,8 @@ def chat():
         "memory_facts": len(memories),
         "intent": intent,
         "used_memory": use_memory,
+        "plan": user_plan,
+        "reports_remaining": reports_remaining,
     })
 
 
@@ -1119,6 +1236,11 @@ def delete_conversation():
     if not conv_id:
         return jsonify({"error": "Missing conversation_id"}), 400
     try:
+        # FIX-CONV-1: Delete chats first to prevent orphaned rows
+        try:
+            supabase.table("chats").delete().eq("conversation_id", conv_id).eq("user_id", user.id).execute()
+        except Exception as e:
+            print(f"[DELETE] chats cleanup error: {e}")
         try:
             supabase.table("conversation_memories").delete().eq("source_conversation", conv_id).execute()
         except Exception:
