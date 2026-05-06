@@ -387,7 +387,10 @@ document.addEventListener("DOMContentLoaded", () => {
       fileInput.type    = "file";
       fileInput.id      = "wearableCameraInput";
       fileInput.accept  = "image/*";
-      if (navigator.maxTouchPoints > 0) fileInput.capture = "environment";
+      
+      // Remove or comment out the line below to allow file uploads on mobile
+      // if (navigator.maxTouchPoints > 0) fileInput.capture = "environment"; 
+      
       fileInput.style.display = "none";
       document.body.appendChild(fileInput);
     }
