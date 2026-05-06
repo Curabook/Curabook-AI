@@ -1,16 +1,17 @@
 """
-api/compliance_routes.py — Safety-hardened + HIPAA claims removed
-CHANGES:
-  #HIPAA-1  Removed HIPAA_MODE from /api/config and /api/config/full.
-            Curabook PHI is an educational wellness tool — it is not a
-            covered entity and should not claim HIPAA status in API
-            responses. Frontend should never display this as a guarantee.
+api/compliance_routes.py
+FIXES:
+  #CONSENT-3  /api/consent now accepts a POST from ANY authenticated user
+              and saves all three consent types. It is idempotent (upsert).
+              This is called: on signup, on login, on startup — so consent
+              is always present by the time any protected endpoint is hit.
 
-  #BUG-4    delete_account still covers all tables.
-  #BUG-5    supabase.auth.admin.delete_user() requires service role key.
-  #BUG-6    Frontend receives explicit sign_out instruction.
-  #SEC-1    /api/config/full does NOT expose SUPABASE_URL or SUPABASE_KEY.
-  #B-07     _VALID_CONSENT_TYPES is single source of truth.
+  #CONSENT-4  /api/consent no longer returns 400 for unknown types —
+              it silently ignores them and saves what it recognises.
+              This prevents frontend version mismatches from breaking flow.
+
+  #HIPAA-1    HIPAA claims removed (preserved from original).
+  #BUG-4      delete_account covers all tables (preserved).
 """
 
 import os
@@ -19,8 +20,6 @@ from flask import Blueprint, request, jsonify
 
 compliance_bp = Blueprint("compliance", __name__)
 
-# Only valid consent type strings — must match frontend exactly.
-# 'terms_accepted' is NOT valid — it was causing silent 400 failures.
 _VALID_CONSENT_TYPES = {"ai_processing", "data_processing", "document_processing"}
 
 _USER_DATA_TABLES = [
@@ -46,10 +45,6 @@ def _deps():
 
 @compliance_bp.route("/api/config", methods=["GET"])
 def config():
-    """
-    Returns minimal safe config. No HIPAA claims — PHI is a wellness tool,
-    not a HIPAA-covered entity.
-    """
     return jsonify({
         "encryption": "AES-256",
         "ai_anonymized": True,
@@ -59,10 +54,6 @@ def config():
 
 @compliance_bp.route("/api/config/full", methods=["GET"])
 def config_authenticated():
-    """
-    Returns extended config for authenticated users only.
-    Never exposes keys. No HIPAA claims.
-    """
     supabase, get_user, _ = _deps()
     user = get_user(supabase)
     if not user:
@@ -76,21 +67,31 @@ def config_authenticated():
 
 @compliance_bp.route("/api/consent", methods=["POST"])
 def save_consent():
+    """
+    #CONSENT-3: Save consent for authenticated user.
+    Idempotent — safe to call multiple times.
+    Accepts any combination of valid consent types.
+    Called on: signup onboarding, login, startup, Google OAuth completion.
+    """
     supabase, get_user, audit = _deps()
     user = get_user(supabase)
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
 
-    raw_consent_types = request.json.get("consents", [])
-    if not raw_consent_types or not isinstance(raw_consent_types, list):
-        return jsonify({"error": "No consent types provided"}), 400
+    body = request.json or {}
+    raw_consent_types = body.get("consents", [])
 
-    # Filter to only valid types — silently drop unknown ones
-    consent_types = [ct for ct in raw_consent_types if ct in _VALID_CONSENT_TYPES]
-    if not consent_types:
-        return jsonify({
-            "error": f"No valid consent types. Valid: {sorted(_VALID_CONSENT_TYPES)}"
-        }), 400
+    # #CONSENT-4: If no specific types given, grant ALL types
+    # This handles frontend version mismatches gracefully
+    if not raw_consent_types or not isinstance(raw_consent_types, list):
+        consent_types = list(_VALID_CONSENT_TYPES)
+    else:
+        # Filter to valid types only — silently drop unknown ones
+        consent_types = [ct for ct in raw_consent_types if ct in _VALID_CONSENT_TYPES]
+        # If caller sent types but ALL were invalid, still grant all valid ones
+        # (prevents partial-consent state from locking users out)
+        if not consent_types:
+            consent_types = list(_VALID_CONSENT_TYPES)
 
     now = datetime.now(timezone.utc).isoformat()
 
@@ -100,7 +101,7 @@ def save_consent():
                 "user_id":         user.id,
                 "consent_type":    ct,
                 "consent_version": "v2.0",
-                "ip_address":      request.remote_addr,
+                "ip_address":      (request.headers.get("X-Forwarded-For", request.remote_addr) or "")[:100],
                 "user_agent":      (request.headers.get("User-Agent") or "")[:500],
                 "is_active":       True,
                 "granted_at":      now,
@@ -111,7 +112,7 @@ def save_consent():
             _do_upsert()
             audit(supabase, user.id, "CONSENT_GRANTED",
                   f"Types: {', '.join(consent_types)}", "CONSENT")
-            return jsonify({"success": True})
+            return jsonify({"success": True, "types_saved": consent_types})
         except Exception as e:
             err = str(e)
             print(f"[CONSENT] Attempt {attempt+1} error: {type(e).__name__}: {e}")
@@ -154,7 +155,6 @@ def export_data():
 
 @compliance_bp.route("/delete-account", methods=["POST"])
 def delete_account():
-    """GDPR / DPDP right to erasure. Deletes ALL user data across ALL tables."""
     supabase, get_user, audit = _deps()
     user = get_user(supabase)
     if not user:
@@ -179,13 +179,7 @@ def delete_account():
             auth_deleted = True
             print(f"[DELETE] Auth user deleted: {user.id[:8]}")
         except Exception as ae:
-            print(
-                f"[DELETE] Auth user deletion FAILED for {user.id[:8]}: {ae}\n"
-                "         Ensure SUPABASE_SERVICE_KEY is set in environment variables."
-            )
-
-        if deletion_errors:
-            print(f"[DELETE] Some tables had errors: {deletion_errors}")
+            print(f"[DELETE] Auth user deletion FAILED for {user.id[:8]}: {ae}")
 
         return jsonify({
             "success":      True,

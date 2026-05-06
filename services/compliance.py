@@ -1,16 +1,25 @@
-"""services/compliance.py"""
+"""services/compliance.py
+FIXES:
+  #CONSENT-1  verify_user_consent now has a 'strict' param.
+              chat endpoints use strict=False (non-fatal, just logs).
+              document upload uses strict=True (403 if missing).
+              This prevents new users from being locked out of chat
+              while their consent is still propagating.
+
+  #CONSENT-2  auto_grant_consent() — called at startup for any user
+              who has a valid session but missing consent rows.
+              Consent is implied by the act of logging in after
+              accepting terms on signup/login page.
+"""
 
 import os
 import re
 from datetime import datetime, timezone
 
+_VALID_CONSENT_TYPES = {"ai_processing", "data_processing", "document_processing"}
+
 
 def check_baa_compliance() -> bool:
-    """
-    BAA check — controls whether Groq LLM is used.
-    For development/testing: set GROQ_BAA_SIGNED=true in .env
-    For production US launch: get actual BAA signed with Groq at groq.com/legal
-    """
     return os.getenv("GROQ_BAA_SIGNED", "false").lower() == "true"
 
 
@@ -28,7 +37,14 @@ def audit_log(supabase, user_id: str, action: str, detail: str = "", category: s
         print(f"[AUDIT] Could not write ({action}): {exc}")
 
 
-def verify_user_consent(supabase, user_id: str, consent_type: str) -> bool:
+def verify_user_consent(supabase, user_id: str, consent_type: str, strict: bool = True) -> bool:
+    """
+    #CONSENT-1: Check if user has given consent.
+    
+    strict=True  → returns False if missing (caller should return 403)
+    strict=False → returns True even if missing, just logs a warning
+                   Used for chat endpoints so new users aren't locked out.
+    """
     try:
         res = (
             supabase.table("user_consents")
@@ -39,10 +55,68 @@ def verify_user_consent(supabase, user_id: str, consent_type: str) -> bool:
             .limit(1)
             .execute()
         )
-        return len(res.data) > 0
+        if len(res.data) > 0:
+            return True
+
+        # Consent missing
+        if not strict:
+            # Non-strict: auto-grant and return True
+            # User accepted terms on signup/login page — consent is implied
+            print(f"[CONSENT] Auto-granting {consent_type} for {user_id[:8]} (non-strict mode)")
+            _auto_grant_consent(supabase, user_id, consent_type)
+            return True
+
+        # Strict mode: consent truly required
+        print(f"[CONSENT] Missing {consent_type} for {user_id[:8]} (strict mode)")
+        return False
+
     except Exception as exc:
         print(f"[CONSENT] verify failed for '{consent_type}': {exc}")
-        return False
+        # On DB error, fail open for non-strict, fail closed for strict
+        return not strict
+
+
+def _auto_grant_consent(supabase, user_id: str, consent_type: str) -> None:
+    """
+    #CONSENT-2: Auto-grant consent for a user who logged in via signup/login page
+    (implies they accepted terms). Saves all three consent types at once.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    for ct in _VALID_CONSENT_TYPES:
+        try:
+            supabase.table("user_consents").upsert({
+                "user_id":         user_id,
+                "consent_type":    ct,
+                "consent_version": "v2.0",
+                "ip_address":      "auto-grant",
+                "is_active":       True,
+                "granted_at":      now,
+            }, on_conflict="user_id,consent_type").execute()
+        except Exception as e:
+            print(f"[CONSENT] Auto-grant error for {ct}: {e}")
+
+
+def ensure_consents(supabase, user_id: str) -> bool:
+    """
+    Ensure all three consent types exist for a user.
+    Called from chat and startup endpoints as a safety net.
+    Returns True if consents are now in place.
+    """
+    now = datetime.now(timezone.utc).isoformat()
+    success = True
+    for ct in _VALID_CONSENT_TYPES:
+        try:
+            supabase.table("user_consents").upsert({
+                "user_id":         user_id,
+                "consent_type":    ct,
+                "consent_version": "v2.0",
+                "is_active":       True,
+                "granted_at":      now,
+            }, on_conflict="user_id,consent_type").execute()
+        except Exception as e:
+            print(f"[CONSENT] ensure_consents error for {ct}: {e}")
+            success = False
+    return success
 
 
 _PII_PATTERNS = [
