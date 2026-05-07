@@ -9,6 +9,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;1,9..144,300;1,9..144,400&family=Syne:wght@400;500;600;700&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet">
 
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+
 <style>
 /* ─── Design Tokens ─── */
 :root {
@@ -383,7 +385,6 @@ footer { background: var(--black); border-top: 1px solid var(--gray-2); padding:
 </head>
 <body>
 
-<!-- ── NAVIGATION ─────────────────────────────────────────────────────── -->
 <nav id="main-nav">
   <div class="nav-inner">
     <a href="/" class="nav-logo">
@@ -401,9 +402,6 @@ footer { background: var(--black); border-top: 1px solid var(--gray-2); padding:
 </nav>
 
 
-<!-- ══════════════════════════════════════════════════════════════════════
-     HERO
-══════════════════════════════════════════════════════════════════════ -->
 <section class="hero" id="hero">
   <div class="hero-bg-ring"></div>
   <div class="hero-bg-ring"></div>
@@ -465,9 +463,6 @@ footer { background: var(--black); border-top: 1px solid var(--gray-2); padding:
 </section>
 
 
-<!-- ══════════════════════════════════════════════════════════════════════
-     PROBLEM
-══════════════════════════════════════════════════════════════════════ -->
 <section class="problem">
   <div class="container">
     <div class="container--narrow fade-in-up">
@@ -516,9 +511,6 @@ footer { background: var(--black); border-top: 1px solid var(--gray-2); padding:
 </section>
 
 
-<!-- ══════════════════════════════════════════════════════════════════════
-     SOLUTION
-══════════════════════════════════════════════════════════════════════ -->
 <section id="solution">
   <div class="container">
     <div class="solution-intro fade-in-up">
@@ -558,9 +550,6 @@ footer { background: var(--black); border-top: 1px solid var(--gray-2); padding:
 </section>
 
 
-<!-- ══════════════════════════════════════════════════════════════════════
-     HOW IT WORKS
-══════════════════════════════════════════════════════════════════════ -->
 <section class="how">
   <div class="container">
     <div class="container--narrow fade-in-up">
@@ -595,9 +584,6 @@ footer { background: var(--black); border-top: 1px solid var(--gray-2); padding:
 </section>
 
 
-<!-- ══════════════════════════════════════════════════════════════════════
-     DIFFERENTIATION
-══════════════════════════════════════════════════════════════════════ -->
 <section>
   <div class="container">
     <div class="container--narrow fade-in-up">
@@ -625,9 +611,6 @@ footer { background: var(--black); border-top: 1px solid var(--gray-2); padding:
 </section>
 
 
-<!-- ══════════════════════════════════════════════════════════════════════
-     PRICING
-══════════════════════════════════════════════════════════════════════ -->
 <section class="pricing" id="pricing">
   <div class="container">
     <div class="container--narrow fade-in-up" style="text-align:center;margin:0 auto 0;">
@@ -638,7 +621,6 @@ footer { background: var(--black); border-top: 1px solid var(--gray-2); padding:
 
     <div class="pricing-grid">
 
-      <!-- Free -->
       <div class="price-card fade-in-up fade-in-up-delay-1">
         <div class="price-tier price-tier--free">Free</div>
         <div class="price-amount">$0</div>
@@ -655,7 +637,6 @@ footer { background: var(--black); border-top: 1px solid var(--gray-2); padding:
         <a href="/signup" class="price-btn price-btn--outline">Get Started Free</a>
       </div>
 
-      <!-- Shield Core — Featured -->
       <div class="price-card price-card--featured fade-in-up fade-in-up-delay-2">
         <div class="price-badge">Most Popular</div>
         <div class="price-tier price-tier--main">Shield Core</div>
@@ -672,10 +653,9 @@ footer { background: var(--black); border-top: 1px solid var(--gray-2); padding:
           <li class="price-feature price-feature--dark"><i class="feat-ok-dark">✓</i> Doctor visit prep brief</li>
           <li class="price-feature price-feature--dark"><i class="feat-ok-dark">✓</i> Ghrelin surge log + analysis</li>
         </ul>
-        <a href="/signup?plan=monthly" class="price-btn price-btn--accent">Start Shield Core</a>
+        <a href="#" onclick="handleUpgrade('monthly'); return false;" class="price-btn price-btn--accent">Start Shield Core</a>
       </div>
 
-      <!-- Shield Clinical -->
       <div class="price-card fade-in-up fade-in-up-delay-3">
         <div class="price-tier price-tier--premium">Shield Clinical</div>
         <div class="price-amount">$99</div>
@@ -690,7 +670,7 @@ footer { background: var(--black); border-top: 1px solid var(--gray-2); padding:
           <li class="price-feature price-feature--light"><i class="feat-ok">✓</i> Metabolic correlation engine</li>
           <li class="price-feature price-feature--light"><i class="feat-ok">✓</i> Priority support</li>
         </ul>
-        <a href="/signup?plan=clinical" class="price-btn price-btn--outline">Start Shield Clinical</a>
+        <a href="#" onclick="handleUpgrade('clinical'); return false;" class="price-btn price-btn--outline">Start Shield Clinical</a>
       </div>
 
     </div>
@@ -711,9 +691,6 @@ footer { background: var(--black); border-top: 1px solid var(--gray-2); padding:
 </section>
 
 
-<!-- ══════════════════════════════════════════════════════════════════════
-     TRUST & SAFETY
-══════════════════════════════════════════════════════════════════════ -->
 <section id="trust">
   <div class="container">
     <div class="container--narrow fade-in-up">
@@ -745,9 +722,6 @@ footer { background: var(--black); border-top: 1px solid var(--gray-2); padding:
 </section>
 
 
-<!-- ══════════════════════════════════════════════════════════════════════
-     FINAL CTA
-══════════════════════════════════════════════════════════════════════ -->
 <section class="final-cta" id="start">
   <div class="container container--narrow" style="position:relative;z-index:1;">
     <div class="section-tag" style="justify-content:center;">Start Today</div>
@@ -772,7 +746,6 @@ footer { background: var(--black); border-top: 1px solid var(--gray-2); padding:
 </section>
 
 
-<!-- ── FOOTER ─────────────────────────────────────────────────────────── -->
 <footer>
   <div class="container">
     <div class="footer-inner">
@@ -805,10 +778,87 @@ footer { background: var(--black); border-top: 1px solid var(--gray-2); padding:
 
   document.querySelectorAll('a[href^="#"]').forEach(a => {
     a.addEventListener('click', e => {
+      // Prevent scrolling if this is one of our upgrade links
+      if (a.getAttribute('onclick') && a.getAttribute('onclick').includes('handleUpgrade')) {
+          return;
+      }
+        
       const target = document.querySelector(a.getAttribute('href'));
       if (target) { e.preventDefault(); target.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
     });
   });
+
+  // Added Razorpay Checkout Handler
+  async function handleUpgrade(planName) {
+      const token = localStorage.getItem('supabase_token'); // Make sure this matches your auth token key
+      if (!token) {
+          window.location.href = '/login';
+          return;
+      }
+
+      try {
+          // 1. Create the Order/Subscription on the backend
+          const orderRes = await fetch('/api/payment/razorpay/order', {
+              method: 'POST',
+              headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify({ plan: planName })
+          });
+          
+          const orderData = await orderRes.json();
+          
+          if (!orderRes.ok) throw new Error(orderData.error || "Failed to create order");
+
+          // 2. Initialize Razorpay Checkout
+          const options = {
+              key: orderData.razorpay_key_id,
+              amount: orderData.amount,
+              currency: orderData.currency,
+              name: "Curabook PHI",
+              description: orderData.description,
+              subscription_id: orderData.mode === 'subscription' ? orderData.subscription_id : undefined,
+              order_id: orderData.mode === 'one_time' ? orderData.order_id : undefined,
+              
+              // 3. Handle Success Callback
+              handler: async function (response) {
+                  const verifyRes = await fetch('/api/payment/razorpay/verify', {
+                      method: 'POST',
+                      headers: {
+                          'Content-Type': 'application/json',
+                          'Authorization': `Bearer ${token}`
+                      },
+                      body: JSON.stringify({
+                          payment_id: response.razorpay_payment_id,
+                          signature: response.razorpay_signature,
+                          order_id: response.razorpay_order_id,
+                          subscription_id: response.razorpay_subscription_id,
+                          plan: planName
+                      })
+                  });
+
+                  const verifyData = await verifyRes.json();
+                  if (verifyRes.ok) {
+                      alert("Payment Successful! Welcome to " + verifyData.plan_display);
+                      window.location.href = '/app'; // Redirect to dashboard
+                  } else {
+                      alert("Verification failed: " + verifyData.error);
+                  }
+              },
+              theme: { color: "#00D4AA" }
+          };
+
+          const rzp = new Razorpay(options);
+          rzp.on('payment.failed', function (response){
+              alert("Payment failed: " + response.error.description);
+          });
+          rzp.open();
+
+      } catch (err) {
+          alert("Error starting checkout: " + err.message);
+      }
+  }
 </script>
 </body>
 </html>

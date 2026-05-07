@@ -13,7 +13,9 @@ create table if not exists user_profiles (
     role                         text not null default 'patient' check (role in ('patient','doctor','admin')),
     plan                         text default 'free',
     reports_remaining            integer default 1,
-    stripe_customer_id           text,
+    razorpay_subscription_id     text,
+    razorpay_pending_subscription text,
+    razorpay_last_payment_id     text,
     health_persona_text          text,
     health_persona_updated_at    timestamptz,
     health_persona_marker_count  integer default 0,
@@ -205,4 +207,12 @@ begin
     order by d.embedding <=> query_embedding
     limit match_count;
 end;
+$$;
+
+-- ── decrement_report_credit RPC ───────────────────────────────────────────────
+create or replace function decrement_report_credit(uid uuid)
+returns void language sql as $$
+  update user_profiles 
+  set reports_remaining = GREATEST(reports_remaining - 1, 0)
+  where user_id = uid and plan = 'free';
 $$;
