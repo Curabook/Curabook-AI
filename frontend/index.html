@@ -651,9 +651,17 @@ footer { background: var(--black); border-top: 1px solid var(--gray-2); padding:
           <li class="price-feature price-feature--dark"><i class="feat-ok-dark">✓</i> Muscle Defense Protocol</li>
           <li class="price-feature price-feature--dark"><i class="feat-ok-dark">✓</i> Behavior-to-marker tracking</li>
           <li class="price-feature price-feature--dark"><i class="feat-ok-dark">✓</i> Doctor visit prep brief</li>
-          <li class="price-feature price-feature--dark"><i class="feat-ok-dark">✓</i> Ghrelin surge log + analysis</li>
+          <li class="price-feature price-feature--dark"><i class="feat-ok-dark">✓</i> Daily chat access (Unlimited)</li>
         </ul>
-        <a href="#" onclick="handleUpgrade('monthly'); return false;" class="price-btn price-btn--accent">Start Shield Core</a>
+        
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <a href="#" onclick="handleUpgrade('monthly'); return false;" class="price-btn price-btn--accent">
+            Start Monthly ($49/mo)
+          </a>
+          <a href="#" onclick="handleUpgrade('annual'); return false;" class="price-btn price-btn--dark" style="background: transparent; border: 1.5px solid var(--gray-4); color: var(--gray-5);">
+            Pay Annually ($399/yr)
+          </a>
+        </div>
       </div>
 
       <div class="price-card fade-in-up fade-in-up-delay-3">
