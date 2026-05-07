@@ -416,7 +416,7 @@ function showUpgradeModal(reason = "manual") {
             background:var(--signal);color:#0a0b0e;font-size:.58rem;font-weight:700;
             padding:2px 10px;border-radius:20px;letter-spacing:.08em;white-space:nowrap;">RECOMMENDED</div>
           <div style="font-size:.62rem;font-weight:700;color:var(--signal);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">Pro</div>
-          <div style="font-family:var(--mono);font-size:1.5rem;font-weight:500;color:var(--signal);margin-bottom:10px;">$20<span style="font-size:.7rem;color:var(--text-3)">/mo</span></div>
+          <div style="font-family:var(--mono);font-size:1.5rem;font-weight:500;color:var(--signal);margin-bottom:10px;">$49<span style="font-size:.7rem;color:var(--text-3)">/mo</span></div>
           <div style="font-size:.74rem;color:var(--text-2);line-height:1.8;">
             ✓ Unlimited chat<br>
             ✓ Unlimited reports<br>
@@ -431,13 +431,13 @@ function showUpgradeModal(reason = "manual") {
           padding:13px;background:var(--signal);color:#0a0b0e;border:none;border-radius:10px;
           font-size:.88rem;font-weight:700;cursor:pointer;font-family:var(--sans);
           box-shadow:0 4px 16px var(--signal-glow);transition:all .15s;">
-          Monthly — $20/mo
+          Monthly — $49/mo
         </button>
         <button id="rzpAnnualBtn" onclick="initiateRazorpayCheckout('annual')" style="
           padding:13px;background:var(--surface-2);color:var(--text);
           border:1.5px solid var(--border-2);border-radius:10px;
           font-size:.88rem;font-weight:600;cursor:pointer;font-family:var(--sans);transition:all .15s;">
-          Annual — $15/mo
+          Annual — $399/yr
         </button>
       </div>
       <p style="font-size:.68rem;color:var(--text-3);text-align:center;margin-top:6px;">
@@ -454,14 +454,20 @@ function closeUpgradeModal() {
   if (m) m.remove();
 }
 
-// ── FIX-4: Razorpay checkout ───────────────────────────────────────────────
+// ── FIX-4: Razorpay checkout — handles both order_id (one-time) and subscription_id flows ──
 async function initiateRazorpayCheckout(plan = "monthly") {
+  const PLAN_LABELS = { monthly: "Monthly — $49/mo", annual: "Annual — $399/yr", clinical: "Clinical — $99/mo" };
   const btnId = plan === "annual" ? "rzpAnnualBtn" : "rzpMonthlyBtn";
   const btn = el(btnId);
+  const origLabel = PLAN_LABELS[plan] || "Upgrade";
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner" style="animation:spin .7s linear infinite"></i>'; }
 
   const h = await headers();
-  if (!h) { toast("Please sign in to upgrade.", "err"); if (btn) { btn.disabled = false; btn.innerHTML = plan === "annual" ? "Annual — $15/mo" : "Monthly — $20/mo"; } return; }
+  if (!h) {
+    toast("Please sign in to upgrade.", "err");
+    if (btn) { btn.disabled = false; btn.innerHTML = origLabel; }
+    return;
+  }
 
   try {
     const { ok, data } = await apiJson("/api/payment/razorpay/order", {
@@ -470,13 +476,14 @@ async function initiateRazorpayCheckout(plan = "monthly") {
       body: JSON.stringify({ plan })
     });
 
-    if (!ok || !data?.order_id) {
-      toast("Payment setup failed. Please try again.", "err");
-      if (btn) { btn.disabled = false; btn.innerHTML = plan === "annual" ? "Annual — $15/mo" : "Monthly — $20/mo"; }
+    // Backend returns either order_id (one-time) or subscription_id (recurring)
+    if (!ok || (!data?.order_id && !data?.subscription_id)) {
+      toast(data?.error || "Payment setup failed. Please try again.", "err");
+      if (btn) { btn.disabled = false; btn.innerHTML = origLabel; }
       return;
     }
 
-    // Load Razorpay script dynamically
+    // Ensure Razorpay SDK is available (loaded from <head>, but guard anyway)
     if (typeof Razorpay === "undefined") {
       await new Promise((resolve, reject) => {
         const s = document.createElement("script");
@@ -487,13 +494,14 @@ async function initiateRazorpayCheckout(plan = "monthly") {
       });
     }
 
+    // Build Razorpay options — handle subscription vs one-time
+    const isSubscription = data.mode === "subscription" || !!data.subscription_id;
     const options = {
       key:         data.razorpay_key_id,
       amount:      data.amount,
       currency:    data.currency || "USD",
       name:        "Curabook PHI",
-      description: data.description || "PHI Pro Subscription",
-      order_id:    data.order_id,
+      description: data.description || `PHI ${plan.charAt(0).toUpperCase() + plan.slice(1)} Plan`,
       handler: async function(response) {
         try {
           const verifyH = await headers();
@@ -502,35 +510,44 @@ async function initiateRazorpayCheckout(plan = "monthly") {
             method: "POST",
             headers: verifyH,
             body: JSON.stringify({
-              order_id:   data.order_id,
-              payment_id: response.razorpay_payment_id,
-              signature:  response.razorpay_signature
+              order_id:        data.order_id        || "",
+              subscription_id: data.subscription_id || response.razorpay_subscription_id || "",
+              payment_id:      response.razorpay_payment_id,
+              signature:       response.razorpay_signature,
+              plan:            plan,
             })
           });
-          if (vRes.ok) {
-            _userPlan = "pro";
+          if (vRes.ok && vRes.data?.success) {
+            _userPlan = vRes.data.plan || plan;
             _reportsRemaining = 9999;
             _renderPlanBadge();
-            toast("🎉 Welcome to PHI Pro! Unlimited reports unlocked.", "ok");
+            toast(`🎉 ${vRes.data.message || "Welcome to PHI Pro! Unlimited reports unlocked."}`, "ok");
             closeUpgradeModal();
-            // Reload to refresh all gated features
             setTimeout(() => location.reload(), 2000);
           } else {
             toast("Payment verification failed. Contact support@curabook.com", "err");
           }
         } catch (e) {
-          toast("Verification error. Contact support.", "err");
+          console.error("[RAZORPAY verify]", e);
+          toast("Verification error. Contact support@curabook.com", "err");
         }
       },
       prefill: { email: _user?.email || "" },
       theme:   { color: "#00d4c8" },
       modal:   {
         ondismiss: () => {
-          if (btn) { btn.disabled = false; btn.innerHTML = plan === "annual" ? "Annual — $15/mo" : "Monthly — $20/mo"; }
+          if (btn) { btn.disabled = false; btn.innerHTML = origLabel; }
           toast("Payment cancelled.", "info");
         }
       }
     };
+
+    // Wire the correct Razorpay key depending on flow
+    if (isSubscription) {
+      options.subscription_id = data.subscription_id;
+    } else {
+      options.order_id = data.order_id;
+    }
 
     const rzp = new Razorpay(options);
     rzp.open();
@@ -538,7 +555,7 @@ async function initiateRazorpayCheckout(plan = "monthly") {
   } catch (e) {
     console.error("[RAZORPAY]", e);
     toast("Payment unavailable. Please try again.", "err");
-    if (btn) { btn.disabled = false; btn.innerHTML = plan === "annual" ? "Annual — $15/mo" : "Monthly — $20/mo"; }
+    if (btn) { btn.disabled = false; btn.innerHTML = origLabel; }
   }
 }
 
