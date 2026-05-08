@@ -96,7 +96,7 @@ CORS(
     app,
     resources={r"/*": {"origins": _allowed_origins}},
     supports_credentials=True,
-    allow_headers=["Content-Type", "Authorization", "X-Demo-Session" "X-Founder-Secret"],
+    allow_headers=["Content-Type", "Authorization", "X-Demo-Session", "X-Founder-Secret"],
     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
 )
 
@@ -108,7 +108,7 @@ def _apply_cors(response):
     else:
         response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Demo-Session"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Demo-Session, X-Founder-Secret"
     return response
 
 @app.before_request
