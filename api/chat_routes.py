@@ -1,33 +1,39 @@
 """
-api/chat_routes.py — SMART MEMORY ENGINE v4
+api/chat_routes.py — SMART MEMORY ENGINE v5  (Memory + Shield Fix)
 ═══════════════════════════════════════════════════════════════════════════
 FIXES IN THIS VERSION:
 
-  FIX-IMG-2:  Image base64 extraction was silently failing because
-              _is_base64_image() only checked prefixes but some clients
-              send raw base64. Added robust detection + proper error
-              surfacing so users get a real error instead of empty analysis.
+  FIX-MEM-6:  Memory is now ALWAYS injected into every LLM call, even for
+              "general" questions. Previously, general questions skipped the
+              memory fetch entirely, so PHI had no idea who it was talking to.
+              Now: memories + profile facts are always fetched. Markers and
+              shield only fetched when _needs_memory_context() is True OR
+              has_documents is True.
 
-  FIX-MEM-4:  Memory inserts now ALWAYS include is_active=True AND
-              category='health'. The previous fallback path omitted both,
-              causing rows to be filtered out by the is_active=True query.
-              Also added deduplication — same fact won't be stored twice
-              within 24 hours.
+  FIX-MEM-7:  _fetch_memories_now() now ALWAYS fetches profile data
+              (goal_weight_lbs, glp1_status, first_name) — not just when
+              len(memories) < 4. The profile facts are prepended so they
+              appear first in the LLM context.
 
-  FIX-MEM-5:  _fetch_memories_now() now also queries user_profiles for
-              goal_weight_lbs and glp1_status to seed context for brand-new
-              users who haven't chatted yet.
+  FIX-SHIELD-1: _fetch_shield_data_now() — NEW function. Fetches today's
+              behavioral logs (protein, steps, sleep, food_noise) from
+              behavioral_logs table and injects them into every LLM call.
+              PHI can now say "You've logged 78g protein today, you need
+              12 more to hit your 90g target" instead of guessing.
 
-  FIX-TIER-1: Free tier upload gate is now ENFORCED server-side in /chat.
-              Previously the gate only existed in JS. A free user who has
-              used their 1 report gets HTTP 402 with an upgrade message.
-              Pro users (plan in monthly/annual/pro/clinical) are unlimited.
+  FIX-SHIELD-2: _format_memory_block() now accepts shield=dict parameter
+              and renders a "🛡 METABOLIC SHIELD — TODAY'S LOGGED DATA"
+              section. Includes protein vs target comparison, steps, sleep,
+              and food noise with severity label.
 
-  FIX-TIER-2: reports_remaining is decremented in the DB when a free user
-              successfully processes a document upload, not just in JS state.
+  FIX-SHIELD-3: _build_smart_messages() passes shield data through.
 
-  FIX-CONV-1: delete_conversation now cleans up chats table too, preventing
-              orphaned rows that inflate memory context for the user.
+  FIX-IMG-2 (preserved): Image base64 extraction
+  FIX-MEM-4 (preserved): Memory inserts always include is_active=True
+  FIX-MEM-5 (preserved): Profile seeding
+  FIX-TIER-1 (preserved): Free tier upload gate
+  FIX-TIER-2 (preserved): reports_remaining decrement
+  FIX-CONV-1 (preserved): delete_conversation cleans chats too
 ═══════════════════════════════════════════════════════════════════════════
 """
 import re
@@ -95,13 +101,14 @@ def _sanitize(text: str) -> str:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# FIX-MEM-4+5: FRESH MEMORY FETCH — enriched, always returns useful context
+# FIX-MEM-7: FRESH MEMORY FETCH — always includes profile data
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _fetch_memories_now(supabase, user_id: str) -> list[str]:
     """
     Always fetch fresh from DB. No cache.
-    FIX-MEM-5: Also pulls profile data for new users.
+    ALWAYS includes profile data (goal weight, GLP-1 status, name).
+    Profile facts are prepended — they take highest priority in the LLM.
     """
     memories = []
 
@@ -118,35 +125,39 @@ def _fetch_memories_now(supabase, user_id: str) -> list[str]:
     except Exception as e:
         print(f"[MEMORY-FRESH] conversation_memories error: {e}")
 
-    # 2. Augment with profile for new users (sparse memory)
-    if len(memories) < 4:
-        try:
-            res = (supabase.table("user_profiles")
-                   .select("first_name,goal_weight_lbs,glp1_status")
-                   .eq("user_id", user_id)
-                   .limit(1)
-                   .execute())
-            if res.data:
-                row = res.data[0]
-                if row.get("goal_weight_lbs"):
-                    gw = float(row["goal_weight_lbs"])
-                    protein = round(gw * 0.545, 1)
-                    memories.append(
-                        f"User's goal weight is {gw} lbs "
-                        f"(Muscle Defense protein target: {protein}g/day)"
-                    )
-                if row.get("glp1_status"):
-                    memories.append(f"User's GLP-1 status: {row['glp1_status']}")
-                if row.get("first_name"):
-                    memories.append(f"User's name is {row['first_name']}")
-        except Exception as e:
-            print(f"[MEMORY-FRESH] user_profiles error: {e}")
+    # 2. ALWAYS fetch profile data — prepend to memories
+    try:
+        res = (supabase.table("user_profiles")
+               .select("first_name,goal_weight_lbs,glp1_status")
+               .eq("user_id", user_id)
+               .limit(1)
+               .execute())
+        if res.data:
+            row = res.data[0]
+            profile_facts = []
+            if row.get("first_name"):
+                profile_facts.append(f"User's name is {row['first_name']}")
+            if row.get("goal_weight_lbs"):
+                gw = float(row["goal_weight_lbs"])
+                protein_day = round(gw * 0.545, 1)
+                protein_meal = round(protein_day / 3, 1)
+                profile_facts.append(
+                    f"User's goal weight is {gw} lbs "
+                    f"(Muscle Defense: {protein_day}g protein/day, "
+                    f"{protein_meal}g per meal minimum for leucine threshold)"
+                )
+            if row.get("glp1_status"):
+                profile_facts.append(f"User's GLP-1 medication status: {row['glp1_status']}")
+            # Prepend so they appear first
+            memories = profile_facts + memories
+    except Exception as e:
+        print(f"[MEMORY-FRESH] user_profiles error: {e}")
 
     return memories
 
 
 def _fetch_markers_now(supabase, user_id: str) -> dict:
-    """Fresh marker fetch."""
+    """Fresh marker fetch — latest reading per marker."""
     try:
         res = (supabase.table("health_markers")
                .select("marker_name,value,unit,status,reference_range,date")
@@ -165,34 +176,163 @@ def _fetch_markers_now(supabase, user_id: str) -> dict:
         return {}
 
 
-def _format_memory_block(memories: list[str], markers: dict) -> str:
-    if not memories and not markers:
+# ══════════════════════════════════════════════════════════════════════════════
+# FIX-SHIELD-1: TODAY'S METABOLIC SHIELD DATA FETCH
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _fetch_shield_data_now(supabase, user_id: str) -> dict:
+    """
+    Fetch today's Metabolic Shield behavioral logs.
+    Returns dict keyed by metric_name with value, unit.
+    Empty dict if behavioral_logs table doesn't exist or nothing logged today.
+    """
+    today = datetime.now(timezone.utc).date().isoformat()
+    shield = {}
+    try:
+        res = (supabase.table("behavioral_logs")
+               .select("metric_name,value,unit,date,created_at")
+               .eq("user_id", user_id)
+               .eq("date", today)
+               .order("created_at", desc=True)
+               .limit(50)
+               .execute())
+        rows = res.data or []
+        # Keep latest value per metric for today
+        seen = set()
+        for row in rows:
+            name = row.get("metric_name", "")
+            if name and name not in seen:
+                seen.add(name)
+                try:
+                    shield[name] = {
+                        "value": float(row["value"]),
+                        "unit": row.get("unit", ""),
+                        "date": row.get("date", ""),
+                    }
+                except (TypeError, ValueError):
+                    pass
+    except Exception as e:
+        if "does not exist" not in str(e).lower():
+            print(f"[SHIELD-FETCH] error: {e}")
+    return shield
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# FIX-SHIELD-2: MEMORY BLOCK NOW INCLUDES SHIELD DATA
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _format_memory_block(memories: list[str], markers: dict, shield: dict = None) -> str:
+    """
+    Build the complete health context block for the LLM.
+    Now includes:
+      - Conversation memories + profile facts
+      - Today's Metabolic Shield data (protein, steps, sleep, food_noise)
+      - Lab markers (abnormal first, then normal summary)
+      - GLP-1 cliff signals
+    """
+    if not memories and not markers and not shield:
         return ""
 
     lines = [
         "╔══════════════════════════════════════════════════════╗",
-        "║  🧠 WHAT THIS PERSON HAS SHARED — USE THIS MEMORY   ║",
+        "║  🧠 PHI HEALTH MEMORY — USE THIS IN YOUR RESPONSE   ║",
         "╚══════════════════════════════════════════════════════╝",
         "",
-        "CRITICAL RULES:",
-        "• Reference these facts NATURALLY in your response",
-        "• NEVER ask the user for info you already have here",
-        "• If a marker/goal/medication is listed below — USE IT",
-        "• Cite specific values with dates when relevant",
+        "CRITICAL INSTRUCTIONS:",
+        "• Reference these facts NATURALLY — the user already told you this",
+        "• NEVER ask for information already listed here",
+        "• Cite specific values and dates when relevant",
+        "• If goal weight is listed — use it for protein calculations",
+        "• If shield data is listed — reference it when relevant to the question",
         "",
     ]
 
     if memories:
-        lines.append("📋 PERSONAL HEALTH FACTS (from conversations):")
-        for fact in memories[:12]:
+        lines.append("📋 PERSONAL HEALTH FACTS (conversation + profile):")
+        for fact in memories[:15]:
             lines.append(f"  ▸ {fact}")
+        lines.append("")
+
+    # ── Metabolic Shield (today's behavioral data) ────────────────────────────
+    if shield:
+        lines.append("🛡 METABOLIC SHIELD — TODAY'S LOGGED DATA:")
+        
+        protein_data = shield.get("protein")
+        steps_data   = shield.get("steps")
+        sleep_data   = shield.get("sleep")
+        noise_data   = shield.get("food_noise")
+        weight_data  = shield.get("weight")
+
+        # Try to extract goal weight from memories for protein target comparison
+        goal_wt = None
+        for mem in memories:
+            if "goal weight" in mem.lower() and "lbs" in mem.lower():
+                m = re.search(r'(\d+\.?\d*)\s*lbs', mem)
+                if m:
+                    goal_wt = float(m.group(1))
+                    break
+
+        if protein_data:
+            protein_val = protein_data["value"]
+            target_str = ""
+            if goal_wt:
+                target = round(goal_wt * 0.545, 1)
+                remaining = round(max(0, target - protein_val), 1)
+                pct = min(100, round((protein_val / target) * 100))
+                target_str = (
+                    f" (target: {target}g — {pct}% complete, "
+                    f"{remaining}g remaining)"
+                )
+            lines.append(f"  • Protein logged today: {protein_val}g{target_str}")
+        else:
+            if goal_wt:
+                target = round(goal_wt * 0.545, 1)
+                lines.append(f"  • Protein: not logged yet today (target: {target}g)")
+            else:
+                lines.append("  • Protein: not logged yet today")
+
+        if steps_data:
+            steps_val = int(steps_data["value"])
+            step_pct = min(100, round((steps_val / 8000) * 100))
+            lines.append(f"  • Steps today: {steps_val:,} ({step_pct}% of 8,000 goal)")
+        else:
+            lines.append("  • Steps: not logged yet today")
+
+        if sleep_data:
+            sleep_val = sleep_data["value"]
+            if sleep_val < 7:
+                sleep_note = f" ⚠ below 7h (ghrelin elevated ~{round((7-sleep_val)*15)}% above baseline)"
+            elif sleep_val >= 8:
+                sleep_note = " ✓ optimal"
+            else:
+                sleep_note = " ✓ adequate"
+            lines.append(f"  • Sleep last night: {sleep_val}h{sleep_note}")
+        else:
+            lines.append("  • Sleep: not logged yet today")
+
+        if noise_data:
+            val = int(noise_data["value"])
+            if val <= 3:
+                severity = "mild"
+                emoji = "✓"
+            elif val <= 6:
+                severity = "moderate — protein blunting protocol recommended"
+                emoji = "⚠"
+            else:
+                severity = "intense ghrelin surge — biology, not willpower"
+                emoji = "🚨"
+            lines.append(f"  • Food noise level: {val}/10 — {emoji} {severity}")
+
+        if weight_data:
+            lines.append(f"  • Weight logged: {weight_data['value']} lbs")
+
         lines.append("")
 
     if markers:
         abnormal = {n: m for n, m in markers.items()
                     if m.get("status") in ("HIGH", "LOW")}
-        normal = {n: m for n, m in markers.items()
-                  if m.get("status") == "NORMAL"}
+        normal   = {n: m for n, m in markers.items()
+                    if m.get("status") == "NORMAL"}
 
         if abnormal:
             lines.append("🚨 LAB MARKERS NEEDING ATTENTION:")
@@ -226,7 +366,7 @@ def _format_memory_block(memories: list[str], markers: dict) -> str:
 def _detect_cliff_signals(markers: dict) -> list[str]:
     signals = []
     glucose_readings = []
-    hba1c_readings = []
+    hba1c_readings   = []
 
     for name, m in markers.items():
         lower = name.lower()
@@ -261,11 +401,11 @@ def _detect_cliff_signals(markers: dict) -> list[str]:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# FIX-MEM-4: SYNCHRONOUS FACT EXTRACTION — always sets is_active=True + category
+# FIX-MEM-4: SYNCHRONOUS FACT EXTRACTION
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _fact_exists_recently(supabase, user_id: str, fact_snippet: str) -> bool:
-    """Check if a very similar fact was stored in the last 24 hours — deduplication."""
+    """Check if a very similar fact was stored in the last 24 hours."""
     try:
         cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
         res = (supabase.table("conversation_memories")
@@ -284,15 +424,11 @@ def _fact_exists_recently(supabase, user_id: str, fact_snippet: str) -> bool:
 
 
 def _save_memory_fact(supabase, user_id: str, conversation_id: str, fact: str) -> bool:
-    """
-    FIX-MEM-4: Always save with is_active=True AND category='health'.
-    Returns True on success.
-    """
+    """FIX-MEM-4: Always save with is_active=True AND category='health'."""
     fact = fact.strip()[:500]
     if not fact or len(fact) < 8:
         return False
 
-    # Deduplication check
     if _fact_exists_recently(supabase, user_id, fact):
         print(f"[MEMORY] Skipping duplicate fact: {fact[:50]}")
         return False
@@ -301,12 +437,11 @@ def _save_memory_fact(supabase, user_id: str, conversation_id: str, fact: str) -
     record = {
         "user_id":   user_id,
         "fact":      fact,
-        "category":  "health",   # FIX-MEM-4: always set category
-        "is_active": True,       # FIX-MEM-4: always set is_active
+        "category":  "health",
+        "is_active": True,
         "created_at": now,
     }
 
-    # Try with source_conversation first
     try:
         supabase.table("conversation_memories").insert({
             **record,
@@ -315,7 +450,6 @@ def _save_memory_fact(supabase, user_id: str, conversation_id: str, fact: str) -
         print(f"[MEMORY] Saved: {fact[:60]}")
         return True
     except Exception as e1:
-        # Fallback without source_conversation (schema may differ)
         try:
             supabase.table("conversation_memories").insert(record).execute()
             print(f"[MEMORY] Saved (fallback): {fact[:60]}")
@@ -400,7 +534,6 @@ def _extract_facts_synchronous(supabase, user_id: str, conversation_id: str, mes
                                    "can't stop thinking about food", "ghrelin surge"]):
         facts.append("User reporting food noise / ghrelin surge (GLP-1 cliff signal)")
 
-    # Save facts — FIX-MEM-4
     saved = []
     for fact in facts[:3]:
         if _save_memory_fact(supabase, user_id, conversation_id, fact):
@@ -410,7 +543,7 @@ def _extract_facts_synchronous(supabase, user_id: str, conversation_id: str, mes
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# LLM MESSAGE BUILDER
+# LLM MESSAGE BUILDER (FIX-SHIELD-3: accepts shield parameter)
 # ══════════════════════════════════════════════════════════════════════════════
 
 _PHI_BASE_SYSTEM = """
@@ -434,6 +567,13 @@ FOOD NOISE PROTOCOL (mandatory when user mentions hunger/cravings returning):
   1. VALIDATE: "This is ghrelin surge — biology, not willpower."
   2. REFRAME: "Strong food noise = taper was too fast or behavioral scaffolding insufficient."
   3. NEVER USE: willpower, discipline, cheat, failure, self-control
+
+METABOLIC SHIELD AWARENESS:
+  When shield data is present in memory, reference it naturally:
+  - If protein is below target: acknowledge the gap and encourage
+  - If sleep < 7h: note ghrelin implications
+  - If food noise is logged high: apply Food Noise Protocol
+  - If protein is at/above target: celebrate and reinforce
 
 SAFETY (non-negotiable):
 - Never diagnose. Never prescribe. Never adjust doses.
@@ -459,6 +599,7 @@ def _build_smart_messages(
     user_message: str,
     memories: list[str],
     markers: dict,
+    shield: dict = None,
     has_documents: bool = False,
     document_text: str = "",
     health_context_overlay: str = "",
@@ -467,24 +608,24 @@ def _build_smart_messages(
 
     messages = [{"role": "system", "content": _PHI_BASE_SYSTEM}]
 
-    has_health_data = bool(memories or markers)
+    has_health_data = bool(memories or markers or shield)
     if has_health_data:
-        memory_block = _format_memory_block(memories, markers)
+        memory_block = _format_memory_block(memories, markers, shield)
         if memory_block:
             messages.append({"role": "system", "content": memory_block})
     else:
         messages.append({"role": "system", "content": _NO_MEMORY_INSTRUCTION})
 
-    # Emotional layer
+    # Emotional layer — extract name from memories
     try:
         from ai.emotional_layer import build_emotional_context
         user_name = ""
-        try:
-            res = supabase.table("user_profiles").select("first_name").eq("user_id", user_id).limit(1).execute()
-            if res.data:
-                user_name = res.data[0].get("first_name", "") or ""
-        except Exception:
-            pass
+        for mem in memories:
+            if "user's name is" in mem.lower():
+                m = re.search(r"user's name is (\w+)", mem, re.I)
+                if m:
+                    user_name = m.group(1)
+                    break
         emotional_ctx, _ = build_emotional_context(user_message, "", user_name)
         if emotional_ctx:
             messages.append({"role": "system", "content": emotional_ctx})
@@ -553,7 +694,7 @@ MUSCLE DEFENSE MODE: User asking about protein/muscle/lean mass.
 • Per meal needs ≥30g for leucine threshold (muscle protein synthesis trigger)
 • Resistance training 2-3x/week compound movements (squat, hinge, press, pull)
 • Sleep 7-9h (growth hormone window)
-• Reference their stored goal weight if available — don't make them repeat it
+• Reference their stored goal weight if available — show today's shield progress if logged
 """.strip(),
 
     "food_noise": """
@@ -562,6 +703,7 @@ MANDATORY OPENING: "What you're experiencing is ghrelin surge — documented bio
 • 35g+ protein/meal blunts ghrelin ~25%
 • Post-meal 20-30 min walks reduce post-meal glucose 30-50 mg/dL
 • 7-9h sleep reduces ghrelin 15%
+• If food noise is logged in shield data — acknowledge the specific level
 • End with: "What was happening right before the food noise intensified?"
 """.strip(),
 
@@ -590,6 +732,16 @@ DOCTOR VISIT PREP MODE:
 4. REQUEST: ApoB, fasting insulin, body composition scan if available
 • Use their stored data — specific numbers only, no guessing
 """.strip(),
+
+    "shield": """
+METABOLIC SHIELD MODE: User asking about their shield score, protein, steps, or sleep.
+• Reference today's logged shield data from memory (protein logged, steps, sleep)
+• Compare protein logged vs their personal target (Goal Weight × 0.545)
+• If protein gap exists: suggest specific high-protein foods to close it
+• If steps low: 20-30 min post-meal walk recommendation
+• If sleep < 7h: ghrelin impact explanation
+• Celebrate any wins — any logged data is active engagement
+""".strip(),
 }
 
 _INTENT_KEYWORDS = {
@@ -614,11 +766,15 @@ _INTENT_KEYWORDS = {
                   "cholesterol", "ldl", "hdl", "triglyceride", "cardiovascular",
                   "metabolic", "obesity", "weight", "bmi", "crp", "inflammation",
                   "prediabetes", "cliff", "rebound"],
+    "shield": ["shield", "shield score", "protein target", "how much protein", "protein today",
+               "steps today", "sleep last night", "food noise level", "logged today",
+               "metabolic shield", "how am i doing", "my progress"],
 }
 
 def _detect_intent(message: str) -> str:
     lower = message.lower()
-    priority = ["maintenance", "muscle_defense", "food_noise", "advocacy", "doctor_prep", "metabolic"]
+    priority = ["maintenance", "muscle_defense", "food_noise", "advocacy",
+                "doctor_prep", "shield", "metabolic"]
     for intent in priority:
         if any(kw in lower for kw in _INTENT_KEYWORDS.get(intent, [])):
             return intent
@@ -678,7 +834,7 @@ def _fast_cliff_context(user_message: str) -> str:
     return "\n".join(parts)
 
 
-# ── FIX-MEM-4: Background memory extraction — always sets is_active=True ─────
+# ── Background memory extraction ─────────────────────────────────────────────
 
 def _extract_facts_background(supabase, user_id: str, conversation_id: str,
                                user_message: str, ai_reply: str):
@@ -785,20 +941,14 @@ def _run_background_ops(supabase, user_id, conversation_id, user_message, ai_rep
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _is_base64_image(text: str) -> bool:
-    """
-    FIX-IMG-2: Robust image detection — handles data URLs and raw base64.
-    """
     if not text:
         return False
-    # Standard data URL format
     if text.startswith("data:image/"):
         return True
     if text.startswith("data:application/octet-stream"):
         return True
-    # Raw base64 detection (very long string with no spaces = likely image)
     stripped = text.strip()
     if len(stripped) > 1000 and ' ' not in stripped[:100]:
-        # Check if it's valid base64-ish content (not a lab report text)
         import string
         b64_chars = set(string.ascii_letters + string.digits + '+/=\n\r')
         sample = stripped[:200]
@@ -808,11 +958,6 @@ def _is_base64_image(text: str) -> bool:
 
 
 def _extract_text_from_base64_image(base64_data: str) -> str:
-    """
-    FIX-IMG-2: Extract text from base64 image via GPT-4o Vision.
-    Now properly handles raw base64 without data URL prefix.
-    Returns extracted text or raises a descriptive error.
-    """
     openai_key = os.getenv("OPENAI_API_KEY")
     if not openai_key:
         return "[Image received but OPENAI_API_KEY not configured for vision analysis]"
@@ -820,13 +965,10 @@ def _extract_text_from_base64_image(base64_data: str) -> str:
     try:
         from openai import OpenAI
 
-        # Normalize to data URL format
         data = base64_data.strip()
         if not data.startswith("data:"):
-            # Try to detect image format from base64 magic bytes
             try:
                 import base64 as b64lib
-                # Add padding if needed
                 padding = 4 - len(data) % 4
                 if padding != 4:
                     data += "=" * padding
@@ -836,10 +978,9 @@ def _extract_text_from_base64_image(base64_data: str) -> str:
                 elif raw_bytes[:8] == b'\x89PNG\r\n\x1a\n':
                     mime = "image/png"
                 elif raw_bytes[:4] == b'%PDF':
-                    # It's a PDF, not an image — return empty to fall through
                     return ""
                 else:
-                    mime = "image/jpeg"  # fallback
+                    mime = "image/jpeg"
             except Exception:
                 mime = "image/jpeg"
             data = f"data:{mime};base64,{base64_data.strip()}"
@@ -862,17 +1003,8 @@ def _extract_text_from_base64_image(base64_data: str) -> str:
                 {
                     "role": "user",
                     "content": [
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": data,
-                                "detail": "high"
-                            }
-                        },
-                        {
-                            "type": "text",
-                            "text": "Extract all health/medical data from this image."
-                        }
+                        {"type": "image_url", "image_url": {"url": data, "detail": "high"}},
+                        {"type": "text", "text": "Extract all health/medical data from this image."}
                     ]
                 }
             ],
@@ -888,14 +1020,10 @@ def _extract_text_from_base64_image(base64_data: str) -> str:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# FIX-TIER-1: SERVER-SIDE TIER ENFORCEMENT HELPERS
+# FIX-TIER-1: SERVER-SIDE TIER ENFORCEMENT
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _get_user_plan(supabase, user_id: str) -> tuple[str, int]:
-    """
-    FIX-TIER-1: Get user's current plan and remaining reports from DB.
-    Returns (plan, reports_remaining).
-    """
     try:
         res = (supabase.table("user_profiles")
                .select("plan,reports_remaining")
@@ -919,10 +1047,6 @@ def _is_pro_user(plan: str) -> bool:
 
 
 def _decrement_reports(supabase, user_id: str, current_remaining: int) -> bool:
-    """
-    FIX-TIER-2: Decrement reports_remaining in DB for free users.
-    Returns True if successful.
-    """
     new_val = max(0, current_remaining - 1)
     try:
         supabase.table("user_profiles").upsert({
@@ -1020,24 +1144,34 @@ def chat():
     _extract_facts_synchronous(supabase, user.id, conversation_id, message)
 
     # ── STEP 2: Smart routing ─────────────────────────────────────────────────
-    use_memory = _needs_memory_context(message) or has_documents
+    use_full_context = _needs_memory_context(message) or has_documents
 
-    # ── STEP 3: Fetch fresh memories and markers ──────────────────────────────
-    memories = []
+    # ── STEP 3: FIX-MEM-6 + FIX-SHIELD-1: Always fetch memories and shield ───
+    # Memories (profile + conversation facts) — ALWAYS fetched
+    memories = _fetch_memories_now(supabase, user.id)
+
+    # Shield data (today's behavioral logs) — ALWAYS fetched
+    shield = _fetch_shield_data_now(supabase, user.id)
+
+    # Markers — only when full context needed (saves DB round-trip for simple Q&A)
     markers = {}
-    if use_memory:
-        memories = _fetch_memories_now(supabase, user.id)
+    if use_full_context:
         markers = _fetch_markers_now(supabase, user.id)
-        print(f"[PHI] Memory: {len(memories)} facts, {len(markers)} markers for {user.id[:8]}")
+        print(
+            f"[PHI] Full context: {len(memories)} facts, {len(markers)} markers, "
+            f"{len(shield)} shield metrics for {user.id[:8]}"
+        )
     else:
-        print(f"[PHI] General Q — skipping memory for {user.id[:8]}: '{message[:40]}'")
+        print(
+            f"[PHI] Light context: {len(memories)} facts, "
+            f"{len(shield)} shield metrics for {user.id[:8]}: '{message[:40]}'"
+        )
 
     # ── STEP 4: Handle documents ──────────────────────────────────────────────
     current_markers = []
     resolved_document_text = document_text
 
     if has_documents and document_text:
-        # FIX-IMG-2: Robust image detection and extraction
         if _is_base64_image(document_text):
             print(f"[PHI] Detected base64 image — routing to Vision API")
             extracted = _extract_text_from_base64_image(document_text)
@@ -1045,10 +1179,8 @@ def chat():
                 resolved_document_text = extracted
                 print(f"[PHI] Vision extraction: {len(extracted)} chars")
             elif extracted.startswith("[Image processing failed"):
-                # Surface the error to the user via the AI
                 resolved_document_text = extracted
 
-        # Process as text (whether original or vision-extracted)
         if resolved_document_text and not resolved_document_text.startswith("[Image processing failed"):
             try:
                 from health_memory.extractor import extract_health_markers
@@ -1070,7 +1202,6 @@ def chat():
             except Exception as e:
                 print(f"[PHI] Doc extraction error: {e}")
 
-        # FIX-TIER-2: Decrement reports for free users after successful processing
         if not is_pro and current_markers:
             _decrement_reports(supabase, user.id, reports_remaining)
             reports_remaining = max(0, reports_remaining - 1)
@@ -1083,7 +1214,7 @@ def chat():
     if cliff_ctx:
         overlay = cliff_ctx + "\n\n" + overlay if overlay else cliff_ctx
 
-    # ── STEP 6: Build LLM messages ────────────────────────────────────────────
+    # ── STEP 6: Build LLM messages (FIX-SHIELD-3: pass shield) ───────────────
     messages_for_llm = _build_smart_messages(
         supabase=supabase,
         user_id=user.id,
@@ -1091,6 +1222,7 @@ def chat():
         user_message=message,
         memories=memories,
         markers=markers,
+        shield=shield,                   # ← NEW: shield data passed through
         has_documents=has_documents,
         document_text=resolved_document_text if current_markers else "",
         health_context_overlay=overlay,
@@ -1100,7 +1232,7 @@ def chat():
     reply = _call_llm_safe(messages_for_llm)
 
     # ── STEP 8: Safety validation ─────────────────────────────────────────────
-    has_health_data = bool(memories or markers)
+    has_health_data = bool(memories or markers or shield)
     try:
         from ai.system_prompt_v2 import validate_response, detect_hallucination_risk
         if detect_hallucination_risk(reply, has_health_data):
@@ -1132,8 +1264,9 @@ def chat():
         "has_health_data": has_health_data,
         "markers_found": len(current_markers),
         "memory_facts": len(memories),
+        "shield_metrics": len(shield),
         "intent": intent,
-        "used_memory": use_memory,
+        "used_memory": True,           # always True now
         "plan": user_plan,
         "reports_remaining": reports_remaining,
     })
