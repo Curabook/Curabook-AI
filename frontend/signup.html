@@ -6,7 +6,10 @@
     <title>Create Account — Curabook PHI</title>
     <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <script src="https://checkout.razorpay.com/v1/checkout.js" defer></script>
+    
     <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
     :root {
@@ -32,7 +35,7 @@
     .feature-icon { width:32px; height:32px; background:rgba(0,188,213,.15); border-radius:8px; display:flex; align-items:center; justify-content:center; color:var(--brand); font-size:13px; flex-shrink:0; }
     .feature-text h4 { font-size:13.5px; font-weight:600; color:rgba(255,255,255,.9); margin-bottom:2px; }
     .feature-text p { font-size:12px; color:rgba(255,255,255,.4); line-height:1.4; }
-    .right-panel { width:520px; background:var(--white); display:flex; align-items:center; justify-content:center; padding:48px 52px; }
+    .right-panel { width:520px; background:var(--white); display:flex; align-items:center; justify-content:center; padding:48px 52px; overflow-y:auto; }
     .form-container { width:100%; max-width:400px; }
     .form-header { margin-bottom:28px; }
     .form-title { font-family:var(--serif); font-size:1.8rem; font-weight:400; color:var(--text); letter-spacing:-.3px; margin-bottom:6px; }
@@ -92,6 +95,18 @@
     .concern-item i { width:18px; color:var(--muted); font-size:.9rem; }
     .concern-item.selected i { color:var(--brand); }
     .concern-label { font-size:13.5px; font-weight:500; color:var(--text); }
+
+    /* ── PLAN SELECTION CARDS ─────────────────────────────────────────── */
+    .plan-cards { display:flex; flex-direction:column; gap:10px; margin-bottom:16px; }
+    .plan-card { border:1.5px solid var(--border); border-radius:12px; padding:16px 18px; cursor:pointer; transition:all .15s; position:relative; display:flex; align-items:center; justify-content:space-between; }
+    .plan-card:hover, .plan-card.selected { border-color:var(--brand); background:rgba(0,188,213,.04); }
+    .plan-card-info {}
+    .plan-card-name { font-size:14px; font-weight:600; color:var(--text); }
+    .plan-card-desc { font-size:12px; color:var(--muted); margin-top:2px; }
+    .plan-price-num { font-size:18px; font-weight:600; color:var(--brand-dark); text-align:right; }
+    .plan-price-period { font-size:11px; color:var(--muted); text-align:right; }
+    .plan-popular-badge { position:absolute; top:-9px; left:50%; transform:translateX(-50%); background:var(--brand); color:white; font-size:10px; font-weight:700; padding:3px 10px; border-radius:20px; letter-spacing:1px; white-space:nowrap; text-transform:uppercase; }
+    .free-plan-info { background:var(--bg); border-radius:10px; padding:12px 14px; font-size:12px; color:var(--muted); margin-top:8px; text-align:center; line-height:1.5; }
 
     .onboarding-nav { display:flex; gap:10px; margin-top:20px; }
     .btn-back { flex:1; padding:12px; background:none; border:1.5px solid var(--border); border-radius:10px; font-size:14px; font-family:var(--font); color:var(--muted); cursor:pointer; transition:all .15s; }
@@ -274,9 +289,60 @@
                 </div>
                 <div class="onboarding-nav">
                     <button class="btn-back" onclick="goToPanel('B')">← Back</button>
-                    <button class="btn-next" id="nextC" onclick="finishOnboarding()" disabled>Start PHI →</button>
+                    <button class="btn-next" id="nextC" onclick="goToPanel('D')" disabled>Continue →</button>
                 </div>
             </div>
+
+            <div id="panelD" style="display:none">
+                <div class="onboarding-header">
+                    <h2>Choose your plan</h2>
+                    <p>Start free anytime — upgrade when you need more.</p>
+                </div>
+                
+                <p id="planStatusMsg" class="status-msg"></p>
+                
+                <div class="plan-cards">
+                    <div class="plan-card selected" id="planMonthly" onclick="selectPlan('monthly')">
+                        <div class="plan-popular-badge">Most Popular</div>
+                        <div class="plan-card-info">
+                            <div class="plan-card-name">Shield Core — Monthly</div>
+                            <div class="plan-card-desc">Unlimited reports · Weekly alerts · PA support</div>
+                        </div>
+                        <div>
+                            <div class="plan-price-num">$39</div>
+                            <div class="plan-price-period">/month</div>
+                        </div>
+                    </div>
+                    <div class="plan-card" id="planAnnual" onclick="selectPlan('annual')">
+                        <div class="plan-card-info">
+                            <div class="plan-card-name">Shield Core — Annual</div>
+                            <div class="plan-card-desc">2 months free vs monthly billing</div>
+                        </div>
+                        <div>
+                            <div class="plan-price-num" style="color:var(--brand-dark)">$374</div>
+                            <div class="plan-price-period">$31/mo · save 20%</div>
+                        </div>
+                    </div>
+                    <div class="plan-card" id="planFree" onclick="selectPlan('free')">
+                        <div class="plan-card-info">
+                            <div class="plan-card-name">Free Plan</div>
+                            <div class="plan-card-desc">1 report upload · Unlimited chat</div>
+                        </div>
+                        <div>
+                            <div class="plan-price-num" style="color:var(--muted)">$0</div>
+                            <div class="plan-price-period">always free</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="free-plan-info" id="freePlanNote" style="display:none">
+                    You can always upgrade later from inside the app. Your data, chats, and lab reports are saved regardless of plan.
+                </div>
+                <div class="onboarding-nav">
+                    <button class="btn-back" onclick="goToPanel('C')">← Back</button>
+                    <button class="btn-next" id="finishBtn" onclick="finishOnboarding()">Continue to Payment →</button>
+                </div>
+            </div>
+            
         </div>
 
         <div id="successState" class="success-state">
@@ -295,10 +361,7 @@
 
 <script>
 // ── Config ────────────────────────────────────────────────────────────────────
-const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-    ? 'http://localhost:5000'
-    : 'https://api.curabook.com';
-
+const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://api.curabook.com';
 const SUPABASE_URL = "https://pbeaawlxdcrdbvlmpqhc.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBiZWFhd2x4ZGNyZGJ2bG1wcWhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwMDk0MzksImV4cCI6MjA5MTU4NTQzOX0.6bUpYrDbe0mQjjBHX8Qscj-5R8i4-SqAtW_Z1UFzJ10";
 
@@ -307,7 +370,7 @@ let _userId = null;
 let _accessToken = null;
 let _redirecting = false;
 
-const ob = { glp1Status: null, goalWeight: null, concern: null };
+const ob = { glp1Status: null, goalWeight: null, concern: null, plan: 'monthly' };
 
 function initSupabase() {
     supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
@@ -317,15 +380,19 @@ function initSupabase() {
 
 function setStatus(msg, type = '') {
     const el = document.getElementById('status-msg');
-    el.textContent = msg;
-    el.className = 'status-msg ' + type;
+    if(el) {
+        el.textContent = msg;
+        el.className = 'status-msg ' + type;
+    }
 }
 
+// ── UI Navigation ─────────────────────────────────────────────────────────────
 function goToPanel(panel) {
-    ['A', 'B', 'C'].forEach(p => {
-        document.getElementById('panel' + p).style.display = p === panel ? 'block' : 'none';
+    ['A', 'B', 'C', 'D'].forEach(p => {
+        const el = document.getElementById('panel' + p);
+        if(el) el.style.display = p === panel ? 'block' : 'none';
     });
-    const idx = { 'A': 0, 'B': 1, 'C': 2 }[panel];
+    const idx = { 'A': 0, 'B': 1, 'C': 2, 'D': 3 }[panel];
     document.querySelectorAll('.op-dot').forEach((dot, i) => {
         dot.classList.toggle('active', i <= idx);
     });
@@ -338,50 +405,36 @@ function selectOption(btn, field) {
     btn.classList.add('selected');
     ob[field] = btn.dataset.val;
 
-    if (field === 'glp1Status') {
-        document.getElementById('nextA').disabled = false;
-    }
-    if (field === 'concern') {
-        document.getElementById('nextC').disabled = false;
-    }
+    if (field === 'glp1Status') document.getElementById('nextA').disabled = false;
+    if (field === 'concern') document.getElementById('nextC').disabled = false;
 }
 
-// ── FIXED: Consent is saved BEFORE redirect, with await ──────────────────────
+function selectPlan(plan) {
+    ob.plan = plan;
+    document.querySelectorAll('.plan-card').forEach(c => c.classList.remove('selected'));
+    const activeCard = document.getElementById('plan' + plan.charAt(0).toUpperCase() + plan.slice(1));
+    if (activeCard) activeCard.classList.add('selected');
+    
+    document.getElementById('freePlanNote').style.display = plan === 'free' ? 'block' : 'none';
+    document.getElementById('finishBtn').textContent = plan === 'free' ? 'Start Free →' : 'Continue to Payment →';
+}
+
+// ── Backend Communications ────────────────────────────────────────────────────
 async function saveConsentToBackend(token) {
-    if (!token) {
-        console.warn('[CONSENT] No token — cannot save consent');
-        return false;
-    }
+    if (!token) return false;
     try {
         const resp = await fetch(`${API_BASE}/api/consent`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': 'Bearer ' + token
-            },
-            body: JSON.stringify({
-                consents: ['data_processing', 'ai_processing', 'document_processing']
-            })
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+            body: JSON.stringify({ consents: ['data_processing', 'ai_processing', 'document_processing'] })
         });
-        if (resp.ok) {
-            console.log('[CONSENT] Saved successfully');
-            return true;
-        } else {
-            const data = await resp.json().catch(() => ({}));
-            console.warn('[CONSENT] Backend error:', resp.status, data);
-            return false;
-        }
-    } catch (err) {
-        console.warn('[CONSENT] Network error (non-fatal):', err);
-        return false;
-    }
+        return resp.ok;
+    } catch (err) { return false; }
 }
 
 async function saveOnboardingData() {
     if (!_userId || !supabaseClient) return;
-
     try {
-        // Save GLP-1 onboarding record
         await supabaseClient.from('glp1_onboarding').upsert({
             user_id:         _userId,
             glp1_status:     ob.glp1Status,
@@ -389,25 +442,19 @@ async function saveOnboardingData() {
             primary_concern: ob.concern,
         }, { onConflict: 'user_id' });
 
-        // Save profile (goal weight + status)
-        if (ob.goalWeight) {
-            await supabaseClient.from('user_profiles').upsert({
-                user_id:         _userId,
-                goal_weight_lbs: ob.goalWeight,
-                glp1_status:     ob.glp1Status,
-            }, { onConflict: 'user_id' });
-        }
+        const profilePayload = { user_id: _userId, glp1_status: ob.glp1Status };
+        if (ob.goalWeight) profilePayload.goal_weight_lbs = ob.goalWeight;
+        const fn = localStorage.getItem('phi_pending_firstname');
+        if (fn) profilePayload.first_name = fn;
+        await supabaseClient.from('user_profiles').upsert(profilePayload, { onConflict: 'user_id' });
 
-        // Save initial memory facts
         const facts = [];
         if (ob.glp1Status && ob.glp1Status !== 'never') {
             facts.push(`User's GLP-1 status: ${ob.glp1Status} (from onboarding)`);
         }
         if (ob.goalWeight) {
             const protein = Math.round(ob.goalWeight * 0.545 * 10) / 10;
-            facts.push(
-                `User's goal weight is ${ob.goalWeight} lbs — Muscle Defense protein target: ${protein}g/day`
-            );
+            facts.push(`User's goal weight is ${ob.goalWeight} lbs — Muscle Defense protein target: ${protein}g/day`);
         }
         if (ob.concern) {
             const labels = {
@@ -426,45 +473,118 @@ async function saveOnboardingData() {
                 user_id:   _userId,
                 fact:      fact,
                 category:  'onboarding',
-                is_active: true,          // FIX-MEM-1: explicit always
+                is_active: true,
                 created_at: now,
-            }).catch(e => console.warn('[MEMORY] Onboarding fact save error:', e));
+            }).catch(()=>{});
         }
+    } catch (e) { console.warn('[ONBOARDING] Save error (non-fatal):', e); }
+}
 
-        console.log('[ONBOARDING] Data saved');
-    } catch (e) {
-        console.warn('[ONBOARDING] Save error (non-fatal):', e);
+async function startPayment() {
+    const btn = document.getElementById('finishBtn');
+    const msgEl = document.getElementById('planStatusMsg');
+    if (msgEl) { msgEl.textContent = 'Connecting to payment…'; msgEl.className = 'status-msg success'; }
+    
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    if (!session?.access_token) throw new Error('Session expired. Please refresh.');
+    
+    const res = await fetch(API_BASE + '/api/payment/razorpay/order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + session.access_token },
+        body: JSON.stringify({ plan: ob.plan })
+    });
+    
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Payment setup failed. Try again.');
     }
+    
+    const data = await res.json();
+    if (!data.order_id && !data.subscription_id) throw new Error('Invalid payment response');
+    
+    if (typeof Razorpay === 'undefined') {
+        window.location.href = '/app?upgrade=' + ob.plan;
+        return;
+    }
+    
+    const options = {
+        key: data.razorpay_key_id,
+        amount: data.amount,
+        currency: data.currency || 'USD',
+        name: 'Curabook PHI',
+        description: data.description || 'Shield Core Plan',
+        handler: async (response) => {
+            try {
+                const vRes = await fetch(API_BASE + '/api/payment/razorpay/verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + session.access_token },
+                    body: JSON.stringify({
+                        order_id: data.order_id || '',
+                        subscription_id: data.subscription_id || response.razorpay_subscription_id || '',
+                        payment_id: response.razorpay_payment_id,
+                        signature: response.razorpay_signature,
+                        plan: ob.plan
+                    })
+                });
+                const vData = await vRes.json();
+                if (vData.success) {
+                    window.location.href = '/app?welcome=paid';
+                } else {
+                    throw new Error('Payment verification failed');
+                }
+            } catch(e) {
+                if (msgEl) { msgEl.textContent = 'Payment verified but activation failed. Contact support.'; msgEl.className = 'status-msg error'; }
+                setTimeout(() => window.location.href = '/app', 2000);
+            }
+        },
+        prefill: { email: session.user?.email || '' },
+        theme: { color: '#00BCD5' },
+        modal: { ondismiss: () => {
+            btn.disabled = false;
+            btn.innerHTML = 'Continue to Payment →';
+            if (msgEl) { msgEl.textContent = 'Payment cancelled.'; msgEl.className = 'status-msg error'; }
+        }}
+    };
+    if (data.mode === 'subscription') options.subscription_id = data.subscription_id;
+    else options.order_id = data.order_id;
+    
+    new Razorpay(options).open();
 }
 
 async function finishOnboarding() {
-    const btn = document.getElementById('nextC');
-    if (btn) { btn.disabled = true; btn.textContent = 'Setting up PHI…'; }
+    const btn = document.getElementById('finishBtn');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Setting up PHI…'; }
 
-    // FIXED: Save consent FIRST, then onboarding data, then redirect
-    // All awaited — nothing happens until consent is confirmed
-    await saveConsentToBackend(_accessToken);
-    await saveOnboardingData();
+    try {
+        if (!_accessToken) {
+            const { data: { session } } = await supabaseClient.auth.getSession();
+            if (session) { _userId = session.user.id; _accessToken = session.access_token; }
+        }
 
-    // Store goal weight in localStorage for immediate UI use
-    if (ob.goalWeight) {
-        localStorage.setItem('phi_goal_wt', String(ob.goalWeight));
-    }
+        if (_userId && _accessToken) {
+            await saveConsentToBackend(_accessToken);
+            await saveOnboardingData();
+            localStorage.setItem('phi_onboarded_' + _userId, 'true');
+        }
 
-    // Mark terms accepted
-    if (_userId) {
-        try { localStorage.setItem(`phi_terms_${_userId}`, Date.now().toString()); } catch (e) {}
-    }
+        if (ob.goalWeight) localStorage.setItem('phi_goal_wt', String(ob.goalWeight));
+        if (_userId) { try { localStorage.setItem(`phi_terms_${_userId}`, Date.now().toString()); } catch (e) {} }
 
-    // Now redirect
-    if (!_redirecting) {
-        _redirecting = true;
-        window.location.href = '/app';
+        if (ob.plan === 'free') {
+            window.location.href = '/app?welcome=1';
+        } else {
+            await startPayment();
+        }
+    } catch (e) {
+        const msgEl = document.getElementById('planStatusMsg');
+        if (msgEl) { msgEl.textContent = e.message || 'Something went wrong. Please try again.'; msgEl.className = 'status-msg error'; }
+        if (btn) { btn.disabled = false; btn.innerHTML = ob.plan === 'free' ? 'Start Free →' : 'Continue to Payment →'; }
     }
 }
 
-// ── Goal weight calculator ────────────────────────────────────────────────────
+// ── DOM Listeners ─────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+    // Goal Weight Calculator
     const gwInput = document.getElementById('goalWeight');
     if (gwInput) {
         gwInput.addEventListener('input', () => {
@@ -485,9 +605,16 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+
+    // Default plan parsing from URL
+    const urlParams = new URLSearchParams(window.location.search);
+    if(urlParams.get('plan')){
+        ob.plan = urlParams.get('plan');
+        setTimeout(()=>{ selectPlan(ob.plan); }, 100);
+    }
 });
 
-// ── FIXED: Email signup — consent saved properly ──────────────────────────────
+// ── Auth flows ────────────────────────────────────────────────────────────────
 document.getElementById('signupBtn').addEventListener('click', async () => {
     if (!supabaseClient) { setStatus("Loading… please wait", "error"); return; }
 
@@ -508,8 +635,7 @@ document.getElementById('signupBtn').addEventListener('click', async () => {
 
     try {
         const { data, error } = await supabaseClient.auth.signUp({
-            email,
-            password,
+            email, password,
             options: {
                 data: { first_name: firstName, last_name: lastName },
                 emailRedirectTo: `${window.location.origin}/login`,
@@ -525,45 +651,37 @@ document.getElementById('signupBtn').addEventListener('click', async () => {
 
         if (data.user) {
             _userId = data.user.id;
-            // Mark terms accepted locally immediately
             try { localStorage.setItem(`phi_terms_${data.user.id}`, Date.now().toString()); } catch (e) {}
+            localStorage.setItem('phi_pending_firstname', firstName);
         }
 
         if (data.session) {
             _accessToken = data.session.access_token;
-
-            // FIXED: Save consent SYNCHRONOUSLY before showing onboarding
-            // This ensures consent is stored even if user closes the tab
             setStatus('Saving your preferences…', 'success');
             await saveConsentToBackend(_accessToken);
             setStatus('', '');
 
-            // Show onboarding
             document.getElementById('signupStep').style.display = 'none';
             document.getElementById('onboardingStep').style.display = 'block';
         } else {
-            // Email confirmation required — save consent via anonymous call won't work
-            // We'll save it when they log in via the login page
             document.getElementById('signupStep').style.display = 'none';
             document.getElementById('successState').style.display = 'block';
             if (firstName) document.getElementById('successTitle').textContent = `Almost there, ${firstName}!`;
             document.getElementById('successEmail').textContent = email;
         }
     } catch (err) {
-        console.error('[SIGNUP]', err);
         setStatus('Something went wrong. Please try again.', 'error');
         btn.disabled = false;
         btn.innerHTML = 'Create Free Account';
     }
 });
 
-// ── Google signup ─────────────────────────────────────────────────────────────
 document.getElementById('googleBtn').addEventListener('click', async () => {
     if (!supabaseClient) return;
-    // Google OAuth — consent is saved in the onboarding flow after redirect
+    try { localStorage.setItem('phi_google_terms_accepted', 'true'); } catch(e){}
     await supabaseClient.auth.signInWithOAuth({
         provider: 'google',
-        options: { redirectTo: `${window.location.origin}/app` },
+        options: { redirectTo: `${window.location.origin}/signup` },
     });
 });
 
@@ -577,16 +695,30 @@ document.addEventListener('keydown', e => {
 try {
     initSupabase();
 
-    // Handle Google OAuth redirect — save consent after successful OAuth
+    // Direct routing for logged-in users sent here for onboarding
+    if (window.location.hash === '#onboarding') {
+        document.getElementById('signupStep').style.display = 'none';
+        document.getElementById('onboardingStep').style.display = 'block';
+        goToPanel('A');
+    }
+
     supabaseClient.auth.onAuthStateChange(async (event, session) => {
         if (event === 'SIGNED_IN' && session?.user && !_accessToken) {
             _userId = session.user.id;
             _accessToken = session.access_token;
             const isGoogle = session.user.app_metadata?.provider === 'google';
             if (isGoogle) {
-                // Save consent for Google users silently
-                await saveConsentToBackend(session.access_token);
-                try { localStorage.setItem(`phi_terms_${session.user.id}`, Date.now().toString()); } catch (e) {}
+                const done = localStorage.getItem('phi_onboarded_' + _userId);
+                if (done) {
+                    window.location.replace('/app');
+                } else {
+                    await saveConsentToBackend(session.access_token);
+                    try { localStorage.setItem(`phi_terms_${session.user.id}`, Date.now().toString()); } catch (e) {}
+                    
+                    document.getElementById('signupStep').style.display = 'none';
+                    document.getElementById('onboardingStep').style.display = 'block';
+                    goToPanel('A');
+                }
             }
         }
     });

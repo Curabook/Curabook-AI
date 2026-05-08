@@ -1,425 +1,319 @@
 /**
- * phi_fixes.js — v2 (400 error fixed)
- *
- * FIX 1: Wearable/Watch Screenshot — uses /analyze endpoint directly
- *   Root cause of 400: /chat requires a valid conversation_id, which is
- *   null when no chat is open. Fix: use /analyze (document upload endpoint)
- *   which has no conversation requirement, then parse the returned
- *   document_text + markers for health values.
- *
- * FIX 2: Feedback FAB — Moved into sidebar footer
- *   Removes the floating button that overlapped the send button on mobile.
+ * phi_app_fixes.js — Curabook PHI App Patches
+ * 
+ * Fixes applied:
+ * 1. Welcome modal on first login (?welcome=1 or ?welcome=paid)
+ * 2. Proper upgrade button in sidebar
+ * 3. Trial expiry display + countdown
+ * 4. Onboarding memory shown in cockpit
+ * 5. Plan badge colors and upgrade CTA
+ * 6. Google OAuth users who need onboarding — redirect handled
  */
 "use strict";
 
-// ═══════════════════════════════════════════════════════════════════════
-// FIX 2: FEEDBACK BUTTON — Remove FAB, inject into sidebar footer
-// ═══════════════════════════════════════════════════════════════════════
+const _API = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://api.curabook.com';
 
-document.addEventListener("DOMContentLoaded", () => {
+// ── 1. WELCOME MODAL ──────────────────────────────────────────────────────────
+function showWelcomeModal(type) {
+  const existing = document.getElementById('welcomeModal');
+  if (existing) existing.remove();
 
-  // Remove FAB now and after initFeedback() runs
-  function _removeFab() {
-    const fab = document.getElementById("feedbackBtn");
-    if (fab) fab.remove();
+  const isPaid = type === 'paid';
+  const modal = document.createElement('div');
+  modal.id = 'welcomeModal';
+  modal.style.cssText = `
+    position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;
+    display:flex;align-items:center;justify-content:center;padding:20px;
+    animation:fadeIn .25s ease;
+  `;
+  modal.innerHTML = `
+    <div style="background:var(--surface,#fff);border-radius:20px;padding:36px;max-width:440px;width:100%;
+      box-shadow:0 24px 60px rgba(0,0,0,.2);text-align:center;animation:slideUp .3s ease">
+      <div style="font-size:3rem;margin-bottom:16px">${isPaid ? '🎉' : '👋'}</div>
+      <h2 style="font-family:var(--serif,'Georgia');font-size:1.6rem;font-weight:400;margin-bottom:10px;color:var(--ink,#0d0f12)">
+        ${isPaid ? 'Welcome to Shield Core!' : "Welcome to Curabook PHI!"}
+      </h2>
+      <p style="font-size:.88rem;color:var(--ink-3,#888);line-height:1.7;margin-bottom:24px">
+        ${isPaid 
+          ? "Your plan is active. Upload your first lab report to unlock your Metabolic Shield™ score and start monitoring for GLP-1 rebound."
+          : "PHI is ready. Upload your first lab report — tap the paperclip or the button below — and PHI will build your cliff risk picture in seconds."}
+      </p>
+      <button onclick="document.getElementById('welcomeModal').remove();handleUploadClick()" 
+        style="width:100%;padding:13px;background:var(--signal,#00d4c8);color:#0a0b0e;border:none;
+          border-radius:10px;font-size:.92rem;font-weight:700;cursor:pointer;font-family:var(--sans,'sans-serif');
+          box-shadow:0 4px 16px rgba(0,212,200,.3);margin-bottom:10px">
+        📎 Upload First Lab Report
+      </button>
+      <button onclick="document.getElementById('welcomeModal').remove()"
+        style="width:100%;padding:11px;background:none;border:1px solid var(--border,rgba(0,0,0,.08));
+          border-radius:10px;font-size:.84rem;color:var(--ink-3,#888);cursor:pointer;font-family:var(--sans,'sans-serif')">
+        Explore first, upload later
+      </button>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+// Check URL for welcome param
+(function checkWelcomeParam() {
+  const params = new URLSearchParams(window.location.search);
+  const welcome = params.get('welcome');
+  if (welcome) {
+    // Clean URL
+    const cleanUrl = window.location.pathname;
+    window.history.replaceState({}, '', cleanUrl);
+    // Show after slight delay so app loads
+    setTimeout(() => showWelcomeModal(welcome), 1200);
   }
-  _removeFab();
-  setTimeout(_removeFab, 500);
-  setTimeout(_removeFab, 1500);
-
-  // Add compact feedback row inside sidebar footer
-  const sbFooter = document.querySelector(".sb-footer");
-  if (sbFooter && !document.getElementById("sidebarFeedbackBtn")) {
-    const btn = document.createElement("button");
-    btn.id = "sidebarFeedbackBtn";
-    btn.setAttribute("aria-label", "Send feedback");
-    btn.innerHTML = `<i class="fa-regular fa-comment-dots"></i><span>Share Feedback</span>`;
-    btn.style.cssText = `
-      width:100%; display:flex; align-items:center; gap:9px;
-      padding:0 14px; min-height:40px; border:none; background:none;
-      color:var(--text-3); font-size:.82rem; font-family:var(--sans);
-      font-weight:500; cursor:pointer; border-radius:var(--r);
-      margin-bottom:4px; transition:all .15s;
-    `;
-    btn.onmouseenter = () => { btn.style.background = "var(--surface-2)"; btn.style.color = "var(--text)"; };
-    btn.onmouseleave = () => { btn.style.background = "none"; btn.style.color = "var(--text-3)"; };
-    btn.onclick = () => {
-      if (typeof closeSidebar === "function") closeSidebar();
-      if (typeof openFeedback === "function") openFeedback();
-    };
-    sbFooter.insertBefore(btn, sbFooter.firstChild);
-  }
-});
-
-// ═══════════════════════════════════════════════════════════════════════
-// FIX 1: WEARABLE SCREENSHOT — Direct /analyze endpoint (no conv needed)
-// ═══════════════════════════════════════════════════════════════════════
-
-(function patchSyncWearable() {
-
-  const API = ["localhost", "127.0.0.1", "0.0.0.0"].includes(location.hostname)
-    ? "http://localhost:5000"
-    : "https://api.curabook.com";
-
-  const _el = id => document.getElementById(id);
-
-  const _toast = (msg, type = "info") => {
-    const c = _el("toasts");
-    if (!c) return;
-    const t = document.createElement("div");
-    const icons = { ok: "circle-check", err: "circle-exclamation", info: "circle-info" };
-    t.className = `toast toast-${type}`;
-    t.innerHTML = `<i class="fa-solid fa-${icons[type] || "circle-info"}"></i> ${msg}`;
-    c.appendChild(t);
-    setTimeout(() => {
-      t.style.opacity = "0";
-      t.style.transition = "opacity .3s";
-      setTimeout(() => t.remove(), 300);
-    }, 4500);
-  };
-
-  // Get auth token — tries script.js session() first, then localStorage fallback
-  async function _getToken() {
-    if (typeof session === "function") {
-      try {
-        const s = await session();
-        if (s?.access_token) return s.access_token;
-      } catch (e) {}
-    }
-    try {
-      const keys = Object.keys(localStorage).filter(
-        k => k.startsWith("sb-") && k.endsWith("-auth-token")
-      );
-      for (const key of keys) {
-        const parsed = JSON.parse(localStorage.getItem(key) || "{}");
-        if (parsed?.access_token) return parsed.access_token;
-      }
-    } catch (e) {}
-    return null;
-  }
-
-  // ── MAIN: Process wearable screenshot via /analyze ──────────────────
-  // Uses multipart FormData — same as the paperclip upload flow.
-  // /analyze does NOT need a conversation_id, so no 400 error.
-  async function _processWearableImage(file) {
-    const btn      = _el("syncWearableBtn");
-    const origHTML = btn?.innerHTML || "";
-
-    if (btn) {
-      btn.disabled  = true;
-      btn.innerHTML = `<i class="fa-solid fa-spinner" style="animation:spin .7s linear infinite"></i> Reading…`;
-    }
-
-    _toast("📸 Vision AI reading your screenshot…", "info");
-
-    try {
-      // Step 1: Auth
-      const token = await _getToken();
-      if (!token) {
-        _toast("Session expired — please refresh the page.", "err");
-        return;
-      }
-
-      // Step 2: Upload to /analyze as multipart (same as normal file upload)
-      const form = new FormData();
-      // Give it a .jpg extension so the server recognises it as an image
-      const safeName = file.name?.match(/\.(jpg|jpeg|png|webp|heic)$/i)
-        ? file.name
-        : "wearable_screenshot.jpg";
-      form.append("file", file, safeName);
-
-      const res = await fetch(API + "/analyze", {
-        method:  "POST",
-        headers: { Authorization: "Bearer " + token },
-        // DO NOT set Content-Type — browser sets multipart boundary automatically
-        body:    form,
-        signal:  AbortSignal.timeout(60000),
-      });
-
-      if (res.status === 401) {
-        _toast("Session expired — please refresh.", "err");
-        return;
-      }
-
-      if (!res.ok) {
-        let errMsg = `Server error ${res.status}`;
-        try {
-          const d = await res.json();
-          errMsg = d?.error || d?.message || errMsg;
-        } catch (_) {}
-        throw new Error(errMsg);
-      }
-
-      const data = await res.json();
-
-      // Step 3: Parse OCR text + backend markers for health values
-      const rawText       = data?.document_text || data?.summary_text || "";
-      const backendMarkers = data?.markers || [];
-      const extracted     = _parseWearableData(rawText, backendMarkers);
-
-      if (!extracted.hasAny) {
-        _toast(
-          "⚠️ Couldn't read health metrics. Try a brighter, clearer photo of your watch face.",
-          "err"
-        );
-        return;
-      }
-
-      // Step 4: Fill Shield inputs
-      _applyToShield(extracted);
-
-      // Step 5: Log to /api/behavioral-logs
-      await _logMetrics(extracted, token);
-
-      // Step 6: Re-render Shield rings
-      const p  = extracted.protein || parseFloat(_el("inputProtein")?.value)  || 0;
-      const s  = extracted.steps   || parseFloat(_el("inputSteps")?.value)    || 0;
-      const sl = extracted.sleep   || parseFloat(_el("inputSleep")?.value)    || 0;
-      if (typeof renderShield === "function") {
-        renderShield(p, s, sl, new Date().toISOString().slice(0, 10));
-      }
-
-      // Step 7: Success toast
-      const parts = [];
-      if (extracted.protein)   parts.push(`${extracted.protein}g protein`);
-      if (extracted.steps)     parts.push(`${extracted.steps.toLocaleString()} steps`);
-      if (extracted.sleep)     parts.push(`${extracted.sleep}h sleep`);
-      if (extracted.weight)    parts.push(`${extracted.weight} lbs`);
-      if (extracted.calories)  parts.push(`${extracted.calories.toLocaleString()} kcal`);
-      if (extracted.heartRate) parts.push(`${extracted.heartRate} bpm`);
-
-      _toast(
-        parts.length ? `✅ Synced: ${parts.join(" · ")}` : "✅ Shield updated.",
-        "ok"
-      );
-
-      _showSummaryCard(extracted);
-
-    } catch (err) {
-      console.error("[WEARABLE]", err);
-      _toast(`Screenshot failed: ${(err.message || "Unknown error").slice(0, 100)}`, "err");
-    } finally {
-      if (btn) { btn.disabled = false; btn.innerHTML = origHTML; }
-    }
-  }
-
-  // ── Parse OCR text + backend markers for health values ──────────────
-  function _parseWearableData(text, backendMarkers) {
-    const extracted = { hasAny: false };
-
-    // First: check backend-extracted markers (most reliable)
-    for (const m of backendMarkers) {
-      const name = (m.marker || m.marker_name || "").toLowerCase();
-      const val  = parseFloat(m.value);
-      if (isNaN(val)) continue;
-      if (name.includes("step"))                              { extracted.steps    = val; extracted.hasAny = true; }
-      if (name.includes("protein"))                          { extracted.protein  = val; extracted.hasAny = true; }
-      if (name.includes("sleep"))                            { extracted.sleep    = val; extracted.hasAny = true; }
-      if (name.includes("weight"))                           { extracted.weight   = val; extracted.hasAny = true; }
-      if (name.includes("calori"))                           { extracted.calories = val; extracted.hasAny = true; }
-      if (name.includes("heart") || name.includes("bpm"))   { extracted.heartRate= val; extracted.hasAny = true; }
-    }
-
-    if (!text) return extracted;
-
-    const _find = (patterns) => {
-      for (const pat of patterns) {
-        const m = text.match(pat);
-        if (m) {
-          const v = parseFloat((m[1] || "").replace(/,/g, ""));
-          if (!isNaN(v)) return v;
-        }
-      }
-      return null;
-    };
-
-    // Steps
-    if (!extracted.steps) {
-      const v = _find([
-        /(\d[\d,]*)\s*steps/i,
-        /steps[:\s]+([\d,]+)/i,
-        /step\s*count[:\s]+([\d,]+)/i,
-      ]);
-      if (v && v >= 100 && v <= 100000) { extracted.steps = v; extracted.hasAny = true; }
-    }
-
-    // Protein
-    if (!extracted.protein) {
-      const v = _find([
-        /protein[:\s]+(\d+\.?\d*)\s*g/i,
-        /(\d+\.?\d*)\s*g\s+(?:of\s+)?protein/i,
-      ]);
-      if (v && v >= 5 && v <= 400) { extracted.protein = v; extracted.hasAny = true; }
-    }
-
-    // Sleep — "7h 32m", "7.5h", "7 hours"
-    if (!extracted.sleep) {
-      const hm = text.match(/(\d+)\s*h(?:ours?)?\s*(\d+)\s*m(?:in)?/i);
-      if (hm) {
-        const hrs = parseInt(hm[1]) + parseInt(hm[2]) / 60;
-        if (hrs >= 0 && hrs <= 14) { extracted.sleep = Math.round(hrs * 10) / 10; extracted.hasAny = true; }
-      }
-      if (!extracted.sleep) {
-        const v = _find([
-          /sleep[:\s]+(\d+\.?\d*)\s*h/i,
-          /(\d+\.?\d*)\s*h(?:ours?)?\s+(?:of\s+)?sleep/i,
-          /time\s+asleep[:\s]+(\d+\.?\d*)/i,
-          /slept?\s+(\d+\.?\d*)\s*h/i,
-        ]);
-        if (v && v >= 0 && v <= 14) { extracted.sleep = v; extracted.hasAny = true; }
-      }
-    }
-
-    // Calories / active energy
-    if (!extracted.calories) {
-      const v = _find([
-        /(\d[\d,]*)\s*(?:kcal|cal)\b/i,
-        /calori(?:es?)[:\s]+([\d,]+)/i,
-        /active\s+energy[:\s]+([\d,]+)/i,
-        /energy\s+burned[:\s]+([\d,]+)/i,
-      ]);
-      if (v && v >= 50 && v <= 10000) { extracted.calories = v; extracted.hasAny = true; }
-    }
-
-    // Weight
-    if (!extracted.weight) {
-      const v = _find([
-        /(\d+\.?\d*)\s*lbs?/i,
-        /weight[:\s]+(\d+\.?\d*)/i,
-      ]);
-      // Also handle kg
-      const kgMatch = text.match(/(\d+\.?\d*)\s*kg\b/i);
-      const lbs = v && v >= 80 && v <= 500 ? v
-        : kgMatch ? Math.round(parseFloat(kgMatch[1]) * 2.20462 * 10) / 10
-        : null;
-      if (lbs && lbs >= 80 && lbs <= 500) { extracted.weight = lbs; extracted.hasAny = true; }
-    }
-
-    // Heart rate
-    if (!extracted.heartRate) {
-      const v = _find([
-        /(\d+)\s*bpm/i,
-        /heart\s+rate[:\s]+(\d+)/i,
-        /(?:resting\s+)?hr[:\s]+(\d+)/i,
-      ]);
-      if (v && v >= 30 && v <= 220) { extracted.heartRate = v; extracted.hasAny = true; }
-    }
-
-    return extracted;
-  }
-
-  // ── Fill Shield cockpit inputs ──────────────────────────────────────
-  function _applyToShield(ex) {
-    if (ex.protein) { const e = _el("inputProtein"); if (e) e.value = ex.protein; }
-    if (ex.steps)   { const e = _el("inputSteps");   if (e) e.value = ex.steps;   }
-    if (ex.sleep)   { const e = _el("inputSleep");   if (e) e.value = ex.sleep;   }
-    if (ex.weight)  { const e = _el("inputGoalWt");  if (e && !e.value) e.value = ex.weight; }
-  }
-
-  // ── Log to /api/behavioral-logs ─────────────────────────────────────
-  async function _logMetrics(ex, token) {
-    const date = new Date().toISOString().slice(0, 10);
-    const hdr  = { "Content-Type": "application/json", Authorization: "Bearer " + token };
-    const rows = [];
-    if (ex.protein)   rows.push({ date, metric_name: "protein",  value: ex.protein,   unit: "g"     });
-    if (ex.steps)     rows.push({ date, metric_name: "steps",    value: ex.steps,     unit: "steps" });
-    if (ex.sleep)     rows.push({ date, metric_name: "sleep",    value: ex.sleep,     unit: "hours" });
-    if (ex.weight)    rows.push({ date, metric_name: "weight",   value: ex.weight,    unit: "lbs"   });
-    if (ex.calories)  rows.push({ date, metric_name: "calories", value: ex.calories,  unit: "kcal"  });
-
-    for (const row of rows) {
-      try {
-        await fetch(API + "/api/behavioral-logs", {
-          method: "POST", headers: hdr,
-          body: JSON.stringify(row),
-          signal: AbortSignal.timeout(8000),
-        });
-      } catch (e) { console.warn("[WEARABLE] log error:", e.message); }
-    }
-
-    const lbl = _el("shieldLastLogged");
-    if (lbl) lbl.textContent = `Last synced: Today at ${new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
-  }
-
-  // ── Show summary card below sync button ─────────────────────────────
-  function _showSummaryCard(ex) {
-    let card = _el("wearableSyncSummary");
-    if (!card) {
-      const anchor = _el("syncWearableBtn");
-      if (!anchor) return;
-      card = document.createElement("div");
-      card.id = "wearableSyncSummary";
-      card.style.cssText = `
-        margin-top:10px; padding:10px 12px;
-        background:var(--signal-dim);
-        border:1px solid rgba(0,212,200,.2);
-        border-radius:var(--r-sm);
-        font-size:.75rem; color:var(--signal); line-height:1.8;
-        animation:fadeIn .3s ease;
-      `;
-      anchor.insertAdjacentElement("afterend", card);
-    }
-    const rows = [];
-    if (ex.protein)   rows.push(`💪 Protein <strong>${ex.protein}g</strong>`);
-    if (ex.steps)     rows.push(`👟 Steps <strong>${ex.steps.toLocaleString()}</strong>`);
-    if (ex.sleep)     rows.push(`😴 Sleep <strong>${ex.sleep}h</strong>`);
-    if (ex.weight)    rows.push(`⚖️ Weight <strong>${ex.weight} lbs</strong>`);
-    if (ex.calories)  rows.push(`🔥 Calories <strong>${ex.calories.toLocaleString()} kcal</strong>`);
-    if (ex.heartRate) rows.push(`❤️ HR <strong>${ex.heartRate} bpm</strong>`);
-    card.innerHTML = `
-      <div style="font-size:.63rem;font-weight:700;text-transform:uppercase;
-        letter-spacing:.08em;color:var(--text-3);margin-bottom:5px;">
-        📸 Synced ${new Date().toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}
-      </div>
-      ${rows.join("<br>")}
-    `;
-    setTimeout(() => { if (card) card.style.opacity = "0.5"; }, 60000);
-  }
-
-  // ── Wire the sync button ────────────────────────────────────────────
-  function _wire() {
-    const syncBtn = _el("syncWearableBtn");
-    if (!syncBtn) return;
-
-    let fileInput = _el("wearableCameraInput");
-    if (!fileInput) {
-      fileInput = document.createElement("input");
-      fileInput.type    = "file";
-      fileInput.id      = "wearableCameraInput";
-      fileInput.accept  = "image/*";
-      
-      // Remove or comment out the line below to allow file uploads on mobile
-      // if (navigator.maxTouchPoints > 0) fileInput.capture = "environment"; 
-      
-      fileInput.style.display = "none";
-      document.body.appendChild(fileInput);
-    }
-
-    // Clone to strip all previous event listeners (including initSyncWearable)
-    const fresh = syncBtn.cloneNode(true);
-    syncBtn.parentNode.replaceChild(fresh, syncBtn);
-
-    fresh.addEventListener("click", e => {
-      e.preventDefault();
-      e.stopPropagation();
-      fileInput.click();
-    });
-
-    fileInput.addEventListener("change", e => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      e.target.value = "";
-      _processWearableImage(file);
-    });
-
-    console.log("[PHI-FIXES] ✓ Wearable sync button wired to /analyze");
-  }
-
-  // Wait for script.js to finish, then overwrite its listener
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", () => setTimeout(_wire, 300));
-  } else {
-    setTimeout(_wire, 300);
-  }
-
 })();
+
+// ── 2. UPGRADE BUTTON IN SIDEBAR ─────────────────────────────────────────────
+function injectUpgradeButton() {
+  const sbFooter = document.querySelector('.sb-footer');
+  if (!sbFooter || document.getElementById('upgradeNavBtn')) return;
+
+  const btn = document.createElement('button');
+  btn.id = 'upgradeNavBtn';
+  btn.innerHTML = `
+    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="flex-shrink:0">
+      <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/>
+    </svg>
+    <span>Upgrade Plan</span>
+  `;
+  btn.style.cssText = `
+    width:100%;display:flex;align-items:center;gap:8px;
+    padding:0 14px;min-height:44px;border:1.5px solid var(--signal,#00d4c8);
+    background:rgba(0,212,200,.06);border-radius:var(--r,10px);
+    color:var(--signal,#00d4c8);font-size:.82rem;font-family:var(--sans,'sans-serif');
+    font-weight:600;cursor:pointer;margin-bottom:8px;transition:all .15s;
+  `;
+  btn.onmouseenter = () => btn.style.background = 'rgba(0,212,200,.12)';
+  btn.onmouseleave = () => btn.style.background = 'rgba(0,212,200,.06)';
+  btn.onclick = () => { closeSidebar?.(); showUpgradeModal('manual'); };
+  sbFooter.insertBefore(btn, sbFooter.firstChild);
+}
+
+// ── 3. PLAN BADGE & TRIAL DISPLAY ─────────────────────────────────────────────
+async function refreshPlanDisplay() {
+  try {
+    const s = await session?.();
+    if (!s?.access_token) return;
+    
+    const res = await fetch(_API + '/api/payment/status', {
+      headers: { 'Authorization': 'Bearer ' + s.access_token }
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+
+    // Update plan badge
+    const planEl = document.getElementById('userPlan');
+    if (planEl) {
+      const isPro = data.is_pro;
+      const plan = data.plan || 'free';
+      let planLabel = 'PHI Free';
+      if (plan === 'monthly') planLabel = 'Shield Core ✦';
+      else if (plan === 'annual') planLabel = 'Shield Annual ✦';
+      else if (plan === 'clinical') planLabel = 'Shield Clinical ✦';
+      else if (plan === 'trial') planLabel = 'Trial Active';
+      planEl.textContent = planLabel;
+      planEl.style.color = isPro ? 'var(--signal,#00d4c8)' : 'var(--text-3,#566070)';
+    }
+
+    // Show trial countdown
+    if (data.plan === 'trial' && data.subscription_end_date) {
+      showTrialBanner(data.subscription_end_date);
+    }
+
+    // Hide upgrade button if already pro
+    const upgradeBtn = document.getElementById('upgradeNavBtn');
+    if (upgradeBtn) upgradeBtn.style.display = data.is_pro ? 'none' : '';
+
+    // Update internal state
+    if (typeof _userPlan !== 'undefined') {
+      window._userPlan = data.plan || 'free';
+      window._reportsRemaining = data.reports_remaining ?? 1;
+    }
+
+  } catch (e) {
+    console.warn('[PLAN] Status refresh error:', e);
+  }
+}
+
+function showTrialBanner(endDate) {
+  if (document.getElementById('trialBanner')) return;
+  try {
+    const end = new Date(endDate);
+    const days = Math.ceil((end - Date.now()) / 86400000);
+    if (days <= 0) return;
+
+    const banner = document.createElement('div');
+    banner.id = 'trialBanner';
+    banner.style.cssText = `
+      position:fixed;top:0;left:0;right:0;z-index:200;
+      background:linear-gradient(90deg,var(--signal,#00d4c8),#00a89e);
+      color:#0a0b0e;text-align:center;padding:9px 20px;font-size:.8rem;font-weight:600;
+      display:flex;align-items:center;justify-content:center;gap:12px;
+    `;
+    banner.innerHTML = `
+      <span>⏰ Trial active — ${days} day${days !== 1 ? 's' : ''} remaining</span>
+      <button onclick="showUpgradeModal('trial');document.getElementById('trialBanner').remove()"
+        style="background:rgba(0,0,0,.15);border:none;border-radius:6px;padding:4px 12px;
+          color:#0a0b0e;font-size:.75rem;font-weight:700;cursor:pointer;font-family:inherit">
+        Upgrade Now
+      </button>
+      <button onclick="document.getElementById('trialBanner').remove()"
+        style="background:none;border:none;color:rgba(0,0,0,.5);cursor:pointer;font-size:1.1rem;padding:0 4px">
+        ×
+      </button>
+    `;
+    document.body.prepend(banner);
+    // Shift topbar down
+    const topbar = document.getElementById('topbar');
+    if (topbar) topbar.style.marginTop = banner.offsetHeight + 'px';
+  } catch (e) {}
+}
+
+// ── 4. IN-APP UPGRADE MODAL ───────────────────────────────────────────────────
+// Override the existing showUpgradeModal to use Razorpay
+const _originalShowUpgrade = window.showUpgradeModal;
+window.showUpgradeModal = function(reason) {
+  const existing = document.getElementById('upgradeModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'upgradeModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;animation:fadeIn .2s ease';
+  modal.innerHTML = `
+    <div style="background:var(--surface,#111318);border:1px solid rgba(255,255,255,.1);border-radius:20px;
+      padding:32px;max-width:460px;width:100%;box-shadow:0 24px 60px rgba(0,0,0,.5);position:relative">
+      <button onclick="document.getElementById('upgradeModal').remove()" style="position:absolute;top:14px;right:14px;
+        color:var(--text-3,#566);font-size:1.1rem;background:none;border:none;cursor:pointer;
+        width:30px;height:30px;display:flex;align-items:center;justify-content:center">×</button>
+
+      ${reason === 'upload' ? `
+      <div style="background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);border-radius:10px;
+        padding:10px 14px;margin-bottom:16px;font-size:.8rem;color:#fbbf24;display:flex;align-items:center;gap:8px">
+        ⚠ Free plan limit — upgrade to upload unlimited lab reports
+      </div>` : ''}
+
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+        <div style="width:42px;height:42px;background:linear-gradient(135deg,var(--signal,#00d4c8),#00a89e);
+          border-radius:12px;display:flex;align-items:center;justify-content:center;
+          font-family:Georgia,serif;font-size:1.2rem;color:#0a0b0e;font-style:italic;flex-shrink:0">φ</div>
+        <div>
+          <h3 style="font-size:.95rem;font-weight:700;margin-bottom:2px;color:var(--text,#f0f2f5)">Upgrade to Shield Core</h3>
+          <p style="font-size:.74rem;color:var(--text-3,#566)">Unlimited reports · Weekly alerts · PA support · Memory</p>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        <button id="upgMonthlyBtn" onclick="initUpgrade('monthly')" style="flex:1;padding:13px;
+          background:var(--signal,#00d4c8);color:#0a0b0e;border:none;border-radius:10px;
+          font-size:.86rem;font-weight:700;cursor:pointer;font-family:inherit;
+          box-shadow:0 4px 14px rgba(0,212,200,.3)">
+          Monthly — $39/mo
+        </button>
+        <button id="upgAnnualBtn" onclick="initUpgrade('annual')" style="flex:1;padding:13px;
+          background:rgba(255,255,255,.07);color:rgba(255,255,255,.7);
+          border:1px solid rgba(255,255,255,.12);border-radius:10px;
+          font-size:.86rem;font-weight:600;cursor:pointer;font-family:inherit">
+          Annual — $374/yr <span style="color:rgba(0,212,200,.8);font-size:.7rem">-20%</span>
+        </button>
+      </div>
+
+      <div id="upgradeStatus" style="text-align:center;font-size:.78rem;color:var(--text-3,#566);min-height:20px"></div>
+      <p style="font-size:.7rem;color:var(--text-3,#566);text-align:center;margin-top:8px">
+        Secure via Razorpay · No card stored · Cancel anytime
+      </p>
+    </div>
+  `;
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  document.body.appendChild(modal);
+};
+
+async function initUpgrade(plan) {
+  const statusEl = document.getElementById('upgradeStatus');
+  const btn = document.getElementById('upg' + plan.charAt(0).toUpperCase() + plan.slice(1) + 'Btn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span style="animation:spin .7s linear infinite;display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:white;border-radius:50%;vertical-align:middle;margin-right:6px"></span>'; }
+  if (statusEl) statusEl.textContent = 'Connecting to payment…';
+
+  try {
+    const s = await session?.();
+    if (!s?.access_token) throw new Error('Please sign in first.');
+
+    const res = await fetch(_API + '/api/payment/razorpay/order', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + s.access_token },
+      body: JSON.stringify({ plan })
+    });
+    if (!res.ok) throw new Error((await res.json().catch(()=>({}))).error || 'Payment setup failed.');
+    const data = await res.json();
+    if (!data.order_id && !data.subscription_id) throw new Error('Invalid payment response.');
+
+    if (typeof Razorpay === 'undefined') {
+      window.location.href = '/signup?plan=' + plan;
+      return;
+    }
+
+    const opts = {
+      key: data.razorpay_key_id,
+      amount: data.amount,
+      currency: data.currency || 'USD',
+      name: 'Curabook PHI',
+      description: data.description,
+      handler: async (resp) => {
+        try {
+          const vRes = await fetch(_API + '/api/payment/razorpay/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + s.access_token },
+            body: JSON.stringify({
+              order_id: data.order_id || '',
+              subscription_id: data.subscription_id || resp.razorpay_subscription_id || '',
+              payment_id: resp.razorpay_payment_id,
+              signature: resp.razorpay_signature,
+              plan
+            })
+          });
+          const vData = await vRes.json();
+          if (vData.success) {
+            document.getElementById('upgradeModal')?.remove();
+            typeof toast === 'function' && toast('🎉 ' + (vData.message || 'Shield Core unlocked!'), 'ok');
+            setTimeout(() => { refreshPlanDisplay(); window._userPlan = plan; window._reportsRemaining = 9999; }, 500);
+          }
+        } catch (e) { console.error('[UPGRADE] verify error:', e); }
+      },
+      prefill: { email: s.user?.email || '' },
+      theme: { color: '#00d4c8' },
+      modal: { ondismiss: () => { if (btn) { btn.disabled = false; btn.textContent = plan === 'monthly' ? 'Monthly — $39/mo' : 'Annual — $374/yr -20%'; } if (statusEl) statusEl.textContent = 'Payment cancelled.'; } }
+    };
+    if (data.mode === 'subscription') opts.subscription_id = data.subscription_id;
+    else opts.order_id = data.order_id;
+    new Razorpay(opts).open();
+
+  } catch (e) {
+    if (statusEl) statusEl.textContent = e.message;
+    if (btn) { btn.disabled = false; btn.textContent = plan === 'monthly' ? 'Monthly — $39/mo' : 'Annual — $374/yr'; }
+    typeof toast === 'function' && toast(e.message, 'err');
+  }
+}
+window.initUpgrade = initUpgrade;
+
+// ── 5. INIT ALL FIXES ────────────────────────────────────────────────────────
+function initAppFixes() {
+  injectUpgradeButton();
+  // Refresh plan display after auth is ready
+  window.addEventListener('phi:authed', () => {
+    setTimeout(() => {
+      refreshPlanDisplay();
+    }, 800);
+  });
+  // Also try after 2s in case event already fired
+  setTimeout(() => refreshPlanDisplay(), 2000);
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initAppFixes);
+} else {
+  setTimeout(initAppFixes, 200);
+}

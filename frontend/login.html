@@ -124,12 +124,12 @@
 </div>
 
 <script>
-const API_BASE     = "https://api.curabook.com";
+const API_BASE     = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://api.curabook.com';
 const SUPABASE_URL = "https://pbeaawlxdcrdbvlmpqhc.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBiZWFhd2x4ZGNyZGJ2bG1wcWhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwMDk0MzksImV4cCI6MjA5MTU4NTQzOX0.6bUpYrDbe0mQjjBHX8Qscj-5R8i4-SqAtW_Z1UFzJ10";
 
 let _supabase     = null;
-let _redirected   = false;
+let _redirecting  = false;
 let _termsShowing = false;
 
 function sanitizeLocalStorage() {
@@ -156,22 +156,43 @@ function setLoading(btn, loading) {
     btn.innerHTML = loading ? '<span class="spinner"></span> Signing in…' : "Sign In";
 }
 
-// ── FIX: Redirects directly to /app ─────────────────────────
-function doRedirect() {
-    if (_redirected || _termsShowing) return;
-    _redirected = true;
+// ── FIXED: Added proper onboarding check logic from zip file ──────────
+async function handleSuccessfulLogin(session) {
+    if (_redirecting) return;
+    _redirecting = true;
     setStatus("Signing you in…", "success");
-    window.location.href = "/app";
+
+    try {
+        const user = session?.user;
+        if (user) {
+            // Check if onboarding is done 
+            const onboardingDone = localStorage.getItem('phi_onboarded_' + user.id);
+            if (!onboardingDone) {
+                const { data: profile } = await _supabase.from('glp1_onboarding').select('glp1_status').eq('user_id', user.id).limit(1).maybeSingle().catch(()=>({data:null}));
+                
+                if (!profile?.glp1_status) {
+                    // New user who needs onboarding — Google OAuth users land here
+                    window.location.replace('/signup#onboarding');
+                    return;
+                } else {
+                    localStorage.setItem('phi_onboarded_' + user.id, 'true');
+                }
+            }
+        }
+    } catch (e) {
+        console.warn("[LOGIN] Routing check failed:", e);
+    }
+    
+    window.location.replace('/app');
 }
 
 async function saveConsentToBackend(accessToken) {
     try {
-        const resp = await fetch(`${API_BASE}/api/consent`, {
+        await fetch(`${API_BASE}/api/consent`, {
             method:  "POST",
             headers: { "Content-Type": "application/json", "Authorization": "Bearer " + accessToken },
             body:    JSON.stringify({ consents: ["data_processing", "ai_processing", "document_processing"] }),
         });
-        if (!resp.ok) console.warn("[CONSENT] Backend returned", resp.status);
     } catch (err) { console.warn("[CONSENT] Non-fatal:", err); }
 }
 
@@ -199,7 +220,7 @@ function showGoogleTermsModal(user, session) {
             </label>
             <div class="terms-modal-actions">
                 <button class="btn-decline" id="declineBtn">Decline &amp; Sign Out</button>
-                <button class="btn-accept" id="acceptBtn">Accept &amp; Enter PHI</button>
+                <button class="btn-accept" id="acceptBtn">Accept &amp; Continue</button>
             </div>
         </div>`;
     document.body.appendChild(overlay);
@@ -208,6 +229,7 @@ function showGoogleTermsModal(user, session) {
         await _supabase.auth.signOut();
         overlay.remove();
         _termsShowing = false;
+        _redirecting = false;
         setStatus("You must accept the terms to use Curabook PHI.", "error");
     });
 
@@ -220,7 +242,7 @@ function showGoogleTermsModal(user, session) {
         btn.disabled  = true;
         btn.innerHTML = '<span class="spinner"></span> Saving…';
 
-        localStorage.setItem(`phi_terms_${user.id}`, Date.now().toString());
+        try { localStorage.setItem(`phi_terms_${user.id}`, Date.now().toString()); } catch(e) {}
 
         if (session?.access_token) {
             await saveConsentToBackend(session.access_token);
@@ -228,7 +250,7 @@ function showGoogleTermsModal(user, session) {
 
         overlay.remove();
         _termsShowing = false;
-        doRedirect();
+        handleSuccessfulLogin(session);
     });
 }
 
@@ -236,14 +258,18 @@ document.getElementById("loginBtn").addEventListener("click", async () => {
     const email    = document.getElementById("email").value.trim();
     const password = document.getElementById("password").value;
     const btn      = document.getElementById("loginBtn");
+    
     if (!email || !password) { setStatus("Please enter your email and password.", "error"); return; }
+    
     setLoading(btn, true);
+    setStatus("", "");
+    
     try {
-        const { data, error } = await _supabase.auth.signInWithPassword({ email, password });
-        if (error) { setStatus(error.message, "error"); setLoading(btn, false); return; }
+        const { error } = await _supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        // onAuthStateChange handles redirect automatically
     } catch (err) {
-        console.error("[LOGIN]", err);
-        setStatus("Something went wrong. Please try again.", "error");
+        setStatus(err.message || "Invalid email or password.", "error");
         setLoading(btn, false);
     }
 });
@@ -262,21 +288,21 @@ document.getElementById("forgotLink").addEventListener("click", async e => {
         const { error } = await _supabase.auth.resetPasswordForEmail(email, {
             redirectTo: `${window.location.origin}/login`,
         });
-        if (error) { setStatus(error.message, "error"); return; }
+        if (error) throw error;
         setStatus("Password reset email sent. Check your inbox.", "success");
-    } catch { setStatus("Could not send reset email. Try again.", "error"); }
+    } catch (err) { setStatus(err.message || "Could not send reset email.", "error"); }
 });
 
 document.getElementById("googleBtn").addEventListener("click", async () => {
     try {
         await _supabase.auth.signInWithOAuth({
             provider: "google",
-            options: { redirectTo: `${window.location.origin}/app` },
+            options: { redirectTo: `${window.location.origin}/login` }, // Needs to come back here for checks
         });
     } catch { setStatus("Google sign-in unavailable. Try email instead.", "error"); }
 });
 
-(async function boot() {
+(function boot() {
     try {
         sanitizeLocalStorage();
 
@@ -284,14 +310,12 @@ document.getElementById("googleBtn").addEventListener("click", async () => {
             auth: {
                 detectSessionInUrl: true, 
                 persistSession:     true,
-                flowType:           "implicit",
+                autoRefreshToken:   true
             },
         });
 
-        const { data: { subscription } } = _supabase.auth.onAuthStateChange(async (event, session) => {
-            console.log("[AUTH]", event, session?.user?.email);
-
-            if (event === "SIGNED_IN" && session?.user) {
+        _supabase.auth.onAuthStateChange(async (event, session) => {
+            if ((event === "SIGNED_IN" || event === "TOKEN_REFRESHED") && session?.user && !_redirecting) {
                 const user      = session.user;
                 const isGoogle  = user.app_metadata?.provider === "google";
                 const termsKey  = `phi_terms_${user.id}`;
@@ -300,23 +324,31 @@ document.getElementById("googleBtn").addEventListener("click", async () => {
                     showGoogleTermsModal(user, session);
                     return;
                 }
-                doRedirect();
+                await handleSuccessfulLogin(session);
             }
         });
 
-        const hasOAuthHash = window.location.hash.includes("access_token");
-        if (!hasOAuthHash) {
-            const { data: { session } } = await _supabase.auth.getSession();
-            if (session?.user) {
-                const user     = session.user;
-                const isGoogle = user.app_metadata?.provider === "google";
-                const termsKey = `phi_terms_${user.id}`;
-                if (isGoogle && !localStorage.getItem(termsKey)) {
-                    showGoogleTermsModal(user, session);
-                    return;
+        // Don't auto-redirect if there's no hash
+        if (!window.location.hash.includes("access_token") && window.location.hash !== "#onboarding") {
+            _supabase.auth.getSession().then(({ data: { session } }) => {
+                if (session?.user && !_redirecting) {
+                    const user     = session.user;
+                    const isGoogle = user.app_metadata?.provider === "google";
+                    const termsKey = `phi_terms_${user.id}`;
+                    
+                    if (isGoogle && !localStorage.getItem(termsKey)) {
+                        showGoogleTermsModal(user, session);
+                        return;
+                    }
+                    handleSuccessfulLogin(session);
                 }
-                doRedirect();
-            }
+            });
+        }
+        
+        if (window.location.hash === '#onboarding') {
+            window.location.href = '/signup#onboarding';
+        } else if (window.location.hash.includes('access_token')) {
+            setStatus('Signing you in…', 'success');
         }
 
     } catch (err) {
