@@ -6,7 +6,7 @@
     <title>Curabook PHI | The Digital Shield for Your GLP-1 Journey</title>
     <meta name="description" content="Navigate the GLP-1 cliff, fight insurance PA denials, and silence food noise.">
     
-    <link rel="icon" href="logo.png" type="image/png">
+    <link rel="icon" href="icon.png" type="image/png">
 
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -17,7 +17,7 @@
                         clinical: {
                             50: '#f0fdfa',
                             100: '#ccfbf1',
-                            500: '#14b8a6', // Calming medical teal
+                            500: '#14b8a6', 
                             600: '#0d9488',
                             900: '#134e4a',
                         },
@@ -50,13 +50,14 @@
             <div class="flex justify-between h-16 items-center">
                 
                 <div class="flex-shrink-0 flex items-center gap-2">
-                    <img src="logo.png" alt="Curabook Logo" class="h-8 w-auto">
+                    <img src="icon.png" alt="Curabook Icon" class="h-8 w-8 object-contain">
                     <span class="font-bold text-xl text-slate-900 tracking-tight">Curabook PHI</span>
                 </div>
 
                 <div class="flex items-center space-x-4">
-                    <a href="login.html" class="text-slate-600 hover:text-clinical-600 font-medium transition">Sign In</a>
-                    <a href="#pricing" class="bg-slate-900 hover:bg-slate-800 text-white px-5 py-2 rounded-full font-medium transition shadow-sm">Start Free Trial</a>
+                    <a href="appeal.html" class="hidden md:block text-slate-600 hover:text-clinical-600 font-medium transition">Free PA Appeal Tool</a>
+                    <a href="login.html" class="text-slate-600 hover:text-clinical-600 font-medium transition ml-4">Sign In</a>
+                    <a href="signup.html" class="bg-slate-900 hover:bg-slate-800 text-white px-5 py-2 rounded-full font-medium transition shadow-sm">Start Free Trial</a>
                 </div>
             </div>
         </div>
@@ -75,10 +76,12 @@
             Navigate the GLP-1 Cliff and protect your metabolism without the needle.
         </p>
         <div class="flex flex-col sm:flex-row justify-center items-center gap-4">
-            <a href="#pricing" class="w-full sm:w-auto bg-clinical-500 hover:bg-clinical-600 text-white text-lg px-8 py-4 rounded-full font-semibold transition shadow-lg shadow-clinical-500/30">
+            <a href="signup.html" class="w-full sm:w-auto bg-clinical-500 hover:bg-clinical-600 text-white text-lg px-8 py-4 rounded-full font-semibold transition shadow-lg shadow-clinical-500/30">
                 Get Your 14-Day Free Shield
             </a>
-            <p class="text-sm text-slate-500 sm:ml-4">No credit card required for basic analysis.</p>
+            <a href="appeal.html" class="w-full sm:w-auto bg-white border-2 border-slate-200 hover:border-clinical-500 text-slate-700 hover:text-clinical-600 text-lg px-8 py-4 rounded-full font-semibold transition">
+                Try the Free PA Appeal Tool
+            </a>
         </div>
     </section>
 
@@ -121,6 +124,9 @@
                 </div>
                 <h3 class="text-2xl font-bold text-slate-900 mb-3">The Appeal Architect</h3>
                 <p class="text-slate-600 mb-4">Stop being at the mercy of vague denial letters. We automatically analyze your lab reports to generate a "Physician-Ready PA Appeal Packet" using the exact clinical data insurers require.</p>
+                <a href="appeal.html" class="inline-flex items-center gap-2 text-clinical-600 font-semibold hover:text-clinical-800 transition mt-2">
+                    Build a free appeal <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                </a>
             </div>
 
             <div class="bg-white p-8 rounded-3xl shadow-sm border border-slate-100 hover:border-clinical-200 transition">
@@ -184,9 +190,9 @@
                     </li>
                 </ul>
 
-                <button onclick="window.location.href='signup.html'" class="w-full bg-clinical-500 hover:bg-clinical-600 text-white text-lg py-4 rounded-xl font-bold transition shadow-lg">
+                <a href="signup.html" class="block w-full text-center bg-clinical-500 hover:bg-clinical-600 text-white text-lg py-4 rounded-xl font-bold transition shadow-lg">
                     Start 14-Day Free Trial
-                </button>
+                </a>
                 <p class="text-sm text-slate-400 mt-4">Cancel anytime. Secure checkout.</p>
             </div>
         </div>
