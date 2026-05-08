@@ -155,6 +155,7 @@ from api.intelligence_routes import intelligence_bp
 from api.cron_routes         import cron_bp
 from api.startup_routes      import startup_bp
 from api.retention_routes    import retention_bp  # was missing — caused 404 on appointment prep
+from api.analytics_routes import analytics_bp
 
 app.register_blueprint(auth_bp)
 app.register_blueprint(chat_bp)
@@ -166,6 +167,8 @@ app.register_blueprint(intelligence_bp)
 app.register_blueprint(cron_bp)
 app.register_blueprint(startup_bp)
 app.register_blueprint(retention_bp)
+app.register_blueprint(analytics_bp)
+
 
 # Payment routes — Razorpay (required, not optional)
 from api.payment_routes import payment_bp
