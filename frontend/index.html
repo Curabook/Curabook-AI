@@ -4,347 +4,411 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Curabook PHI — Don't Let the GLP-1 Cliff Erase Your Results</title>
-<meta name="description" content="70% of GLP-1 users regain weight within a year of stopping. PHI's Metabolic Shield monitors your rebound signals and fights your insurance denials so you keep what you earned.">
+<meta name="description" content="70% of GLP-1 users regain weight within a year of stopping. PHI's Metabolic Shield monitors your rebound signals before the cliff hits.">
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital,wght@0,400;0,600;1,400;1,600&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <script src="https://checkout.razorpay.com/v1/checkout.js" defer></script>
 <style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --brand:#00BCD5;--brand-dark:#0097a7;--brand-glow:rgba(0,188,213,.2);--brand-dim:rgba(0,188,213,.1);
-  --bg:#08090c;--surface:#0f1115;--surface-2:#171a20;--surface-3:#1e2128;
-  --text:#f0f2f5;--text-2:#9aa3b0;--text-3:#566070;
-  --border:rgba(255,255,255,.07);--border-2:rgba(255,255,255,.12);
-  --danger:#f87171;--amber:#fbbf24;--ok:#4ade80;
-  --serif:'Instrument Serif',Georgia,serif;
-  --sans:'Plus Jakarta Sans',system-ui,sans-serif;
-  --mono:'DM Mono','Courier New',monospace;
-  --r:10px;--r-lg:18px;--r-xl:28px;
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+    --brand: #00BCD5;
+    --brand-dark: #0097a7;
+    --brand-glow: rgba(0,188,213,.2);
+    --brand-dim: rgba(0,188,213,.08);
+    --brand-border: rgba(0,188,213,.22);
+    --text: #111111;
+    --muted: #6b7280;
+    --muted-2: #9ca3af;
+    --border: #e5e7eb;
+    --border-2: #d1d5db;
+    --bg: #fafafa;
+    --white: #ffffff;
+    --surface: #f4f5f7;
+    --dark: #0a0a0a;
+    --danger: #ef4444;
+    --amber: #f59e0b;
+    --ok: #10b981;
+    --font: 'Plus Jakarta Sans', 'Segoe UI', sans-serif;
+    --serif: 'Instrument Serif', Georgia, serif;
+    --mono: 'DM Mono', 'Courier New', monospace;
+    --r: 10px; --r-lg: 16px; --r-xl: 24px;
 }
-html{font-size:16px;scroll-behavior:smooth}
-body{font-family:var(--sans);background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;overflow-x:hidden}
-a{text-decoration:none;color:inherit}
-button{cursor:pointer;font-family:inherit}
+html { font-size: 16px; scroll-behavior: smooth; }
+body { font-family: var(--font); background: var(--white); color: var(--text); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+a { text-decoration: none; color: inherit; }
+button { cursor: pointer; font-family: inherit; }
 
-/* NAV */
-nav{
-  position:fixed;top:0;left:0;right:0;z-index:100;
-  display:flex;align-items:center;justify-content:space-between;
-  padding:0 max(24px,5vw);height:64px;
-  background:rgba(8,9,12,.85);
-  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
-  border-bottom:1px solid var(--border);
+/* ── NAV ───────────────────────────────────────────────────────── */
+nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 max(24px, 5vw); height: 66px;
+    background: rgba(255,255,255,.93);
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border);
+    transition: box-shadow .3s;
 }
-.nav-logo{display:flex;align-items:center;gap:10px}
-.nav-mark{width:34px;height:34px;background:var(--brand);border-radius:9px;display:flex;align-items:center;justify-content:center;color:white;font-size:15px}
-.nav-name{font-family:var(--serif);font-size:1.2rem;color:var(--text);font-weight:400}
-.nav-tag{font-size:10px;background:var(--brand-dim);color:var(--brand);padding:2px 7px;border-radius:20px;font-weight:700;border:1px solid rgba(0,188,213,.2)}
-.nav-links{display:flex;align-items:center;gap:28px}
-.nav-links a{font-size:.84rem;color:var(--text-3);transition:color .2s}
-.nav-links a:hover{color:var(--text)}
-.nav-links a.cta-link{color:var(--brand);font-weight:600}
-.nav-actions{display:flex;align-items:center;gap:8px}
-.btn-ghost-nav{font-size:.84rem;font-weight:500;padding:8px 16px;border-radius:var(--r);border:1.5px solid var(--border);color:var(--text-3);background:none;transition:all .15s}
-.btn-ghost-nav:hover{border-color:var(--border-2);color:var(--text-2)}
-.btn-solid-nav{font-size:.84rem;font-weight:700;padding:8px 18px;border-radius:var(--r);background:var(--brand);color:white;border:none;transition:all .15s}
-.btn-solid-nav:hover{background:var(--brand-dark)}
+nav.scrolled { box-shadow: 0 2px 12px rgba(0,0,0,.06); }
+.nav-logo { display: flex; align-items: center; gap: 10px; }
+.nav-icon { width: 36px; height: 36px; background: var(--brand); border-radius: 9px; display: flex; align-items: center; justify-content: center; color: white; font-size: 15px; }
+.nav-name { font-family: var(--serif); font-size: 1.25rem; color: var(--text); font-weight: 400; }
+.nav-tag { font-size: 10px; background: var(--brand-dim); color: var(--brand); padding: 2px 7px; border-radius: 20px; font-weight: 700; border: 1px solid var(--brand-border); }
+.nav-links { display: flex; align-items: center; gap: 28px; }
+.nav-links a { font-size: .85rem; color: var(--muted); transition: color .2s; font-weight: 500; }
+.nav-links a:hover { color: var(--text); }
+.nav-links a.accent { color: var(--brand); font-weight: 600; }
+.nav-actions { display: flex; align-items: center; gap: 8px; }
+.btn-nav-ghost { font-size: .85rem; font-weight: 600; padding: 8px 16px; border-radius: var(--r); border: 1.5px solid var(--border); color: var(--muted); background: none; transition: all .15s; }
+.btn-nav-ghost:hover { border-color: var(--text); color: var(--text); }
+.btn-nav-solid { font-size: .85rem; font-weight: 700; padding: 9px 20px; border-radius: var(--r); background: var(--brand); color: white; border: none; transition: all .15s; }
+.btn-nav-solid:hover { background: var(--brand-dark); }
 
-/* HERO */
-.hero{
-  min-height:100vh;display:flex;flex-direction:column;align-items:center;
-  justify-content:center;text-align:center;
-  padding:120px max(20px,6vw) 80px;
-  position:relative;overflow:hidden;
+/* ── HERO ───────────────────────────────────────────────────────── */
+.hero {
+    min-height: 100vh; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center;
+    padding: 120px max(20px, 6vw) 80px;
+    position: relative; overflow: hidden;
+    background: linear-gradient(180deg, #f8fffe 0%, var(--white) 100%);
 }
-.hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 80% 60% at 50% 30%,rgba(0,188,213,.07),transparent 70%);pointer-events:none}
-.hero-eyebrow{
-  display:inline-flex;align-items:center;gap:7px;
-  padding:6px 14px;background:var(--brand-dim);
-  border:1px solid rgba(0,188,213,.2);border-radius:20px;
-  font-size:.72rem;font-weight:700;color:var(--brand);letter-spacing:.08em;text-transform:uppercase;
-  margin-bottom:28px;
+.hero::before {
+    content: ''; position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+    width: 800px; height: 400px;
+    background: radial-gradient(ellipse, rgba(0,188,213,.07) 0%, transparent 70%);
+    pointer-events: none;
 }
-.pulse{width:6px;height:6px;border-radius:50%;background:var(--brand);animation:pulse 2s ease infinite}
-@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(0,188,213,.4)}50%{box-shadow:0 0 0 6px rgba(0,188,213,0)}}
-.hero h1{
-  font-family:var(--serif);font-size:clamp(2.8rem,6.5vw,5.5rem);font-weight:400;
-  line-height:1.05;letter-spacing:-.03em;color:var(--text);
-  max-width:900px;margin:0 auto 24px;
+.hero-badge {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 6px 14px; background: var(--brand-dim);
+    border: 1px solid var(--brand-border); border-radius: 20px;
+    font-size: .72rem; font-weight: 700; color: var(--brand);
+    letter-spacing: .07em; text-transform: uppercase; margin-bottom: 28px;
 }
-.hero h1 em{font-style:italic;color:var(--brand)}
-.hero-sub{
-  font-size:clamp(1rem,2vw,1.2rem);font-weight:300;
-  color:var(--text-3);line-height:1.75;max-width:620px;margin:0 auto 48px;
+.pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--brand); animation: pulse 2s ease infinite; }
+@keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(0,188,213,.4); } 50% { box-shadow: 0 0 0 6px rgba(0,188,213,0); } }
+.hero h1 {
+    font-family: var(--serif); font-size: clamp(2.6rem, 6vw, 5rem);
+    font-weight: 400; line-height: 1.08; letter-spacing: -.025em; color: var(--text);
+    max-width: 860px; margin: 0 auto 22px;
 }
-.hero-sub strong{color:var(--text-2);font-weight:500}
-.hero-cta{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;margin-bottom:48px}
-.btn-hero-primary{
-  display:inline-flex;align-items:center;gap:8px;
-  padding:15px 30px;background:var(--brand);color:white;
-  border-radius:99px;font-size:.95rem;font-weight:700;border:none;
-  box-shadow:0 6px 24px var(--brand-glow);transition:all .2s;
+.hero h1 em { font-style: italic; color: var(--brand); }
+.hero-sub {
+    font-size: clamp(1rem, 2vw, 1.15rem); font-weight: 400;
+    color: var(--muted); line-height: 1.75; max-width: 600px; margin: 0 auto 44px;
 }
-.btn-hero-primary:hover{background:var(--brand-dark);transform:translateY(-2px);box-shadow:0 10px 32px var(--brand-glow)}
-.btn-hero-secondary{
-  display:inline-flex;align-items:center;gap:7px;
-  padding:15px 24px;background:none;
-  border:1.5px solid var(--border-2);border-radius:99px;
-  font-size:.95rem;font-weight:500;color:var(--text-2);
-  transition:all .2s;
+.hero-sub strong { color: var(--text); font-weight: 600; }
+.hero-cta { display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap; margin-bottom: 48px; }
+.btn-hero-primary {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 14px 28px; background: var(--brand); color: white;
+    border-radius: 99px; font-size: .95rem; font-weight: 700; border: none;
+    box-shadow: 0 6px 20px var(--brand-glow); transition: all .2s;
 }
-.btn-hero-secondary:hover{border-color:var(--brand);color:var(--brand)}
-.hero-proof{display:flex;align-items:center;justify-content:center;gap:24px;flex-wrap:wrap;font-size:.76rem;color:var(--text-3)}
-.proof-item{display:flex;align-items:center;gap:5px}
-.proof-check{color:var(--brand)}
+.btn-hero-primary:hover { background: var(--brand-dark); transform: translateY(-2px); box-shadow: 0 10px 28px var(--brand-glow); }
+.btn-hero-secondary {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 14px 24px; background: none;
+    border: 1.5px solid var(--border-2); border-radius: 99px;
+    font-size: .95rem; font-weight: 600; color: var(--muted); transition: all .2s;
+}
+.btn-hero-secondary:hover { border-color: var(--brand); color: var(--brand); }
+.hero-trust { display: flex; align-items: center; justify-content: center; gap: 22px; flex-wrap: wrap; font-size: .78rem; color: var(--muted-2); }
+.trust-item { display: flex; align-items: center; gap: 5px; }
+.trust-item i { color: var(--brand); font-size: .75rem; }
 
-/* MOCK DASHBOARD */
-.dashboard-preview{
-  max-width:700px;width:100%;margin:56px auto 0;
-  background:var(--surface);border-radius:var(--r-xl);
-  padding:20px 20px 16px;
-  box-shadow:0 40px 100px rgba(0,0,0,.6),0 0 0 1px var(--border);
+/* ── DASHBOARD MOCK ─────────────────────────────────────────────── */
+.dashboard-wrap {
+    max-width: 700px; width: 100%; margin: 52px auto 0;
+    background: var(--dark); border-radius: var(--r-xl);
+    padding: 20px 20px 16px;
+    box-shadow: 0 40px 80px rgba(0,0,0,.15), 0 0 0 1px rgba(0,0,0,.08);
 }
-.preview-bar{display:flex;gap:5px;margin-bottom:16px}
-.preview-bar span{width:9px;height:9px;border-radius:50%}
-.preview-bar span:nth-child(1){background:#ff5f57}
-.preview-bar span:nth-child(2){background:#ffbd2e}
-.preview-bar span:nth-child(3){background:#28c840}
-.preview-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px}
-.metric-card{background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:14px 12px;text-align:center}
-.metric-val{font-family:var(--mono);font-size:1.8rem;font-weight:500;margin-bottom:3px}
-.metric-val.ok{color:var(--brand)}
-.metric-val.warn{color:var(--amber)}
-.metric-val.alert{color:var(--danger)}
-.metric-label{font-size:.62rem;color:var(--text-3);text-transform:uppercase;letter-spacing:.08em}
-.preview-status{
-  background:var(--brand-dim);border:1px solid rgba(0,188,213,.15);
-  border-radius:9px;padding:10px 14px;
-  display:flex;align-items:center;gap:8px;
-  font-size:.78rem;color:var(--brand);
+.db-bar { display: flex; gap: 5px; margin-bottom: 16px; }
+.db-bar span { width: 9px; height: 9px; border-radius: 50%; }
+.db-bar span:nth-child(1) { background: #ff5f57; }
+.db-bar span:nth-child(2) { background: #ffbd2e; }
+.db-bar span:nth-child(3) { background: #28c840; }
+.db-metrics { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-bottom: 12px; }
+.db-metric { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.07); border-radius: 12px; padding: 14px 12px; text-align: center; }
+.db-val { font-family: var(--mono); font-size: 1.8rem; font-weight: 500; margin-bottom: 3px; }
+.db-val.ok { color: var(--brand); }
+.db-val.warn { color: var(--amber); }
+.db-val.alert { color: var(--danger); }
+.db-label { font-size: .62rem; color: rgba(255,255,255,.4); text-transform: uppercase; letter-spacing: .08em; }
+.db-alert {
+    background: rgba(0,188,213,.08); border: 1px solid rgba(0,188,213,.2);
+    border-radius: 9px; padding: 10px 14px;
+    display: flex; align-items: center; gap: 8px;
+    font-size: .79rem; color: var(--brand);
 }
 
-/* SECTIONS */
-.section{padding:100px max(20px,6vw)}
-.section-inner{max-width:1100px;margin:0 auto}
-.section-tag{
-  display:inline-flex;align-items:center;gap:8px;
-  font-size:.68rem;font-weight:700;color:var(--brand);letter-spacing:.12em;text-transform:uppercase;
-  margin-bottom:16px;
+/* ── SHARED SECTION STYLES ──────────────────────────────────────── */
+.section { padding: 96px max(20px, 6vw); }
+.section-inner { max-width: 1100px; margin: 0 auto; }
+.section-tag {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: .68rem; font-weight: 700; color: var(--brand);
+    letter-spacing: .12em; text-transform: uppercase; margin-bottom: 14px;
 }
-.section-tag::before{content:'';width:20px;height:1.5px;background:var(--brand)}
-h2{font-family:var(--serif);font-size:clamp(2rem,4vw,3rem);font-weight:400;line-height:1.1;letter-spacing:-.025em;margin-bottom:16px;color:var(--text)}
-h2 em{font-style:italic;color:var(--text-3)}
-.section-sub{font-size:1rem;font-weight:300;color:var(--text-3);line-height:1.75;max-width:560px}
+.section-tag::before { content: ''; width: 20px; height: 1.5px; background: var(--brand); }
+h2 { font-family: var(--serif); font-size: clamp(2rem, 4vw, 3rem); font-weight: 400; line-height: 1.1; letter-spacing: -.02em; margin-bottom: 14px; color: var(--text); }
+h2 em { font-style: italic; color: var(--brand); }
+.section-lead { font-size: 1rem; color: var(--muted); line-height: 1.75; max-width: 580px; }
+.bg-gray { background: var(--surface); }
+.bg-dark-panel { background: var(--dark); }
 
-/* PROBLEM */
-.problem-bg{background:var(--surface)}
-.problem-bg h2 em{color:var(--brand)}
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-top:52px}
-.stat{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-lg);padding:26px 20px}
-.stat-num{font-family:var(--mono);font-size:2.8rem;font-weight:500;color:var(--brand);line-height:1;margin-bottom:8px}
-.stat-label{font-size:.82rem;color:var(--text-3);line-height:1.55}
-.quote-pull{
-  margin-top:44px;padding:28px 32px;
-  background:var(--surface-2);border-left:3px solid var(--brand);
-  border-radius:0 var(--r-lg) var(--r-lg) 0;
+/* ── STATS STRIP ────────────────────────────────────────────────── */
+.stats-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; margin-top: 52px; }
+.stat-box { background: var(--white); padding: 28px 22px; }
+.stat-num { font-family: var(--mono); font-size: 2.6rem; font-weight: 500; color: var(--brand); line-height: 1; margin-bottom: 8px; }
+.stat-label { font-size: .82rem; color: var(--muted); line-height: 1.5; }
+
+/* ── QUOTE ──────────────────────────────────────────────────────── */
+.pull-quote {
+    margin-top: 44px; padding: 28px 32px;
+    background: var(--brand-dim); border-left: 3px solid var(--brand);
+    border-radius: 0 var(--r-lg) var(--r-lg) 0; border: 1px solid var(--brand-border);
+    border-left: 3px solid var(--brand);
 }
-.quote-text{font-family:var(--serif);font-size:1.3rem;font-style:italic;color:var(--text-2);line-height:1.55;margin-bottom:10px}
-.quote-src{font-size:.7rem;color:var(--text-3);text-transform:uppercase;letter-spacing:.08em}
+.pull-quote p { font-family: var(--serif); font-size: 1.25rem; font-style: italic; color: var(--text); line-height: 1.6; margin-bottom: 10px; }
+.pull-quote cite { font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; font-style: normal; }
 
-/* HOW IT WORKS */
-.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:0;margin-top:52px;position:relative}
-.steps::before{content:'';position:absolute;top:27px;left:calc(12.5% + 27px);right:calc(12.5% + 27px);height:1px;background:var(--border)}
-.step{text-align:center;padding:0 14px;position:relative;z-index:1}
-.step-num{
-  width:54px;height:54px;border-radius:50%;
-  background:var(--surface);border:1.5px solid var(--border);
-  display:flex;align-items:center;justify-content:center;
-  font-family:var(--serif);font-size:1.25rem;font-style:italic;color:var(--brand);
-  margin:0 auto 18px;
+/* ── STEPS ──────────────────────────────────────────────────────── */
+.steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; margin-top: 52px; position: relative; }
+.steps::before { content: ''; position: absolute; top: 27px; left: calc(12.5% + 27px); right: calc(12.5% + 27px); height: 1px; background: var(--border); }
+.step { text-align: center; padding: 0 14px; position: relative; z-index: 1; }
+.step-num {
+    width: 54px; height: 54px; border-radius: 50%;
+    background: var(--white); border: 2px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--serif); font-size: 1.3rem; font-style: italic; color: var(--brand);
+    margin: 0 auto 18px;
 }
-.step-head{font-size:.88rem;font-weight:600;margin-bottom:7px;color:var(--text)}
-.step-body{font-size:.79rem;color:var(--text-3);line-height:1.6}
+.step-head { font-size: .9rem; font-weight: 700; margin-bottom: 8px; color: var(--text); }
+.step-body { font-size: .82rem; color: var(--muted); line-height: 1.6; }
 
-/* FEATURES */
-.features{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:52px}
-.feature{background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r-xl);padding:26px 22px;transition:border-color .2s,transform .2s}
-.feature:hover{border-color:rgba(0,188,213,.3);transform:translateY(-3px)}
-.feature-icon{width:42px;height:42px;border-radius:12px;background:var(--brand-dim);border:1px solid rgba(0,188,213,.15);display:flex;align-items:center;justify-content:center;font-size:1.2rem;margin-bottom:16px}
-.feature-title{font-size:.94rem;font-weight:600;margin-bottom:7px;color:var(--text)}
-.feature-body{font-size:.8rem;color:var(--text-3);line-height:1.7}
-
-/* SOCIAL PROOF */
-.proof-bg{background:var(--surface)}
-.testimonials{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:52px}
-.testimonial{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-xl);padding:24px 20px}
-.stars{color:var(--amber);font-size:.8rem;margin-bottom:12px;letter-spacing:2px}
-.t-quote{font-family:var(--serif);font-size:.95rem;font-style:italic;color:var(--text-2);line-height:1.6;margin-bottom:14px}
-.t-name{font-size:.75rem;font-weight:600;color:var(--text-3)}
-.t-detail{font-size:.7rem;color:var(--text-3);margin-top:2px}
-
-/* PRICING */
-.pricing-bg{background:var(--surface)}
-.billing-toggle{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:32px}
-.toggle-opt{font-size:.84rem;color:var(--text-3);cursor:pointer;transition:color .2s}
-.toggle-opt.active{color:var(--text);font-weight:600}
-.toggle-switch{width:48px;height:26px;background:var(--surface-3);border-radius:99px;border:1px solid var(--border-2);position:relative;cursor:pointer;transition:background .2s;flex-shrink:0}
-.toggle-switch.annual{background:var(--brand)}
-.toggle-knob{position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:white;transition:transform .2s}
-.toggle-switch.annual .toggle-knob{transform:translateX(22px)}
-.save-pill{background:var(--brand-dim);color:var(--brand);font-size:.65rem;font-weight:700;padding:2px 8px;border-radius:20px;border:1px solid rgba(0,188,213,.2)}
-.pricing-grid{display:grid;grid-template-columns:1fr 1.08fr 1fr;gap:14px;margin-top:44px;align-items:start}
-.price-card{background:var(--surface-2);border:1.5px solid var(--border);border-radius:var(--r-xl);padding:28px 22px;position:relative;transition:border-color .2s}
-.price-card:hover{border-color:var(--border-2)}
-.price-card.featured{background:var(--surface-3);border-color:rgba(0,188,213,.3);transform:scale(1.02)}
-.popular-pill{position:absolute;top:-11px;left:50%;transform:translateX(-50%);background:var(--brand);color:white;font-size:.6rem;font-weight:700;padding:3px 12px;border-radius:20px;letter-spacing:.08em;white-space:nowrap;text-transform:uppercase}
-.price-tier{font-size:.67rem;font-weight:700;color:var(--text-3);letter-spacing:.12em;text-transform:uppercase;margin-bottom:10px}
-.price-tier.pro{color:var(--brand)}
-.price-amount{font-family:var(--mono);font-size:2.8rem;font-weight:500;color:var(--text);line-height:1;margin-bottom:4px}
-.price-period{font-size:.78rem;color:var(--text-3);margin-bottom:4px}
-.price-save{display:inline-block;background:var(--brand-dim);color:var(--brand);font-size:.63rem;font-weight:700;padding:2px 8px;border-radius:20px;margin-bottom:16px;border:1px solid rgba(0,188,213,.2)}
-.price-desc{font-size:.8rem;color:var(--text-3);line-height:1.6;padding-bottom:16px;border-bottom:1px solid var(--border);margin-bottom:16px}
-.price-features{list-style:none;display:flex;flex-direction:column;gap:9px;margin-bottom:22px}
-.price-features li{display:flex;align-items:flex-start;gap:8px;font-size:.79rem;color:var(--text-3);line-height:1.5}
-.pf-check{flex-shrink:0;width:15px;height:15px;border-radius:50%;background:var(--brand-dim);border:1px solid rgba(0,188,213,.2);display:flex;align-items:center;justify-content:center;font-size:.45rem;color:var(--brand);margin-top:2px}
-.pf-off{background:var(--surface-3);border-color:transparent;color:var(--text-3)}
-.btn-plan{display:block;width:100%;padding:13px;border-radius:99px;font-size:.84rem;font-weight:700;text-align:center;border:none;cursor:pointer;font-family:var(--sans);transition:all .2s}
-.btn-plan.outline{background:none;border:1.5px solid var(--border-2);color:var(--text-3)}
-.btn-plan.outline:hover{border-color:var(--brand);color:var(--brand)}
-.btn-plan.primary{background:var(--brand);color:white;box-shadow:0 4px 16px var(--brand-glow)}
-.btn-plan.primary:hover{background:var(--brand-dark);transform:translateY(-1px)}
-.pricing-footnotes{display:flex;align-items:center;justify-content:center;gap:20px;flex-wrap:wrap;margin-top:24px;font-size:.75rem;color:var(--text-3)}
-.pricing-footnotes span{display:flex;align-items:center;gap:5px}
-.dot-brand{width:4px;height:4px;border-radius:50%;background:var(--brand)}
-
-/* TRUST */
-.trust-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:52px}
-.trust-card{background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r-xl);padding:24px 20px}
-.trust-icon{width:38px;height:38px;border-radius:10px;background:var(--brand-dim);border:1px solid rgba(0,188,213,.15);display:flex;align-items:center;justify-content:center;font-size:1rem;margin-bottom:14px;color:var(--brand)}
-.trust-title{font-size:.9rem;font-weight:600;margin-bottom:7px;color:var(--text)}
-.trust-body{font-size:.79rem;color:var(--text-3);line-height:1.65}
-.disclaimer{margin-top:36px;padding:18px 22px;background:var(--surface);border-radius:var(--r-lg);border:1px solid var(--border);border-left:3px solid var(--text-3)}
-.disclaimer p{font-size:.78rem;color:var(--text-3);line-height:1.65}
-
-/* FINAL CTA */
-.final-cta{background:var(--surface);text-align:center;padding:120px max(20px,6vw);position:relative;overflow:hidden;border-top:1px solid var(--border)}
-.final-cta::before{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:600px;height:600px;border-radius:50%;background:radial-gradient(ellipse,rgba(0,188,213,.07),transparent 70%);pointer-events:none}
-.final-cta h2{position:relative;z-index:1}
-.final-cta h2 em{color:var(--brand)}
-.final-cta .section-sub{color:var(--text-3);margin:0 auto 40px;position:relative;z-index:1}
-.btn-cta-final{
-  display:inline-flex;align-items:center;gap:9px;
-  padding:16px 36px;background:var(--brand);color:white;
-  border-radius:99px;font-size:1rem;font-weight:700;border:none;
-  box-shadow:0 6px 28px var(--brand-glow);transition:all .2s;position:relative;z-index:1;
+/* ── FEATURES GRID ──────────────────────────────────────────────── */
+.features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 52px; }
+.feature-card {
+    background: var(--white); border: 1.5px solid var(--border);
+    border-radius: var(--r-xl); padding: 26px 22px;
+    transition: border-color .2s, transform .2s, box-shadow .2s;
 }
-.btn-cta-final:hover{background:var(--brand-dark);transform:translateY(-2px)}
-.cta-proof{display:flex;align-items:center;justify-content:center;gap:22px;flex-wrap:wrap;margin-top:24px;font-size:.75rem;color:var(--text-3);position:relative;z-index:1}
-
-/* FOOTER */
-footer{background:var(--bg);border-top:1px solid var(--border);padding:32px max(24px,5vw);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px}
-.footer-logo{display:flex;align-items:center;gap:10px}
-.footer-links{display:flex;gap:20px;flex-wrap:wrap}
-.footer-links a{font-size:.75rem;color:var(--text-3);transition:color .2s}
-.footer-links a:hover{color:var(--text-2)}
-footer p{font-size:.72rem;color:var(--text-3)}
-
-/* ANIMATIONS */
-.fade-up{opacity:0;transform:translateY(20px);transition:opacity .6s ease,transform .6s ease}
-.fade-up.visible{opacity:1;transform:translateY(0)}
-.d1{transition-delay:.1s}.d2{transition-delay:.2s}.d3{transition-delay:.3s}
-
-@media(max-width:900px){
-  .nav-links{display:none}
-  .steps{grid-template-columns:1fr 1fr}
-  .steps::before{display:none}
-  .features{grid-template-columns:1fr}
-  .pricing-grid{grid-template-columns:1fr}
-  .price-card.featured{transform:none}
-  .trust-grid{grid-template-columns:1fr}
-  .testimonials{grid-template-columns:1fr}
-  .preview-metrics{grid-template-columns:1fr 1fr}
+.feature-card:hover { border-color: var(--brand); transform: translateY(-3px); box-shadow: 0 12px 32px rgba(0,0,0,.06); }
+.feature-icon {
+    width: 42px; height: 42px; border-radius: 10px;
+    background: var(--brand-dim); border: 1px solid var(--brand-border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1rem; color: var(--brand); margin-bottom: 16px;
 }
-@media(max-width:600px){
-  .hero-cta{flex-direction:column}
-  .btn-hero-primary,.btn-hero-secondary{width:100%;justify-content:center}
+.feature-title { font-size: .95rem; font-weight: 700; margin-bottom: 8px; color: var(--text); }
+.feature-body { font-size: .82rem; color: var(--muted); line-height: 1.7; }
+
+/* ── TESTIMONIALS ───────────────────────────────────────────────── */
+.testimonials { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 52px; }
+.testimonial {
+    background: var(--white); border: 1.5px solid var(--border);
+    border-radius: var(--r-xl); padding: 24px 20px;
+}
+.stars { color: var(--amber); font-size: .82rem; margin-bottom: 12px; letter-spacing: 2px; }
+.t-text { font-family: var(--serif); font-size: .96rem; font-style: italic; color: var(--text); line-height: 1.65; margin-bottom: 16px; }
+.t-author { font-size: .75rem; font-weight: 700; color: var(--text); }
+.t-detail { font-size: .72rem; color: var(--muted); margin-top: 2px; }
+
+/* ── PRICING ────────────────────────────────────────────────────── */
+.billing-toggle { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 32px; }
+.toggle-label { font-size: .85rem; color: var(--muted); cursor: pointer; font-weight: 600; transition: color .2s; }
+.toggle-label.on { color: var(--text); }
+.toggle-track { width: 50px; height: 27px; background: var(--border-2); border-radius: 99px; position: relative; cursor: pointer; transition: background .25s; }
+.toggle-track.active { background: var(--brand); }
+.toggle-knob { position: absolute; top: 3px; left: 3px; width: 21px; height: 21px; border-radius: 50%; background: white; box-shadow: 0 1px 4px rgba(0,0,0,.2); transition: transform .25s; }
+.toggle-track.active .toggle-knob { transform: translateX(23px); }
+.save-badge { background: var(--brand-dim); color: var(--brand); font-size: .65rem; font-weight: 700; padding: 3px 9px; border-radius: 20px; border: 1px solid var(--brand-border); }
+
+.pricing-grid { display: grid; grid-template-columns: 1fr 1.08fr 1fr; gap: 16px; margin-top: 44px; align-items: start; }
+.plan-card {
+    background: var(--white); border: 1.5px solid var(--border);
+    border-radius: var(--r-xl); padding: 30px 24px; position: relative;
+    transition: box-shadow .2s, border-color .2s;
+}
+.plan-card:hover { box-shadow: 0 12px 40px rgba(0,0,0,.08); }
+.plan-card.featured { border-color: var(--brand); transform: scale(1.02); }
+.plan-badge {
+    position: absolute; top: -11px; left: 50%; transform: translateX(-50%);
+    background: var(--brand); color: white; font-size: .6rem; font-weight: 700;
+    padding: 3px 12px; border-radius: 20px; letter-spacing: .08em; white-space: nowrap; text-transform: uppercase;
+}
+.plan-tier { font-size: .68rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 10px; color: var(--muted); }
+.plan-tier.pro { color: var(--brand); }
+.plan-price { font-family: var(--mono); font-size: 2.8rem; font-weight: 500; color: var(--text); line-height: 1; margin-bottom: 4px; }
+.plan-period { font-size: .8rem; color: var(--muted); margin-bottom: 4px; }
+.plan-save-pill { display: inline-block; background: var(--brand-dim); color: var(--brand); font-size: .63rem; font-weight: 700; padding: 2px 9px; border-radius: 20px; border: 1px solid var(--brand-border); margin-bottom: 16px; }
+.plan-desc { font-size: .83rem; color: var(--muted); line-height: 1.65; padding-bottom: 16px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+.plan-features { list-style: none; display: flex; flex-direction: column; gap: 10px; margin-bottom: 24px; }
+.plan-features li { display: flex; align-items: flex-start; gap: 8px; font-size: .82rem; color: var(--muted); line-height: 1.5; }
+.pf-check { flex-shrink: 0; width: 16px; height: 16px; border-radius: 50%; background: var(--brand-dim); border: 1px solid var(--brand-border); display: flex; align-items: center; justify-content: center; font-size: .45rem; color: var(--brand); margin-top: 2px; }
+.pf-off { background: var(--surface); border-color: var(--border); color: var(--muted-2); opacity: .5; }
+.btn-plan {
+    display: block; width: 100%; padding: 13px; border-radius: 99px;
+    font-size: .85rem; font-weight: 700; text-align: center;
+    border: none; cursor: pointer; font-family: var(--font); transition: all .2s;
+}
+.btn-plan.solid { background: var(--brand); color: white; box-shadow: 0 4px 14px var(--brand-glow); }
+.btn-plan.solid:hover { background: var(--brand-dark); transform: translateY(-1px); }
+.btn-plan.ghost { background: none; border: 1.5px solid var(--border-2); color: var(--muted); }
+.btn-plan.ghost:hover { border-color: var(--brand); color: var(--brand); }
+.pricing-notes { display: flex; align-items: center; justify-content: center; gap: 20px; flex-wrap: wrap; margin-top: 28px; font-size: .77rem; color: var(--muted); }
+.pricing-notes span { display: flex; align-items: center; gap: 5px; }
+.dot { width: 4px; height: 4px; border-radius: 50%; background: var(--brand); }
+
+/* ── TRUST ──────────────────────────────────────────────────────── */
+.trust-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 52px; }
+.trust-card { background: var(--white); border: 1.5px solid var(--border); border-radius: var(--r-xl); padding: 24px 20px; }
+.trust-icon { width: 40px; height: 40px; border-radius: 10px; background: var(--brand-dim); border: 1px solid var(--brand-border); display: flex; align-items: center; justify-content: center; font-size: 1rem; color: var(--brand); margin-bottom: 14px; }
+.trust-title { font-size: .92rem; font-weight: 700; margin-bottom: 8px; color: var(--text); }
+.trust-body { font-size: .81rem; color: var(--muted); line-height: 1.65; }
+.disclaimer-box { margin-top: 36px; padding: 20px 24px; background: var(--surface); border-radius: var(--r-lg); border: 1px solid var(--border); border-left: 3px solid var(--muted-2); }
+.disclaimer-box p { font-size: .79rem; color: var(--muted); line-height: 1.65; }
+
+/* ── FINAL CTA ──────────────────────────────────────────────────── */
+.final-cta {
+    background: var(--dark); text-align: center;
+    padding: 100px max(20px, 6vw); position: relative; overflow: hidden;
+}
+.final-cta::before {
+    content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+    width: 600px; height: 600px; border-radius: 50%;
+    background: radial-gradient(ellipse, rgba(0,188,213,.1), transparent 70%);
+    pointer-events: none;
+}
+.final-cta h2 { color: white; position: relative; z-index: 1; }
+.final-cta h2 em { color: var(--brand); }
+.final-cta p { color: rgba(255,255,255,.5); margin: 0 auto 40px; max-width: 520px; font-size: 1rem; line-height: 1.7; position: relative; z-index: 1; }
+.btn-cta-final {
+    display: inline-flex; align-items: center; gap: 9px;
+    padding: 16px 36px; background: var(--brand); color: white;
+    border-radius: 99px; font-size: 1rem; font-weight: 700; border: none;
+    box-shadow: 0 6px 28px var(--brand-glow); transition: all .2s; position: relative; z-index: 1;
+}
+.btn-cta-final:hover { background: var(--brand-dark); transform: translateY(-2px); }
+.cta-badges { display: flex; align-items: center; justify-content: center; gap: 20px; flex-wrap: wrap; margin-top: 24px; font-size: .76rem; color: rgba(255,255,255,.4); position: relative; z-index: 1; }
+
+/* ── FOOTER ─────────────────────────────────────────────────────── */
+footer {
+    background: var(--white); border-top: 1px solid var(--border);
+    padding: 32px max(24px, 5vw);
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;
+}
+.footer-logo { display: flex; align-items: center; gap: 10px; }
+.footer-links { display: flex; gap: 20px; flex-wrap: wrap; }
+.footer-links a { font-size: .77rem; color: var(--muted); transition: color .2s; }
+.footer-links a:hover { color: var(--text); }
+footer p { font-size: .72rem; color: var(--muted-2); }
+
+/* ── ANIMATIONS ─────────────────────────────────────────────────── */
+.fade-up { opacity: 0; transform: translateY(20px); transition: opacity .6s ease, transform .6s ease; }
+.fade-up.visible { opacity: 1; transform: translateY(0); }
+.d1 { transition-delay: .1s; } .d2 { transition-delay: .2s; } .d3 { transition-delay: .3s; }
+
+/* ── RESPONSIVE ─────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+    .nav-links { display: none; }
+    .steps { grid-template-columns: 1fr 1fr; }
+    .steps::before { display: none; }
+    .features { grid-template-columns: 1fr; }
+    .testimonials { grid-template-columns: 1fr; }
+    .pricing-grid { grid-template-columns: 1fr; }
+    .plan-card.featured { transform: none; }
+    .trust-grid { grid-template-columns: 1fr; }
+    .stats-strip { grid-template-columns: 1fr 1fr; }
+    .db-metrics { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 600px) {
+    .hero-cta { flex-direction: column; }
+    .btn-hero-primary, .btn-hero-secondary { width: 100%; justify-content: center; }
+    .stats-strip { grid-template-columns: 1fr; }
 }
 </style>
 </head>
 <body>
 
-<nav>
+<!-- NAV -->
+<nav id="mainNav">
   <div class="nav-logo">
-    <div class="nav-mark"><i class="fa-solid fa-heart-pulse"></i></div>
+    <div class="nav-icon"><i class="fa-solid fa-heart-pulse"></i></div>
     <span class="nav-name">Curabook</span>
     <span class="nav-tag">PHI</span>
   </div>
   <div class="nav-links">
+    <a href="#problem">The Problem</a>
     <a href="#how">How It Works</a>
     <a href="#features">Features</a>
     <a href="#pricing">Pricing</a>
-    <a href="/appeal" class="cta-link"><i class="fa-solid fa-file-shield" style="font-size:.75rem"></i> Free PA Tool</a>
+    <a href="/appeal" class="accent"><i class="fa-solid fa-file-shield" style="font-size:.75rem;margin-right:3px"></i>Free PA Tool</a>
     <a href="/login">Sign In</a>
   </div>
   <div class="nav-actions">
-    <button class="btn-ghost-nav" onclick="location.href='/login'">Sign In</button>
-    <button class="btn-solid-nav" onclick="location.href='/signup'">Start Free</button>
+    <button class="btn-nav-ghost" onclick="location.href='/login'">Sign In</button>
+    <button class="btn-nav-solid" onclick="location.href='/signup'">Start Free</button>
   </div>
 </nav>
 
 <!-- HERO -->
 <section class="hero">
-  <div class="hero-eyebrow"><span class="pulse"></span>For Wegovy · Zepbound · Ozempic users</div>
+  <div class="hero-badge"><span class="pulse"></span>For Wegovy · Zepbound · Ozempic users</div>
   <h1>Don't let stopping GLP-1<br>erase <em>everything you earned.</em></h1>
   <p class="hero-sub">
     The food noise comes back. The scale creeps up. The insurance denials land.
-    <strong>PHI's Metabolic Shield monitors your rebound signals before the cliff hits</strong> — and helps you fight back when it does.
+    <strong>PHI's Metabolic Shield catches the rebound before it starts</strong> — and helps you fight back when it does.
   </p>
   <div class="hero-cta">
     <button class="btn-hero-primary" onclick="location.href='/signup'">
       <i class="fa-solid fa-shield-halved"></i>
-      Start Your Free Shield — No Card Needed
+      Start Free — No Card Needed
     </button>
     <button class="btn-hero-secondary" onclick="location.href='/appeal'">
       <i class="fa-solid fa-file-contract"></i>
       Free PA Appeal Tool
     </button>
   </div>
-  <div class="hero-proof">
-    <div class="proof-item"><span class="proof-check">✓</span>Free to start</div>
-    <div class="proof-item"><span class="proof-check">✓</span>AES-256 encrypted</div>
-    <div class="proof-item"><span class="proof-check">✓</span>AI never sees your name</div>
-    <div class="proof-item"><span class="proof-check">✓</span>Your data is never sold</div>
+  <div class="hero-trust">
+    <div class="trust-item"><i class="fa-solid fa-check"></i> Free to start</div>
+    <div class="trust-item"><i class="fa-solid fa-check"></i> AES-256 encrypted</div>
+    <div class="trust-item"><i class="fa-solid fa-check"></i> AI never sees your name</div>
+    <div class="trust-item"><i class="fa-solid fa-check"></i> Data never sold</div>
   </div>
 
-  <div class="dashboard-preview fade-up">
-    <div class="preview-bar"><span></span><span></span><span></span></div>
-    <div class="preview-metrics">
-      <div class="metric-card"><div class="metric-val ok">94%</div><div class="metric-label">Shield Score</div></div>
-      <div class="metric-card"><div class="metric-val ok">Normal</div><div class="metric-label">Glucose</div></div>
-      <div class="metric-card"><div class="metric-val warn">Watch</div><div class="metric-label">HbA1c trend</div></div>
+  <div class="dashboard-wrap fade-up">
+    <div class="db-bar"><span></span><span></span><span></span></div>
+    <div class="db-metrics">
+      <div class="db-metric"><div class="db-val ok">94%</div><div class="db-label">Shield Score</div></div>
+      <div class="db-metric"><div class="db-val ok">Normal</div><div class="db-label">Glucose</div></div>
+      <div class="db-metric"><div class="db-val warn">Watch</div><div class="db-label">HbA1c trend</div></div>
     </div>
-    <div class="preview-status">
+    <div class="db-alert">
       <i class="fa-solid fa-circle-check" style="flex-shrink:0"></i>
       Metabolic Shield™ active — no rebound signals detected in your latest markers
     </div>
   </div>
 </section>
 
-<!-- PROBLEM -->
-<section class="section problem-bg">
+<!-- THE PROBLEM -->
+<section class="section bg-gray" id="problem">
   <div class="section-inner">
     <div class="section-tag">The GLP-1 Cliff</div>
-    <h2 style="max-width:640px">70% of users regain weight within a year of <em>stopping.</em></h2>
-    <p class="section-sub">The medication worked. But the moment you stop, your biology fights back — ghrelin surges, glucose climbs, and the lizard brain returns. Most people don't know it's happening until the scale has already crept up 10, 20, 30 pounds.</p>
-    <div class="stats">
-      <div class="stat fade-up"><div class="stat-num">4×</div><div class="stat-label">Faster weight regain vs. other methods — starting within 2–4 weeks of the last dose</div></div>
-      <div class="stat fade-up d1"><div class="stat-num">+23%</div><div class="stat-label">Average glucose rise within 8 weeks of stopping GLP-1 medication</div></div>
-      <div class="stat fade-up d2"><div class="stat-num">39%</div><div class="stat-label">Of lost weight is lean muscle — not fat — without targeted behavioral support</div></div>
-      <div class="stat fade-up d3"><div class="stat-num">$1,350</div><div class="stat-label">Average monthly retail cost without insurance — leaving most people stranded</div></div>
+    <h2 style="max-width:680px">70% of users regain weight<br>within a year of <em>stopping.</em></h2>
+    <p class="section-lead">The medication worked. But the moment you stop, your biology fights back — ghrelin surges, glucose climbs, hunger returns like a freight train. Most people don't know it's happening until they've gained back 10, 20, 30 pounds.</p>
+
+    <div class="stats-strip">
+      <div class="stat-box fade-up"><div class="stat-num">4×</div><div class="stat-label">Faster weight regain vs. other methods — starting within weeks of the last dose</div></div>
+      <div class="stat-box fade-up d1"><div class="stat-num">+23%</div><div class="stat-label">Average glucose rise within 8 weeks of stopping GLP-1 medication</div></div>
+      <div class="stat-box fade-up d2"><div class="stat-num">39%</div><div class="stat-label">Of lost weight is lean muscle — not fat — without targeted support</div></div>
+      <div class="stat-box fade-up d3"><div class="stat-num">$1,350</div><div class="stat-label">Average monthly retail cost without insurance — leaving most people stranded</div></div>
     </div>
-    <div class="quote-pull fade-up">
-      <div class="quote-text">"The food noise came back and my hunger is in overdrive. It's like my lizard brain just took over again two weeks after my last dose."</div>
-      <div class="quote-src">r/Wegovy — documented GLP-1 withdrawal experience</div>
+
+    <div class="pull-quote fade-up">
+      <p>"The food noise came back and my hunger is in overdrive. It's like my lizard brain just took over again two weeks after my last dose."</p>
+      <cite>r/Wegovy — documented GLP-1 withdrawal experience</cite>
     </div>
   </div>
 </section>
@@ -352,13 +416,13 @@ footer p{font-size:.72rem;color:var(--text-3)}
 <!-- HOW IT WORKS -->
 <section class="section" id="how">
   <div class="section-inner" style="text-align:center">
-    <div class="section-tag" style="justify-content:center">How PHI Works</div>
-    <h2>From lab report to <em>Metabolic Shield™</em> in minutes</h2>
+    <div class="section-tag" style="justify-content:center">How It Works</div>
+    <h2>From lab report to<br><em>Metabolic Shield™</em> in minutes</h2>
     <div class="steps fade-up">
       <div class="step">
         <div class="step-num">1</div>
         <div class="step-head">Upload your labs</div>
-        <div class="step-body">Drop any Quest, LabCorp, or doctor PDF. PHI reads every value instantly — or snap a photo.</div>
+        <div class="step-body">Drop any Quest, LabCorp, or doctor PDF. PHI reads every value instantly — or snap a photo of your results.</div>
       </div>
       <div class="step">
         <div class="step-num">2</div>
@@ -368,80 +432,80 @@ footer p{font-size:.72rem;color:var(--text-3)}
       <div class="step">
         <div class="step-num">3</div>
         <div class="step-head">Get your Shield Score</div>
-        <div class="step-body">PHI monitors glucose, HbA1c, lean mass, and behavioral signals — and alerts you the moment anything shifts.</div>
+        <div class="step-body">PHI monitors glucose, HbA1c, lean mass, and behavioral signals — and alerts you the moment anything shifts toward the cliff.</div>
       </div>
       <div class="step">
         <div class="step-num">4</div>
         <div class="step-head">Walk in prepared</div>
-        <div class="step-body">PHI generates your doctor brief and insurance PA packet from your actual data — not generic talking points.</div>
+        <div class="step-body">PHI generates your doctor brief and insurance PA packet from your actual data — not generic templates.</div>
       </div>
     </div>
   </div>
 </section>
 
 <!-- FEATURES -->
-<section class="section" id="features" style="background:var(--surface)">
+<section class="section bg-gray" id="features">
   <div class="section-inner">
     <div class="section-tag">What PHI Does</div>
     <h2>Three pillars against <em>the cliff</em></h2>
     <div class="features">
-      <div class="feature fade-up">
+      <div class="feature-card fade-up">
         <div class="feature-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
         <div class="feature-title">Rebound Signal Detector</div>
-        <div class="feature-body">PHI automatically detects glucose rebound (+15% threshold), HbA1c drift, and weight regain signals — weeks before your next appointment, using your own baseline as the reference point.</div>
+        <div class="feature-body">PHI automatically detects glucose rebound (+15% threshold), HbA1c drift, and weight regain signals — weeks before your next appointment, using your own baseline as the reference point. Not population averages. You.</div>
       </div>
-      <div class="feature fade-up d1">
+      <div class="feature-card fade-up d1">
         <div class="feature-icon"><i class="fa-solid fa-dumbbell"></i></div>
         <div class="feature-title">Muscle Defense Protocol</div>
-        <div class="feature-body">Goal Weight × 0.545 = your daily protein target (g). PHI tracks protein, steps, sleep, and ghrelin surge levels — and shows you how your habits connect to your lab markers.</div>
+        <div class="feature-body">Goal Weight × 0.545 = your daily protein target (g). PHI tracks protein intake, steps, sleep, and ghrelin surge patterns — then connects your habits directly to your lab markers so you know what's working.</div>
       </div>
-      <div class="feature fade-up d2">
+      <div class="feature-card fade-up d2">
         <div class="feature-icon"><i class="fa-solid fa-file-shield"></i></div>
         <div class="feature-title">Insurance PA Architect</div>
-        <div class="feature-body">PHI builds a physician-ready prior authorization packet from your actual data — citing your specific glucose trajectory, HbA1c trend, and comorbidities. Don't get denied. Fight back with the same data they use to keep you sick.</div>
+        <div class="feature-body">PHI builds a physician-ready prior authorization packet from your actual data — citing your specific glucose trajectory, HbA1c trend, and comorbidities. Don't get denied. Fight back with the same clinical language insurers use.</div>
       </div>
-      <div class="feature fade-up">
+      <div class="feature-card fade-up">
         <div class="feature-icon"><i class="fa-solid fa-brain"></i></div>
         <div class="feature-title">Persistent Health Memory</div>
-        <div class="feature-body">Every conversation, every report, every marker — PHI remembers it all. No repeating yourself. PHI knows your GLP-1 status, your goal weight, and what you told it six months ago.</div>
+        <div class="feature-body">Every conversation, every lab report, every marker — PHI remembers it all. No repeating yourself every visit. PHI knows your GLP-1 status, goal weight, and what you told it six months ago.</div>
       </div>
-      <div class="feature fade-up d1">
+      <div class="feature-card fade-up d1">
         <div class="feature-icon"><i class="fa-solid fa-chart-line"></i></div>
         <div class="feature-title">Weekly Metabolic Brief</div>
-        <div class="feature-body">Every Monday, PHI sends a personalized 5-point brief: what changed, what PHI noticed, one action for the week, and one question to ask your doctor.</div>
+        <div class="feature-body">Every Monday, PHI sends a personalized 5-point brief: what changed, what PHI noticed, one action for the week, and one specific question to ask your doctor at your next visit.</div>
       </div>
-      <div class="feature fade-up d2">
+      <div class="feature-card fade-up d2">
         <div class="feature-icon"><i class="fa-solid fa-stethoscope"></i></div>
         <div class="feature-title">Doctor Visit Prep</div>
-        <div class="feature-body">48 hours before any appointment, PHI generates a complete clinical summary — the lead finding, trend data, and three specific questions tailored to your markers and concerns.</div>
+        <div class="feature-body">48 hours before any appointment, PHI generates a complete clinical summary — the lead finding, trend data, and three targeted questions tailored to your specific markers and concerns. Walk in knowing exactly what to say.</div>
       </div>
     </div>
   </div>
 </section>
 
-<!-- SOCIAL PROOF -->
-<section class="section proof-bg">
+<!-- TESTIMONIALS -->
+<section class="section">
   <div class="section-inner">
     <div class="section-tag">From the community</div>
     <h2>Metabolic Refugees who <em>found their shield</em></h2>
-    <p class="section-sub">These are the people PHI was built for — the ones who briefly lived in the promised land of metabolic health and refuse to be expelled from it.</p>
+    <p class="section-lead">Built for people who briefly lived in the promised land of metabolic health — and refuse to be expelled from it.</p>
     <div class="testimonials">
       <div class="testimonial fade-up">
         <div class="stars">★★★★★</div>
-        <p class="t-quote">"I finally have something that validates that food noise is real — not a willpower problem. PHI caught my glucose creeping up 3 weeks after my last Zepbound dose before I even felt it."</p>
-        <div class="t-name">M.K., 54</div>
+        <p class="t-text">"I finally have something that validates that food noise is real — not a willpower problem. PHI caught my glucose creeping up 3 weeks after my last Zepbound dose before I even noticed on the scale."</p>
+        <div class="t-author">M.K., 54</div>
         <div class="t-detail">Stopped Zepbound · Monitoring for rebound</div>
       </div>
       <div class="testimonial fade-up d1">
         <div class="stars">★★★★★</div>
-        <p class="t-quote">"The PA Architect built a packet that my doctor said was the most thorough one she'd ever seen from a patient. Insurance approved on the second appeal. I'd been denied three times before."</p>
-        <div class="t-name">R.T., 47</div>
+        <p class="t-text">"The PA Architect built a packet my doctor called the most thorough she'd ever seen from a patient. Insurance approved on the second appeal. I'd been denied three times before finding PHI."</p>
+        <div class="t-author">R.T., 47</div>
         <div class="t-detail">Wegovy · Insurance PA approved</div>
       </div>
       <div class="testimonial fade-up d2">
         <div class="stars">★★★★★</div>
-        <p class="t-quote">"I was convinced I'd lose all my progress the moment I stopped. PHI's protein targeting kept my muscle mass stable and I only regained 4 lbs over 3 months — instead of everything."</p>
-        <div class="t-name">D.S., 41</div>
+        <p class="t-text">"PHI's protein targeting kept my muscle mass stable. I only regained 4 lbs over 3 months after stopping — instead of everything like the first time I came off. The Muscle Defense protocol actually works."</p>
+        <div class="t-author">D.S., 41</div>
         <div class="t-detail">Ozempic · Maintaining results post-stop</div>
       </div>
     </div>
@@ -449,67 +513,69 @@ footer p{font-size:.72rem;color:var(--text-3)}
 </section>
 
 <!-- PRICING -->
-<section class="section pricing-bg" id="pricing">
+<section class="section bg-gray" id="pricing">
   <div class="section-inner" style="text-align:center">
     <div class="section-tag" style="justify-content:center">Pricing</div>
     <h2>Less than 3 days of <em>Wegovy or Zepbound</em></h2>
-    <p class="section-sub" style="margin:0 auto">GLP-1 medications cost $1,350/month. PHI protects those results for 97% less — and it works whether you're still on medication or coming off.</p>
-    
-    <div class="billing-toggle" id="billingToggle">
-      <span class="toggle-opt active" id="opt-monthly" onclick="setBilling('monthly')">Monthly</span>
-      <div class="toggle-switch" id="toggleSwitch" onclick="toggleBilling()"><div class="toggle-knob"></div></div>
-      <span class="toggle-opt" id="opt-annual" onclick="setBilling('annual')">Annual</span>
-      <span class="save-pill">Save 20%</span>
+    <p class="section-lead" style="margin:0 auto">GLP-1 medications cost $1,350/month. PHI protects those results for 97% less — and works whether you're still on medication or coming off.</p>
+
+    <div class="billing-toggle">
+      <span class="toggle-label on" id="lbl-monthly" onclick="setBilling('monthly')">Monthly</span>
+      <div class="toggle-track" id="billingTrack" onclick="toggleBilling()">
+        <div class="toggle-knob"></div>
+      </div>
+      <span class="toggle-label" id="lbl-annual" onclick="setBilling('annual')">Annual</span>
+      <span class="save-badge">Save 20%</span>
     </div>
 
     <div class="pricing-grid">
       <!-- FREE -->
-      <div class="price-card fade-up">
-        <div class="price-tier">Free</div>
-        <div class="price-amount">$0</div>
-        <div class="price-period">Forever</div>
-        <div style="height:24px"></div>
-        <div class="price-desc">Try PHI with your first lab report. See your Metabolic Shield™ score and cliff risk picture — no card required.</div>
-        <ul class="price-features">
+      <div class="plan-card fade-up">
+        <div class="plan-tier">Free</div>
+        <div class="plan-price">$0</div>
+        <div class="plan-period">Forever free</div>
+        <div style="height:28px"></div>
+        <div class="plan-desc">Try PHI with your first lab report. See your Shield™ score and cliff risk — no card needed, no time limit on chat.</div>
+        <ul class="plan-features">
           <li><div class="pf-check">✓</div>Upload 1 lab report</li>
           <li><div class="pf-check">✓</div>Initial Shield™ score</li>
-          <li><div class="pf-check">✓</div>Unlimited chat with PHI</li>
+          <li><div class="pf-check">✓</div>Unlimited AI chat</li>
           <li style="opacity:.45"><div class="pf-check pf-off">–</div>No ongoing monitoring</li>
-          <li style="opacity:.45"><div class="pf-check pf-off">–</div>No weekly cliff alerts</li>
-          <li style="opacity:.45"><div class="pf-check pf-off">–</div>No PA support</li>
+          <li style="opacity:.45"><div class="pf-check pf-off">–</div>No weekly alerts</li>
+          <li style="opacity:.45"><div class="pf-check pf-off">–</div>No PA Architect</li>
         </ul>
-        <button class="btn-plan outline" onclick="location.href='/signup?plan=free'">Start Free</button>
+        <button class="btn-plan ghost" onclick="location.href='/signup?plan=free'">Start Free</button>
       </div>
 
-      <!-- SHIELD CORE FEATURED -->
-      <div class="price-card featured fade-up d1">
-        <div class="popular-pill">Most Popular</div>
-        <div class="price-tier pro">Shield Core</div>
-        <div class="price-amount" id="corePrice">$39</div>
-        <div class="price-period" id="corePeriod">per month</div>
-        <div class="price-save" id="coreSave" style="display:none">Save 20% — $374/yr ($31/mo)</div>
+      <!-- SHIELD CORE -->
+      <div class="plan-card featured fade-up d1">
+        <div class="plan-badge">Most Popular</div>
+        <div class="plan-tier pro">Shield Core</div>
+        <div class="plan-price" id="corePrice">$39</div>
+        <div class="plan-period" id="corePeriod">per month</div>
+        <div class="plan-save-pill" id="coreSave" style="display:none">You save $94/yr vs monthly</div>
         <div style="height:4px"></div>
-        <div class="price-desc">Continuous monitoring, unlimited labs, weekly cliff alerts — everything to keep the results you worked so hard for.</div>
-        <ul class="price-features">
+        <div class="plan-desc">Continuous monitoring, unlimited labs, weekly cliff alerts — everything to protect the results you worked so hard to earn.</div>
+        <ul class="plan-features">
           <li><div class="pf-check">✓</div>Unlimited lab uploads</li>
           <li><div class="pf-check">✓</div>Full Metabolic Shield™ monitoring</li>
           <li><div class="pf-check">✓</div>Weekly cliff & rebound alerts</li>
           <li><div class="pf-check">✓</div>Muscle Defense Protocol</li>
           <li><div class="pf-check">✓</div>Doctor visit prep brief</li>
           <li><div class="pf-check">✓</div>Persistent health memory</li>
-          <li><div class="pf-check">✓</div>Unlimited priority chat</li>
+          <li><div class="pf-check">✓</div>Unlimited priority AI chat</li>
         </ul>
-        <button class="btn-plan primary" id="coreBtn" onclick="startCheckout()">Start Shield Core</button>
+        <button class="btn-plan solid" id="coreBtn" onclick="goCheckout()">Start Shield Core</button>
       </div>
 
       <!-- SHIELD CLINICAL -->
-      <div class="price-card fade-up d2">
-        <div class="price-tier">Shield Clinical</div>
-        <div class="price-amount">$99</div>
-        <div class="price-period">per month</div>
-        <div style="height:24px"></div>
-        <div class="price-desc">For active rebound, insurance denials in progress, or anyone who needs the full clinical intelligence picture.</div>
-        <ul class="price-features">
+      <div class="plan-card fade-up d2">
+        <div class="plan-tier">Shield Clinical</div>
+        <div class="plan-price">$99</div>
+        <div class="plan-period">per month</div>
+        <div style="height:28px"></div>
+        <div class="plan-desc">For active rebound, insurance denials, or anyone who needs the complete clinical intelligence picture.</div>
+        <ul class="plan-features">
           <li><div class="pf-check">✓</div>Everything in Shield Core</li>
           <li><div class="pf-check">✓</div>Insurance PA Architect</li>
           <li><div class="pf-check">✓</div>Appeal letter generator</li>
@@ -517,115 +583,135 @@ footer p{font-size:.72rem;color:var(--text-3)}
           <li><div class="pf-check">✓</div>Body composition tracking</li>
           <li><div class="pf-check">✓</div>Priority support</li>
         </ul>
-        <button class="btn-plan outline" onclick="startCheckout('clinical')">Start Shield Clinical</button>
+        <button class="btn-plan ghost" onclick="location.href='/signup?plan=clinical'">Start Shield Clinical</button>
       </div>
     </div>
 
-    <div class="pricing-footnotes">
-      <span><span class="dot-brand"></span>No credit card for free tier</span>
-      <span><span class="dot-brand"></span>Cancel anytime</span>
-      <span><span class="dot-brand"></span>AES-256 encrypted</span>
-      <span><span class="dot-brand"></span>Annual = 2 months free</span>
+    <div class="pricing-notes">
+      <span><span class="dot"></span>No credit card for free tier</span>
+      <span><span class="dot"></span>Cancel anytime</span>
+      <span><span class="dot"></span>AES-256 encrypted</span>
+      <span><span class="dot"></span>Annual = 2 months free</span>
     </div>
   </div>
 </section>
 
-<!-- TRUST + PRIVACY -->
+<!-- TRUST & PRIVACY -->
 <section class="section">
   <div class="section-inner">
     <div class="section-tag">Privacy & Safety</div>
     <h2>Your data belongs to you. <em>Full stop.</em></h2>
-    <p class="section-sub">PHI is an educational wellness tool — not a medical device, not a diagnostic service. We help you understand your own health data and navigate the systems that affect your care.</p>
+    <p class="section-lead">PHI is an educational wellness tool — not a medical device, not a diagnostic service. We help you understand your own health data and navigate the systems that affect your care.</p>
     <div class="trust-grid">
-      <div class="trust-card fade-up"><div class="trust-icon"><i class="fa-solid fa-lock"></i></div><div class="trust-title">AES-256 Encrypted</div><div class="trust-body">Your lab reports and health data are encrypted at rest and in transit — the same standard used by financial institutions.</div></div>
-      <div class="trust-card fade-up d1"><div class="trust-icon"><i class="fa-solid fa-user-secret"></i></div><div class="trust-title">AI Never Sees Your Name</div><div class="trust-body">Before any data is analyzed, your name and personal identifiers are stripped. PHI works from anonymized health data only.</div></div>
-      <div class="trust-card fade-up d2"><div class="trust-icon"><i class="fa-solid fa-ban"></i></div><div class="trust-title">Never Sold, Never Shared</div><div class="trust-body">Your health data is never sold to advertisers, insurers, or third parties. Export or delete your complete record instantly at any time.</div></div>
+      <div class="trust-card fade-up">
+        <div class="trust-icon"><i class="fa-solid fa-lock"></i></div>
+        <div class="trust-title">AES-256 Encrypted</div>
+        <div class="trust-body">Your lab reports and health data are encrypted at rest and in transit — the same standard used by banks and financial institutions worldwide.</div>
+      </div>
+      <div class="trust-card fade-up d1">
+        <div class="trust-icon"><i class="fa-solid fa-user-secret"></i></div>
+        <div class="trust-title">AI Never Sees Your Name</div>
+        <div class="trust-body">Before any data is analyzed by AI, your name and personal identifiers are stripped. PHI's intelligence works entirely from anonymized health data.</div>
+      </div>
+      <div class="trust-card fade-up d2">
+        <div class="trust-icon"><i class="fa-solid fa-ban"></i></div>
+        <div class="trust-title">Never Sold, Never Shared</div>
+        <div class="trust-body">Your health data is never sold to advertisers, insurers, or any third party. Export or delete your complete record instantly, at any time.</div>
+      </div>
     </div>
-    <div class="disclaimer fade-up">
-      <p><strong style="color:var(--text-2)">Important:</strong> PHI is an educational wellness tool and is not a medical device. It does not provide medical diagnoses, treatment recommendations, or prescriptions. All insights are for informational purposes only. Always consult your qualified healthcare provider before making any clinical decisions.</p>
+    <div class="disclaimer-box fade-up">
+      <p><strong>Important:</strong> Curabook PHI is an educational wellness tool and is not a medical device. It does not provide medical diagnoses, treatment recommendations, or prescriptions. All insights are for informational and educational purposes only. Always consult your qualified healthcare provider before making any clinical decisions.</p>
     </div>
   </div>
 </section>
 
 <!-- FINAL CTA -->
 <section class="final-cta">
-  <div style="max-width:640px;margin:0 auto">
+  <div style="max-width:580px;margin:0 auto">
     <div class="section-tag" style="justify-content:center">Start Today</div>
-    <h2>You worked hard to lose that weight.<br><em>Don't lose it again.</em></h2>
-    <p class="section-sub">PHI's Metabolic Shield™ is free to start. Upload your first lab report and see your rebound risk in minutes — before the cliff finds you.</p>
+    <h2>You worked hard<br>to lose that weight.<br><em>Don't lose it again.</em></h2>
+    <p>PHI's Metabolic Shield™ is free to start. Upload your first lab report and see your cliff risk in minutes.</p>
     <button class="btn-cta-final" onclick="location.href='/signup'">
       <i class="fa-solid fa-shield-halved"></i>
       Start Free — Upload Your Labs
     </button>
-    <div class="cta-proof">
+    <div class="cta-badges">
       <span>✦ Free to start</span>
       <span>✦ AES-256 encrypted</span>
       <span>✦ Cancel anytime</span>
-      <span>✦ Educational tool, not medical advice</span>
+      <span>✦ Educational tool only</span>
     </div>
   </div>
 </section>
 
+<!-- FOOTER -->
 <footer>
   <div class="footer-logo">
-    <div class="nav-mark" style="width:30px;height:30px;font-size:13px"><i class="fa-solid fa-heart-pulse"></i></div>
-    <span style="color:var(--text-3);font-size:.84rem;font-family:var(--serif)">Curabook PHI</span>
+    <div class="nav-icon" style="width:30px;height:30px;font-size:13px"><i class="fa-solid fa-heart-pulse"></i></div>
+    <span style="font-family:var(--serif);font-size:1.1rem;color:var(--text)">Curabook PHI</span>
   </div>
   <div class="footer-links">
-    <a href="/privacy">Privacy</a>
-    <a href="/terms">Terms</a>
+    <a href="#problem">The Problem</a>
+    <a href="#how">How It Works</a>
+    <a href="#features">Features</a>
+    <a href="#pricing">Pricing</a>
     <a href="/appeal">Free PA Tool</a>
     <a href="/login">Sign In</a>
+    <a href="/privacy">Privacy</a>
+    <a href="/terms">Terms</a>
     <a href="mailto:support@curabook.com">Contact</a>
   </div>
   <p>© 2026 Curabook PHI. Educational tool only. Not a substitute for medical advice.</p>
 </footer>
 
 <script>
-// Nav scroll
-window.addEventListener('scroll',()=>{
-  document.querySelector('nav').style.boxShadow = window.scrollY > 20 ? '0 1px 0 rgba(255,255,255,.07)' : ''
-})
+// Nav scroll effect
+window.addEventListener('scroll', () => {
+  document.getElementById('mainNav').classList.toggle('scrolled', window.scrollY > 20);
+});
 
-// Fade up observer
-const obs = new IntersectionObserver(entries=>{
-  entries.forEach(e=>{ if(e.isIntersecting) e.target.classList.add('visible') })
-},{threshold:.1,rootMargin:'0 0 -40px 0'})
-document.querySelectorAll('.fade-up').forEach(el=>obs.observe(el))
+// Fade-up observer
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+}, { threshold: 0.1, rootMargin: '0 0 -40px 0' });
+document.querySelectorAll('.fade-up').forEach(el => observer.observe(el));
 
 // Billing toggle
-let billing = 'monthly'
+let billing = 'monthly';
+
 function setBilling(mode) {
-  billing = mode
-  const sw = document.getElementById('toggleSwitch')
-  const mOpt = document.getElementById('opt-monthly')
-  const aOpt = document.getElementById('opt-annual')
-  const price = document.getElementById('corePrice')
-  const period = document.getElementById('corePeriod')
-  const save = document.getElementById('coreSave')
-  const btn = document.getElementById('coreBtn')
+  billing = mode;
+  const track = document.getElementById('billingTrack');
+  const lblM  = document.getElementById('lbl-monthly');
+  const lblA  = document.getElementById('lbl-annual');
+  const price = document.getElementById('corePrice');
+  const period = document.getElementById('corePeriod');
+  const save  = document.getElementById('coreSave');
+  const btn   = document.getElementById('coreBtn');
 
   if (mode === 'annual') {
-    sw.classList.add('annual')
-    mOpt.classList.remove('active'); aOpt.classList.add('active')
-    price.textContent = '$31'
-    period.textContent = 'per month (billed $374/yr)'
-    save.style.display = 'inline-block'
-    btn.textContent = 'Start Annual — Best Value'
+    track.classList.add('active');
+    lblM.classList.remove('on'); lblA.classList.add('on');
+    price.textContent  = '$31';
+    period.textContent = 'per month — billed $374/yr';
+    save.style.display = 'inline-block';
+    btn.textContent    = 'Start Annual — Best Value';
   } else {
-    sw.classList.remove('annual')
-    mOpt.classList.add('active'); aOpt.classList.remove('active')
-    price.textContent = '$39'
-    period.textContent = 'per month'
-    save.style.display = 'none'
-    btn.textContent = 'Start Shield Core'
+    track.classList.remove('active');
+    lblM.classList.add('on'); lblA.classList.remove('on');
+    price.textContent  = '$39';
+    period.textContent = 'per month';
+    save.style.display = 'none';
+    btn.textContent    = 'Start Shield Core';
   }
 }
-function toggleBilling() { setBilling(billing === 'monthly' ? 'annual' : 'monthly') }
 
-function startCheckout(tier) {
-  const plan = tier || billing
-  location.href = '/signup?plan=' + plan
+function toggleBilling() {
+  setBilling(billing === 'monthly' ? 'annual' : 'monthly');
+}
+
+function goCheckout() {
+  location.href = '/signup?plan=' + billing;
 }
 </script>
 </body>
