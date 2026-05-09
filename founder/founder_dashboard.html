@@ -9,21 +9,21 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
 :root {
-  --bg:       #0c0d0f;
-  --surface:  #131416;
-  --surface2: #1a1c20;
-  --surface3: #22252b;
-  --border:   rgba(255,255,255,.07);
-  --border2:  rgba(255,255,255,.12);
-  --text:     #e8eaed;
-  --text2:    #8b929e;
-  --text3:    #525862;
-  --accent:   #00d4c8;
-  --accent2:  #00a89e;
-  --green:    #22c55e;
+  --bg:       #fafafa;
+  --surface:  #ffffff;
+  --surface2: #f4f5f7;
+  --surface3: #e9eaec;
+  --border:   #e5e7eb;
+  --border2:  #d1d5db;
+  --text:     #111111;
+  --text2:    #6b7280;
+  --text3:    #9ca3af;
+  --accent:   #00BCD5;
+  --accent2:  #0097a7;
+  --green:    #10b981;
   --amber:    #f59e0b;
   --red:      #ef4444;
-  --purple:   #a78bfa;
+  --purple:   #8b5cf6;
   --mono:     'Space Mono', monospace;
   --sans:     'Syne', sans-serif;
   --body:     'DM Sans', sans-serif;
@@ -89,7 +89,7 @@ body {
   margin-bottom: 1px;
 }
 .nav-item:hover { background: var(--surface2); color: var(--text); }
-.nav-item.active { background: rgba(0,212,200,.1); color: var(--accent); }
+.nav-item.active { background: rgba(0,188,213,.1); color: var(--accent); }
 .nav-item .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
 
 /* ── AUTH GATE ── */
@@ -226,7 +226,7 @@ td {
   color: var(--text2); vertical-align: middle;
 }
 tr:last-child td { border-bottom: none; }
-tr:hover td { background: rgba(255,255,255,.02); }
+tr:hover td { background: rgba(0,0,0,.02); }
 .mono { font-family: var(--mono); }
 
 /* ── BADGES ── */
@@ -235,7 +235,7 @@ tr:hover td { background: rgba(255,255,255,.02); }
   padding: 3px 9px; border-radius: 20px;
   font-size: .66rem; font-weight: 700; white-space: nowrap;
 }
-.badge-pro     { background: rgba(0,212,200,.12); color: var(--accent); border: 1px solid rgba(0,212,200,.2); }
+.badge-pro     { background: rgba(0,188,213,.12); color: var(--accent); border: 1px solid rgba(0,188,213,.2); }
 .badge-free    { background: var(--surface3); color: var(--text3); border: 1px solid var(--border); }
 .badge-trial   { background: rgba(167,139,250,.12); color: var(--purple); border: 1px solid rgba(167,139,250,.2); }
 .badge-annual  { background: rgba(34,197,94,.12); color: var(--green); border: 1px solid rgba(34,197,94,.2); }
@@ -263,8 +263,8 @@ tr:hover td { background: rgba(255,255,255,.02); }
 /* ── PRIVACY NOTICE ── */
 .privacy-bar {
   display: flex; align-items: center; gap: 10px;
-  background: rgba(0,212,200,.06);
-  border: 1px solid rgba(0,212,200,.15);
+  background: rgba(0,188,213,.06);
+  border: 1px solid rgba(0,188,213,.15);
   border-radius: 10px; padding: 12px 16px;
   font-size: .78rem; color: var(--text2);
   margin-bottom: 20px;
@@ -274,7 +274,7 @@ tr:hover td { background: rgba(255,255,255,.02); }
 /* ── USER DETAIL PANEL ── */
 .user-detail-overlay {
   position: fixed; inset: 0;
-  background: rgba(0,0,0,.75);
+  background: rgba(0,0,0,.45);
   z-index: 90;
   display: flex; align-items: center; justify-content: flex-end;
 }
@@ -346,7 +346,7 @@ tr:hover td { background: rgba(255,255,255,.02); }
 }
 .filter-btn:hover, .filter-btn.active {
   border-color: var(--accent); color: var(--accent);
-  background: rgba(0,212,200,.08);
+  background: rgba(0,188,213,.08);
 }
 .search-input {
   padding: 7px 14px; background: var(--surface2);
@@ -711,8 +711,8 @@ async function loadOverview() {
     datasets: [{
       label: 'DAU',
       data: dauData.map(d => d.dau),
-      borderColor: '#00d4c8',
-      backgroundColor: 'rgba(0,212,200,.08)',
+      borderColor: '#00BCD5',
+      backgroundColor: 'rgba(0,188,213,.08)',
       fill: true, tension: 0.4, pointRadius: 2,
     }]
   });
@@ -723,7 +723,7 @@ async function loadOverview() {
     labels: Object.keys(plans),
     datasets: [{
       data: Object.values(plans),
-      backgroundColor: ['#525862','#00d4c8','#22c55e','#a78bfa','#f59e0b'],
+      backgroundColor: ['#525862','#00BCD5','#22c55e','#a78bfa','#f59e0b'],
       borderWidth: 0, hoverOffset: 4,
     }]
   }, { plugins: { legend: { position: 'right', labels: { color: '#8b929e', font: { size: 11 } } } } });
@@ -732,7 +732,7 @@ async function loadOverview() {
   mkChart('growthChart', 'bar', {
     labels: dauData.map(d => d.date.slice(5)),
     datasets: [
-      { label: 'Messages', data: dauData.map(d => d.msgs), backgroundColor: 'rgba(0,212,200,.5)', borderRadius: 4 },
+      { label: 'Messages', data: dauData.map(d => d.msgs), backgroundColor: 'rgba(0,188,213,.5)', borderRadius: 4 },
       { label: 'Signups', data: dauData.map(d => d.signups), backgroundColor: 'rgba(167,139,250,.5)', borderRadius: 4 },
     ]
   });
@@ -777,7 +777,7 @@ async function loadActivity(days) {
   _charts.activityChart = mkChart('activityChart', 'line', {
     labels: tl.map(d => d.date.slice(5)),
     datasets: [
-      { label: 'Messages', data: tl.map(d => d.msgs), borderColor: '#00d4c8', backgroundColor: 'rgba(0,212,200,.06)', fill: true, tension: 0.4, pointRadius: 2 },
+      { label: 'Messages', data: tl.map(d => d.msgs), borderColor: '#00BCD5', backgroundColor: 'rgba(0,188,213,.06)', fill: true, tension: 0.4, pointRadius: 2 },
       { label: 'DAU',      data: tl.map(d => d.dau),  borderColor: '#a78bfa', backgroundColor: 'transparent', tension: 0.4, pointRadius: 2 },
       { label: 'Signups',  data: tl.map(d => d.signups), borderColor: '#22c55e', backgroundColor: 'transparent', tension: 0.4, pointRadius: 2 },
     ]
@@ -786,7 +786,7 @@ async function loadActivity(days) {
   if (_charts.hourChart) _charts.hourChart.destroy();
   _charts.hourChart = mkChart('hourChart', 'bar', {
     labels: data.peak_hours.map(h => `${h.hour}:00`),
-    datasets: [{ label: 'Messages', data: data.peak_hours.map(h => h.messages), backgroundColor: 'rgba(0,212,200,.4)', borderRadius: 3 }]
+    datasets: [{ label: 'Messages', data: data.peak_hours.map(h => h.messages), backgroundColor: 'rgba(0,188,213,.4)', borderRadius: 3 }]
   });
 
   const feat = await api(`/api/founder/feature-usage?days=${days}`);
@@ -795,7 +795,7 @@ async function loadActivity(days) {
     labels: ['Short (1-2 msgs)', 'Medium (3-10)', 'Long (10+)'],
     datasets: [{
       data: [feat.sessions.short_1_2, feat.sessions.medium_3_10, feat.sessions.long_10plus],
-      backgroundColor: ['#525862','#00d4c8','#22c55e'],
+      backgroundColor: ['#525862','#00BCD5','#22c55e'],
       borderWidth: 0,
     }]
   }, { plugins: { legend: { position: 'right', labels: { color: '#8b929e', font: { size: 11 } } } } });
@@ -906,7 +906,7 @@ async function loadQuestions() {
     </div>
   `).join('');
 
-  const colors = ['#00d4c8','#a78bfa','#22c55e','#f59e0b','#ef4444'];
+  const colors = ['#00BCD5','#a78bfa','#22c55e','#f59e0b','#ef4444'];
   mkChart('topicTrendChart', 'line', {
     labels: daily_series.map(d => d.date.slice(5)),
     datasets: top_topics.map((topic, i) => ({
@@ -934,7 +934,7 @@ async function loadPayments() {
     labels: Object.keys(plans),
     datasets: [{
       data: Object.values(plans),
-      backgroundColor: ['#22252b','#00d4c8','#22c55e','#a78bfa','#f59e0b','#ef4444'],
+      backgroundColor: ['#e5e7eb','#00BCD5','#10b981','#8b5cf6','#f59e0b','#ef4444'],
       borderWidth: 0,
     }]
   }, { plugins: { legend: { position: 'right', labels: { color: '#8b929e', font: { size: 11 } } } } });
@@ -1099,7 +1099,7 @@ async function openDetail(handle) {
         `).join('')}
       ` : ''}
 
-      <div style="margin-top:20px;padding:12px;background:rgba(0,212,200,.05);border:1px solid rgba(0,212,200,.1);border-radius:10px;font-size:.72rem;color:var(--text3)">
+      <div style="margin-top:20px;padding:12px;background:rgba(0,188,213,.05);border:1px solid rgba(0,188,213,.1);border-radius:10px;font-size:.72rem;color:var(--text3)">
         🔒 ${d.privacy_note}
       </div>
     `;
@@ -1129,13 +1129,13 @@ function mkChart(id, type, data, extraOpts = {}) {
     plugins: {
       legend: { display: type !== 'bar' && type !== 'line', labels: { color: '#8b929e', font: { size: 11 } } },
       tooltip: {
-        backgroundColor: '#1a1c20', borderColor: 'rgba(255,255,255,.1)', borderWidth: 1,
+        backgroundColor: '#f4f5f7', borderColor: 'rgba(0,0,0,.08)', borderWidth: 1,
         titleColor: '#e8eaed', bodyColor: '#8b929e',
       }
     },
     scales: type === 'doughnut' ? undefined : {
-      x: { grid: { color: 'rgba(255,255,255,.04)' }, ticks: { color: '#525862', font: { size: 10 }, maxTicksLimit: 10 } },
-      y: { grid: { color: 'rgba(255,255,255,.04)' }, ticks: { color: '#525862', font: { size: 10 } } },
+      x: { grid: { color: 'rgba(0,0,0,.05)' }, ticks: { color: '#9ca3af', font: { size: 10 }, maxTicksLimit: 10 } },
+      y: { grid: { color: 'rgba(0,0,0,.05)' }, ticks: { color: '#9ca3af', font: { size: 10 } } },
     }
   };
   const merged = deepMerge(defaultOpts, extraOpts);

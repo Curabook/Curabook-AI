@@ -3,10 +3,9 @@ api/payment_routes.py — Complete Razorpay Payment System
 ═══════════════════════════════════════════════════════════════════════════
 FIXES vs previous version:
 
-  FIX-PAY-1   hmac.new() doesn't exist in Python 3 — replaced with
-              hmac.HMAC(key, msg, digestmod) throughout. Previous code
-              would silently fail signature verification, accepting any
-              payment payload as valid. CRITICAL security fix.
+  FIX-PAY-1   Correct HMAC signature verification using hmac.new(key, msg, digestmod).
+              Previous version had broken fallback logic that masked the real error.
+              Cleaned up to a single correct call — no try/except needed.
 
   FIX-PAY-2   Webhook now handles ALL subscription lifecycle events:
               activated, charged, halted, cancelled, completed, expired.
@@ -117,28 +116,15 @@ def _now_iso() -> str:
 
 def _verify_hmac(secret: str, message: str, signature: str) -> bool:
     """
-    FIX-PAY-1: Correct Python 3 HMAC verification.
-    hmac.new() does not exist in Python 3 — use hmac.new() alias or HMAC class directly.
-    Using hmac.new() via the module-level function which IS available as hmac.new in stdlib.
-    Actually: use hmac.HMAC constructor or the functional form below.
+    Correct Python 3 HMAC verification using hmac.new() (stdlib, always available).
+    hmac.new(key, msg, digestmod) is the correct call signature.
     """
-    try:
-        expected = hmac.new(
-            secret.encode("utf-8"),
-            message.encode("utf-8"),
-            hashlib.sha256
-        ).hexdigest()
-        return hmac.compare_digest(expected, signature)
-    except AttributeError:
-        # Fallback for environments where hmac.new is unavailable
-        import hmac as _hmac
-        h = _hmac.HMAC(
-            secret.encode("utf-8"),
-            message.encode("utf-8"),
-            hashlib.sha256
-        )
-        expected = h.hexdigest()
-        return _hmac.compare_digest(expected, signature)
+    expected = hmac.new(
+        secret.encode("utf-8"),
+        message.encode("utf-8"),
+        hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(expected, signature)
 
 
 def _get_or_create_razorpay_customer(client, user_id: str, email: str, name: str, supabase) -> str:
@@ -956,11 +942,20 @@ def setup_missing_tables():
         "ALTER TABLE glp1_onboarding ENABLE ROW LEVEL SECURITY",
         "ALTER TABLE glp1_medications ENABLE ROW LEVEL SECURITY",
 
-        # Policies
-        "CREATE POLICY IF NOT EXISTS own_briefs    ON weekly_briefs     FOR ALL USING (auth.uid() = user_id)",
-        "CREATE POLICY IF NOT EXISTS own_appt      ON appointment_preps FOR ALL USING (auth.uid() = user_id)",
-        "CREATE POLICY IF NOT EXISTS own_onboard   ON glp1_onboarding   FOR ALL USING (auth.uid() = user_id)",
-        "CREATE POLICY IF NOT EXISTS own_meds      ON glp1_medications  FOR ALL USING (auth.uid() = user_id)",
+        # Policies — CREATE POLICY IF NOT EXISTS is not valid Postgres syntax;
+        # use DO block with duplicate_object exception handler instead.
+        """DO $$ BEGIN
+            CREATE POLICY own_briefs ON weekly_briefs FOR ALL USING (auth.uid() = user_id);
+        EXCEPTION WHEN duplicate_object THEN NULL; END $$""",
+        """DO $$ BEGIN
+            CREATE POLICY own_appt ON appointment_preps FOR ALL USING (auth.uid() = user_id);
+        EXCEPTION WHEN duplicate_object THEN NULL; END $$""",
+        """DO $$ BEGIN
+            CREATE POLICY own_onboard ON glp1_onboarding FOR ALL USING (auth.uid() = user_id);
+        EXCEPTION WHEN duplicate_object THEN NULL; END $$""",
+        """DO $$ BEGIN
+            CREATE POLICY own_meds ON glp1_medications FOR ALL USING (auth.uid() = user_id);
+        EXCEPTION WHEN duplicate_object THEN NULL; END $$""",
 
         # Indexes
         "CREATE INDEX IF NOT EXISTS idx_briefs_user    ON weekly_briefs(user_id, generated_at desc)",
