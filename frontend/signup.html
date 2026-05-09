@@ -6,10 +6,8 @@
     <title>Create Account — Curabook PHI</title>
     <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <script src="https://checkout.razorpay.com/v1/checkout.js" defer></script>
-    
     <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
     :root {
@@ -68,14 +66,12 @@
     .spinner { width:16px; height:16px; border:2px solid rgba(255,255,255,.4); border-top-color:white; border-radius:50%; animation:spin .6s linear infinite; display:inline-block; margin-right:6px; }
     @keyframes spin { to { transform:rotate(360deg); } }
 
-    /* ── ONBOARDING STEP ──────────────────────────────────────────────── */
+    /* ── ONBOARDING ── */
     #onboardingStep { display: none; animation: fadeIn .35s ease; }
     @keyframes fadeIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
-
     .onboarding-header { margin-bottom:24px; }
     .onboarding-header h2 { font-family:var(--serif); font-size:1.6rem; font-weight:400; margin-bottom:6px; color:var(--text); }
     .onboarding-header p { font-size:13.5px; color:var(--muted); line-height:1.6; }
-
     .onboarding-progress { display:flex; gap:4px; margin-bottom:24px; }
     .op-dot { flex:1; height:3px; background:var(--border); border-radius:2px; transition:background .3s; }
     .op-dot.active { background:var(--brand); }
@@ -96,11 +92,10 @@
     .concern-item.selected i { color:var(--brand); }
     .concern-label { font-size:13.5px; font-weight:500; color:var(--text); }
 
-    /* ── PLAN SELECTION CARDS ─────────────────────────────────────────── */
+    /* ── PLAN CARDS ── */
     .plan-cards { display:flex; flex-direction:column; gap:10px; margin-bottom:16px; }
     .plan-card { border:1.5px solid var(--border); border-radius:12px; padding:16px 18px; cursor:pointer; transition:all .15s; position:relative; display:flex; align-items:center; justify-content:space-between; }
     .plan-card:hover, .plan-card.selected { border-color:var(--brand); background:rgba(0,188,213,.04); }
-    .plan-card-info {}
     .plan-card-name { font-size:14px; font-weight:600; color:var(--text); }
     .plan-card-desc { font-size:12px; color:var(--muted); margin-top:2px; }
     .plan-price-num { font-size:18px; font-weight:600; color:var(--brand-dark); text-align:right; }
@@ -115,7 +110,7 @@
     .btn-next:hover { background:var(--brand-dark); }
     .btn-next:disabled { opacity:.5; cursor:not-allowed; }
 
-    /* ── SUCCESS STATE ────────────────────────────────────────────────── */
+    /* ── SUCCESS ── */
     .success-state { display:none; text-align:center; padding:24px 0; animation:fadeIn .4s ease; }
     .success-icon { width:64px; height:64px; border-radius:50%; background:rgba(0,188,213,.12); border:2px solid var(--brand); display:flex; align-items:center; justify-content:center; margin:0 auto 20px; font-size:28px; color:var(--brand); }
     .success-title { font-family:var(--serif); font-size:1.7rem; font-weight:400; color:var(--text); margin-bottom:10px; }
@@ -136,8 +131,8 @@
         <span class="left-brand-tag">PHI</span>
     </div>
     <div class="left-content">
-        <h1 class="left-headline">Stay ahead<br>of the <em>GLP-1 cliff</em><br>with your data</h1>
-        <p class="left-sub">PHI monitors your glucose trajectory, HbA1c drift, and body composition — and tells you exactly what's happening before your next appointment.</p>
+        <h1 class="left-headline">The food noise<br>is <em>real.</em><br>So is the shield.</h1>
+        <p class="left-sub">70% of GLP-1 users regain weight within a year of stopping. PHI monitors your glucose, lean mass, and rebound signals — so you're never blindsided by the cliff.</p>
     </div>
     <div class="feature-list">
         <div class="feature-item">
@@ -244,7 +239,7 @@
             <div id="panelB" style="display:none">
                 <div class="onboarding-header">
                     <h2>Your goal weight?</h2>
-                    <p>PHI uses this to calculate your daily Muscle Defense protein target immediately on login.</p>
+                    <p>PHI calculates your daily Muscle Defense protein target immediately — so your Shield is active from day one.</p>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Goal weight (lbs) <span class="optional">— or your current weight if unsure</span></label>
@@ -296,7 +291,7 @@
             <div id="panelD" style="display:none">
                 <div class="onboarding-header">
                     <h2>Choose your plan</h2>
-                    <p>Start free anytime — upgrade when you need more.</p>
+                    <p>GLP-1s cost $1,350/month. PHI protects those results for 97% less.</p>
                 </div>
                 
                 <p id="planStatusMsg" class="status-msg"></p>
@@ -342,7 +337,6 @@
                     <button class="btn-next" id="finishBtn" onclick="finishOnboarding()">Continue to Payment →</button>
                 </div>
             </div>
-            
         </div>
 
         <div id="successState" class="success-state">
@@ -360,7 +354,6 @@
 </div>
 
 <script>
-// ── Config ────────────────────────────────────────────────────────────────────
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://api.curabook.com';
 const SUPABASE_URL = "https://pbeaawlxdcrdbvlmpqhc.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBiZWFhd2x4ZGNyZGJ2bG1wcWhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwMDk0MzksImV4cCI6MjA5MTU4NTQzOX0.6bUpYrDbe0mQjjBHX8Qscj-5R8i4-SqAtW_Z1UFzJ10";
@@ -380,13 +373,9 @@ function initSupabase() {
 
 function setStatus(msg, type = '') {
     const el = document.getElementById('status-msg');
-    if(el) {
-        el.textContent = msg;
-        el.className = 'status-msg ' + type;
-    }
+    if(el) { el.textContent = msg; el.className = 'status-msg ' + type; }
 }
 
-// ── UI Navigation ─────────────────────────────────────────────────────────────
 function goToPanel(panel) {
     ['A', 'B', 'C', 'D'].forEach(p => {
         const el = document.getElementById('panel' + p);
@@ -404,7 +393,6 @@ function selectOption(btn, field) {
        .forEach(el => el.classList.remove('selected'));
     btn.classList.add('selected');
     ob[field] = btn.dataset.val;
-
     if (field === 'glp1Status') document.getElementById('nextA').disabled = false;
     if (field === 'concern') document.getElementById('nextC').disabled = false;
 }
@@ -414,12 +402,10 @@ function selectPlan(plan) {
     document.querySelectorAll('.plan-card').forEach(c => c.classList.remove('selected'));
     const activeCard = document.getElementById('plan' + plan.charAt(0).toUpperCase() + plan.slice(1));
     if (activeCard) activeCard.classList.add('selected');
-    
     document.getElementById('freePlanNote').style.display = plan === 'free' ? 'block' : 'none';
     document.getElementById('finishBtn').textContent = plan === 'free' ? 'Start Free →' : 'Continue to Payment →';
 }
 
-// ── Backend Communications ────────────────────────────────────────────────────
 async function saveConsentToBackend(token) {
     if (!token) return false;
     try {
@@ -470,11 +456,7 @@ async function saveOnboardingData() {
         const now = new Date().toISOString();
         for (const fact of facts) {
             await supabaseClient.from('conversation_memories').insert({
-                user_id:   _userId,
-                fact:      fact,
-                category:  'onboarding',
-                is_active: true,
-                created_at: now,
+                user_id: _userId, fact, category: 'onboarding', is_active: true, created_at: now,
             }).catch(()=>{});
         }
     } catch (e) { console.warn('[ONBOARDING] Save error (non-fatal):', e); }
@@ -582,9 +564,7 @@ async function finishOnboarding() {
     }
 }
 
-// ── DOM Listeners ─────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-    // Goal Weight Calculator
     const gwInput = document.getElementById('goalWeight');
     if (gwInput) {
         gwInput.addEventListener('input', () => {
@@ -606,7 +586,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Default plan parsing from URL
     const urlParams = new URLSearchParams(window.location.search);
     if(urlParams.get('plan')){
         ob.plan = urlParams.get('plan');
@@ -614,7 +593,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-// ── Auth flows ────────────────────────────────────────────────────────────────
 document.getElementById('signupBtn').addEventListener('click', async () => {
     if (!supabaseClient) { setStatus("Loading… please wait", "error"); return; }
 
@@ -660,7 +638,6 @@ document.getElementById('signupBtn').addEventListener('click', async () => {
             setStatus('Saving your preferences…', 'success');
             await saveConsentToBackend(_accessToken);
             setStatus('', '');
-
             document.getElementById('signupStep').style.display = 'none';
             document.getElementById('onboardingStep').style.display = 'block';
         } else {
@@ -691,11 +668,9 @@ document.addEventListener('keydown', e => {
     }
 });
 
-// ── Init ──────────────────────────────────────────────────────────────────────
 try {
     initSupabase();
 
-    // Direct routing for logged-in users sent here for onboarding
     if (window.location.hash === '#onboarding') {
         document.getElementById('signupStep').style.display = 'none';
         document.getElementById('onboardingStep').style.display = 'block';
@@ -714,7 +689,6 @@ try {
                 } else {
                     await saveConsentToBackend(session.access_token);
                     try { localStorage.setItem(`phi_terms_${session.user.id}`, Date.now().toString()); } catch (e) {}
-                    
                     document.getElementById('signupStep').style.display = 'none';
                     document.getElementById('onboardingStep').style.display = 'block';
                     goToPanel('A');

@@ -40,7 +40,7 @@
     .form-input { width:100%; padding:11px 13px; border:1.5px solid var(--border); border-radius:10px; font-size:14.5px; font-family:var(--font); color:var(--text); background:var(--white); outline:none; transition:border-color .2s,box-shadow .2s; }
     .form-input:focus { border-color:var(--brand); box-shadow:0 0 0 3px rgba(0,200,224,.1); }
     .form-input::placeholder { color:#9ca3af; }
-    .forgot-link { display:block; text-align:right; font-size:13px; color:var(--brand); text-decoration:none; margin-bottom:20px; margin-top:-8px; }
+    .forgot-link { display:block; text-align:right; font-size:13px; color:var(--brand); text-decoration:none; margin-bottom:20px; margin-top:-8px; cursor:pointer; }
     .btn-primary { width:100%; padding:13px; background:var(--brand); color:white; border:none; border-radius:10px; font-size:15px; font-weight:600; font-family:var(--font); cursor:pointer; transition:all .15s; margin-bottom:16px; }
     .btn-primary:hover { background:var(--brand-dark); transform:translateY(-1px); }
     .btn-primary:disabled { opacity:.6; cursor:not-allowed; transform:none; }
@@ -56,6 +56,7 @@
     .compliance-strip i { color:var(--brand); margin-right:4px; }
     .spinner { width:16px; height:16px; border:2px solid rgba(255,255,255,.4); border-top-color:white; border-radius:50%; animation:spin .6s linear infinite; display:inline-block; margin-right:6px; }
     @keyframes spin { to { transform:rotate(360deg); } }
+    /* Terms modal */
     .terms-modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.6); z-index:9999; display:flex; align-items:center; justify-content:center; padding:20px; }
     .terms-modal { background:white; border-radius:16px; padding:32px; max-width:460px; width:100%; box-shadow:0 16px 48px rgba(0,0,0,.14); animation:slideUp .25s ease; }
     @keyframes slideUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
@@ -76,6 +77,7 @@
     </style>
 </head>
 <body>
+
 <div class="left-panel">
     <div class="left-brand">
         <div class="left-brand-icon"><i class="fa-solid fa-heart-pulse"></i></div>
@@ -83,8 +85,8 @@
         <span class="left-brand-tag">PHI</span>
     </div>
     <div class="left-content">
-        <h1 class="left-headline">Your personal<br><em>health intelligence</em><br>system</h1>
-        <p class="left-sub">Upload lab reports. Track trends over time. Get actionable insights before every doctor visit.</p>
+        <h1 class="left-headline">Your <em>Metabolic Shield</em><br>is waiting for you</h1>
+        <p class="left-sub">The food noise doesn't have to win. PHI picks up exactly where you left off — your labs, your markers, your cliff risk. All of it.</p>
     </div>
     <div class="trust-badges">
         <div class="trust-item"><i class="fa-solid fa-shield-halved"></i> HIPAA-Ready architecture</div>
@@ -156,7 +158,6 @@ function setLoading(btn, loading) {
     btn.innerHTML = loading ? '<span class="spinner"></span> Signing in…' : "Sign In";
 }
 
-// ── FIXED: Added proper onboarding check logic from zip file ──────────
 async function handleSuccessfulLogin(session) {
     if (_redirecting) return;
     _redirecting = true;
@@ -165,13 +166,10 @@ async function handleSuccessfulLogin(session) {
     try {
         const user = session?.user;
         if (user) {
-            // Check if onboarding is done 
             const onboardingDone = localStorage.getItem('phi_onboarded_' + user.id);
             if (!onboardingDone) {
                 const { data: profile } = await _supabase.from('glp1_onboarding').select('glp1_status').eq('user_id', user.id).limit(1).maybeSingle().catch(()=>({data:null}));
-                
                 if (!profile?.glp1_status) {
-                    // New user who needs onboarding — Google OAuth users land here
                     window.location.replace('/signup#onboarding');
                     return;
                 } else {
@@ -267,7 +265,6 @@ document.getElementById("loginBtn").addEventListener("click", async () => {
     try {
         const { error } = await _supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        // onAuthStateChange handles redirect automatically
     } catch (err) {
         setStatus(err.message || "Invalid email or password.", "error");
         setLoading(btn, false);
@@ -297,7 +294,7 @@ document.getElementById("googleBtn").addEventListener("click", async () => {
     try {
         await _supabase.auth.signInWithOAuth({
             provider: "google",
-            options: { redirectTo: `${window.location.origin}/login` }, // Needs to come back here for checks
+            options: { redirectTo: `${window.location.origin}/login` },
         });
     } catch { setStatus("Google sign-in unavailable. Try email instead.", "error"); }
 });
@@ -328,7 +325,6 @@ document.getElementById("googleBtn").addEventListener("click", async () => {
             }
         });
 
-        // Don't auto-redirect if there's no hash
         if (!window.location.hash.includes("access_token") && window.location.hash !== "#onboarding") {
             _supabase.auth.getSession().then(({ data: { session } }) => {
                 if (session?.user && !_redirecting) {
