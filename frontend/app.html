@@ -16,7 +16,22 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<script>
+  // Load PayPal SDK dynamically using client ID from backend config
+  (async () => {
+    try {
+      const res  = await fetch('/api/payment/config');
+      const cfg  = await res.json();
+      if (!cfg.paypal_client_id) return;
+      const s    = document.createElement('script');
+      s.src      = `https://www.paypal.com/sdk/js?client-id=${cfg.paypal_client_id}&vault=true&intent=subscription`;
+      s.setAttribute('data-sdk-integration-source', 'button-factory');
+      document.head.appendChild(s);
+    } catch(e) {
+      console.warn('[PHI] PayPal SDK load skipped:', e.message);
+    }
+  })();
+</script>
 </head>
 <body>
 
