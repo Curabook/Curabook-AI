@@ -1,53 +1,49 @@
 """
-api/payment_routes.py — Complete Razorpay Payment System
+api/payment_routes.py — PayPal Subscriptions Payment System
 ═══════════════════════════════════════════════════════════════════════════
-FIXES vs previous version:
+Migrated from Razorpay → PayPal Subscriptions API.
 
-  FIX-PAY-1   Correct HMAC signature verification using hmac.new(key, msg, digestmod).
-              Previous version had broken fallback logic that masked the real error.
-              Cleaned up to a single correct call — no try/except needed.
+PRICING:
+  Shield Monthly  — $49/mo            (plan key: "monthly")
+  Shield Annual   — $468/yr ($39/mo)  (plan key: "annual")
+  Shield Clinical — $99/mo            (plan key: "clinical")
+  Trial           — $0                (plan key: "trial")
 
-  FIX-PAY-2   Webhook now handles ALL subscription lifecycle events:
-              activated, charged, halted, cancelled, completed, expired.
-              Previously only activated/charged were handled.
+HOW PAYPAL SUBSCRIPTIONS WORK:
+  1. Frontend calls POST /api/payment/paypal/create-subscription
+     → Backend creates subscription via PayPal API
+     → Returns { subscription_id, approve_url }
+  2. Frontend redirects user to approve_url (PayPal hosted checkout)
+  3. User approves → PayPal redirects to FRONTEND_URL/payment/success
+     with ?subscription_id=xxx
+  4. Frontend calls POST /api/payment/paypal/capture with { subscription_id, plan }
+     → Backend verifies subscription ACTIVE via PayPal API
+     → Upgrades user plan in DB
+  5. PayPal sends webhook events for renewals / cancellations
+     → POST /api/payment/paypal/webhook
 
-  FIX-PAY-3   /api/payment/cancel — new endpoint. Cancels Razorpay
-              subscription and downgrades user to free at period end.
-              Previously there was no way to cancel without direct DB access.
+REQUIRED ENV VARS:
+  PAYPAL_CLIENT_ID          — from PayPal Developer dashboard
+  PAYPAL_CLIENT_SECRET      — from PayPal Developer dashboard
+  PAYPAL_WEBHOOK_ID         — from PayPal Developer dashboard
+  PAYPAL_PLAN_MONTHLY_ID    — Billing Plan ID P-xxx for $49/mo
+  PAYPAL_PLAN_ANNUAL_ID     — Billing Plan ID P-xxx for $468/yr
+  PAYPAL_PLAN_CLINICAL_ID   — Billing Plan ID P-xxx for $99/mo
+  PAYPAL_ENV                — "sandbox" (default) or "live"
+  FRONTEND_URL              — e.g. https://curabook.com
+  ADMIN_SECRET              — for admin endpoints
+  TRIAL_DAYS                — integer, 0 = no trial
 
-  FIX-PAY-4   /api/payment/billing — new endpoint. Returns full billing
-              history (payments) from Razorpay API for the user's
-              subscription. Frontend can display invoice history.
-
-  FIX-PAY-5   Razorpay customer creation on first checkout. Customer ID
-              stored in user_profiles.razorpay_customer_id so returning
-              users don't re-enter card details (Razorpay saved cards).
-
-  FIX-PAY-6   Annual vs monthly properly differentiated in _activate_pro().
-              Annual plan sets subscription_end_date = now + 365 days.
-              Monthly sets it = now + 31 days. Used to show "renews on" date.
-
-  FIX-PAY-7   /api/payment/status now returns subscription_end_date and
-              cancel_at_period_end so the frontend can show renewal info.
-
-  FIX-PAY-8   Free trial support — TRIAL_DAYS env var enables a configurable
-              trial period. Trial users get pro features, marked as
-              plan='trial', auto-downgrades via webhook on expiry.
-
-  FIX-PAY-9   Idempotency — duplicate webhook deliveries are deduplicated
-              using payment_id stored in razorpay_last_payment_id.
-
-  FIX-SCHEMA  All missing tables (weekly_briefs, appointment_preps,
-              user_feedback, glp1_onboarding, glp1_medications) are
-              created via /api/payment/setup-tables admin endpoint.
+DB MIGRATION NOTE:
+  Run /api/payment/setup-tables once after deploying — adds
+  paypal_subscription_id column to user_profiles.
 ═══════════════════════════════════════════════════════════════════════════
 """
 
 import os
-import hmac
-import hashlib
 import json
 import logging
+import requests
 from datetime import datetime, timezone, timedelta
 from flask import Blueprint, request, jsonify
 
@@ -55,24 +51,54 @@ payment_bp = Blueprint("payment", __name__)
 logger = logging.getLogger("phi.payment")
 
 # ── Env vars ──────────────────────────────────────────────────────────────────
-RAZORPAY_KEY_ID           = os.getenv("RAZORPAY_KEY_ID", "")
-RAZORPAY_KEY_SECRET       = os.getenv("RAZORPAY_KEY_SECRET", "")
-RAZORPAY_WEBHOOK_SECRET   = os.getenv("RAZORPAY_WEBHOOK_SECRET", "")
-RAZORPAY_PLAN_MONTHLY_ID  = os.getenv("RAZORPAY_PLAN_MONTHLY_ID", "")
-RAZORPAY_PLAN_ANNUAL_ID   = os.getenv("RAZORPAY_PLAN_ANNUAL_ID", "")
-RAZORPAY_PLAN_CLINICAL_ID = os.getenv("RAZORPAY_PLAN_CLINICAL_ID", "")
-FRONTEND_URL              = os.getenv("FRONTEND_URL", "https://curabook.com")
-CRON_SECRET               = os.getenv("CRON_SECRET", "")
-TRIAL_DAYS                = int(os.getenv("TRIAL_DAYS", "0"))   # 0 = no trial
-ADMIN_SECRET              = os.getenv("ADMIN_SECRET", "")
+PAYPAL_CLIENT_ID        = os.getenv("PAYPAL_CLIENT_ID", "")
+PAYPAL_CLIENT_SECRET    = os.getenv("PAYPAL_CLIENT_SECRET", "")
+PAYPAL_WEBHOOK_ID       = os.getenv("PAYPAL_WEBHOOK_ID", "")
+PAYPAL_PLAN_MONTHLY_ID  = os.getenv("PAYPAL_PLAN_MONTHLY_ID", "")
+PAYPAL_PLAN_ANNUAL_ID   = os.getenv("PAYPAL_PLAN_ANNUAL_ID", "")
+PAYPAL_PLAN_CLINICAL_ID = os.getenv("PAYPAL_PLAN_CLINICAL_ID", "")
+PAYPAL_ENV              = os.getenv("PAYPAL_ENV", "sandbox")   # "sandbox" | "live"
+FRONTEND_URL            = os.getenv("FRONTEND_URL", "https://curabook.com")
+ADMIN_SECRET            = os.getenv("ADMIN_SECRET", "")
+CRON_SECRET             = os.getenv("CRON_SECRET", "")
+TRIAL_DAYS              = int(os.getenv("TRIAL_DAYS", "0"))
+
+_PAYPAL_BASE = (
+    "https://api-m.sandbox.paypal.com"
+    if PAYPAL_ENV == "sandbox"
+    else "https://api-m.paypal.com"
+)
 
 # ── Plan config ───────────────────────────────────────────────────────────────
-# Amounts in smallest currency unit (paise for INR, cents for USD)
 PLAN_PRICING = {
-    "monthly":  {"amount": 4900,  "currency": "USD", "description": "PHI Shield Core — $49/mo",      "interval_days": 31},
-    "annual":   {"amount": 39900, "currency": "USD", "description": "PHI Shield Core — $399/yr",     "interval_days": 365},
-    "clinical": {"amount": 9900,  "currency": "USD", "description": "PHI Shield Clinical — $99/mo",  "interval_days": 31},
-    "trial":    {"amount": 0,     "currency": "USD", "description": f"PHI Trial — {TRIAL_DAYS} days","interval_days": TRIAL_DAYS},
+    "monthly":  {
+        "amount":        49.00,
+        "currency":      "USD",
+        "description":   "Curabook PHI Shield — $49/mo",
+        "interval_days": 31,
+        "paypal_plan":   PAYPAL_PLAN_MONTHLY_ID,
+    },
+    "annual":   {
+        "amount":        468.00,
+        "currency":      "USD",
+        "description":   "Curabook PHI Shield — $39/mo billed annually ($468/yr)",
+        "interval_days": 365,
+        "paypal_plan":   PAYPAL_PLAN_ANNUAL_ID,
+    },
+    "clinical": {
+        "amount":        99.00,
+        "currency":      "USD",
+        "description":   "Curabook PHI Shield Clinical — $99/mo",
+        "interval_days": 31,
+        "paypal_plan":   PAYPAL_PLAN_CLINICAL_ID,
+    },
+    "trial":    {
+        "amount":        0,
+        "currency":      "USD",
+        "description":   f"Curabook PHI Trial — {TRIAL_DAYS} days",
+        "interval_days": TRIAL_DAYS,
+        "paypal_plan":   "",
+    },
 }
 
 PLAN_DISPLAY = {
@@ -87,17 +113,7 @@ PLAN_DISPLAY = {
 _PRO_PLANS = {"monthly", "annual", "clinical", "pro", "trial"}
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-def _razorpay_client():
-    if not RAZORPAY_KEY_ID or not RAZORPAY_KEY_SECRET:
-        raise RuntimeError("Razorpay not configured. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET.")
-    try:
-        import razorpay
-        return razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
-    except ImportError:
-        raise RuntimeError("razorpay package not installed. Run: pip install razorpay")
-
+# ── Shared helpers ────────────────────────────────────────────────────────────
 
 def _deps():
     from app import supabase
@@ -114,84 +130,102 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _verify_hmac(secret: str, message: str, signature: str) -> bool:
-    """
-    Correct Python 3 HMAC verification using hmac.new() (stdlib, always available).
-    hmac.new(key, msg, digestmod) is the correct call signature.
-    """
-    expected = hmac.new(
-        secret.encode("utf-8"),
-        message.encode("utf-8"),
-        hashlib.sha256
-    ).hexdigest()
-    return hmac.compare_digest(expected, signature)
+# ── PayPal API ────────────────────────────────────────────────────────────────
+
+def _paypal_access_token() -> str:
+    """OAuth2 client credentials token. Valid ~9 hours."""
+    if not PAYPAL_CLIENT_ID or not PAYPAL_CLIENT_SECRET:
+        raise RuntimeError("PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET must be set in .env")
+    resp = requests.post(
+        f"{_PAYPAL_BASE}/v1/oauth2/token",
+        headers={"Accept": "application/json"},
+        data={"grant_type": "client_credentials"},
+        auth=(PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET),
+        timeout=10,
+    )
+    resp.raise_for_status()
+    return resp.json()["access_token"]
 
 
-def _get_or_create_razorpay_customer(client, user_id: str, email: str, name: str, supabase) -> str:
-    """
-    FIX-PAY-5: Get existing Razorpay customer ID or create new one.
-    Stored in user_profiles.razorpay_customer_id.
-    """
+def _paypal_headers() -> dict:
+    return {
+        "Content-Type":  "application/json",
+        "Authorization": f"Bearer {_paypal_access_token()}",
+    }
+
+
+def _paypal_get_subscription(subscription_id: str) -> dict:
+    resp = requests.get(
+        f"{_PAYPAL_BASE}/v1/billing/subscriptions/{subscription_id}",
+        headers=_paypal_headers(),
+        timeout=10,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def _paypal_cancel_subscription(subscription_id: str, reason: str = "User requested cancellation") -> bool:
     try:
-        res = (supabase.table("user_profiles")
-               .select("razorpay_customer_id")
-               .eq("user_id", user_id)
-               .limit(1)
-               .execute())
-        if res.data and res.data[0].get("razorpay_customer_id"):
-            return res.data[0]["razorpay_customer_id"]
-    except Exception:
-        pass
-
-    # Create new customer
-    try:
-        customer = client.customer.create({
-            "name":  name or email.split("@")[0],
-            "email": email,
-            "notes": {"user_id": user_id},
-        })
-        customer_id = customer.get("id", "")
-        if customer_id:
-            try:
-                supabase.table("user_profiles").upsert({
-                    "user_id": user_id,
-                    "razorpay_customer_id": customer_id,
-                }, on_conflict="user_id").execute()
-            except Exception:
-                pass
-        return customer_id
+        resp = requests.post(
+            f"{_PAYPAL_BASE}/v1/billing/subscriptions/{subscription_id}/cancel",
+            headers=_paypal_headers(),
+            json={"reason": reason},
+            timeout=10,
+        )
+        return resp.status_code == 204
     except Exception as e:
-        logger.warning(f"[PAY] Customer creation failed (non-fatal): {e}")
-        return ""
+        logger.warning(f"[PAY] PayPal cancel API call failed (non-fatal): {e}")
+        return False
 
 
-def _activate_pro(
-    supabase,
-    user_id: str,
-    plan: str,
-    payment_id: str = "",
-    subscription_id: str = "",
-) -> None:
+def _paypal_verify_webhook(headers: dict, body: bytes) -> bool:
     """
-    FIX-PAY-6: Activate pro plan with correct subscription_end_date per plan type.
+    Verify PayPal webhook using PayPal's own verification API.
+    PayPal does not use HMAC — it uses a cert-based system verified server-side.
     """
-    now = datetime.now(timezone.utc)
+    if not PAYPAL_WEBHOOK_ID:
+        logger.error("[PAY] PAYPAL_WEBHOOK_ID not set — cannot verify webhook")
+        return False
+    try:
+        payload = {
+            "auth_algo":         headers.get("PAYPAL-AUTH-ALGO", ""),
+            "cert_url":          headers.get("PAYPAL-CERT-URL", ""),
+            "transmission_id":   headers.get("PAYPAL-TRANSMISSION-ID", ""),
+            "transmission_sig":  headers.get("PAYPAL-TRANSMISSION-SIG", ""),
+            "transmission_time": headers.get("PAYPAL-TRANSMISSION-TIME", ""),
+            "webhook_id":        PAYPAL_WEBHOOK_ID,
+            "webhook_event":     json.loads(body),
+        }
+        resp = requests.post(
+            f"{_PAYPAL_BASE}/v1/notifications/verify-webhook-signature",
+            headers=_paypal_headers(),
+            json=payload,
+            timeout=10,
+        )
+        return resp.json().get("verification_status") == "SUCCESS"
+    except Exception as e:
+        logger.error(f"[PAY] Webhook verification error: {e}")
+        return False
+
+
+# ── DB helpers ────────────────────────────────────────────────────────────────
+
+def _activate_pro(supabase, user_id: str, plan: str, subscription_id: str = "") -> None:
+    now             = datetime.now(timezone.utc)
     normalized_plan = plan if plan in _PRO_PLANS else "monthly"
-    interval_days = PLAN_PRICING.get(normalized_plan, {}).get("interval_days", 31)
-    end_date = (now + timedelta(days=interval_days)).isoformat()
+    interval_days   = PLAN_PRICING.get(normalized_plan, {}).get("interval_days", 31)
+    end_date        = (now + timedelta(days=interval_days)).isoformat()
 
     update_data = {
-        "user_id":                  user_id,
-        "plan":                     normalized_plan,
-        "reports_remaining":        9999,
-        "subscription_end_date":    end_date,
-        "cancel_at_period_end":     False,
-        "updated_at":               now.isoformat(),
+        "user_id":               user_id,
+        "plan":                  normalized_plan,
+        "reports_remaining":     9999,
+        "subscription_end_date": end_date,
+        "cancel_at_period_end":  False,
+        "updated_at":            now.isoformat(),
     }
     if subscription_id:
-        update_data["razorpay_subscription_id"] = subscription_id
-    if payment_id:
-        update_data["razorpay_last_payment_id"] = payment_id
+        update_data["paypal_subscription_id"] = subscription_id
 
     supabase.table("user_profiles").upsert(update_data, on_conflict="user_id").execute()
     logger.info(f"[PAY] Activated {normalized_plan} for {user_id[:8]}, ends {end_date[:10]}")
@@ -199,13 +233,13 @@ def _activate_pro(
 
 def _downgrade_to_free(supabase, user_id: str) -> None:
     supabase.table("user_profiles").upsert({
-        "user_id":                  user_id,
-        "plan":                     "free",
-        "reports_remaining":        1,
-        "razorpay_subscription_id": None,
-        "subscription_end_date":    None,
-        "cancel_at_period_end":     False,
-        "updated_at":               _now_iso(),
+        "user_id":               user_id,
+        "plan":                  "free",
+        "reports_remaining":     1,
+        "paypal_subscription_id": None,
+        "subscription_end_date": None,
+        "cancel_at_period_end":  False,
+        "updated_at":            _now_iso(),
     }, on_conflict="user_id").execute()
     logger.info(f"[PAY] Downgraded to free: {user_id[:8]}")
 
@@ -214,7 +248,7 @@ def _user_id_from_subscription(supabase, subscription_id: str) -> str:
     try:
         res = (supabase.table("user_profiles")
                .select("user_id")
-               .eq("razorpay_subscription_id", subscription_id)
+               .eq("paypal_subscription_id", subscription_id)
                .limit(1)
                .execute())
         if res.data:
@@ -238,30 +272,31 @@ def _log_payment_event(supabase, user_id: str, event: str, detail: str) -> None:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PUBLIC ENDPOINTS
+# CONFIG
 # ══════════════════════════════════════════════════════════════════════════════
 
 @payment_bp.route("/api/payment/config", methods=["GET"])
 def payment_config():
-    """Public endpoint — returns pricing and Razorpay key ID."""
+    """Public config for frontend PayPal JS SDK initialization."""
     return jsonify({
-        "razorpay_configured": bool(RAZORPAY_KEY_ID),
-        "razorpay_key_id":     RAZORPAY_KEY_ID,
-        "trial_days":          TRIAL_DAYS,
+        "paypal_configured": bool(PAYPAL_CLIENT_ID),
+        "paypal_client_id":  PAYPAL_CLIENT_ID,
+        "paypal_env":        PAYPAL_ENV,
         "plans": {
-            "monthly":  {"amount": 49,  "currency": "USD", "label": "Shield Core — $49/mo",      "interval": "monthly"},
-            "annual":   {"amount": 399, "currency": "USD", "label": "Shield Core — $399/yr",     "interval": "annual",  "saves": "32%"},
-            "clinical": {"amount": 99,  "currency": "USD", "label": "Shield Clinical — $99/mo",  "interval": "monthly"},
+            "monthly":  {"amount": 49,  "currency": "USD", "label": "Shield — $49/mo",                    "interval": "monthly"},
+            "annual":   {"amount": 468, "currency": "USD", "label": "Shield — $39/mo (billed annually)",  "interval": "annual", "saves": "Save 20%"},
+            "clinical": {"amount": 99,  "currency": "USD", "label": "Shield Clinical — $99/mo",           "interval": "monthly"},
         },
+        "trial_days": TRIAL_DAYS,
     })
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# PAYMENT STATUS
+# ══════════════════════════════════════════════════════════════════════════════
+
 @payment_bp.route("/api/payment/status", methods=["GET"])
 def payment_status():
-    """
-    Returns current user's plan, billing status, and renewal info.
-    FIX-PAY-7: Now includes subscription_end_date and cancel_at_period_end.
-    """
     supabase, get_user, _ = _deps()
     user = get_user(supabase)
     if not user:
@@ -269,98 +304,68 @@ def payment_status():
 
     try:
         res = (supabase.table("user_profiles")
-               .select(
-                   "plan,reports_remaining,razorpay_subscription_id,"
-                   "razorpay_customer_id,subscription_end_date,cancel_at_period_end"
-               )
+               .select("plan,reports_remaining,paypal_subscription_id,"
+                       "subscription_end_date,cancel_at_period_end,had_trial")
                .eq("user_id", user.id)
                .limit(1)
                .execute())
 
         if not res.data:
-            # New user — create free profile
-            supabase.table("user_profiles").upsert({
-                "user_id":           user.id,
-                "plan":              "free",
-                "reports_remaining": 1,
-            }, on_conflict="user_id").execute()
             return jsonify({
-                "plan":                 "free",
-                "plan_display":         "PHI Free",
-                "is_pro":               False,
-                "reports_remaining":    1,
-                "has_billing":          False,
-                "subscription_end_date": None,
-                "cancel_at_period_end": False,
-                "razorpay_configured":  bool(RAZORPAY_KEY_ID),
-                "trial_available":      TRIAL_DAYS > 0,
+                "plan":              "free",
+                "plan_display":      "PHI Free",
+                "is_pro":            False,
+                "reports_remaining": 1,
+                "paypal_configured": bool(PAYPAL_CLIENT_ID),
             })
 
         row  = res.data[0]
         plan = (row.get("plan") or "free").lower()
-        remaining = row.get("reports_remaining", 1)
-        end_date = row.get("subscription_end_date")
-        cancel_eop = row.get("cancel_at_period_end", False)
-
-        # Check if trial/subscription has expired
-        if plan != "free" and end_date:
-            try:
-                end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
-                if datetime.now(timezone.utc) > end_dt and plan == "trial":
-                    # Trial expired — downgrade
-                    _downgrade_to_free(supabase, user.id)
-                    plan = "free"
-                    remaining = 1
-                    end_date = None
-            except (ValueError, TypeError):
-                pass
 
         return jsonify({
             "plan":                 plan,
             "plan_display":         PLAN_DISPLAY.get(plan, plan.title()),
             "is_pro":               _is_pro(plan),
-            "reports_remaining":    int(remaining if remaining is not None else 1),
-            "has_billing":          bool(row.get("razorpay_subscription_id")),
-            "subscription_end_date": end_date,
-            "cancel_at_period_end": bool(cancel_eop),
-            "razorpay_configured":  bool(RAZORPAY_KEY_ID),
-            "trial_available":      TRIAL_DAYS > 0 and plan == "free",
-        })
-    except Exception as e:
-        logger.error(f"[PAY] Status error: {e}")
-        return jsonify({
-            "plan": "free", "is_pro": False, "reports_remaining": 1,
-            "razorpay_configured": bool(RAZORPAY_KEY_ID),
+            "reports_remaining":    row.get("reports_remaining", 1),
+            "subscription_end":     row.get("subscription_end_date", ""),
+            "cancel_at_period_end": row.get("cancel_at_period_end", False),
+            "has_billing":          bool(row.get("paypal_subscription_id")),
+            "had_trial":            row.get("had_trial", False),
+            "paypal_configured":    bool(PAYPAL_CLIENT_ID),
         })
 
+    except Exception as e:
+        logger.error(f"[PAY] Status error: {e}")
+        return jsonify({"plan": "free", "is_pro": False, "paypal_configured": bool(PAYPAL_CLIENT_ID)})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# FREE TRIAL
+# ══════════════════════════════════════════════════════════════════════════════
 
 @payment_bp.route("/api/payment/start-trial", methods=["POST"])
 def start_trial():
-    """
-    FIX-PAY-8: Start a free trial (no payment required).
-    Controlled by TRIAL_DAYS env var. 0 = disabled.
-    """
-    supabase, get_user, audit = _deps()
+    if not TRIAL_DAYS:
+        return jsonify({"error": "Free trial is not currently available"}), 400
+
+    supabase, get_user, _ = _deps()
     user = get_user(supabase)
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
 
-    if TRIAL_DAYS <= 0:
-        return jsonify({"error": "Trial not available"}), 400
-
     try:
-        # Check if user already had a trial
         res = (supabase.table("user_profiles")
                .select("plan,had_trial")
                .eq("user_id", user.id)
                .limit(1)
                .execute())
+
         if res.data:
             row = res.data[0]
             if row.get("had_trial"):
-                return jsonify({"error": "Trial already used"}), 400
-            if row.get("plan") not in ("free", None):
-                return jsonify({"error": "Already subscribed"}), 400
+                return jsonify({"error": "You've already used your free trial"}), 400
+            if _is_pro(row.get("plan", "free")):
+                return jsonify({"error": "You already have an active plan"}), 400
 
         end_date = (datetime.now(timezone.utc) + timedelta(days=TRIAL_DAYS)).isoformat()
         supabase.table("user_profiles").upsert({
@@ -368,212 +373,200 @@ def start_trial():
             "plan":                  "trial",
             "reports_remaining":     9999,
             "subscription_end_date": end_date,
-            "cancel_at_period_end":  False,
             "had_trial":             True,
             "updated_at":            _now_iso(),
         }, on_conflict="user_id").execute()
 
-        _log_payment_event(supabase, user.id, "TRIAL_STARTED", f"ends:{end_date[:10]}")
+        _log_payment_event(supabase, user.id, "TRIAL_STARTED",
+                           f"days:{TRIAL_DAYS} ends:{end_date[:10]}")
+
         return jsonify({
-            "success":      True,
-            "plan":         "trial",
-            "plan_display": f"PHI Trial ({TRIAL_DAYS} days)",
-            "ends":         end_date,
-            "message":      f"Your {TRIAL_DAYS}-day trial has started. Enjoy full PHI access!",
+            "success":    True,
+            "plan":       "trial",
+            "trial_ends": end_date,
+            "trial_days": TRIAL_DAYS,
+            "message":    f"Your {TRIAL_DAYS}-day trial is now active. Enjoy full access to Curabook PHI!",
         })
+
     except Exception as e:
         logger.error(f"[PAY] Trial start error: {e}")
-        return jsonify({"error": "Could not start trial"}), 500
+        return jsonify({"error": "Could not start trial. Please try again."}), 500
 
 
-@payment_bp.route("/api/payment/razorpay/order", methods=["POST"])
-def create_razorpay_order():
+# ══════════════════════════════════════════════════════════════════════════════
+# CREATE PAYPAL SUBSCRIPTION — Step 1 of checkout
+# ══════════════════════════════════════════════════════════════════════════════
+
+@payment_bp.route("/api/payment/paypal/create-subscription", methods=["POST"])
+def create_paypal_subscription():
     """
-    Create a Razorpay subscription or one-time order.
-    FIX-PAY-5: Creates/retrieves Razorpay customer for saved cards.
+    Creates a PayPal subscription and returns the approval URL.
+    Frontend redirects user to approve_url for PayPal hosted checkout.
+
+    Request:  { "plan": "monthly" | "annual" | "clinical" }
+    Response: { "subscription_id": "I-xxx", "approve_url": "https://paypal.com/..." }
     """
-    supabase, get_user, audit = _deps()
+    supabase, get_user, _ = _deps()
     user = get_user(supabase)
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
 
-    if not RAZORPAY_KEY_ID:
-        return jsonify({"error": "Payment not configured on this server."}), 503
+    body = request.json or {}
+    plan = body.get("plan", "monthly").lower()
 
-    data = request.json or {}
-    plan = (data.get("plan", "monthly") or "monthly").lower()
     if plan not in PLAN_PRICING or plan == "trial":
-        return jsonify({"error": f"Invalid plan '{plan}'"}), 400
+        return jsonify({"error": f"Invalid plan: {plan}"}), 400
 
     pricing = PLAN_PRICING[plan]
+    plan_id = pricing["paypal_plan"]
+
+    if not plan_id:
+        return jsonify({
+            "error": f"PayPal billing plan for '{plan}' is not configured. "
+                     f"Set PAYPAL_PLAN_{plan.upper()}_ID in your .env"
+        }), 503
+
+    if not PAYPAL_CLIENT_ID:
+        return jsonify({"error": "PayPal is not configured on this server"}), 503
 
     try:
-        client = _razorpay_client()
+        payload = {
+            "plan_id":    plan_id,
+            "quantity":   "1",
+            "subscriber": {"email_address": user.email or ""},
+            "application_context": {
+                "brand_name":          "Curabook PHI",
+                "locale":              "en-US",
+                "shipping_preference": "NO_SHIPPING",
+                "user_action":         "SUBSCRIBE_NOW",
+                "payment_method": {
+                    "payer_selected":  "PAYPAL",
+                    "payee_preferred": "IMMEDIATE_PAYMENT_REQUIRED",
+                },
+                "return_url": f"{FRONTEND_URL}/payment/success?plan={plan}",
+                "cancel_url": f"{FRONTEND_URL}/payment/cancel",
+            },
+            # custom_id lets webhook identify the user without a DB lookup
+            "custom_id": f"{user.id}|{plan}",
+        }
 
-        # FIX-PAY-5: Get or create customer
-        user_name = user.email.split("@")[0] if user.email else ""
-        customer_id = _get_or_create_razorpay_customer(
-            client, user.id, user.email or "", user_name, supabase
+        resp = requests.post(
+            f"{_PAYPAL_BASE}/v1/billing/subscriptions",
+            headers=_paypal_headers(),
+            json=payload,
+            timeout=15,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        subscription_id = data.get("id", "")
+        approve_url = next(
+            (link["href"] for link in data.get("links", []) if link.get("rel") == "approve"),
+            None,
         )
 
-        plan_id_map = {
-            "monthly":  RAZORPAY_PLAN_MONTHLY_ID,
-            "annual":   RAZORPAY_PLAN_ANNUAL_ID,
-            "clinical": RAZORPAY_PLAN_CLINICAL_ID,
-        }
-        plan_id = plan_id_map.get(plan, "")
+        if not approve_url:
+            raise ValueError("PayPal did not return an approval URL")
 
-        if plan_id:
-            # Recurring subscription
-            subscription_payload = {
-                "plan_id":         plan_id,
-                "customer_notify": 1,
-                "total_count":     1 if plan == "annual" else 12,
-                "notes":           {"user_id": user.id, "plan": plan},
-            }
-            if customer_id:
-                subscription_payload["customer_id"] = customer_id
+        logger.info(f"[PAY] Created subscription {subscription_id} for {user.id[:8]}, plan={plan}")
 
-            subscription = client.subscription.create(subscription_payload)
+        return jsonify({
+            "subscription_id": subscription_id,
+            "approve_url":     approve_url,
+            "plan":            plan,
+        })
 
-            # Store pending subscription ID
-            supabase.table("user_profiles").upsert({
-                "user_id": user.id,
-                "razorpay_pending_subscription": subscription["id"],
-            }, on_conflict="user_id").execute()
-
-            _log_payment_event(supabase, user.id, "SUBSCRIPTION_CREATED",
-                               f"plan:{plan} sub:{subscription['id']}")
-
-            return jsonify({
-                "razorpay_key_id": RAZORPAY_KEY_ID,
-                "subscription_id": subscription["id"],
-                "customer_id":     customer_id,
-                "amount":          pricing["amount"],
-                "currency":        pricing["currency"],
-                "description":     pricing["description"],
-                "plan":            plan,
-                "mode":            "subscription",
-            })
-        else:
-            # One-time order (fallback when no plan ID configured)
-            order_payload = {
-                "amount":          pricing["amount"],
-                "currency":        pricing["currency"],
-                "payment_capture": 1,
-                "notes":           {"user_id": user.id, "plan": plan},
-            }
-            if customer_id:
-                order_payload["customer_id"] = customer_id
-
-            order = client.order.create(order_payload)
-
-            _log_payment_event(supabase, user.id, "ORDER_CREATED",
-                               f"plan:{plan} order:{order['id']}")
-
-            return jsonify({
-                "razorpay_key_id": RAZORPAY_KEY_ID,
-                "order_id":        order["id"],
-                "customer_id":     customer_id,
-                "amount":          pricing["amount"],
-                "currency":        pricing["currency"],
-                "description":     pricing["description"],
-                "plan":            plan,
-                "mode":            "one_time",
-            })
-
-    except RuntimeError as e:
-        return jsonify({"error": str(e)}), 503
+    except requests.HTTPError as e:
+        error_body = {}
+        try:
+            error_body = e.response.json()
+        except Exception:
+            pass
+        logger.error(f"[PAY] PayPal subscription creation failed: {e} — {error_body}")
+        return jsonify({
+            "error":  "Payment setup failed. Please try again.",
+            "detail": error_body.get("message", str(e)),
+        }), 500
     except Exception as e:
-        logger.error(f"[PAY] Order creation error: {e}")
-        return jsonify({"error": "Could not create payment session. Please try again."}), 500
+        logger.error(f"[PAY] create-subscription error: {e}")
+        return jsonify({"error": "Payment setup failed. Please try again."}), 500
 
 
-@payment_bp.route("/api/payment/razorpay/verify", methods=["POST"])
-def verify_razorpay_payment():
+# ══════════════════════════════════════════════════════════════════════════════
+# CAPTURE SUBSCRIPTION — Step 2 after PayPal redirect
+# ══════════════════════════════════════════════════════════════════════════════
+
+@payment_bp.route("/api/payment/paypal/capture", methods=["POST"])
+def capture_paypal_subscription():
     """
-    FIX-PAY-1: Correct HMAC verification using Python 3 compatible code.
-    Verifies payment signature, activates pro plan.
-    FIX-PAY-9: Deduplicates by checking razorpay_last_payment_id.
+    Called after user returns from PayPal approval page.
+    Verifies subscription is ACTIVE, then upgrades user plan.
+
+    Request:  { "subscription_id": "I-xxx", "plan": "monthly" }
+    Response: { "success": true, "plan": "monthly", "message": "..." }
     """
-    supabase, get_user, audit = _deps()
+    supabase, get_user, _ = _deps()
     user = get_user(supabase)
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
 
     body            = request.json or {}
-    order_id        = body.get("order_id", "")
-    payment_id      = body.get("payment_id", "")
-    signature       = body.get("signature", "")
-    subscription_id = body.get("subscription_id", "")
-    plan            = (body.get("plan", "monthly") or "monthly").lower()
+    subscription_id = body.get("subscription_id", "").strip()
+    plan            = body.get("plan", "monthly").lower()
 
-    if not payment_id or not signature:
-        return jsonify({"error": "Missing payment_id or signature"}), 400
+    if not subscription_id:
+        return jsonify({"error": "subscription_id is required"}), 400
+    if plan not in PLAN_PRICING or plan == "trial":
+        return jsonify({"error": f"Invalid plan: {plan}"}), 400
 
-    if not RAZORPAY_KEY_SECRET:
-        return jsonify({"error": "Payment not configured"}), 503
-
-    # FIX-PAY-9: Deduplication check
     try:
-        res = (supabase.table("user_profiles")
-               .select("razorpay_last_payment_id")
-               .eq("user_id", user.id)
-               .limit(1)
-               .execute())
-        if res.data and res.data[0].get("razorpay_last_payment_id") == payment_id:
-            # Already processed — return success idempotently
-            current_plan = "monthly"
-            try:
-                plan_res = supabase.table("user_profiles").select("plan").eq("user_id", user.id).limit(1).execute()
-                if plan_res.data:
-                    current_plan = plan_res.data[0].get("plan", "monthly")
-            except Exception:
-                pass
+        sub_data = _paypal_get_subscription(subscription_id)
+        status   = sub_data.get("status", "")
+
+        if status not in ("ACTIVE", "APPROVED"):
             return jsonify({
-                "success":      True,
-                "plan":         current_plan,
-                "plan_display": PLAN_DISPLAY.get(current_plan, "Pro"),
-                "message":      "Payment already processed.",
-            })
-    except Exception:
-        pass
+                "error":  f"Subscription is not active (status: {status}). "
+                          "Please complete the PayPal approval and try again.",
+                "status": status,
+            }), 400
 
-    # FIX-PAY-1: Correct signature verification
-    try:
-        if subscription_id:
-            message = f"{payment_id}|{subscription_id}"
-        else:
-            message = f"{order_id}|{payment_id}"
+        # Prevent substitution attacks — verify custom_id matches this user
+        custom_id = sub_data.get("custom_id", "")
+        if custom_id and not custom_id.startswith(user.id):
+            logger.warning(f"[PAY] custom_id mismatch for {user.id[:8]}")
+            return jsonify({"error": "Subscription does not belong to this account"}), 403
 
-        if not _verify_hmac(RAZORPAY_KEY_SECRET, message, signature):
-            _log_payment_event(supabase, user.id, "VERIFY_FAILED",
-                               f"payment:{payment_id} sig_mismatch")
-            return jsonify({"error": "Payment verification failed. Signature mismatch."}), 400
-
-        _activate_pro(supabase, user.id, plan, payment_id, subscription_id)
-        _log_payment_event(supabase, user.id, "PAYMENT_VERIFIED",
-                           f"plan:{plan} payment:{payment_id}")
+        _activate_pro(supabase, user.id, plan, subscription_id=subscription_id)
+        _log_payment_event(supabase, user.id, "SUBSCRIPTION_ACTIVATED",
+                           f"plan:{plan} sub:{subscription_id}")
 
         return jsonify({
-            "success":      True,
-            "plan":         plan,
-            "plan_display": PLAN_DISPLAY.get(plan, "Pro"),
-            "message":      f"Welcome to PHI {PLAN_DISPLAY.get(plan, 'Pro')}! Full access unlocked.",
+            "success":  True,
+            "plan":     plan,
+            "message":  f"Welcome to PHI {PLAN_DISPLAY.get(plan, 'Shield')}! Your plan is now active.",
+            "amount":   PLAN_PRICING[plan]["amount"],
+            "currency": PLAN_PRICING[plan]["currency"],
         })
-    except Exception as e:
-        logger.error(f"[PAY] Verify error: {e}")
-        return jsonify({"error": "Verification failed. Please contact support@curabook.com"}), 500
 
+    except requests.HTTPError as e:
+        logger.error(f"[PAY] PayPal subscription verification failed: {e}")
+        return jsonify({"error": "Could not verify payment with PayPal. Contact support@curabook.com"}), 500
+    except Exception as e:
+        logger.error(f"[PAY] Capture error: {e}")
+        return jsonify({"error": "Payment activation failed. Contact support@curabook.com"}), 500
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CANCEL SUBSCRIPTION
+# ══════════════════════════════════════════════════════════════════════════════
 
 @payment_bp.route("/api/payment/cancel", methods=["POST"])
 def cancel_subscription():
     """
-    FIX-PAY-3: Cancel subscription at period end.
-    User keeps pro access until subscription_end_date, then downgrades.
-    Pass {"immediate": true} to cancel immediately.
+    Cancel subscription. Default: cancel at period end (user keeps access).
+    Pass { "immediate": true } to downgrade immediately.
     """
-    supabase, get_user, audit = _deps()
+    supabase, get_user, _ = _deps()
     user = get_user(supabase)
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
@@ -583,7 +576,7 @@ def cancel_subscription():
 
     try:
         res = (supabase.table("user_profiles")
-               .select("plan,razorpay_subscription_id,subscription_end_date")
+               .select("plan,paypal_subscription_id,subscription_end_date")
                .eq("user_id", user.id)
                .limit(1)
                .execute())
@@ -591,22 +584,16 @@ def cancel_subscription():
         if not res.data:
             return jsonify({"error": "No subscription found"}), 404
 
-        row = res.data[0]
-        plan = row.get("plan", "free")
-        sub_id = row.get("razorpay_subscription_id", "")
+        row      = res.data[0]
+        plan     = row.get("plan", "free")
+        sub_id   = row.get("paypal_subscription_id", "")
         end_date = row.get("subscription_end_date", "")
 
         if plan == "free":
             return jsonify({"error": "No active subscription to cancel"}), 400
 
-        # Cancel in Razorpay
-        if sub_id and RAZORPAY_KEY_ID:
-            try:
-                client = _razorpay_client()
-                client.subscription.cancel(sub_id, {"cancel_at_cycle_end": 0 if immediate else 1})
-                logger.info(f"[PAY] Cancelled Razorpay sub {sub_id} (immediate={immediate})")
-            except Exception as e:
-                logger.warning(f"[PAY] Razorpay cancel API failed (continuing): {e}")
+        if sub_id:
+            _paypal_cancel_subscription(sub_id)
 
         if immediate:
             _downgrade_to_free(supabase, user.id)
@@ -617,7 +604,6 @@ def cancel_subscription():
                 "plan":    "free",
             })
         else:
-            # Cancel at period end — keep pro until end_date
             supabase.table("user_profiles").upsert({
                 "user_id":              user.id,
                 "cancel_at_period_end": True,
@@ -628,8 +614,8 @@ def cancel_subscription():
             return jsonify({
                 "success":    True,
                 "message":    (
-                    f"Subscription will cancel at the end of your billing period. "
-                    f"You keep full access until {end_date[:10] if end_date else 'your renewal date'}."
+                    f"Subscription cancelled. You keep full access until "
+                    f"{end_date[:10] if end_date else 'your renewal date'}."
                 ),
                 "plan":       plan,
                 "ends":       end_date,
@@ -638,14 +624,15 @@ def cancel_subscription():
 
     except Exception as e:
         logger.error(f"[PAY] Cancel error: {e}")
-        return jsonify({"error": "Could not cancel subscription. Contact support@curabook.com"}), 500
+        return jsonify({"error": "Could not cancel. Contact support@curabook.com"}), 500
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+# BILLING HISTORY
+# ══════════════════════════════════════════════════════════════════════════════
 
 @payment_bp.route("/api/payment/billing", methods=["GET"])
 def billing_history():
-    """
-    FIX-PAY-4: Return payment history from Razorpay for the user's subscription.
-    """
     supabase, get_user, _ = _deps()
     user = get_user(supabase)
     if not user:
@@ -653,7 +640,7 @@ def billing_history():
 
     try:
         res = (supabase.table("user_profiles")
-               .select("plan,razorpay_subscription_id,razorpay_last_payment_id,subscription_end_date")
+               .select("plan,paypal_subscription_id,subscription_end_date,cancel_at_period_end")
                .eq("user_id", user.id)
                .limit(1)
                .execute())
@@ -663,27 +650,31 @@ def billing_history():
 
         row    = res.data[0]
         plan   = row.get("plan", "free")
-        sub_id = row.get("razorpay_subscription_id", "")
+        sub_id = row.get("paypal_subscription_id", "")
         payments = []
 
-        if sub_id and RAZORPAY_KEY_ID:
+        if sub_id and PAYPAL_CLIENT_ID:
             try:
-                client = _razorpay_client()
-                # Fetch payments for this subscription
-                result = client.subscription.fetch(sub_id)
-                # Fetch payment history
-                pay_list = client.payment.all({"subscription_id": sub_id, "count": 10})
-                for p in (pay_list.get("items") or []):
-                    payments.append({
-                        "id":         p.get("id", ""),
-                        "amount":     p.get("amount", 0) / 100,  # convert paise to rupees/dollars
-                        "currency":   p.get("currency", ""),
-                        "status":     p.get("status", ""),
-                        "method":     p.get("method", ""),
-                        "created_at": datetime.fromtimestamp(
-                            p.get("created_at", 0), tz=timezone.utc
-                        ).isoformat() if p.get("created_at") else "",
-                    })
+                now       = datetime.now(timezone.utc)
+                start_iso = (now - timedelta(days=365)).strftime("%Y-%m-%dT%H:%M:%SZ")
+                end_iso   = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+                resp = requests.get(
+                    f"{_PAYPAL_BASE}/v1/billing/subscriptions/{sub_id}/transactions",
+                    headers=_paypal_headers(),
+                    params={"start_time": start_iso, "end_time": end_iso},
+                    timeout=10,
+                )
+                if resp.ok:
+                    for tx in resp.json().get("transactions", []):
+                        amt = tx.get("amount_with_breakdown", {}).get("gross_amount", {})
+                        payments.append({
+                            "id":         tx.get("id", ""),
+                            "amount":     float(amt.get("value", 0)),
+                            "currency":   amt.get("currency_code", "USD"),
+                            "status":     tx.get("status", ""),
+                            "created_at": tx.get("time", ""),
+                        })
             except Exception as e:
                 logger.warning(f"[PAY] Billing history fetch error (non-fatal): {e}")
 
@@ -695,131 +686,100 @@ def billing_history():
             "cancel_at_period_end": row.get("cancel_at_period_end", False),
             "payments":             payments,
         })
+
     except Exception as e:
         logger.error(f"[PAY] Billing error: {e}")
         return jsonify({"payments": [], "plan": "free"})
 
 
-@payment_bp.route("/api/payment/razorpay/webhook", methods=["POST"])
-def razorpay_webhook():
-    """
-    FIX-PAY-1: Correct HMAC verification.
-    FIX-PAY-2: Handles all subscription lifecycle events.
-    FIX-PAY-9: Deduplication via payment_id.
-    """
-    if not RAZORPAY_WEBHOOK_SECRET:
-        logger.error("[PAY] Webhook received but RAZORPAY_WEBHOOK_SECRET not set")
-        return jsonify({"error": "Webhook not configured"}), 503
+# ══════════════════════════════════════════════════════════════════════════════
+# PAYPAL WEBHOOK
+# ══════════════════════════════════════════════════════════════════════════════
 
-    payload   = request.get_data()
-    signature = request.headers.get("X-Razorpay-Signature", "")
+@payment_bp.route("/api/payment/paypal/webhook", methods=["POST"])
+def paypal_webhook():
+    """
+    Handles PayPal subscription lifecycle events.
+    Register this URL in PayPal dashboard for these events:
+      BILLING.SUBSCRIPTION.ACTIVATED
+      BILLING.SUBSCRIPTION.RENEWED
+      BILLING.SUBSCRIPTION.CANCELLED
+      BILLING.SUBSCRIPTION.EXPIRED
+      BILLING.SUBSCRIPTION.PAYMENT.FAILED
+      PAYMENT.SALE.COMPLETED
+    """
+    payload = request.get_data()
+    headers = dict(request.headers)
 
-    # FIX-PAY-1: Correct HMAC
-    if not _verify_hmac(RAZORPAY_WEBHOOK_SECRET, payload.decode("utf-8"), signature):
-        logger.warning("[PAY] Webhook signature mismatch — rejected")
-        return jsonify({"error": "Invalid signature"}), 400
+    if not _paypal_verify_webhook(headers, payload):
+        logger.warning("[PAY] PayPal webhook signature invalid — rejected")
+        return jsonify({"error": "Invalid webhook signature"}), 400
 
     try:
         event      = json.loads(payload)
-        event_type = event.get("event", "")
-        payload_data = event.get("payload", {})
+        event_type = event.get("event_type", "")
+        resource   = event.get("resource", {})
 
-        logger.info(f"[PAY] Webhook received: {event_type}")
+        logger.info(f"[PAY] PayPal webhook: {event_type}")
 
         from app import supabase
 
-        # ── Subscription events ───────────────────────────────────────────────
-        if event_type in (
-            "subscription.activated",
-            "subscription.charged",
-            "subscription.pending",
-        ):
-            sub_entity   = payload_data.get("subscription", {}).get("entity", {})
-            pay_entity   = payload_data.get("payment", {}).get("entity", {})
-            notes        = sub_entity.get("notes", {})
-            user_id      = notes.get("user_id") or _user_id_from_subscription(supabase, sub_entity.get("id", ""))
-            plan         = notes.get("plan", "monthly")
-            payment_id   = pay_entity.get("id", "")
-            subscription_id = sub_entity.get("id", "")
+        if event_type in ("BILLING.SUBSCRIPTION.ACTIVATED", "BILLING.SUBSCRIPTION.RENEWED"):
+            subscription_id = resource.get("id", "")
+            custom_id       = resource.get("custom_id", "")
+
+            user_id, plan = "", "monthly"
+            if custom_id and "|" in custom_id:
+                parts   = custom_id.split("|", 1)
+                user_id = parts[0]
+                plan    = parts[1] if len(parts) > 1 else "monthly"
+            if not user_id:
+                user_id = _user_id_from_subscription(supabase, subscription_id)
 
             if user_id:
-                # FIX-PAY-9: Deduplication
-                try:
-                    res = supabase.table("user_profiles").select("razorpay_last_payment_id").eq("user_id", user_id).limit(1).execute()
-                    if res.data and res.data[0].get("razorpay_last_payment_id") == payment_id:
-                        logger.info(f"[PAY] Webhook duplicate payment {payment_id} — skipped")
-                        return jsonify({"received": True, "skipped": "duplicate"})
-                except Exception:
-                    pass
+                _activate_pro(supabase, user_id, plan, subscription_id=subscription_id)
+                _log_payment_event(supabase, user_id, "SUBSCRIPTION_ACTIVATED",
+                                   f"plan:{plan} sub:{subscription_id} event:{event_type}")
 
-                _activate_pro(supabase, user_id, plan, payment_id, subscription_id)
-                _log_payment_event(supabase, user_id, event_type.upper().replace(".", "_"),
-                                   f"plan:{plan} sub:{subscription_id}")
-
-        # ── Subscription halted (payment failed, grace period) ────────────────
-        elif event_type == "subscription.halted":
-            sub_entity = payload_data.get("subscription", {}).get("entity", {})
-            notes      = sub_entity.get("notes", {})
-            user_id    = notes.get("user_id") or _user_id_from_subscription(supabase, sub_entity.get("id", ""))
-            if user_id:
-                # Don't downgrade yet — give grace period (Razorpay will retry)
-                _log_payment_event(supabase, user_id, "SUBSCRIPTION_HALTED",
-                                   "Payment failed — Razorpay will retry")
-                logger.warning(f"[PAY] Subscription halted for {user_id[:8]}")
-
-        # ── Subscription cancelled / expired / completed ───────────────────────
-        elif event_type in (
-            "subscription.cancelled",
-            "subscription.completed",
-            "subscription.expired",
-        ):
-            sub_entity = payload_data.get("subscription", {}).get("entity", {})
-            notes      = sub_entity.get("notes", {})
-            user_id    = notes.get("user_id") or _user_id_from_subscription(supabase, sub_entity.get("id", ""))
+        elif event_type in ("BILLING.SUBSCRIPTION.CANCELLED", "BILLING.SUBSCRIPTION.EXPIRED"):
+            subscription_id = resource.get("id", "")
+            user_id         = _user_id_from_subscription(supabase, subscription_id)
             if user_id:
                 _downgrade_to_free(supabase, user_id)
-                _log_payment_event(supabase, user_id, event_type.upper().replace(".", "_"),
-                                   f"sub:{sub_entity.get('id', '')}")
+                _log_payment_event(supabase, user_id, "SUBSCRIPTION_CANCELLED",
+                                   f"sub:{subscription_id} event:{event_type}")
 
-        # ── One-time payment captured ─────────────────────────────────────────
-        elif event_type == "payment.captured":
-            pay_entity = payload_data.get("payment", {}).get("entity", {})
-            notes      = pay_entity.get("notes", {})
-            user_id    = notes.get("user_id", "")
-            plan       = notes.get("plan", "monthly")
-            payment_id = pay_entity.get("id", "")
-            if user_id:
-                _activate_pro(supabase, user_id, plan, payment_id, "")
-                _log_payment_event(supabase, user_id, "ONE_TIME_PAYMENT_CAPTURED",
-                                   f"plan:{plan} payment:{payment_id}")
-
-        # ── Payment failed ────────────────────────────────────────────────────
-        elif event_type == "payment.failed":
-            pay_entity = payload_data.get("payment", {}).get("entity", {})
-            notes      = pay_entity.get("notes", {})
-            user_id    = notes.get("user_id", "")
+        elif event_type == "BILLING.SUBSCRIPTION.PAYMENT.FAILED":
+            subscription_id = resource.get("id", "")
+            user_id         = _user_id_from_subscription(supabase, subscription_id)
             if user_id:
                 _log_payment_event(supabase, user_id, "PAYMENT_FAILED",
-                                   f"error:{pay_entity.get('error_description', '')[:200]}")
+                                   f"sub:{subscription_id}")
+                # Don't downgrade yet — PayPal retries. Downgrade happens on CANCELLED/EXPIRED.
+
+        elif event_type == "PAYMENT.SALE.COMPLETED":
+            billing_agreement_id = resource.get("billing_agreement_id", "")
+            if billing_agreement_id:
+                user_id = _user_id_from_subscription(supabase, billing_agreement_id)
+                if user_id:
+                    _log_payment_event(supabase, user_id, "SALE_COMPLETED",
+                                       f"sale:{resource.get('id','')} sub:{billing_agreement_id}")
 
     except Exception as e:
         logger.error(f"[PAY] Webhook processing error: {e}")
-        # Always return 200 to prevent Razorpay from retrying
         return jsonify({"received": True, "error": str(e)})
 
+    # Always return 200 so PayPal doesn't retry
     return jsonify({"received": True})
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ADMIN ENDPOINTS
+# ADMIN — GRANT PLAN MANUALLY
 # ══════════════════════════════════════════════════════════════════════════════
 
 @payment_bp.route("/api/payment/admin/grant", methods=["POST"])
 def admin_grant_plan():
-    """
-    Admin endpoint to manually grant a plan to a user.
-    Requires X-Admin-Secret header matching ADMIN_SECRET env var.
-    """
+    """Body: { "user_id": "...", "plan": "monthly", "days": 31 }"""
     if not ADMIN_SECRET:
         return jsonify({"error": "Admin not configured"}), 503
     if request.headers.get("X-Admin-Secret") != ADMIN_SECRET:
@@ -849,12 +809,15 @@ def admin_grant_plan():
         return jsonify({"error": str(e)}), 500
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# SETUP TABLES
+# ══════════════════════════════════════════════════════════════════════════════
+
 @payment_bp.route("/api/payment/setup-tables", methods=["POST"])
 def setup_missing_tables():
     """
-    FIX-SCHEMA: Creates all tables that were missing from schema.sql.
-    Requires X-Admin-Secret header.
-    Safe to run multiple times (IF NOT EXISTS).
+    Creates missing DB tables and adds paypal_subscription_id column.
+    Run once after deploying. Safe to re-run (IF NOT EXISTS).
     """
     if not ADMIN_SECRET:
         return jsonify({"error": "Admin not configured"}), 503
@@ -863,10 +826,8 @@ def setup_missing_tables():
 
     supabase, _, _ = _deps()
 
-    # Add missing columns to user_profiles
     missing_columns_sql = [
-        # Payment columns
-        "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS razorpay_customer_id text",
+        "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS paypal_subscription_id text",
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS subscription_end_date timestamptz",
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS cancel_at_period_end boolean default false",
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS had_trial boolean default false",
@@ -875,93 +836,55 @@ def setup_missing_tables():
     ]
 
     missing_tables_sql = [
-        # Weekly briefs
         """CREATE TABLE IF NOT EXISTS weekly_briefs (
             id           uuid primary key default gen_random_uuid(),
             user_id      uuid not null references auth.users(id) on delete cascade,
-            subject      text,
-            headline     text,
-            full_text    text,
-            brief_json   text,
+            subject      text, headline text, full_text text, brief_json text,
             generated_at timestamptz default now()
         )""",
-
-        # Appointment preps
         """CREATE TABLE IF NOT EXISTS appointment_preps (
             id               uuid primary key default gen_random_uuid(),
             user_id          uuid not null references auth.users(id) on delete cascade,
-            appointment_date date,
-            specialist_type  text default 'primary care',
-            brief_text       text,
-            brief_json       text,
-            created_at       timestamptz default now()
+            appointment_date date, specialist_type text default 'primary care',
+            brief_text text, brief_json text, created_at timestamptz default now()
         )""",
-
-        # User feedback
         """CREATE TABLE IF NOT EXISTS user_feedback (
-            id         uuid primary key default gen_random_uuid(),
-            user_id    uuid,
-            rating     integer,
-            category   text,
-            message    text,
-            page_url   text,
-            created_at timestamptz default now()
+            id uuid primary key default gen_random_uuid(),
+            user_id uuid, rating integer, category text,
+            message text, page_url text, created_at timestamptz default now()
         )""",
-
-        # GLP-1 onboarding
         """CREATE TABLE IF NOT EXISTS glp1_onboarding (
-            id              uuid primary key default gen_random_uuid(),
-            user_id         uuid not null references auth.users(id) on delete cascade unique,
-            glp1_status     text,
-            medication_name text,
-            goal_weight_lbs numeric,
-            primary_concern text,
-            completed_at    timestamptz default now()
+            id uuid primary key default gen_random_uuid(),
+            user_id uuid not null references auth.users(id) on delete cascade unique,
+            glp1_status text, medication_name text, goal_weight_lbs numeric,
+            primary_concern text, completed_at timestamptz default now()
         )""",
-
-        # GLP-1 medications
         """CREATE TABLE IF NOT EXISTS glp1_medications (
-            id               uuid primary key default gen_random_uuid(),
-            user_id          uuid not null references auth.users(id) on delete cascade,
-            medication_name  text not null,
-            dose_mg          numeric,
-            frequency        text default 'weekly',
-            start_date       date,
-            end_date         date,
-            status           text default 'active',
-            stop_reason      text,
-            notes            text,
-            created_at       timestamptz default now(),
-            updated_at       timestamptz default now(),
+            id uuid primary key default gen_random_uuid(),
+            user_id uuid not null references auth.users(id) on delete cascade,
+            medication_name text not null, dose_mg numeric,
+            frequency text default 'weekly', start_date date, end_date date,
+            status text default 'active', stop_reason text, notes text,
+            created_at timestamptz default now(), updated_at timestamptz default now(),
             unique(user_id, medication_name, start_date)
         )""",
-
-        # RLS for new tables
-        "ALTER TABLE weekly_briefs ENABLE ROW LEVEL SECURITY",
+        "ALTER TABLE weekly_briefs     ENABLE ROW LEVEL SECURITY",
         "ALTER TABLE appointment_preps ENABLE ROW LEVEL SECURITY",
-        "ALTER TABLE glp1_onboarding ENABLE ROW LEVEL SECURITY",
-        "ALTER TABLE glp1_medications ENABLE ROW LEVEL SECURITY",
-
-        # Policies — CREATE POLICY IF NOT EXISTS is not valid Postgres syntax;
-        # use DO block with duplicate_object exception handler instead.
-        """DO $$ BEGIN
-            CREATE POLICY own_briefs ON weekly_briefs FOR ALL USING (auth.uid() = user_id);
+        "ALTER TABLE glp1_onboarding   ENABLE ROW LEVEL SECURITY",
+        "ALTER TABLE glp1_medications  ENABLE ROW LEVEL SECURITY",
+        """DO $$ BEGIN CREATE POLICY own_briefs ON weekly_briefs FOR ALL USING (auth.uid()=user_id);
         EXCEPTION WHEN duplicate_object THEN NULL; END $$""",
-        """DO $$ BEGIN
-            CREATE POLICY own_appt ON appointment_preps FOR ALL USING (auth.uid() = user_id);
+        """DO $$ BEGIN CREATE POLICY own_appt ON appointment_preps FOR ALL USING (auth.uid()=user_id);
         EXCEPTION WHEN duplicate_object THEN NULL; END $$""",
-        """DO $$ BEGIN
-            CREATE POLICY own_onboard ON glp1_onboarding FOR ALL USING (auth.uid() = user_id);
+        """DO $$ BEGIN CREATE POLICY own_onboard ON glp1_onboarding FOR ALL USING (auth.uid()=user_id);
         EXCEPTION WHEN duplicate_object THEN NULL; END $$""",
-        """DO $$ BEGIN
-            CREATE POLICY own_meds ON glp1_medications FOR ALL USING (auth.uid() = user_id);
+        """DO $$ BEGIN CREATE POLICY own_meds ON glp1_medications FOR ALL USING (auth.uid()=user_id);
         EXCEPTION WHEN duplicate_object THEN NULL; END $$""",
-
-        # Indexes
         "CREATE INDEX IF NOT EXISTS idx_briefs_user    ON weekly_briefs(user_id, generated_at desc)",
         "CREATE INDEX IF NOT EXISTS idx_appt_user      ON appointment_preps(user_id, appointment_date desc)",
         "CREATE INDEX IF NOT EXISTS idx_onboard_user   ON glp1_onboarding(user_id)",
         "CREATE INDEX IF NOT EXISTS idx_meds_user      ON glp1_medications(user_id)",
+        "CREATE INDEX IF NOT EXISTS idx_paypal_sub     ON user_profiles(paypal_subscription_id)",
     ]
 
     results = {"columns": [], "tables": [], "errors": []}
@@ -983,5 +906,5 @@ def setup_missing_tables():
     return jsonify({
         "success": len(results["errors"]) == 0,
         "results": results,
-        "note": "Run the SQL in schema_additions.sql directly in Supabase SQL Editor if errors occur.",
+        "note":    "Run SQL directly in Supabase SQL Editor if errors occur here.",
     })

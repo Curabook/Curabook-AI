@@ -616,7 +616,7 @@ def payments():
                 trialing += 1
 
         # MRR calculation
-        mrr_map = {"monthly": 49, "annual": 33.25, "clinical": 99, "pro": 49, "trial": 0}
+        mrr_map = {"monthly": 49, "annual": 39, "clinical": 99, "pro": 49, "trial": 0}
         total_mrr = sum(mrr_map.get(plan, 0) * count for plan, count in plan_counts.items())
 
         # Revenue timeline from audit logs

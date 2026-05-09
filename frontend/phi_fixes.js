@@ -112,7 +112,7 @@ async function refreshPlanDisplay() {
       const isPro = data.is_pro;
       const plan = data.plan || 'free';
       let planLabel = 'PHI Free';
-      if (plan === 'monthly') planLabel = 'Shield Core ✦';
+      if (plan === 'monthly') planLabel = 'Shield $49/mo ✦';
       else if (plan === 'annual') planLabel = 'Shield Annual ✦';
       else if (plan === 'clinical') planLabel = 'Shield Clinical ✦';
       else if (plan === 'trial') planLabel = 'Trial Active';
@@ -270,8 +270,8 @@ window.showUpgradeModal = function(reason) {
           box-shadow:0 4px 20px rgba(0,212,200,.35);transition:all .15s;
           display:flex;align-items:center;justify-content:space-between;
         ">
-          <span>Monthly</span>
-          <span style="font-size:1rem;letter-spacing:-.01em;">$39<span style="font-size:.72rem;font-weight:500;">/mo</span></span>
+          <span>Shield — Monthly</span>
+          <span style="font-size:1rem;letter-spacing:-.01em;">$49<span style="font-size:.72rem;font-weight:500;">/mo</span></span>
         </button>
 
         <!-- Annual — uses explicit opaque colors, never invisible in any theme -->
@@ -286,20 +286,21 @@ window.showUpgradeModal = function(reason) {
           display:flex;align-items:center;justify-content:space-between;
         ">
           <span style="display:flex;align-items:center;gap:8px;">
-            Annual
-            <span style="font-size:.58rem;font-weight:700;background:#4ade80;color:#0a0b0e;
+            Shield — Annual
+            <span style="font-size:.58rem;font-weight:700;background:#10b981;color:#fff;
               padding:2px 7px;border-radius:20px;letter-spacing:.04em;">SAVE 20%</span>
           </span>
-          <span style="font-size:1rem;letter-spacing:-.01em;color:var(--text,#f0f2f5);">
-            $374<span style="font-size:.72rem;font-weight:500;color:var(--text-3,#566070);">/yr</span>
+          <span style="font-size:.85rem;letter-spacing:-.01em;color:var(--text,#111111);">
+            $39<span style="font-size:.65rem;font-weight:500;color:var(--text-3,#9ca3af);">/mo</span>
+            <span style="font-size:.65rem;color:var(--text-3,#9ca3af);margin-left:4px;">· $468/yr</span>
           </span>
         </button>
 
       </div>
 
       <div id="upgradeStatus" style="text-align:center;font-size:.78rem;color:var(--text-3,#566070);min-height:18px;margin-bottom:6px;"></div>
-      <p style="font-size:.67rem;color:var(--text-3,#566070);text-align:center;">
-        🔒 Secure via Razorpay · No card stored · Cancel anytime
+      <p style="font-size:.67rem;color:var(--text-3,#9ca3af);text-align:center;">
+        🔒 Secure via PayPal · No card stored · Cancel anytime
       </p>
     </div>
   `;
@@ -310,66 +311,36 @@ window.showUpgradeModal = function(reason) {
 
 async function initUpgrade(plan) {
   const statusEl = document.getElementById('upgradeStatus');
-  const btn = document.getElementById('upg' + plan.charAt(0).toUpperCase() + plan.slice(1) + 'Btn');
-  if (btn) { btn.disabled = true; btn.innerHTML = '<span style="animation:spin .7s linear infinite;display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:white;border-radius:50%;vertical-align:middle;margin-right:6px"></span>'; }
-  if (statusEl) statusEl.textContent = 'Connecting to payment…';
+  const btn      = document.getElementById('upg' + plan.charAt(0).toUpperCase() + plan.slice(1) + 'Btn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span style="animation:spin .7s linear infinite;display:inline-block;width:14px;height:14px;border:2px solid rgba(0,0,0,.2);border-top-color:#0a0b0e;border-radius:50%;vertical-align:middle;margin-right:6px"></span> Connecting to PayPal…'; }
+  if (statusEl) statusEl.textContent = 'Setting up your subscription…';
 
   try {
     const s = await session?.();
     if (!s?.access_token) throw new Error('Please sign in first.');
 
-    const res = await fetch(_API + '/api/payment/razorpay/order', {
-      method: 'POST',
+    // Step 1 — create PayPal subscription, get approval URL
+    const res = await fetch(_API + '/api/payment/paypal/create-subscription', {
+      method:  'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + s.access_token },
-      body: JSON.stringify({ plan })
+      body:    JSON.stringify({ plan }),
     });
-    if (!res.ok) throw new Error((await res.json().catch(()=>({}))).error || 'Payment setup failed.');
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Payment setup failed.');
     const data = await res.json();
-    if (!data.order_id && !data.subscription_id) throw new Error('Invalid payment response.');
+    if (!data.approve_url) throw new Error('PayPal did not return a checkout URL.');
 
-    if (typeof Razorpay === 'undefined') {
-      window.location.href = '/signup?plan=' + plan;
-      return;
-    }
-
-    const opts = {
-      key: data.razorpay_key_id,
-      amount: data.amount,
-      currency: data.currency || 'USD',
-      name: 'Curabook PHI',
-      description: data.description,
-      handler: async (resp) => {
-        try {
-          const vRes = await fetch(_API + '/api/payment/razorpay/verify', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + s.access_token },
-            body: JSON.stringify({
-              order_id: data.order_id || '',
-              subscription_id: data.subscription_id || resp.razorpay_subscription_id || '',
-              payment_id: resp.razorpay_payment_id,
-              signature: resp.razorpay_signature,
-              plan
-            })
-          });
-          const vData = await vRes.json();
-          if (vData.success) {
-            document.getElementById('upgradeModal')?.remove();
-            typeof toast === 'function' && toast('🎉 ' + (vData.message || 'Shield Core unlocked!'), 'ok');
-            setTimeout(() => { refreshPlanDisplay(); window._userPlan = plan; window._reportsRemaining = 9999; }, 500);
-          }
-        } catch (e) { console.error('[UPGRADE] verify error:', e); }
-      },
-      prefill: { email: s.user?.email || '' },
-      theme: { color: '#00d4c8' },
-      modal: { ondismiss: () => { if (btn) { btn.disabled = false; btn.textContent = plan === 'monthly' ? 'Monthly — $39/mo' : 'Annual — $374/yr -20%'; } if (statusEl) statusEl.textContent = 'Payment cancelled.'; } }
-    };
-    if (data.mode === 'subscription') opts.subscription_id = data.subscription_id;
-    else opts.order_id = data.order_id;
-    new Razorpay(opts).open();
+    // Step 2 — redirect to PayPal hosted checkout
+    // PayPal returns user to /payment/success?subscription_id=xxx&plan=xxx
+    // That page calls /api/payment/paypal/capture to activate the plan.
+    if (statusEl) statusEl.textContent = 'Redirecting to PayPal…';
+    window.location.href = data.approve_url;
 
   } catch (e) {
     if (statusEl) statusEl.textContent = e.message;
-    if (btn) { btn.disabled = false; btn.textContent = plan === 'monthly' ? 'Monthly — $39/mo' : 'Annual — $374/yr'; }
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = plan === 'monthly' ? 'Shield — $49/mo' : 'Shield Annual — $39/mo · $468/yr';
+    }
     typeof toast === 'function' && toast(e.message, 'err');
   }
 }
