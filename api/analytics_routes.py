@@ -246,37 +246,55 @@ def users():
 
         profiles = q.execute().data or []
 
-        # For each user, get message count and last active
+        # Batch fetch all counts in 4 queries instead of 4 queries × N users
+        uid_set = [p["user_id"] for p in profiles]
+
+        # 1. All messages for these users (for count + last_active)
+        all_msgs_res = supabase.table("chats").select("user_id,created_at") \
+            .eq("role", "user").in_("user_id", uid_set) \
+            .order("created_at", desc=True).limit(5000).execute().data or []
+        msgs_by_uid     = defaultdict(list)
+        for m in all_msgs_res:
+            msgs_by_uid[m["user_id"]].append(m["created_at"])
+
+        # 2. All markers for these users
+        all_markers_res = supabase.table("health_markers").select("user_id") \
+            .in_("user_id", uid_set).execute().data or []
+        markers_by_uid  = defaultdict(int)
+        for m in all_markers_res:
+            markers_by_uid[m["user_id"]] += 1
+
+        # 3. All conversations for these users
+        all_convs_res = supabase.table("conversations").select("user_id") \
+            .in_("user_id", uid_set).execute().data or []
+        convs_by_uid    = defaultdict(int)
+        for c in all_convs_res:
+            convs_by_uid[c["user_id"]] += 1
+
+        # 4. All shield logs for these users
+        all_shield_res = supabase.table("behavioral_logs").select("user_id") \
+            .in_("user_id", uid_set).execute().data or []
+        shield_by_uid   = defaultdict(int)
+        for s in all_shield_res:
+            shield_by_uid[s["user_id"]] += 1
+
         result = []
         for p in profiles:
-            uid = p["user_id"]
-            handle = _handle(uid)
+            uid         = p["user_id"]
+            handle      = _handle(uid)
+            msg_dates   = msgs_by_uid.get(uid, [])
+            msg_count   = len(msg_dates)
+            last_active = msg_dates[0] if msg_dates else None
+            marker_count = markers_by_uid.get(uid, 0)
+            conv_count   = convs_by_uid.get(uid, 0)
+            shield_count = shield_by_uid.get(uid, 0)
 
-            # Message count
-            msgs = supabase.table("chats").select("id,created_at").eq("user_id", uid).eq("role", "user").order("created_at", desc=True).limit(100).execute().data or []
-            msg_count = len(msgs)
-            last_active = msgs[0]["created_at"] if msgs else None
-
-            # Markers count
-            markers = supabase.table("health_markers").select("id", count="exact").eq("user_id", uid).execute()
-            marker_count = markers.count or 0
-
-            # Conversations count
-            convs = supabase.table("conversations").select("id", count="exact").eq("user_id", uid).execute()
-            conv_count = convs.count or 0
-
-            # Shield logs count
-            shield = supabase.table("behavioral_logs").select("id", count="exact").eq("user_id", uid).execute()
-            shield_count = shield.count or 0
-
-            # Days since signup
             try:
                 signup = datetime.fromisoformat(p["created_at"].replace("Z", "+00:00"))
                 days_since_signup = (datetime.now(timezone.utc) - signup).days
             except Exception:
                 days_since_signup = 0
 
-            # Engagement score (0-100)
             score = min(100, (
                 min(msg_count * 2, 40) +
                 min(marker_count * 5, 20) +
@@ -284,23 +302,23 @@ def users():
                 min(shield_count * 2, 20)
             ))
 
-            plan = (p.get("plan") or "free").lower()
+            plan   = (p.get("plan") or "free").lower()
             is_pro = plan in ("monthly", "annual", "clinical", "pro", "trial")
 
             result.append({
-                "handle":            handle,
-                "plan":              plan,
-                "is_pro":            is_pro,
-                "days_since_signup": days_since_signup,
-                "message_count":     msg_count,
+                "handle":             handle,
+                "plan":               plan,
+                "is_pro":             is_pro,
+                "days_since_signup":  days_since_signup,
+                "message_count":      msg_count,
                 "conversation_count": conv_count,
-                "marker_count":      marker_count,
-                "shield_log_count":  shield_count,
-                "last_active":       last_active,
-                "engagement_score":  score,
-                "has_goal_weight":   bool(p.get("goal_weight_lbs")),
-                "glp1_status":       p.get("glp1_status") or "unknown",
-                "sub_end":           p.get("subscription_end_date"),
+                "marker_count":       marker_count,
+                "shield_log_count":   shield_count,
+                "last_active":        last_active,
+                "engagement_score":   score,
+                "has_goal_weight":    bool(p.get("goal_weight_lbs")),
+                "glp1_status":        p.get("glp1_status") or "unknown",
+                "sub_end":            p.get("subscription_end_date"),
             })
 
         # Sort by engagement score
@@ -604,28 +622,38 @@ def payments():
         # Revenue timeline from audit logs
         payment_logs = supabase.table("audit_logs").select("user_id,detail,created_at").eq("category", "PAYMENT").order("created_at", desc=True).limit(200).execute().data or []
 
+        _EVENT_LABELS = {
+            "PAYMENT_SUBSCRIPTION_ACTIVATED":    "subscription",
+            "PAYMENT_SUBSCRIPTION_CHARGED":      "renewal",
+            "PAYMENT_ONE_TIME_PAYMENT_CAPTURED": "one-time",
+            "PAYMENT_TRIAL_STARTED":             "trial start",
+            "PAYMENT_SUBSCRIPTION_CANCELLED":    "cancellation",
+            "PAYMENT_SUBSCRIPTION_HALTED":       "halted",
+            "PAYMENT_ADMIN_GRANT":               "admin grant",
+        }
+
         events = []
         for log in payment_logs:
-            detail  = log.get("detail", "")
-            created = log.get("created_at", "")
-            # Extract plan from detail
+            detail     = log.get("detail", "")
+            created    = log.get("created_at", "")
+            action     = log.get("action", "")
             plan_match = re.search(r"plan:(\w+)", detail)
             plan_name  = plan_match.group(1) if plan_match else "unknown"
             amount     = mrr_map.get(plan_name, 0)
 
             events.append({
                 "date":       created[:10],
-                "event_type": "subscription" if "VERIFIED" in log.get("action", "") else "other",
+                "event_type": _EVENT_LABELS.get(action, action.replace("PAYMENT_", "").lower()),
                 "plan":       plan_name,
                 "amount":     amount,
                 "handle":     _handle(log.get("user_id", "")),
             })
 
-        # MRR by plan
+        # MRR by plan — exclude free and trial (both $0)
         mrr_breakdown = {
             plan: round(mrr_map.get(plan, 0) * count, 2)
             for plan, count in plan_counts.items()
-            if plan not in ("free",)
+            if plan not in ("free", "trial")
         }
 
         # Churn rate

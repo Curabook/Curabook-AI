@@ -723,7 +723,7 @@ async function loadOverview() {
     labels: Object.keys(plans),
     datasets: [{
       data: Object.values(plans),
-      backgroundColor: ['#525862','#00BCD5','#22c55e','#a78bfa','#f59e0b'],
+      backgroundColor: ['#e5e7eb','#00BCD5','#10b981','#8b5cf6','#f59e0b'],
       borderWidth: 0, hoverOffset: 4,
     }]
   }, { plugins: { legend: { position: 'right', labels: { color: '#8b929e', font: { size: 11 } } } } });
@@ -795,7 +795,7 @@ async function loadActivity(days) {
     labels: ['Short (1-2 msgs)', 'Medium (3-10)', 'Long (10+)'],
     datasets: [{
       data: [feat.sessions.short_1_2, feat.sessions.medium_3_10, feat.sessions.long_10plus],
-      backgroundColor: ['#525862','#00BCD5','#22c55e'],
+      backgroundColor: ['#e5e7eb','#00BCD5','#10b981'],
       borderWidth: 0,
     }]
   }, { plugins: { legend: { position: 'right', labels: { color: '#8b929e', font: { size: 11 } } } } });
@@ -1130,7 +1130,7 @@ function mkChart(id, type, data, extraOpts = {}) {
       legend: { display: type !== 'bar' && type !== 'line', labels: { color: '#8b929e', font: { size: 11 } } },
       tooltip: {
         backgroundColor: '#f4f5f7', borderColor: 'rgba(0,0,0,.08)', borderWidth: 1,
-        titleColor: '#e8eaed', bodyColor: '#8b929e',
+        titleColor: '#111111', bodyColor: '#8b929e',
       }
     },
     scales: type === 'doughnut' ? undefined : {
