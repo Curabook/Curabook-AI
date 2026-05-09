@@ -9,6 +9,13 @@ FIXES:
 
   #CONSENT-6  /api/consent endpoint is called in the background when consent
               is missing, so future requests will have it.
+
+  #BUG-1-FIX  Removed duplicate /conversation/create route. This route was
+              also registered in chat_routes.py (chat_bp). Having both caused
+              Flask to silently use whichever blueprint registered last, making
+              one version unreachable. The canonical route lives in chat_routes.py
+              (chat_bp) which is the one script.js actually calls at /conversation/create.
+              auth_bp only handles history, load, rename, delete.
 """
 
 from flask import Blueprint, request, jsonify
@@ -21,40 +28,6 @@ def _deps():
     from services.auth       import get_authenticated_user
     from services.compliance import audit_log, verify_user_consent, ensure_consents
     return supabase, get_authenticated_user, audit_log, verify_user_consent, ensure_consents
-
-
-# ── Create conversation ───────────────────────────────────────────────────────
-
-@auth_bp.route("/conversation/create", methods=["POST"])
-def create_conversation():
-    supabase, get_user, audit, verify_consent, ensure_consents = _deps()
-    user = get_user(supabase)
-    if not user:
-        return jsonify({"error": "Unauthorized"}), 401
-
-    # #CONSENT-5: Use non-strict consent check — auto-grants if missing
-    # A logged-in user has implicitly consented by signing in
-    # We save their consent in the background to ensure future strict checks pass
-    has_consent = verify_consent(supabase, user.id, "data_processing", strict=False)
-    if not has_consent:
-        # This should never happen with strict=False, but just in case
-        ensure_consents(supabase, user.id)
-
-    try:
-        res = supabase.table("conversations").insert({
-            "user_id": user.id,
-            "title":   "New Chat",
-        }).execute()
-
-        if not res.data:
-            return jsonify({"error": "Failed to create conversation"}), 500
-
-        conv_id = res.data[0]["id"]
-        audit(supabase, user.id, "CONVERSATION_CREATED", f"ID: {conv_id}", "METADATA")
-        return jsonify({"conversation_id": conv_id})
-    except Exception as e:
-        print("Create conv error:", e)
-        return jsonify({"error": "Server error"}), 500
 
 
 # ── List conversations ────────────────────────────────────────────────────────

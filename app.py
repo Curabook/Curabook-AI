@@ -4,7 +4,7 @@ CHANGES FROM PREVIOUS VERSION:
   - Razorpay payment blueprint registered (replaces Stripe)
   - payment_routes now always loaded (was optional try/except)
   - retention_bp registered (was missing, caused /api/appointment-prep 404)
-  - demo_routes registered conditionally (DEMO_MODE env var)
+  - Demo mode removed — demo_routes.py deleted
   - Worker count capped at 4 to avoid Render free-tier OOM
 """
 
@@ -175,14 +175,7 @@ from api.payment_routes import payment_bp
 app.register_blueprint(payment_bp)
 print("✅ Razorpay payment routes registered")
 
-# Demo routes — only if DEMO_MODE=true
-if os.getenv("DEMO_MODE", "false").lower() == "true":
-    try:
-        from api.demo_routes import demo_bp
-        app.register_blueprint(demo_bp)
-        print("✅ Demo mode enabled")
-    except ImportError:
-        print("⚠️ Demo routes not found")
+# Demo mode removed — demo_routes.py deleted, DEMO_MODE env var no longer used
 
 # ── Error handlers ────────────────────────────────────────────────────────────
 @app.errorhandler(429)

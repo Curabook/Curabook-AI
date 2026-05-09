@@ -373,7 +373,9 @@ body::before {
   height: 100%;
   background: var(--bg);
   transition: background .25s;
-  padding-bottom: 0; /* FIXED: Removed ghost padding for bottom nav */
+  /* BUG-22-FIX: Bottom nav is position:fixed at 64px+safe-area. Input bar needs matching
+     padding so it's never hidden under the nav on mobile. Desktop overrides this to 0. */
+  padding-bottom: calc(var(--bottom-nav-h) + var(--sab));
 }
 
 /* ─── Topbar ─── */
@@ -910,6 +912,13 @@ body::before {
 }
 .shield-last-logged { font-size: .69rem; color: var(--text-3); text-align: center; margin-top: 4px; margin-bottom: 2px; }
 
+/* BUG-15-FIX: memoryCountBadge element now exists in HTML */
+.memory-count-badge {
+  font-size: .67rem; color: var(--text-3); text-align: center;
+  margin-bottom: 8px; min-height: 14px;
+  transition: color .3s;
+}
+
 /* ══════════════════════════════════════════════════════════
    13. VIEW CONTAINERS
 ══════════════════════════════════════════════════════════ */
@@ -1211,6 +1220,28 @@ body::before {
     transition-duration: .01ms !important;
   }
 }
+
+/* ══════════════════════════════════════════════════════════
+   22b. UPGRADE BUTTON — Subtle ghost, not heavy CTA
+   UI-FIX: Was a full solid signal-color button, visually too aggressive.
+   Now a gentle ghost that just whispers "upgrade available".
+══════════════════════════════════════════════════════════ */
+#upgradeBtn {
+  /* Inherits .nav-item base — override to add a faint signal tint */
+  color: var(--signal) !important;
+  opacity: .7;
+}
+#upgradeBtn:hover, #upgradeBtn:active {
+  opacity: 1;
+  background: var(--signal-dim);
+  color: var(--signal) !important;
+}
+#upgradeBtn i { color: var(--signal); }
+
+/* Sidebar feedback item — matches nav-item style, no special treatment needed
+   navFeedbackBtn inherits .nav-item fully */
+#navFeedbackBtn { color: var(--text-2); }
+#navFeedbackBtn:hover, #navFeedbackBtn:active { background: var(--surface-2); color: var(--text); }
 
 /* ══════════════════════════════════════════════════════════
    23. PRINT

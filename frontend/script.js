@@ -366,85 +366,145 @@ function showUpgradeModal(reason = "manual") {
   const modal = document.createElement("div");
   modal.id = "upgradeModal";
   modal.style.cssText = `
-    position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;
-    display:flex;align-items:center;justify-content:center;padding:20px;
+    position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:9999;
+    display:flex;align-items:center;justify-content:center;padding:16px;
     animation:fadeIn .2s ease;
   `;
-  modal.innerHTML = `
-    <div style="background:var(--surface);border:1px solid var(--border-2);border-radius:20px;
-      padding:32px;max-width:460px;width:100%;box-shadow:0 24px 60px rgba(0,0,0,.5);
-      animation:slideUp .25s ease;position:relative;">
-      <button onclick="closeUpgradeModal()" style="position:absolute;top:16px;right:16px;
-        color:var(--text-3);font-size:1.2rem;background:none;border:none;cursor:pointer;
-        width:32px;height:32px;display:flex;align-items:center;justify-content:center;
-        border-radius:8px;transition:all .15s;"
-        onmouseover="this.style.background='var(--surface-2)'"
-        onmouseout="this.style.background='none'">✕</button>
 
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
-        <div style="width:44px;height:44px;background:linear-gradient(135deg,var(--signal),var(--signal-2));
+  modal.innerHTML = `
+    <div style="
+      background:var(--surface);
+      border:1px solid var(--border-2);
+      border-radius:20px;
+      padding:28px 24px 24px;
+      max-width:420px;
+      width:100%;
+      box-shadow:0 32px 80px rgba(0,0,0,.6);
+      animation:slideUp .25s ease;
+      position:relative;
+      overflow:hidden;
+    ">
+
+      <!-- top accent line -->
+      <div style="position:absolute;top:0;left:0;right:0;height:3px;
+        background:linear-gradient(90deg,var(--signal),var(--signal-2));"></div>
+
+      <!-- close -->
+      <button onclick="closeUpgradeModal()" style="
+        position:absolute;top:14px;right:14px;
+        width:30px;height:30px;border-radius:8px;
+        border:none;background:var(--surface-3);color:var(--text-2);
+        font-size:.85rem;cursor:pointer;
+        display:flex;align-items:center;justify-content:center;
+        transition:all .15s;
+      " onmouseover="this.style.background='var(--surface-4)'"
+         onmouseout="this.style.background='var(--surface-3)'">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+
+      <!-- header -->
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;padding-right:36px;">
+        <div style="
+          width:42px;height:42px;flex-shrink:0;
+          background:linear-gradient(135deg,var(--signal),var(--signal-2));
           border-radius:12px;display:flex;align-items:center;justify-content:center;
-          font-family:var(--serif);font-size:1.2rem;color:#0a0b0e;font-weight:600;
-          box-shadow:0 4px 16px var(--signal-glow);">φ</div>
+          font-family:var(--serif);font-size:1.15rem;color:#0a0b0e;font-weight:600;
+          box-shadow:0 4px 16px var(--signal-glow);
+        ">φ</div>
         <div>
-          <h2 style="font-family:var(--serif);font-size:1.3rem;font-weight:400;margin-bottom:2px;">Upgrade to PHI Pro</h2>
-          <p style="font-size:.75rem;color:var(--text-3);">Unlock unlimited lab reports & full health memory</p>
+          <h2 style="font-family:var(--serif);font-size:1.2rem;font-weight:400;
+            color:var(--text);margin-bottom:2px;line-height:1.2;">Upgrade to PHI Pro</h2>
+          <p style="font-size:.73rem;color:var(--text-3);line-height:1.4;">
+            Unlimited reports · Health memory · Insurance PA support
+          </p>
         </div>
       </div>
 
+      <!-- upload limit banner -->
       ${reason === "upload" ? `
-        <div style="background:var(--amber-dim);border:1px solid rgba(251,191,36,.3);
-          border-radius:10px;padding:11px 14px;margin-bottom:18px;font-size:.81rem;color:var(--amber);
-          display:flex;align-items:center;gap:8px;">
-          <i class="fa-solid fa-triangle-exclamation"></i>
-          <span><strong>Free tier limit reached</strong> — You've used your 1 free report upload.</span>
+        <div style="
+          background:var(--amber-dim);border:1px solid rgba(251,191,36,.3);
+          border-radius:10px;padding:10px 13px;margin-bottom:16px;
+          font-size:.8rem;color:var(--amber);
+          display:flex;align-items:center;gap:8px;
+        ">
+          <i class="fa-solid fa-triangle-exclamation" style="flex-shrink:0;"></i>
+          <span><strong>Free limit reached</strong> — You've used your 1 free report upload.</span>
         </div>` : ""}
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;">
-        <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:14px;">
-          <div style="font-size:.62rem;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">Free</div>
-          <div style="font-family:var(--mono);font-size:1.5rem;font-weight:500;color:var(--text-2);margin-bottom:10px;">$0</div>
-          <div style="font-size:.74rem;color:var(--text-3);line-height:1.8;">
-            ✓ Unlimited chat<br>
-            <span style="color:var(--text-3);opacity:.5">✗ 1 report upload</span><br>
-            <span style="color:var(--text-3);opacity:.5">✗ No marker memory</span><br>
-            <span style="color:var(--text-3);opacity:.5">✗ No PA support</span>
-          </div>
-        </div>
-        <div style="background:rgba(0,212,200,.06);border:1.5px solid var(--signal);border-radius:12px;padding:14px;position:relative;">
-          <div style="position:absolute;top:-9px;left:50%;transform:translateX(-50%);
-            background:var(--signal);color:#0a0b0e;font-size:.58rem;font-weight:700;
-            padding:2px 10px;border-radius:20px;letter-spacing:.08em;white-space:nowrap;">RECOMMENDED</div>
-          <div style="font-size:.62rem;font-weight:700;color:var(--signal);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">Pro</div>
-          <div style="font-family:var(--mono);font-size:1.5rem;font-weight:500;color:var(--signal);margin-bottom:10px;">$49<span style="font-size:.7rem;color:var(--text-3)">/mo</span></div>
-          <div style="font-size:.74rem;color:var(--text-2);line-height:1.8;">
-            ✓ Unlimited chat<br>
-            ✓ Unlimited reports<br>
-            ✓ Full health memory<br>
-            ✓ Insurance PA support
-          </div>
+      <!-- feature list -->
+      <div style="
+        background:var(--surface-2);border:1px solid var(--border);
+        border-radius:12px;padding:14px 16px;margin-bottom:18px;
+      ">
+        <div style="font-size:.62rem;font-weight:700;color:var(--text-3);
+          text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px;">What you unlock</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px 12px;">
+          ${[
+            ["fa-file-medical","Unlimited lab reports"],
+            ["fa-brain","Full health memory"],
+            ["fa-shield-halved","Insurance PA support"],
+            ["fa-bell","Weekly health briefs"],
+            ["fa-chart-line","Trend tracking"],
+            ["fa-stethoscope","Doctor visit prep"],
+          ].map(([icon, label]) => `
+            <div style="display:flex;align-items:center;gap:7px;font-size:.78rem;color:var(--text-2);">
+              <i class="fa-solid ${icon}" style="color:var(--signal);font-size:.7rem;width:14px;text-align:center;flex-shrink:0;"></i>
+              ${label}
+            </div>`).join("")}
         </div>
       </div>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+      <!-- plan buttons — VERTICAL stack so both are always visible -->
+      <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px;">
+
+        <!-- Monthly -->
         <button id="rzpMonthlyBtn" onclick="initiateRazorpayCheckout('monthly')" style="
-          padding:13px;background:var(--signal);color:#0a0b0e;border:none;border-radius:10px;
-          font-size:.88rem;font-weight:700;cursor:pointer;font-family:var(--sans);
-          box-shadow:0 4px 16px var(--signal-glow);transition:all .15s;">
-          Monthly — $49/mo
+          width:100%;padding:13px 16px;
+          background:var(--signal);color:#0a0b0e;
+          border:none;border-radius:12px;
+          font-size:.9rem;font-weight:700;
+          cursor:pointer;font-family:var(--sans);
+          box-shadow:0 4px 20px var(--signal-glow);
+          transition:all .15s;
+          display:flex;align-items:center;justify-content:space-between;
+        ">
+          <span>Monthly</span>
+          <span style="font-family:var(--mono);font-size:1rem;">$39<span style="font-size:.72rem;font-weight:500;">/mo</span></span>
         </button>
+
+        <!-- Annual — explicit dark bg + light text so it's always readable -->
         <button id="rzpAnnualBtn" onclick="initiateRazorpayCheckout('annual')" style="
-          padding:13px;background:var(--surface-2);color:var(--text);
-          border:1.5px solid var(--border-2);border-radius:10px;
-          font-size:.88rem;font-weight:600;cursor:pointer;font-family:var(--sans);transition:all .15s;">
-          Annual — $399/yr
+          width:100%;padding:13px 16px;
+          background:var(--surface-3);color:var(--text);
+          border:2px solid var(--border-2);border-radius:12px;
+          font-size:.9rem;font-weight:600;
+          cursor:pointer;font-family:var(--sans);
+          transition:all .15s;
+          display:flex;align-items:center;justify-content:space-between;
+          position:relative;
+        ">
+          <span style="display:flex;align-items:center;gap:8px;">
+            Annual
+            <span style="
+              font-size:.58rem;font-weight:700;
+              background:var(--ok);color:#0a0b0e;
+              padding:2px 7px;border-radius:20px;letter-spacing:.04em;
+            ">SAVE 20%</span>
+          </span>
+          <span style="font-family:var(--mono);font-size:1rem;color:var(--text);">$379<span style="font-size:.72rem;font-weight:500;color:var(--text-2);">/yr</span></span>
         </button>
+
       </div>
-      <p style="font-size:.68rem;color:var(--text-3);text-align:center;margin-top:6px;">
+
+      <!-- trust line -->
+      <p style="font-size:.67rem;color:var(--text-3);text-align:center;line-height:1.6;">
+        <i class="fa-solid fa-lock" style="font-size:.6rem;margin-right:3px;"></i>
         Secure via Razorpay · No card stored · Cancel anytime
       </p>
     </div>
   `;
+
   modal.addEventListener("click", e => { if (e.target === modal) closeUpgradeModal(); });
   document.body.appendChild(modal);
 }
@@ -1539,32 +1599,17 @@ function exportChat() {
 
 // ══════════════════════════════════════════════════════════════════════════════
 // FIX-3: FEEDBACK SYSTEM — Full NPS (1-10) + category + smooth animation
+// UI-FIX: Feedback button moved from floating FAB to sidebar nav item (#navFeedbackBtn).
+//         The FAB was invisible on mobile (hidden under nav) and cluttered desktop.
+//         openFeedback() is exposed on window so the sidebar button can call it.
 // ══════════════════════════════════════════════════════════════════════════════
 function initFeedback() {
-  // FAB button
-  const btn = document.createElement("button");
-  btn.id = "feedbackBtn";
-  btn.className = "feedback-fab";
-  btn.innerHTML = `<i class="fa-regular fa-comment-dots"></i>`;
-  btn.setAttribute("aria-label", "Send feedback");
-  btn.title = "Share feedback";
-  document.body.appendChild(btn);
+  // UI-FIX: No FAB button created here — sidebar nav item #navFeedbackBtn triggers openFeedback()
+  // window.openFeedback is exposed below so onclick="openFeedback()" in HTML works
 
-  // Inject feedback styles
+  // Inject feedback modal styles
   const style = document.createElement("style");
   style.textContent = `
-    .feedback-fab {
-      position: fixed; bottom: 80px; right: 20px; z-index: 8000;
-      width: 48px; height: 48px; border-radius: 50%;
-      background: var(--signal); color: #0a0b0e;
-      border: none; cursor: pointer; font-size: 1.1rem;
-      display: flex; align-items: center; justify-content: center;
-      box-shadow: 0 4px 20px var(--signal-glow);
-      transition: all .2s;
-    }
-    .feedback-fab:hover { transform: scale(1.1); background: var(--signal-2); }
-    @media(min-width:1024px) { .feedback-fab { bottom: 24px; } }
-
     .feedback-modal-overlay {
       position: fixed; inset: 0; background: rgba(0,0,0,.7);
       z-index: 9990; display: none; align-items: flex-end;
@@ -1720,7 +1765,7 @@ function initFeedback() {
   // State
   let selectedNps = 0, selectedCategory = "";
 
-  btn.addEventListener("click", () => openFeedback());
+  // UI-FIX: sidebar nav item triggers openFeedback() — no FAB listener needed
   el("feedbackClose")?.addEventListener("click", () => closeFeedback());
   modal.addEventListener("click", e => { if (e.target === modal) closeFeedback(); });
   document.addEventListener("keydown", e => { if (e.key === "Escape") closeFeedback(); });
@@ -1952,4 +1997,11 @@ document.addEventListener("DOMContentLoaded", () => {
   initFeedback();
   initSyncWearable();
   boot();
+
+  // Expose on window so inline onclick handlers and other scripts can call these
+  // Bug-10-FIX: food_noise_emergency.js calls window.sendMessage — must be on window
+  // UI-FIX: sidebar feedback button uses onclick="openFeedback()"
+  window.sendMessage   = sendMessage;
+  window.openFeedback  = openFeedback;
+  window.closeFeedback = closeFeedback;
 });

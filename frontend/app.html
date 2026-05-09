@@ -52,6 +52,10 @@
       <button class="nav-item"         id="navReports" data-view="reports">
         <i class="fa-solid fa-file-medical"></i><span>Lab Reports</span>
       </button>
+      <!-- BUG-UI-FIX: Feedback moved from floating FAB to sidebar so it's reachable on both mobile and desktop -->
+      <button class="nav-item" id="navFeedbackBtn" onclick="openFeedback()">
+        <i class="fa-regular fa-comment-dots"></i><span>Share Feedback</span>
+      </button>
     </nav>
 
     <div class="sb-divider"></div>
@@ -199,7 +203,7 @@
 
   <aside id="cockpit">
 
-    <button id="cockpitCloseBtn" style="display:none;position:sticky;top:0;z-index:10;justify-content:flex-end;padding:10px 12px 0;background:var(--surface);border:none;width:100%;cursor:pointer;color:var(--text-2);" class="mobile-only">
+    <button id="cockpitCloseBtn" class="mobile-only" style="position:sticky;top:0;z-index:10;justify-content:flex-end;padding:10px 12px 0;background:var(--surface);border:none;width:100%;cursor:pointer;color:var(--text-2);">
       <i class="fa-solid fa-xmark" style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;border-radius:8px;font-size:1rem;transition:all .15s;"></i>
     </button>
 
@@ -259,6 +263,8 @@
       </div>
 
       <div id="shieldLastLogged" class="shield-last-logged"></div>
+      <!-- BUG-15-FIX: memoryCountBadge element was referenced in script.js but missing from HTML -->
+      <div id="memoryCountBadge" class="memory-count-badge"></div>
       <div class="shield-log-grid">
         <div class="sl-group">
           <label class="sl-label" for="inputProtein">Protein (g)</label>
