@@ -175,59 +175,135 @@ function showTrialBanner(endDate) {
 }
 
 // ── 4. IN-APP UPGRADE MODAL ───────────────────────────────────────────────────
-// Override the existing showUpgradeModal to use Razorpay
-const _originalShowUpgrade = window.showUpgradeModal;
 window.showUpgradeModal = function(reason) {
   const existing = document.getElementById('upgradeModal');
   if (existing) existing.remove();
 
   const modal = document.createElement('div');
   modal.id = 'upgradeModal';
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;animation:fadeIn .2s ease';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;animation:fadeIn .2s ease';
+
+  const features = [
+    ['fa-file-medical',  'Unlimited lab reports'],
+    ['fa-brain',         'Full health memory'],
+    ['fa-shield-halved', 'Insurance PA support'],
+    ['fa-bell',          'Weekly health briefs'],
+    ['fa-chart-line',    'Trend tracking'],
+    ['fa-stethoscope',   'Doctor visit prep'],
+  ];
+
   modal.innerHTML = `
-    <div style="background:var(--surface,#111318);border:1px solid rgba(255,255,255,.1);border-radius:20px;
-      padding:32px;max-width:460px;width:100%;box-shadow:0 24px 60px rgba(0,0,0,.5);position:relative">
-      <button onclick="document.getElementById('upgradeModal').remove()" style="position:absolute;top:14px;right:14px;
-        color:var(--text-3,#566);font-size:1.1rem;background:none;border:none;cursor:pointer;
-        width:30px;height:30px;display:flex;align-items:center;justify-content:center">×</button>
+    <div style="
+      background:var(--surface,#111318);
+      border:1px solid var(--border-2,rgba(255,255,255,.13));
+      border-radius:20px;
+      padding:28px 24px 24px;
+      max-width:420px;width:100%;
+      box-shadow:0 32px 80px rgba(0,0,0,.6);
+      position:relative;overflow:hidden;
+    ">
+      <!-- top accent -->
+      <div style="position:absolute;top:0;left:0;right:0;height:3px;
+        background:linear-gradient(90deg,var(--signal,#00d4c8),#00a89e);"></div>
 
-      ${reason === 'upload' ? `
-      <div style="background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);border-radius:10px;
-        padding:10px 14px;margin-bottom:16px;font-size:.8rem;color:#fbbf24;display:flex;align-items:center;gap:8px">
-        ⚠ Free plan limit — upgrade to upload unlimited lab reports
-      </div>` : ''}
+      <!-- close -->
+      <button onclick="document.getElementById('upgradeModal').remove()" style="
+        position:absolute;top:14px;right:14px;
+        width:30px;height:30px;border-radius:8px;
+        border:none;background:var(--surface-3,#23272f);
+        color:var(--text-2,#9aa3b0);font-size:.85rem;
+        cursor:pointer;display:flex;align-items:center;justify-content:center;
+      ">✕</button>
 
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
-        <div style="width:42px;height:42px;background:linear-gradient(135deg,var(--signal,#00d4c8),#00a89e);
+      <!-- header -->
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;padding-right:36px;">
+        <div style="width:42px;height:42px;flex-shrink:0;
+          background:linear-gradient(135deg,var(--signal,#00d4c8),#00a89e);
           border-radius:12px;display:flex;align-items:center;justify-content:center;
-          font-family:Georgia,serif;font-size:1.2rem;color:#0a0b0e;font-style:italic;flex-shrink:0">φ</div>
+          font-family:Georgia,serif;font-size:1.15rem;color:#0a0b0e;font-weight:600;
+          box-shadow:0 4px 16px rgba(0,212,200,.3);">φ</div>
         <div>
-          <h3 style="font-size:.95rem;font-weight:700;margin-bottom:2px;color:var(--text,#f0f2f5)">Upgrade to Shield Core</h3>
-          <p style="font-size:.74rem;color:var(--text-3,#566)">Unlimited reports · Weekly alerts · PA support · Memory</p>
+          <h3 style="font-size:1.1rem;font-weight:700;color:var(--text,#f0f2f5);margin-bottom:3px;line-height:1.2;">
+            Upgrade to PHI Pro
+          </h3>
+          <p style="font-size:.73rem;color:var(--text-3,#566070);line-height:1.4;">
+            Unlimited reports · Health memory · Insurance PA support
+          </p>
         </div>
       </div>
 
-      <div style="display:flex;gap:8px;margin-bottom:14px">
-        <button id="upgMonthlyBtn" onclick="initUpgrade('monthly')" style="flex:1;padding:13px;
-          background:var(--signal,#00d4c8);color:#0a0b0e;border:none;border-radius:10px;
-          font-size:.86rem;font-weight:700;cursor:pointer;font-family:inherit;
-          box-shadow:0 4px 14px rgba(0,212,200,.3)">
-          Monthly — $39/mo
-        </button>
-        <button id="upgAnnualBtn" onclick="initUpgrade('annual')" style="flex:1;padding:13px;
-          background:rgba(255,255,255,.07);color:rgba(255,255,255,.7);
-          border:1px solid rgba(255,255,255,.12);border-radius:10px;
-          font-size:.86rem;font-weight:600;cursor:pointer;font-family:inherit">
-          Annual — $374/yr <span style="color:rgba(0,212,200,.8);font-size:.7rem">-20%</span>
-        </button>
+      <!-- upload limit banner -->
+      ${reason === 'upload' ? `
+        <div style="background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.3);
+          border-radius:10px;padding:10px 13px;margin-bottom:16px;
+          font-size:.8rem;color:#fbbf24;display:flex;align-items:center;gap:8px;">
+          <span style="flex-shrink:0;">⚠</span>
+          <span><strong>Free limit reached</strong> — upgrade to upload unlimited reports.</span>
+        </div>` : ''}
+
+      <!-- feature grid -->
+      <div style="
+        background:var(--surface-2,#1a1d24);
+        border:1px solid var(--border,rgba(255,255,255,.07));
+        border-radius:12px;padding:14px 16px;margin-bottom:18px;
+      ">
+        <div style="font-size:.62rem;font-weight:700;color:var(--text-3,#566070);
+          text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px;">What you unlock</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px 12px;">
+          ${features.map(([icon, label]) => `
+            <div style="display:flex;align-items:center;gap:7px;font-size:.78rem;color:var(--text-2,#9aa3b0);">
+              <i class="fa-solid ${icon}" style="color:var(--signal,#00d4c8);font-size:.7rem;width:14px;text-align:center;flex-shrink:0;"></i>
+              ${label}
+            </div>`).join('')}
+        </div>
       </div>
 
-      <div id="upgradeStatus" style="text-align:center;font-size:.78rem;color:var(--text-3,#566);min-height:20px"></div>
-      <p style="font-size:.7rem;color:var(--text-3,#566);text-align:center;margin-top:8px">
-        Secure via Razorpay · No card stored · Cancel anytime
+      <!-- plan buttons — vertical so annual is always visible -->
+      <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px;">
+
+        <!-- Monthly -->
+        <button id="upgMonthlyBtn" onclick="initUpgrade('monthly')" style="
+          width:100%;padding:13px 16px;
+          background:var(--signal,#00d4c8);color:#0a0b0e;
+          border:none;border-radius:12px;
+          font-size:.9rem;font-weight:700;cursor:pointer;font-family:inherit;
+          box-shadow:0 4px 20px rgba(0,212,200,.35);transition:all .15s;
+          display:flex;align-items:center;justify-content:space-between;
+        ">
+          <span>Monthly</span>
+          <span style="font-size:1rem;letter-spacing:-.01em;">$39<span style="font-size:.72rem;font-weight:500;">/mo</span></span>
+        </button>
+
+        <!-- Annual — uses explicit opaque colors, never invisible in any theme -->
+        <button id="upgAnnualBtn" onclick="initUpgrade('annual')" style="
+          width:100%;padding:13px 16px;
+          background:var(--surface-3,#23272f);
+          color:var(--text,#f0f2f5);
+          border:2px solid var(--border-2,rgba(255,255,255,.13));
+          border-radius:12px;
+          font-size:.9rem;font-weight:600;cursor:pointer;font-family:inherit;
+          transition:all .15s;
+          display:flex;align-items:center;justify-content:space-between;
+        ">
+          <span style="display:flex;align-items:center;gap:8px;">
+            Annual
+            <span style="font-size:.58rem;font-weight:700;background:#4ade80;color:#0a0b0e;
+              padding:2px 7px;border-radius:20px;letter-spacing:.04em;">SAVE 20%</span>
+          </span>
+          <span style="font-size:1rem;letter-spacing:-.01em;color:var(--text,#f0f2f5);">
+            $374<span style="font-size:.72rem;font-weight:500;color:var(--text-3,#566070);">/yr</span>
+          </span>
+        </button>
+
+      </div>
+
+      <div id="upgradeStatus" style="text-align:center;font-size:.78rem;color:var(--text-3,#566070);min-height:18px;margin-bottom:6px;"></div>
+      <p style="font-size:.67rem;color:var(--text-3,#566070);text-align:center;">
+        🔒 Secure via Razorpay · No card stored · Cancel anytime
       </p>
     </div>
   `;
+
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
   document.body.appendChild(modal);
 };
