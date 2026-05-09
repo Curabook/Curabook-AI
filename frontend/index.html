@@ -550,9 +550,9 @@ footer p { font-size: .72rem; color: var(--muted-2); }
       <div class="plan-card featured fade-up d1">
         <div class="plan-badge">Most Popular</div>
         <div class="plan-tier pro">Shield Core</div>
-        <div class="plan-price" id="corePrice">$39</div>
+        <div class="plan-price" id="corePrice">$49</div>
         <div class="plan-period" id="corePeriod">per month</div>
-        <div class="plan-save-pill" id="coreSave" style="display:none">You save $94/yr vs monthly</div>
+        <div class="plan-save-pill" id="coreSave" style="display:none">Save $120/yr — $39/mo billed annually</div>
         <div style="height:4px"></div>
         <div class="plan-desc">Continuous monitoring, unlimited labs, weekly cliff alerts — everything to protect the results you worked so hard to earn.</div>
         <ul class="plan-features">
@@ -687,14 +687,14 @@ function setBilling(mode) {
   if (mode === 'annual') {
     track.classList.add('active');
     lblM.classList.remove('on'); lblA.classList.add('on');
-    price.textContent  = '$31';
-    period.textContent = 'per month — billed $374/yr';
+    price.textContent  = '$39';
+    period.textContent = 'per month — billed $468/yr';
     save.style.display = 'inline-block';
     btn.textContent    = 'Start Annual — Best Value';
   } else {
     track.classList.remove('active');
     lblM.classList.add('on'); lblA.classList.remove('on');
-    price.textContent  = '$39';
+    price.textContent  = '$49';
     period.textContent = 'per month';
     save.style.display = 'none';
     btn.textContent    = 'Start Shield Core';
