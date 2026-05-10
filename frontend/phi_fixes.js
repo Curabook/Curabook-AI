@@ -341,29 +341,44 @@ async function _logWatchMetrics(metrics, date, headers) {
 
 // ── Wire sync wearable button ──────────────────────────────────────────────────
 function initSyncWearable() {
-  // script.js already creates cameraInput + wires syncWearableBtn click.
-  // We wait for that to finish, then REPLACE cameraInput's change handler
-  // so our Vision AI path runs instead of the default addFile() path.
-  // We never touch the button itself — that prevents the double-picker bug.
-  function _hijackCameraInput() {
-    const cameraInput = document.getElementById('cameraInput');
-    if (!cameraInput) {
-      // script.js hasn't run initSyncWearable yet — wait for it
-      setTimeout(_hijackCameraInput, 300);
-      return;
-    }
-    // Clone the element to strip ALL existing listeners (including script.js's)
-    const fresh = cameraInput.cloneNode(true);
-    cameraInput.parentNode.replaceChild(fresh, cameraInput);
+  // script.js wires syncWearableBtn like this:
+  //   mobile  → cameraInput.click()   (but holds old node ref in closure)
+  //   desktop → fileInput.click()     (wrong input entirely)
+  //
+  // Fix: create our own dedicated hidden input, then REPLACE the button's
+  // click with onclick (overwrites all prior addEventListener clicks) so
+  // only our handler fires. No cloneNode needed.
+  function _wire() {
+    const btn = document.getElementById('syncWearableBtn');
+    if (!btn) { setTimeout(_wire, 300); return; }
 
-    fresh.addEventListener('change', async (e) => {
+    // Create a dedicated input that only this feature uses
+    let inp = document.getElementById('_watchSyncInput');
+    if (!inp) {
+      inp = document.createElement('input');
+      inp.type = 'file';
+      inp.id = '_watchSyncInput';
+      inp.accept = 'image/*';
+      inp.style.display = 'none';
+      document.body.appendChild(inp);
+    }
+
+    // onclick overwrites ALL previous click listeners on the element
+    btn.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      inp.value = ''; // reset so same file can be re-selected
+      inp.click();
+    };
+
+    inp.addEventListener('change', async (e) => {
       const file = e.target.files?.[0];
       if (!file) return;
       e.target.value = '';
       await processWatchScreenshot(file);
     });
   }
-  _hijackCameraInput();
+  _wire();
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
