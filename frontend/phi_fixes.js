@@ -69,30 +69,40 @@ function showWelcomeModal(type) {
   }
 })();
 
-// ── 2. PLAN BADGE ─────────────────────────────────────────────────────────────
-async function refreshPlanDisplay() {
+// ── 2. PLAN BADGE — reads globals script.js already sets; zero extra fetches ──
+// script.js sets window._userPlan after /startup completes.
+// performance_patch.js may also set window.__startupCache.
+// We NEVER fire /api/payment/status here — that was causing the speed regression.
+function refreshPlanDisplay() {
   try {
-    const h = await _authHeaders();
-    if (!h) return;
-    const res = await fetch(_API + '/api/payment/status', { headers: h });
-    if (!res.ok) return;
-    const data = await res.json();
-    const planEl = document.getElementById('userPlan');
-    if (planEl) {
-      const plan = data.plan || 'free';
-      const labels = { monthly:'Shield $49/mo ✦', annual:'Shield Annual ✦', clinical:'Shield Clinical ✦', trial:'Trial Active', free:'PHI Free' };
-      planEl.textContent = labels[plan] || 'PHI Free';
-      planEl.style.color = data.is_pro ? 'var(--signal,#00d4c8)' : 'var(--text-3,#566070)';
+    const plan = window._userPlan
+      || window.__startupCache?.plan
+      || window.__startupCache?.subscription?.plan
+      || null;
+
+    if (!plan) {
+      // Globals not ready yet — retry once, still no extra fetch
+      setTimeout(() => {
+        const p2 = window._userPlan || window.__startupCache?.plan;
+        if (p2) _applyPlanToUI(p2, window.__startupCache || {});
+      }, 1500);
+      return;
     }
-    if (data.plan === 'trial' && data.subscription_end_date) showTrialBanner(data.subscription_end_date);
-    if (typeof _userPlan !== 'undefined') {
-      window._userPlan = data.plan || 'free';
-      window._reportsRemaining = data.reports_remaining ?? 1;
-    }
-    // Show upgrade pill only for free/trial users
-    const pill = document.getElementById('upgradeNavBtn');
-    if (pill) pill.style.display = data.is_pro ? 'none' : 'inline-block';
+    _applyPlanToUI(plan, window.__startupCache || {});
   } catch (e) { console.warn('[PLAN]', e); }
+}
+
+function _applyPlanToUI(plan, cache) {
+  const isPro = plan && plan !== 'free' && plan !== 'trial';
+  const planEl = document.getElementById('userPlan');
+  if (planEl) {
+    const labels = { monthly:'Shield $49/mo ✦', annual:'Shield Annual ✦', clinical:'Shield Clinical ✦', trial:'Trial Active', free:'PHI Free' };
+    planEl.textContent = labels[plan] || 'PHI Free';
+    planEl.style.color = isPro ? 'var(--signal,#00d4c8)' : 'var(--text-3,#566070)';
+  }
+  if (plan === 'trial' && cache.subscription_end_date) showTrialBanner(cache.subscription_end_date);
+  const pill = document.getElementById('upgradeNavBtn');
+  if (pill) pill.style.display = isPro ? 'none' : 'inline-block';
 }
 
 function showTrialBanner(endDate) {
@@ -173,91 +183,107 @@ window.initUpgrade = initiatePayPalCheckout;
 async function processWatchScreenshot(file) {
   if (!file) return;
 
-  // Show processing toast
-  if (typeof toast === 'function') toast('📸 Analyzing wearable screenshot with Vision AI…', 'info');
+  if (typeof toast === 'function') toast('📸 Reading wearable screenshot…', 'info');
 
-  const reader = new FileReader();
-  reader.onload = async (e) => {
-    const base64Data = e.target.result;
+  try {
+    const h = await _authHeaders();
+    if (!h) { if (typeof toast === 'function') toast('Please sign in first.', 'err'); return; }
 
-    try {
-      const h = await _authHeaders();
-      if (!h) { if (typeof toast === 'function') toast('Please sign in first.', 'err'); return; }
+    // Send image as multipart/form-data to /api/analyze — same endpoint used for lab reports
+    // It already handles GPT-4o Vision correctly. We inject a wearable-specific prompt via
+    // a hidden field so the backend knows what to extract.
+    const formData = new FormData();
+    formData.append('file', file, file.name || 'wearable.jpg');
+    formData.append('context', 'wearable_screenshot');
+    formData.append('prompt_override',
+      'This is a wearable device or fitness app screenshot. ' +
+      'Extract ONLY these metrics if visible: daily steps count, sleep duration in hours, ' +
+      'protein intake in grams, active calories burned, heart rate (bpm), weight (lbs or kg). ' +
+      'Reply in plain text. For each metric found write one line like: ' +
+      'Steps: 8432 | Sleep: 7.5h | Protein: 142g | Calories: 480 | HR: 72 bpm | Weight: 183 lbs. ' +
+      'If a metric is not visible, omit it. Do not guess or invent values.'
+    );
 
-      // Send to chat endpoint with special wearable context
-      const today = new Date().toISOString().slice(0, 10);
-      const payload = {
-        conversation_id: window._convId || 'watch-sync-' + Date.now(),
-        message: 'Extract all health metrics from this wearable/fitness app screenshot. I need: steps count, sleep hours, protein grams logged, any other health metrics visible.',
-        has_documents: true,
-        document_text: base64Data,
-      };
+    // Auth header for multipart — drop Content-Type so browser sets boundary automatically
+    const authHeader = { 'Authorization': h['Authorization'] };
+    const today = new Date().toISOString().slice(0, 10);
 
-      // If no conversation, create one silently
-      if (!window._convId) {
-        try {
-          const convRes = await fetch(_API + '/conversation/create', { method: 'POST', headers: h, body: JSON.stringify({}) });
-          if (convRes.ok) { const convData = await convRes.json(); window._convId = convData.conversation_id; payload.conversation_id = window._convId; }
-        } catch (err) { payload.conversation_id = 'watch-sync-' + Date.now(); }
-      }
-
-      const res = await fetch(_API + '/chat', { method: 'POST', headers: h, body: JSON.stringify(payload) });
-      if (!res.ok) throw new Error('Vision processing failed');
-      const data = await res.json();
-      const reply = data.reply || '';
-
-      // Parse extracted metrics from AI reply
-      const metrics = _parseWatchMetrics(reply);
-
-      if (Object.keys(metrics).length === 0) {
-        if (typeof toast === 'function') toast('Could not extract health data. Try a clearer screenshot.', 'info');
-        return;
-      }
-
-      // Fill shield inputs
-      let logged = [];
-      if (metrics.steps !== undefined) {
-        const el = document.getElementById('inputSteps');
-        if (el) { el.value = metrics.steps; logged.push(`${metrics.steps.toLocaleString()} steps`); }
-      }
-      if (metrics.sleep !== undefined) {
-        const el = document.getElementById('inputSleep');
-        if (el) { el.value = metrics.sleep; logged.push(`${metrics.sleep}h sleep`); }
-      }
-      if (metrics.protein !== undefined) {
-        const el = document.getElementById('inputProtein');
-        if (el) { el.value = metrics.protein; logged.push(`${metrics.protein}g protein`); }
-      }
-      if (metrics.weight !== undefined) {
-        const el = document.getElementById('inputGoalWt');
-        if (el && !el.value) { el.value = metrics.weight; logged.push(`${metrics.weight} lbs`); }
-      }
-
-      // Auto-update shield
-      if (typeof updateShield === 'function') await updateShield();
-      else if (typeof renderShield === 'function') {
-        const p = parseFloat(document.getElementById('inputProtein')?.value) || 0;
-        const s = parseFloat(document.getElementById('inputSteps')?.value) || 0;
-        const sl = parseFloat(document.getElementById('inputSleep')?.value) || 0;
-        renderShield(p, s, sl, today);
-      }
-
-      // Log to behavioral API
-      await _logWatchMetrics(metrics, today, h);
-
-      if (logged.length > 0) {
-        if (typeof toast === 'function') toast(`✓ Shield updated: ${logged.join(', ')}`, 'ok');
-        const lastEl = document.getElementById('shieldLastLogged');
-        if (lastEl) lastEl.textContent = `Synced from wearable: ${new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
-      } else {
-        if (typeof toast === 'function') toast('Screenshot processed but no shield metrics found.', 'info');
-      }
-    } catch (err) {
-      console.error('[WATCH-SYNC]', err);
-      if (typeof toast === 'function') toast('Watch sync failed. Try a clearer screenshot.', 'err');
+    const res = await fetch(_API + '/api/analyze', { method: 'POST', headers: authHeader, body: formData });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => res.status);
+      throw new Error('Vision API error: ' + errText);
     }
-  };
-  reader.readAsDataURL(file);
+    const data = await res.json();
+
+    // /api/analyze returns { summary, markers, insights, ... }
+    // The raw AI text may be in summary, extracted_text, reply, or analysis
+    const reply = data.summary || data.reply || data.analysis || data.extracted_text || JSON.stringify(data);
+
+    const metrics = _parseWatchMetrics(reply);
+
+    // Also try parsing any structured markers the endpoint may have returned
+    if (data.markers && Array.isArray(data.markers)) {
+      data.markers.forEach(m => {
+        const name = (m.marker_name || m.name || '').toLowerCase();
+        const val = parseFloat(m.value);
+        if (!isNaN(val)) {
+          if (/step/.test(name)) metrics.steps = metrics.steps ?? val;
+          else if (/sleep/.test(name)) metrics.sleep = metrics.sleep ?? val;
+          else if (/protein/.test(name)) metrics.protein = metrics.protein ?? val;
+          else if (/weight/.test(name)) metrics.weight = metrics.weight ?? val;
+          else if (/calori/.test(name)) metrics.calories = metrics.calories ?? val;
+          else if (/heart|bpm/.test(name)) metrics.heart_rate = metrics.heart_rate ?? val;
+        }
+      });
+    }
+
+    if (Object.keys(metrics).length === 0) {
+      if (typeof toast === 'function') toast('No metrics found — make sure the screenshot shows steps, sleep, or protein.', 'info');
+      return;
+    }
+
+    // Fill shield inputs
+    let logged = [];
+    if (metrics.steps !== undefined) {
+      const el = document.getElementById('inputSteps');
+      if (el) { el.value = metrics.steps; logged.push(`${metrics.steps.toLocaleString()} steps`); }
+    }
+    if (metrics.sleep !== undefined) {
+      const el = document.getElementById('inputSleep');
+      if (el) { el.value = metrics.sleep; logged.push(`${metrics.sleep}h sleep`); }
+    }
+    if (metrics.protein !== undefined) {
+      const el = document.getElementById('inputProtein');
+      if (el) { el.value = metrics.protein; logged.push(`${metrics.protein}g protein`); }
+    }
+    if (metrics.weight !== undefined) {
+      const el = document.getElementById('inputGoalWt');
+      if (el && !el.value) { el.value = metrics.weight; logged.push(`${metrics.weight} lbs`); }
+    }
+
+    // Auto-update shield
+    if (typeof updateShield === 'function') await updateShield();
+    else if (typeof renderShield === 'function') {
+      const p = parseFloat(document.getElementById('inputProtein')?.value) || 0;
+      const s = parseFloat(document.getElementById('inputSteps')?.value) || 0;
+      const sl = parseFloat(document.getElementById('inputSleep')?.value) || 0;
+      renderShield(p, s, sl, today);
+    }
+
+    // Log to behavioral API
+    await _logWatchMetrics(metrics, today, h);
+
+    if (logged.length > 0) {
+      if (typeof toast === 'function') toast(`✓ Shield updated: ${logged.join(', ')}`, 'ok');
+      const lastEl = document.getElementById('shieldLastLogged');
+      if (lastEl) lastEl.textContent = `Synced from wearable: ${new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+    } else {
+      if (typeof toast === 'function') toast('Screenshot processed but no shield metrics found.', 'info');
+    }
+  } catch (err) {
+    console.error('[WATCH-SYNC]', err);
+    if (typeof toast === 'function') toast('Watch sync failed. Try a clearer screenshot.', 'err');
+  }
 }
 
 function _parseWatchMetrics(text) {
@@ -507,39 +533,43 @@ async function _loadPAAutoData() {
   const listEl = document.getElementById('paAutoDataList');
   if (!listEl) return;
   try {
-    const h = await _authHeaders();
-    if (!h) { listEl.textContent = 'Sign in to load your stored data.'; return; }
-    const [markersRes, memoriesRes] = await Promise.all([
-      fetch(_API + '/api/health-markers', { headers: h }),
-      fetch(_API + '/api/memory/facts', { headers: h }),
-    ]);
-    const markers = markersRes.ok ? await markersRes.json() : [];
-    const memData = memoriesRes.ok ? await memoriesRes.json() : {};
-    const memories = memData.facts || [];
+    // ── Use cached startup data (script.js / performance_patch.js already fetched this) ──
+    // Falls back to a single fetch only if cache is empty (e.g. first ever load)
+    let markers = window.__cachedMarkers || window.__startupCache?.markers || null;
+    let memories = window._cachedMemories || window.__startupCache?.memories || null;
 
-    const dataPoints = [];
-
-    // Extract key PA-relevant markers
-    const paMarkers = markers.filter(m => /bmi|weight|hba1c|glucose|ldl|hdl|triglyceride|crp|blood pressure/i.test(m.marker_name || ''));
-    paMarkers.slice(0, 6).forEach(m => {
-      const status = m.status && m.status !== 'UNKNOWN' ? ` [${m.status}]` : '';
-      dataPoints.push(`<span style="color:${m.status === 'HIGH' ? 'var(--danger,#f87171)' : m.status === 'LOW' ? 'var(--amber,#fbbf24)' : 'var(--ok,#4ade80)'}">${m.marker_name}: ${m.value} ${m.unit || ''}${status} (${m.date || ''})</span>`);
-    });
-
-    // Extract medication/GLP-1 memories
-    const medMemories = memories.filter(f => /glp|wegovy|ozempic|zepbound|mounjaro|stopped|started|medication|insurance|goal weight/i.test(f));
-    medMemories.slice(0, 3).forEach(m => {
-      dataPoints.push(`<span style="color:var(--text,#f0f2f5)">▸ ${escHtml(m)}</span>`);
-    });
-
-    if (dataPoints.length === 0) {
-      listEl.innerHTML = '<span style="color:var(--text-3);">No stored data found. Upload a lab report first to enable auto-population.</span>';
-    } else {
-      listEl.innerHTML = dataPoints.join('<br>');
+    if (!markers || !memories) {
+      const h = await _authHeaders();
+      if (!h) { listEl.textContent = 'Sign in to load your stored data.'; return; }
+      const [mRes, memRes] = await Promise.all([
+        fetch(_API + '/api/health-markers', { headers: h }),
+        fetch(_API + '/api/memory/facts', { headers: h }),
+      ]);
+      markers = mRes.ok ? await mRes.json() : [];
+      const memData = memRes.ok ? await memRes.json() : {};
+      memories = memData.facts || [];
+      // Cache for subsequent calls this session
+      window.__cachedMarkers = markers;
     }
 
-    // Auto-fill medication if stored
-    const glpMemory = memories.find(f => /wegovy|ozempic|zepbound|mounjaro/i.test(f));
+    const dataPoints = [];
+    const paMarkers = (markers || []).filter(m => /bmi|weight|hba1c|glucose|ldl|hdl|triglyceride|crp|blood pressure/i.test(m.marker_name || ''));
+    paMarkers.slice(0, 6).forEach(m => {
+      const status = m.status && m.status !== 'UNKNOWN' ? ` [${m.status}]` : '';
+      const color = m.status === 'HIGH' ? 'var(--danger,#f87171)' : m.status === 'LOW' ? 'var(--amber,#fbbf24)' : 'var(--ok,#4ade80)';
+      dataPoints.push(`<span style="color:${color}">${m.marker_name}: ${m.value} ${m.unit || ''}${status} (${m.date || ''})</span>`);
+    });
+
+    const memArr = Array.isArray(memories) ? memories : [];
+    memArr.filter(f => /glp|wegovy|ozempic|zepbound|mounjaro|stopped|started|medication|insurance|goal weight/i.test(f))
+      .slice(0, 3).forEach(m => dataPoints.push(`<span style="color:var(--text,#f0f2f5)">▸ ${escHtml(m)}</span>`));
+
+    listEl.innerHTML = dataPoints.length
+      ? dataPoints.join('<br>')
+      : '<span style="color:var(--text-3);">No stored data found. Upload a lab report first to enable auto-population.</span>';
+
+    // Auto-fill medication select
+    const glpMemory = memArr.find(f => /wegovy|ozempic|zepbound|mounjaro/i.test(f));
     if (glpMemory) {
       const medSel = document.getElementById('paMedication');
       if (medSel) {
@@ -549,19 +579,14 @@ async function _loadPAAutoData() {
         else if (/mounjaro/i.test(glpMemory)) medSel.value = 'Mounjaro (tirzepatide)';
       }
     }
-
-    // Auto-fill denial if stored
-    const deniedMemory = memories.find(f => /insurance denied|prior auth denied|not covered/i.test(f));
-    if (deniedMemory) {
+    if (memArr.find(f => /insurance denied|prior auth denied|not covered/i.test(f))) {
       const denialSel = document.getElementById('paDenialReason');
       if (denialSel) denialSel.value = 'not medically necessary';
     }
-
   } catch (e) {
-    listEl.innerHTML = `<span style="color:var(--text-3);">Could not load stored data: ${e.message}</span>`;
+    if (listEl) listEl.innerHTML = `<span style="color:var(--text-3);">Could not load stored data: ${e.message}</span>`;
   }
 }
-
 async function generatePAPacket() {
   const btn = document.getElementById('paBtn');
   const content = document.getElementById('paContent');
@@ -633,7 +658,27 @@ async function generatePAPacket() {
       <div style="background:var(--surface-2,#1a1d24);border-radius:10px;padding:14px;white-space:pre-wrap;font-size:.75rem;color:var(--text-2,#9aa3b0);line-height:1.75;max-height:340px;overflow-y:auto;margin-bottom:12px;font-family:monospace;">${escHtml(packet)}</div>
       ${missing.length ? `<div style="margin-bottom:12px;"><div style="font-size:.7rem;font-weight:700;color:var(--amber,#fbbf24);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">⚠ Would strengthen your case</div>${missing.map(m => `<div style="font-size:.78rem;color:var(--text-2);padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04);">• ${escHtml(m)}</div>`).join('')}</div>` : ''}
       ${steps.length ? `<div style="margin-bottom:12px;"><div style="font-size:.7rem;font-weight:700;color:var(--signal,#00d4c8);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Next Steps</div>${steps.map((s, i) => `<div style="font-size:.78rem;color:var(--text-2);padding:4px 0;">${i+1}. ${escHtml(s)}</div>`).join('')}</div>` : ''}
-      <button onclick="navigator.clipboard&&navigator.clipboard.writeText(document.querySelector('#paContent pre,#paContent div[style*=monospace]')?.innerText||'');typeof toast==='function'&&toast('PA packet copied ✓')" style="width:100%;padding:10px;background:var(--signal,#00d4c8);color:#0a0b0e;border:none;border-radius:8px;font-size:.84rem;font-weight:700;cursor:pointer;">Copy PA Packet for Provider</button>
+      <div style="background:var(--surface-2,#1a1d24);border:1px solid var(--border,rgba(255,255,255,.07));border-radius:10px;padding:14px;margin-bottom:10px;">
+        <div style="font-size:.68rem;font-weight:700;color:var(--signal,#00d4c8);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;">What to do now</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <div style="display:flex;gap:10px;align-items:flex-start;font-size:.78rem;color:var(--text-2);">
+            <span style="background:var(--signal,#00d4c8);color:#0a0b0e;width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:800;flex-shrink:0;margin-top:1px;">1</span>
+            <span><strong style="color:var(--text);">Copy the packet below</strong> and send it to your doctor's office or pharmacy — ask them to submit it as-is to your insurer.</span>
+          </div>
+          <div style="display:flex;gap:10px;align-items:flex-start;font-size:.78rem;color:var(--text-2);">
+            <span style="background:var(--signal,#00d4c8);color:#0a0b0e;width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:800;flex-shrink:0;margin-top:1px;">2</span>
+            <span><strong style="color:var(--text);">Call your insurer</strong> (number on your card) and ask them to open or reopen a Prior Authorization case. Reference your medication by name.</span>
+          </div>
+          <div style="display:flex;gap:10px;align-items:flex-start;font-size:.78rem;color:var(--text-2);">
+            <span style="background:var(--signal,#00d4c8);color:#0a0b0e;width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:800;flex-shrink:0;margin-top:1px;">3</span>
+            <span><strong style="color:var(--text);">Upload any denial letter</strong> to Curabook as a document — PHI will extract the exact denial language and strengthen your next appeal.</span>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button id="paCopyBtn" onclick="(function(){const txt=document.querySelector('#paContent div[style*=monospace]')?.innerText||'';navigator.clipboard&&navigator.clipboard.writeText(txt).then(()=>{const b=document.getElementById('paCopyBtn');if(b){b.textContent='Copied ✓';b.style.background='var(--ok,#4ade80)';setTimeout(()=>{b.textContent='Copy PA Packet';b.style.background='var(--signal,#00d4c8)'},2000);}}).catch(()=>{});if(typeof toast==='function')toast('PA packet copied ✓');})()" style="flex:1;padding:11px;background:var(--signal,#00d4c8);color:#0a0b0e;border:none;border-radius:8px;font-size:.84rem;font-weight:700;cursor:pointer;transition:background .2s;">Copy PA Packet</button>
+        <button onclick="(function(){const txt=document.querySelector('#paContent div[style*=monospace]')?.innerText||'';const med=document.getElementById('paMedication')?.value||'GLP-1';const sub=encodeURIComponent('Prior Authorization Support — '+med);const body=encodeURIComponent('Dear Doctor,\n\nPlease find my PA support packet below for your review and submission.\n\n'+txt+'\n\nThank you.');window.open('mailto:?subject='+sub+'&body='+body);})()" style="padding:11px 14px;background:var(--surface-3,#23272f);color:var(--text-2);border:1px solid var(--border);border-radius:8px;font-size:.84rem;cursor:pointer;font-weight:600;white-space:nowrap;">Email to Doctor</button>
+      </div>
     `;
   } catch (e) {
     if (content) content.innerHTML = `<div style="color:var(--danger,#f87171);font-size:.82rem;">${e.message}</div>`;
@@ -752,8 +797,12 @@ function initAppFixes() {
     removeCockpitQuickActions();
     initSyncWearable();
 
-    window.addEventListener('phi:authed', () => { setTimeout(() => refreshPlanDisplay(), 800); });
-    setTimeout(() => refreshPlanDisplay(), 2000);
+    // Refresh plan display when script.js signals auth complete
+    // Also listen for startup-complete event if script.js fires one
+    window.addEventListener('phi:authed', () => refreshPlanDisplay());
+    window.addEventListener('phi:startup', () => refreshPlanDisplay());
+    // Single deferred attempt in case events already fired before this script loaded
+    setTimeout(() => refreshPlanDisplay(), 800);
   }, 300);
 }
 
