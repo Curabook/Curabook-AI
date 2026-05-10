@@ -182,149 +182,229 @@ window.initUpgrade = initiatePayPalCheckout;
 // ══════════════════════════════════════════════════════════════════════════════
 async function processWatchScreenshot(file) {
   if (!file) return;
-
   if (typeof toast === 'function') toast('📸 Reading wearable screenshot…', 'info');
 
   try {
     const h = await _authHeaders();
     if (!h) { if (typeof toast === 'function') toast('Please sign in first.', 'err'); return; }
 
-    // Send image as multipart/form-data to /api/analyze — same endpoint used for lab reports
-    // It already handles GPT-4o Vision correctly. We inject a wearable-specific prompt via
-    // a hidden field so the backend knows what to extract.
-    const formData = new FormData();
-    formData.append('file', file, file.name || 'wearable.jpg');
-    formData.append('context', 'wearable_screenshot');
-    formData.append('prompt_override',
-      'This is a wearable device or fitness app screenshot. ' +
-      'Extract ONLY these metrics if visible: daily steps count, sleep duration in hours, ' +
-      'protein intake in grams, active calories burned, heart rate (bpm), weight (lbs or kg). ' +
-      'Reply in plain text. For each metric found write one line like: ' +
-      'Steps: 8432 | Sleep: 7.5h | Protein: 142g | Calories: 480 | HR: 72 bpm | Weight: 183 lbs. ' +
-      'If a metric is not visible, omit it. Do not guess or invent values.'
-    );
-
-    // Auth header for multipart — drop Content-Type so browser sets boundary automatically
     const authHeader = { 'Authorization': h['Authorization'] };
     const today = new Date().toISOString().slice(0, 10);
 
-    const res = await fetch(_API + '/analyze', { method: 'POST', headers: authHeader, body: formData });
-    if (!res.ok) {
-      const errText = await res.text().catch(() => res.status);
-      throw new Error('Vision API error: ' + errText);
+    // ── Step 1: Send image to /analyze to extract text ───────────────────────
+    // /analyze runs GPT-4o Vision + OCR and returns { document_text, summary, markers }
+    const formData = new FormData();
+    formData.append('file', file, file.name || 'wearable.jpg');
+    const analyzeRes = await fetch(_API + '/analyze', { method: 'POST', headers: authHeader, body: formData });
+    if (!analyzeRes.ok) {
+      const errText = await analyzeRes.text().catch(() => String(analyzeRes.status));
+      throw new Error('Could not read screenshot (' + errText + ')');
     }
-    const data = await res.json();
+    const analyzeData = await analyzeRes.json();
 
-    // /api/analyze returns { summary, markers, insights, ... }
-    // The raw AI text may be in summary, extracted_text, reply, or analysis
-    const reply = data.summary || data.reply || data.analysis || data.extracted_text || JSON.stringify(data);
+    // Gather everything /analyze returned as one text blob
+    const rawText = [
+      analyzeData.document_text || '',
+      analyzeData.summary || '',
+      analyzeData.extracted_text || '',
+      analyzeData.analysis || ''
+    ].filter(Boolean).join('\n');
 
-    const metrics = _parseWatchMetrics(reply);
+    // ── Step 2: Ask GPT via /chat to extract metrics as JSON ─────────────────
+    // This is 100x more reliable than regex — GPT understands any app's format
+    const convId = window._convId || ('watch-sync-' + Date.now());
+    const extractPrompt = `Below is text extracted from a wearable/fitness app screenshot.
+Extract ONLY these values and return ONLY a raw JSON object with no markdown, no explanation:
+{ "steps": <integer or null>, "sleep": <decimal hours or null>, "protein": <integer grams or null>, "weight": <decimal lbs or null>, "calories": <integer or null>, "heart_rate": <integer bpm or null> }
+If a value is not present in the text, use null. Do not guess.
 
-    // Also try parsing any structured markers the endpoint may have returned
-    if (data.markers && Array.isArray(data.markers)) {
-      data.markers.forEach(m => {
+TEXT:
+${rawText.slice(0, 2000)}`;
+
+    const chatRes = await fetch(_API + '/chat', {
+      method: 'POST',
+      headers: h,
+      body: JSON.stringify({ conversation_id: convId, message: extractPrompt, document_text: '', has_documents: false })
+    });
+
+    let metrics = {};
+    if (chatRes.ok) {
+      const chatData = await chatRes.json();
+      const reply = chatData.reply || chatData.message || '';
+      try {
+        // Strip any accidental markdown fences
+        const clean = reply.replace(/```json|```/gi, '').trim();
+        const parsed = JSON.parse(clean);
+        // Only accept reasonable values
+        if (parsed.steps != null && parsed.steps >= 0 && parsed.steps <= 100000) metrics.steps = Math.round(parsed.steps);
+        if (parsed.sleep != null && parsed.sleep >= 0 && parsed.sleep <= 14) metrics.sleep = parseFloat(parsed.sleep.toFixed(1));
+        if (parsed.protein != null && parsed.protein >= 0 && parsed.protein <= 500) metrics.protein = Math.round(parsed.protein);
+        if (parsed.weight != null && parsed.weight >= 50 && parsed.weight <= 700) metrics.weight = parseFloat(parsed.weight.toFixed(1));
+        if (parsed.calories != null && parsed.calories >= 0 && parsed.calories <= 10000) metrics.calories = Math.round(parsed.calories);
+        if (parsed.heart_rate != null && parsed.heart_rate >= 30 && parsed.heart_rate <= 250) metrics.heart_rate = Math.round(parsed.heart_rate);
+      } catch (_) {
+        // JSON parse failed — fall back to regex on the raw text
+        metrics = _parseWatchMetrics(rawText + '\n' + reply);
+      }
+    } else {
+      // /chat failed — try regex directly on analyze output
+      metrics = _parseWatchMetrics(rawText);
+    }
+
+    // ── Also absorb any structured markers /analyze returned ─────────────────
+    if (analyzeData.markers && Array.isArray(analyzeData.markers)) {
+      analyzeData.markers.forEach(m => {
         const name = (m.marker_name || m.name || '').toLowerCase();
         const val = parseFloat(m.value);
-        if (!isNaN(val)) {
-          if (/step/.test(name)) metrics.steps = metrics.steps ?? val;
-          else if (/sleep/.test(name)) metrics.sleep = metrics.sleep ?? val;
-          else if (/protein/.test(name)) metrics.protein = metrics.protein ?? val;
-          else if (/weight/.test(name)) metrics.weight = metrics.weight ?? val;
-          else if (/calori/.test(name)) metrics.calories = metrics.calories ?? val;
-          else if (/heart|bpm/.test(name)) metrics.heart_rate = metrics.heart_rate ?? val;
-        }
+        if (isNaN(val)) return;
+        if (/step/.test(name) && metrics.steps == null) metrics.steps = Math.round(val);
+        else if (/sleep/.test(name) && metrics.sleep == null) metrics.sleep = val;
+        else if (/protein/.test(name) && metrics.protein == null) metrics.protein = Math.round(val);
+        else if (/weight/.test(name) && metrics.weight == null) metrics.weight = val;
+        else if (/calori/.test(name) && metrics.calories == null) metrics.calories = Math.round(val);
+        else if (/heart|bpm/.test(name) && metrics.heart_rate == null) metrics.heart_rate = Math.round(val);
       });
     }
 
     if (Object.keys(metrics).length === 0) {
-      if (typeof toast === 'function') toast('No metrics found — make sure the screenshot shows steps, sleep, or protein.', 'info');
+      if (typeof toast === 'function') toast('No metrics found — try a clearer screenshot showing steps, sleep, or protein.', 'info');
       return;
     }
 
-    // Fill shield inputs
-    let logged = [];
-    if (metrics.steps !== undefined) {
+    // ── Fill shield inputs ────────────────────────────────────────────────────
+    const logged = [];
+    if (metrics.steps != null) {
       const el = document.getElementById('inputSteps');
-      if (el) { el.value = metrics.steps; logged.push(`${metrics.steps.toLocaleString()} steps`); }
+      if (el) { el.value = metrics.steps; logged.push(metrics.steps.toLocaleString() + ' steps'); }
     }
-    if (metrics.sleep !== undefined) {
+    if (metrics.sleep != null) {
       const el = document.getElementById('inputSleep');
-      if (el) { el.value = metrics.sleep; logged.push(`${metrics.sleep}h sleep`); }
+      if (el) { el.value = metrics.sleep; logged.push(metrics.sleep + 'h sleep'); }
     }
-    if (metrics.protein !== undefined) {
+    if (metrics.protein != null) {
       const el = document.getElementById('inputProtein');
-      if (el) { el.value = metrics.protein; logged.push(`${metrics.protein}g protein`); }
+      if (el) { el.value = metrics.protein; logged.push(metrics.protein + 'g protein'); }
     }
-    if (metrics.weight !== undefined) {
+    if (metrics.weight != null) {
       const el = document.getElementById('inputGoalWt');
-      if (el && !el.value) { el.value = metrics.weight; logged.push(`${metrics.weight} lbs`); }
+      if (el && !el.value) { el.value = metrics.weight; logged.push(metrics.weight + ' lbs'); }
     }
 
-    // Auto-update shield
+    // ── Trigger shield re-render ──────────────────────────────────────────────
     if (typeof updateShield === 'function') await updateShield();
     else if (typeof renderShield === 'function') {
-      const p = parseFloat(document.getElementById('inputProtein')?.value) || 0;
-      const s = parseFloat(document.getElementById('inputSteps')?.value) || 0;
-      const sl = parseFloat(document.getElementById('inputSleep')?.value) || 0;
-      renderShield(p, s, sl, today);
+      renderShield(
+        parseFloat(document.getElementById('inputProtein')?.value) || 0,
+        parseFloat(document.getElementById('inputSteps')?.value) || 0,
+        parseFloat(document.getElementById('inputSleep')?.value) || 0,
+        today
+      );
     }
 
-    // Log to behavioral API
+    // ── Log to behavioral API ─────────────────────────────────────────────────
     await _logWatchMetrics(metrics, today, h);
 
     if (logged.length > 0) {
-      if (typeof toast === 'function') toast(`✓ Shield updated: ${logged.join(', ')}`, 'ok');
+      if (typeof toast === 'function') toast('✓ Shield updated: ' + logged.join(', '), 'ok');
       const lastEl = document.getElementById('shieldLastLogged');
-      if (lastEl) lastEl.textContent = `Synced from wearable: ${new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+      if (lastEl) lastEl.textContent = 'Synced from wearable: ' + new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
     } else {
       if (typeof toast === 'function') toast('Screenshot processed but no shield metrics found.', 'info');
     }
+
   } catch (err) {
     console.error('[WATCH-SYNC]', err);
-    if (typeof toast === 'function') toast('Watch sync failed. Try a clearer screenshot.', 'err');
+    if (typeof toast === 'function') toast('Watch sync failed: ' + err.message, 'err');
   }
 }
-
 function _parseWatchMetrics(text) {
-  const metrics = {};
-  const lower = text.toLowerCase();
+  // Fallback-only regex parser. Covers Apple Health, Samsung Health, Fitbit,
+  // Garmin, MyFitnessPal, Cronometer, Whoop, Google Fit common formats.
+  const m = {};
+  const t = text;
 
-  // Steps
-  const stepsMatch = text.match(/(\d{1,3}(?:,\d{3})*|\d+)\s*(?:steps?|step count)/i)
-    || text.match(/steps?[:\s]+(\d{1,3}(?:,\d{3})*|\d+)/i);
-  if (stepsMatch) {
-    const val = parseInt(stepsMatch[1].replace(/,/g, ''));
-    if (val >= 0 && val <= 100000) metrics.steps = val;
+  // ── Steps ──────────────────────────────────────────────────────────────────
+  // "8,432 steps" | "Steps: 8432" | "8432 Steps" | "steps\n8,432" | "8.4K steps"
+  const stepsPatterns = [
+    /(\d{1,3}(?:,\d{3})+)\s*steps?/i,            // 8,432 steps
+    /(\d{4,6})\s*steps?/i,                       // 8432 steps
+    /steps?\s*[:\-]?\s*(\d{1,3}(?:,\d{3})*|\d+)/i, // Steps: 8432
+    /(\d+(?:\.\d)?)\s*[Kk]\s*steps?/i,            // 8.4K steps (handle below)
+  ];
+  for (const p of stepsPatterns) {
+    const match = t.match(p);
+    if (match) {
+      let val = match[1].includes('K') || match[1].includes('k')
+        ? parseFloat(match[1]) * 1000
+        : parseInt(match[1].replace(/,/g, ''));
+      if (val >= 0 && val <= 100000) { m.steps = Math.round(val); break; }
+    }
+  }
+  // K-steps special case: "8.4K"
+  if (!m.steps) {
+    const k = t.match(/(\d+(?:\.\d)?)\s*[Kk]\s*steps?/i);
+    if (k) { const v = parseFloat(k[1]) * 1000; if (v <= 100000) m.steps = Math.round(v); }
   }
 
-  // Sleep
-  const sleepMatch = text.match(/(\d+(?:\.\d)?)\s*(?:h(?:ours?)?|hrs?)\s*(?:of\s+)?sleep/i)
-    || text.match(/sleep[:\s]+(\d+(?:\.\d)?)\s*(?:h(?:ours?)?|hrs?)?/i);
-  if (sleepMatch) {
-    const val = parseFloat(sleepMatch[1]);
-    if (val >= 0 && val <= 14) metrics.sleep = val;
+  // ── Sleep ──────────────────────────────────────────────────────────────────
+  // "7h 23m" | "7.5h" | "7 hrs sleep" | "Sleep: 7h 30m" | "7:30 sleep"
+  // Handle "Xh Ym" → convert to decimal hours
+  const hmMatch = t.match(/(\d+)\s*h(?:ours?|rs?)?\s*(\d+)\s*m(?:in)?/i)
+    || t.match(/sleep\s*[:\-]?\s*(\d+)\s*h[^\d]*(\d+)\s*m/i);
+  if (hmMatch) {
+    const val = parseInt(hmMatch[1]) + parseInt(hmMatch[2]) / 60;
+    if (val >= 0 && val <= 14) m.sleep = parseFloat(val.toFixed(1));
+  }
+  if (!m.sleep) {
+    const sleepPatterns = [
+      /(\d+(?:\.\d+)?)\s*h(?:ours?|rs?)?\s*(?:of\s+)?sleep/i,
+      /sleep\s*[:\-]?\s*(\d+(?:\.\d+)?)\s*h/i,
+      /slept\s*[:\-]?\s*(\d+(?:\.\d+)?)/i,
+      /(\d+(?:\.\d+)?)\s*hours?\s*slept/i,
+    ];
+    for (const p of sleepPatterns) {
+      const match = t.match(p);
+      if (match) {
+        const val = parseFloat(match[1]);
+        if (val >= 0 && val <= 14) { m.sleep = val; break; }
+      }
+    }
   }
 
-  // Protein
-  const proteinMatch = text.match(/protein[:\s]+(\d+)\s*(?:g|grams?)/i)
-    || text.match(/(\d+)\s*(?:g|grams?)\s*(?:of\s+)?protein/i);
-  if (proteinMatch) {
-    const val = parseInt(proteinMatch[1]);
-    if (val >= 0 && val <= 400) metrics.protein = val;
+  // ── Protein ────────────────────────────────────────────────────────────────
+  // "Protein 142g" | "protein: 142 g" | "142g protein" | "Protein\n142"
+  const proteinPatterns = [
+    /protein\s*[:\-]?\s*(\d+)\s*g/i,
+    /(\d+)\s*g\s*(?:of\s+)?protein/i,
+    /protein\s*[:\-]?\s*(\d+)(?!\s*\d)/i,   // "Protein: 142" with no unit
+  ];
+  for (const p of proteinPatterns) {
+    const match = t.match(p);
+    if (match) {
+      const val = parseInt(match[1]);
+      if (val >= 0 && val <= 500) { m.protein = val; break; }
+    }
   }
 
-  // Calories (store but don't fill shield)
-  const calMatch = text.match(/(\d+)\s*(?:kcal|calories|cal)\s*(?:burned|active)?/i);
-  if (calMatch) metrics.calories = parseInt(calMatch[1]);
+  // ── Calories ───────────────────────────────────────────────────────────────
+  const calMatch = t.match(/(\d{3,5})\s*(?:kcal|cal(?:ories?)?)/i)
+    || t.match(/(?:kcal|cal(?:ories?)?)\s*[:\-]?\s*(\d{3,5})/i)
+    || t.match(/(?:active|burned|energy)\s*[:\-]?\s*(\d{3,5})/i);
+  if (calMatch) { const v = parseInt(calMatch[1]); if (v <= 10000) m.calories = v; }
 
-  // Heart rate (don't fill shield but useful)
-  const hrMatch = text.match(/(\d+)\s*(?:bpm|heart rate)/i);
-  if (hrMatch) metrics.heart_rate = parseInt(hrMatch[1]);
+  // ── Heart rate ─────────────────────────────────────────────────────────────
+  const hrMatch = t.match(/(\d{2,3})\s*bpm/i)
+    || t.match(/heart\s*rate\s*[:\-]?\s*(\d{2,3})/i)
+    || t.match(/(?:resting|avg|average)\s*(?:hr|heart)\s*[:\-]?\s*(\d{2,3})/i);
+  if (hrMatch) { const v = parseInt(hrMatch[1]); if (v >= 30 && v <= 250) m.heart_rate = v; }
 
-  return metrics;
+  // ── Weight ─────────────────────────────────────────────────────────────────
+  const wtMatch = t.match(/(\d{2,3}(?:\.\d)?)\s*(?:lbs?|pounds?)/i)
+    || t.match(/weight\s*[:\-]?\s*(\d{2,3}(?:\.\d)?)/i);
+  if (wtMatch) { const v = parseFloat(wtMatch[1]); if (v >= 50 && v <= 700) m.weight = v; }
+
+  return m;
 }
-
 async function _logWatchMetrics(metrics, date, headers) {
   const metricsToLog = ['protein', 'steps', 'sleep'];
   for (const metric of metricsToLog) {
