@@ -8,257 +8,202 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
-/* ── LIGHT THEME — matches index.html ── */
 :root {
-  --bg:          #fafafa;
-  --surface:     #ffffff;
-  --surface-2:   #f4f5f7;
-  --surface-3:   #e9eaec;
-  --text:        #111111;
-  --text-2:      #6b7280;
-  --text-3:      #9ca3af;
-  --border:      #e5e7eb;
-  --border-2:    #d1d5db;
-  --signal:      #00BCD5;
-  --signal-2:    #0097a7;
-  --signal-dim:  rgba(0,188,213,.08);
-  --signal-glow: rgba(0,188,213,.20);
-  --danger:      #ef4444;
-  --danger-dim:  rgba(239,68,68,.10);
-  --amber:       #f59e0b;
-  --amber-dim:   rgba(245,158,11,.10);
-  --ok:          #10b981;
-  --ok-dim:      rgba(16,185,129,.10);
-  --serif: 'Playfair Display', Georgia, serif;
-  --sans:  'Plus Jakarta Sans', system-ui, sans-serif;
-  --mono:  'DM Mono', monospace;
-  --r:    12px;
-  --r-lg: 16px;
-  --touch: 48px;
+  --bg:#fafafa;--surface:#ffffff;--surface-2:#f4f5f7;--surface-3:#e9eaec;
+  --text:#111111;--text-2:#6b7280;--text-3:#9ca3af;
+  --border:#e5e7eb;--border-2:#d1d5db;
+  --signal:#00BCD5;--signal-2:#0097a7;--signal-dim:rgba(0,188,213,.08);--signal-glow:rgba(0,188,213,.20);
+  --danger:#ef4444;--danger-dim:rgba(239,68,68,.10);
+  --amber:#f59e0b;--amber-dim:rgba(245,158,11,.10);
+  --ok:#10b981;--ok-dim:rgba(16,185,129,.10);
+  --serif:'Playfair Display',Georgia,serif;--sans:'Plus Jakarta Sans',system-ui,sans-serif;--mono:'DM Mono',monospace;
+  --r:12px;--r-lg:16px;--touch:48px;
 }
-*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
-html { font-size:15px; }
-body { font-family:var(--sans); background:var(--bg); color:var(--text); min-height:100vh; -webkit-font-smoothing:antialiased; line-height:1.6; }
-button { cursor:pointer; font-family:inherit; border:none; background:none; }
-input,textarea,select { font-family:inherit; font-size:inherit; }
-a { text-decoration:none; color:inherit; }
-*{ scrollbar-width:thin; scrollbar-color:var(--surface-3) transparent; }
-::-webkit-scrollbar{ width:4px; } ::-webkit-scrollbar-thumb{ background:var(--surface-3); border-radius:99px; }
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+html{font-size:15px;}
+body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:100vh;-webkit-font-smoothing:antialiased;line-height:1.6;}
+button{cursor:pointer;font-family:inherit;border:none;background:none;}
+input,textarea,select{font-family:inherit;font-size:inherit;}
+a{text-decoration:none;color:inherit;}
+*{scrollbar-width:thin;scrollbar-color:var(--surface-3) transparent;}
+::-webkit-scrollbar{width:4px;}::-webkit-scrollbar-thumb{background:var(--surface-3);border-radius:99px;}
 
-/* ── TOPBAR — matches app topbar exactly ── */
-.topbar {
-  position:fixed; top:0; left:0; right:0; z-index:100;
-  height:56px; background:var(--surface); border-bottom:1px solid var(--border);
-  display:flex; align-items:center; justify-content:space-between;
-  padding:0 max(16px,4vw);
-}
-.topbar-brand { display:flex; align-items:center; gap:9px; }
-.topbar-mark {
-  width:34px; height:34px;
-  background:linear-gradient(135deg,var(--signal),var(--signal-2));
-  border-radius:10px; display:flex; align-items:center; justify-content:center;
-  font-family:var(--serif); font-size:1rem; color:#0a0b0e; font-weight:600;
-  box-shadow:0 2px 12px var(--signal-glow);
-}
-.topbar-name { font-size:.9rem; font-weight:600; color:var(--text-2); letter-spacing:.04em; }
-.topbar-pill {
-  font-size:.6rem; font-weight:700; letter-spacing:.14em; text-transform:uppercase;
-  background:var(--signal-dim); color:var(--signal);
-  border:1px solid rgba(0,188,213,.2); border-radius:20px; padding:2px 8px;
-}
-.topbar-cta {
-  display:inline-flex; align-items:center; gap:6px;
-  padding:9px 18px; background:var(--signal); color:#0a0b0e;
-  border-radius:var(--r); font-size:.82rem; font-weight:700;
-  transition:all .15s; box-shadow:0 2px 10px var(--signal-glow);
-}
-.topbar-cta:hover { background:var(--signal-2); }
+.topbar{position:fixed;top:0;left:0;right:0;z-index:100;height:56px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 max(16px,4vw);}
+.topbar-brand{display:flex;align-items:center;gap:9px;}
+.topbar-mark{width:34px;height:34px;background:linear-gradient(135deg,var(--signal),var(--signal-2));border-radius:10px;display:flex;align-items:center;justify-content:center;font-family:var(--serif);font-size:1rem;color:#0a0b0e;font-weight:600;box-shadow:0 2px 12px var(--signal-glow);}
+.topbar-name{font-size:.9rem;font-weight:600;color:var(--text-2);letter-spacing:.04em;}
+.topbar-pill{font-size:.6rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;background:var(--signal-dim);color:var(--signal);border:1px solid rgba(0,188,213,.2);border-radius:20px;padding:2px 8px;}
+.topbar-actions{display:flex;align-items:center;gap:8px;}
+.topbar-cta{display:inline-flex;align-items:center;gap:6px;padding:9px 18px;background:var(--signal);color:#0a0b0e;border-radius:var(--r);font-size:.82rem;font-weight:700;transition:all .15s;box-shadow:0 2px 10px var(--signal-glow);}
+.topbar-cta:hover{background:var(--signal-2);}
+.topbar-app-btn{display:inline-flex;align-items:center;gap:6px;padding:9px 16px;background:none;border:1.5px solid var(--border-2);border-radius:var(--r);font-size:.82rem;font-weight:600;color:var(--text-2);transition:all .15s;}
+.topbar-app-btn:hover{border-color:var(--signal);color:var(--signal);}
 
-/* ── HERO ── */
-.hero { max-width:800px; margin:0 auto; padding:100px 20px 52px; text-align:center; }
-.hero-badge {
-  display:inline-flex; align-items:center; gap:7px;
-  padding:6px 14px; background:var(--signal-dim);
-  border:1px solid rgba(0,188,213,.2); border-radius:20px;
-  font-size:.74rem; font-weight:700; color:var(--signal);
-  letter-spacing:.06em; text-transform:uppercase; margin-bottom:24px;
-}
-.hero-badge-dot { width:6px; height:6px; border-radius:50%; background:var(--signal); animation:pulseDot 2s ease infinite; flex-shrink:0; }
-@keyframes pulseDot { 0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(0,188,213,.4)} 50%{opacity:.6;box-shadow:0 0 0 5px rgba(0,188,213,0)} }
-.hero h1 { font-family:var(--serif); font-size:clamp(2rem,5.5vw,3.6rem); font-weight:400; line-height:1.15; margin-bottom:18px; }
-.hero h1 em { font-style:italic; color:var(--signal); }
-.hero-sub { font-size:clamp(.88rem,2vw,1.05rem); color:var(--text-2); line-height:1.7; max-width:560px; margin:0 auto 36px; }
-.hero-stats { display:flex; align-items:center; justify-content:center; gap:12px; flex-wrap:wrap; margin-bottom:52px; }
-.stat-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--r); padding:16px 20px; text-align:center; min-width:120px; }
-.stat-num { font-family:var(--mono); font-size:1.7rem; font-weight:500; color:var(--signal); line-height:1; }
-.stat-label { font-size:.7rem; color:var(--text-3); margin-top:5px; line-height:1.4; }
+/* Auth banner */
+.auth-banner{background:linear-gradient(135deg,var(--signal-dim),rgba(0,158,175,.04));border:1px solid rgba(0,188,213,.2);border-radius:var(--r-lg);padding:18px 22px;margin-bottom:24px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+.auth-banner-icon{width:40px;height:40px;border-radius:10px;background:var(--signal-dim);border:1px solid rgba(0,188,213,.2);display:flex;align-items:center;justify-content:center;color:var(--signal);font-size:1.1rem;flex-shrink:0;}
+.auth-banner-text h4{font-size:.9rem;font-weight:700;color:var(--text);margin-bottom:3px;}
+.auth-banner-text p{font-size:.78rem;color:var(--text-2);line-height:1.5;}
+.auth-badge{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;background:var(--ok-dim);border:1px solid rgba(16,185,129,.2);border-radius:20px;font-size:.68rem;font-weight:700;color:var(--ok);}
+.auth-badge.no{background:var(--amber-dim);border-color:rgba(245,158,11,.2);color:var(--amber);}
 
-/* ── PAIN QUOTES ── */
-.pain { max-width:860px; margin:0 auto; padding:0 20px 56px; }
-.pain-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; }
-.pain-card { background:var(--surface); border:1px solid var(--border); border-left:3px solid var(--danger); border-radius:var(--r); padding:18px; }
-.pain-quote { font-family:var(--serif); font-style:italic; font-size:.88rem; color:var(--text); line-height:1.65; margin-bottom:10px; }
-.pain-label { font-size:.68rem; color:var(--text-3); letter-spacing:.05em; text-transform:uppercase; }
+.hero{max-width:800px;margin:0 auto;padding:88px 20px 48px;text-align:center;}
+.hero-badge{display:inline-flex;align-items:center;gap:7px;padding:6px 14px;background:var(--signal-dim);border:1px solid rgba(0,188,213,.2);border-radius:20px;font-size:.74rem;font-weight:700;color:var(--signal);letter-spacing:.06em;text-transform:uppercase;margin-bottom:24px;}
+.hero-badge-dot{width:6px;height:6px;border-radius:50%;background:var(--signal);animation:pulseDot 2s ease infinite;flex-shrink:0;}
+@keyframes pulseDot{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(0,188,213,.4)}50%{opacity:.6;box-shadow:0 0 0 5px rgba(0,188,213,0)}}
+.hero h1{font-family:var(--serif);font-size:clamp(2rem,5.5vw,3.6rem);font-weight:400;line-height:1.15;margin-bottom:18px;}
+.hero h1 em{font-style:italic;color:var(--signal);}
+.hero-sub{font-size:clamp(.88rem,2vw,1.05rem);color:var(--text-2);line-height:1.7;max-width:560px;margin:0 auto 36px;}
 
-/* ── TOOL SECTION ── */
-.tool-section { background:var(--surface); border-top:1px solid var(--border); border-bottom:1px solid var(--border); padding:56px 20px; }
-.tool-inner { max-width:760px; margin:0 auto; }
-.section-label { display:inline-flex; align-items:center; gap:8px; font-size:.68rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--text-3); margin-bottom:14px; }
-.section-label::before { content:''; width:24px; height:1px; background:var(--text-3); }
-.tool-title { font-family:var(--serif); font-size:clamp(1.6rem,4vw,2.2rem); font-weight:400; margin-bottom:6px; color:var(--text); line-height:1.2; }
-.tool-sub { font-size:.88rem; color:var(--text-2); margin-bottom:36px; line-height:1.65; }
+.tool-section{background:var(--surface);border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:56px 20px;}
+.tool-inner{max-width:800px;margin:0 auto;}
+.section-label{display:inline-flex;align-items:center;gap:8px;font-size:.68rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text-3);margin-bottom:14px;}
+.section-label::before{content:'';width:24px;height:1px;background:var(--text-3);}
+.tool-title{font-family:var(--serif);font-size:clamp(1.6rem,4vw,2.2rem);font-weight:400;margin-bottom:6px;color:var(--text);line-height:1.2;}
+.tool-sub{font-size:.88rem;color:var(--text-2);margin-bottom:36px;line-height:1.65;}
 
-/* Step tabs */
-.steps-nav { display:flex; margin-bottom:36px; background:var(--surface-2); border:1px solid var(--border); border-radius:var(--r); overflow:hidden; }
-.step-tab { flex:1; padding:13px 10px; display:flex; align-items:center; justify-content:center; gap:7px; font-size:.78rem; font-weight:500; color:var(--text-3); border-right:1px solid var(--border); transition:all .2s; cursor:pointer; min-height:var(--touch); }
-.step-tab:last-child { border-right:none; }
-.step-tab.active { background:var(--signal-dim); color:var(--signal); }
-.step-tab.done { background:var(--ok-dim); color:var(--ok); }
-.step-tab:hover:not(.active):not(.done) { background:var(--surface-3); color:var(--text-2); }
-.step-num { width:20px; height:20px; border-radius:50%; background:var(--surface-3); color:var(--text-3); display:flex; align-items:center; justify-content:center; font-size:.65rem; font-weight:700; flex-shrink:0; }
-.step-tab.active .step-num { background:var(--signal); color:#0a0b0e; }
-.step-tab.done .step-num { background:var(--ok); color:#0a0b0e; }
+/* Auto-data section */
+.auto-data-section{background:var(--signal-dim);border:1px solid rgba(0,188,213,.2);border-radius:var(--r-lg);padding:20px 24px;margin-bottom:28px;}
+.auto-data-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px;}
+.auto-data-title{font-size:.8rem;font-weight:700;color:var(--signal);display:flex;align-items:center;gap:7px;}
+.auto-data-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;}
+.auto-data-item{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:10px 13px;}
+.auto-data-item-name{font-size:.66rem;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px;}
+.auto-data-item-value{font-family:var(--mono);font-size:.9rem;color:var(--text);font-weight:500;}
+.auto-data-item-value.high{color:var(--danger);}
+.auto-data-item-value.low{color:var(--amber);}
+.auto-data-item-value.normal{color:var(--ok);}
+.auto-data-item-date{font-size:.64rem;color:var(--text-3);margin-top:2px;}
+.auto-data-memories{margin-top:10px;}
+.auto-data-memory{font-size:.76rem;color:var(--text-2);padding:5px 0;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;gap:6px;}
+.auto-data-memory:last-child{border-bottom:none;}
+.auto-data-empty{font-size:.82rem;color:var(--text-2);text-align:center;padding:16px 0;}
 
-.form-panel { display:none; animation:fadeUp .3s ease; }
-.form-panel.active { display:block; }
-@keyframes fadeUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+.steps-nav{display:flex;margin-bottom:36px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r);overflow:hidden;}
+.step-tab{flex:1;padding:13px 10px;display:flex;align-items:center;justify-content:center;gap:7px;font-size:.78rem;font-weight:500;color:var(--text-3);border-right:1px solid var(--border);transition:all .2s;cursor:pointer;min-height:var(--touch);}
+.step-tab:last-child{border-right:none;}
+.step-tab.active{background:var(--signal-dim);color:var(--signal);}
+.step-tab.done{background:var(--ok-dim);color:var(--ok);}
+.step-tab:hover:not(.active):not(.done){background:var(--surface-3);color:var(--text-2);}
+.step-num{width:20px;height:20px;border-radius:50%;background:var(--surface-3);color:var(--text-3);display:flex;align-items:center;justify-content:center;font-size:.65rem;font-weight:700;flex-shrink:0;}
+.step-tab.active .step-num{background:var(--signal);color:#0a0b0e;}
+.step-tab.done .step-num{background:var(--ok);color:#0a0b0e;}
 
-.field-group { margin-bottom:22px; }
-.field-label { display:block; font-size:.82rem; font-weight:600; color:var(--text); margin-bottom:8px; }
-.field-hint { font-size:.73rem; color:var(--text-3); margin-top:5px; line-height:1.5; }
-.field-input { width:100%; padding:12px 14px; min-height:var(--touch); background:var(--surface-2); border:1.5px solid var(--border); border-radius:var(--r); color:var(--text); font-size:.88rem; outline:none; transition:border-color .2s,box-shadow .2s; }
-.field-input:focus { border-color:var(--signal); box-shadow:0 0 0 3px var(--signal-dim); }
-.field-input::placeholder { color:var(--text-3); }
-.field-select { appearance:none; cursor:pointer; }
-.field-textarea { resize:vertical; min-height:90px; }
+.form-panel{display:none;animation:fadeUp .3s ease;}
+.form-panel.active{display:block;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 
-.radio-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(156px,1fr)); gap:9px; }
-.radio-card { position:relative; cursor:pointer; }
-.radio-card input { position:absolute; opacity:0; }
-.radio-card-inner { display:flex; align-items:center; gap:9px; padding:13px 14px; min-height:var(--touch); border:1.5px solid var(--border); border-radius:var(--r); background:var(--surface-2); transition:all .15s; font-size:.82rem; font-weight:500; color:var(--text-2); }
-.radio-card-inner:hover { border-color:var(--border-2); color:var(--text); }
-.radio-card input:checked + .radio-card-inner { border-color:var(--signal); background:var(--signal-dim); color:var(--signal); }
-.radio-card-icon { font-size:1.1rem; flex-shrink:0; }
-.radio-card-check { width:16px; height:16px; border-radius:50%; border:1.5px solid var(--border-2); margin-left:auto; flex-shrink:0; transition:all .15s; }
-.radio-card input:checked + .radio-card-inner .radio-card-check { background:var(--signal); border-color:var(--signal); }
+.field-group{margin-bottom:22px;}
+.field-label{display:block;font-size:.82rem;font-weight:600;color:var(--text);margin-bottom:8px;}
+.field-label-hint{font-size:.72rem;color:var(--text-3);margin-bottom:8px;display:block;margin-top:-4px;}
+.field-input{width:100%;padding:12px 14px;min-height:var(--touch);background:var(--surface-2);border:1.5px solid var(--border);border-radius:var(--r);color:var(--text);font-size:.88rem;outline:none;transition:border-color .2s,box-shadow .2s;}
+.field-input:focus{border-color:var(--signal);box-shadow:0 0 0 3px var(--signal-dim);}
+.field-input::placeholder{color:var(--text-3);}
+.field-input.has-auto{border-color:var(--signal);background:linear-gradient(135deg,var(--signal-dim),var(--surface-2));}
+.auto-badge{display:inline-flex;align-items:center;gap:4px;font-size:.63rem;font-weight:700;color:var(--signal);background:var(--signal-dim);border:1px solid rgba(0,188,213,.2);border-radius:10px;padding:2px 7px;margin-left:6px;}
+.field-textarea{resize:vertical;min-height:80px;}
+.field-select{appearance:none;cursor:pointer;}
 
-.upload-zone { border:2px dashed var(--border); border-radius:var(--r-lg); padding:36px 20px; text-align:center; cursor:pointer; transition:all .2s; background:var(--surface-2); position:relative; }
-.upload-zone:hover,.upload-zone.drag-over { border-color:var(--signal); background:var(--surface-3); }
-.upload-zone.has-file { border-style:solid; border-color:var(--ok); background:var(--ok-dim); }
-.upload-icon { font-size:1.8rem; margin-bottom:10px; color:var(--text-3); }
-.upload-zone.has-file .upload-icon { color:var(--ok); }
-.upload-title { font-size:.88rem; font-weight:600; color:var(--text); margin-bottom:4px; }
-.upload-hint { font-size:.74rem; color:var(--text-3); }
-.upload-zone input { position:absolute; inset:0; opacity:0; cursor:pointer; }
+.radio-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:9px;}
+.radio-card{position:relative;cursor:pointer;}
+.radio-card input{position:absolute;opacity:0;}
+.radio-card-inner{display:flex;align-items:center;gap:9px;padding:13px 14px;min-height:var(--touch);border:1.5px solid var(--border);border-radius:var(--r);background:var(--surface-2);transition:all .15s;font-size:.82rem;font-weight:500;color:var(--text-2);}
+.radio-card-inner:hover{border-color:var(--border-2);color:var(--text);}
+.radio-card input:checked+.radio-card-inner{border-color:var(--signal);background:var(--signal-dim);color:var(--signal);}
+.radio-card-icon{font-size:1.1rem;flex-shrink:0;}
+.radio-card-check{width:16px;height:16px;border-radius:50%;border:1.5px solid var(--border-2);margin-left:auto;flex-shrink:0;transition:all .15s;}
+.radio-card input:checked+.radio-card-inner .radio-card-check{background:var(--signal);border-color:var(--signal);}
 
-.checkbox-list { display:flex; flex-direction:column; gap:9px; }
-.checkbox-item { display:flex; align-items:flex-start; gap:10px; cursor:pointer; }
-.checkbox-item input { margin-top:3px; accent-color:var(--signal); flex-shrink:0; }
-.checkbox-item span { font-size:.83rem; line-height:1.55; color:var(--text-2); }
+.checkbox-list{display:flex;flex-direction:column;gap:9px;}
+.checkbox-item{display:flex;align-items:flex-start;gap:10px;cursor:pointer;}
+.checkbox-item input{margin-top:3px;accent-color:var(--signal);flex-shrink:0;}
+.checkbox-item span{font-size:.83rem;line-height:1.55;color:var(--text-2);}
 
-.btn-primary { display:inline-flex; align-items:center; gap:8px; padding:13px 26px; min-height:var(--touch); background:var(--signal); color:#0a0b0e; border:none; border-radius:var(--r); font-family:var(--sans); font-size:.9rem; font-weight:700; cursor:pointer; transition:all .15s; box-shadow:0 2px 10px var(--signal-glow); }
-.btn-primary:hover { background:var(--signal-2); transform:translateY(-1px); }
-.btn-primary:disabled { opacity:.5; cursor:not-allowed; transform:none; }
-.btn-secondary { display:inline-flex; align-items:center; gap:8px; padding:13px 26px; min-height:var(--touch); background:var(--surface-2); color:var(--text-2); border:1.5px solid var(--border); border-radius:var(--r); font-family:var(--sans); font-size:.9rem; font-weight:500; cursor:pointer; transition:all .15s; }
-.btn-secondary:hover { border-color:var(--border-2); color:var(--text); }
-.btn-row { display:flex; gap:10px; align-items:center; margin-top:28px; flex-wrap:wrap; }
+.btn-primary{display:inline-flex;align-items:center;gap:8px;padding:13px 26px;min-height:var(--touch);background:var(--signal);color:#0a0b0e;border:none;border-radius:var(--r);font-family:var(--sans);font-size:.9rem;font-weight:700;cursor:pointer;transition:all .15s;box-shadow:0 2px 10px var(--signal-glow);}
+.btn-primary:hover{background:var(--signal-2);transform:translateY(-1px);}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed;transform:none;}
+.btn-secondary{display:inline-flex;align-items:center;gap:8px;padding:13px 26px;min-height:var(--touch);background:var(--surface-2);color:var(--text-2);border:1.5px solid var(--border);border-radius:var(--r);font-family:var(--sans);font-size:.9rem;font-weight:500;cursor:pointer;transition:all .15s;}
+.btn-secondary:hover{border-color:var(--border-2);color:var(--text);}
+.btn-row{display:flex;gap:10px;align-items:center;margin-top:28px;flex-wrap:wrap;}
 
-/* Result */
-.result-panel { display:none; animation:fadeUp .4s ease; }
-.result-panel.active { display:block; }
-.result-header { background:var(--surface-2); border:1px solid var(--border); border-radius:var(--r-lg) var(--r-lg) 0 0; padding:28px; display:flex; gap:16px; align-items:flex-start; border-bottom:1px solid var(--border); }
-.result-icon-wrap { width:48px; height:48px; border-radius:var(--r); background:var(--signal-dim); border:1px solid rgba(0,188,213,.2); display:flex; align-items:center; justify-content:center; color:var(--signal); font-size:1.3rem; flex-shrink:0; }
-.result-title { font-family:var(--serif); font-size:1.4rem; font-weight:400; color:var(--text); margin-bottom:4px; }
-.result-sub { font-size:.8rem; color:var(--text-3); line-height:1.5; }
-.result-body { background:var(--surface); border:1px solid var(--border); border-top:none; border-radius:0 0 var(--r-lg) var(--r-lg); overflow:hidden; }
-.evidence-section { padding:24px 28px; border-bottom:1px solid var(--border); }
-.evidence-section:last-child { border-bottom:none; }
-.evidence-label { font-size:.65rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--text-3); margin-bottom:14px; display:flex; align-items:center; gap:8px; }
-.evidence-label::after { content:''; flex:1; height:1px; background:var(--border); }
+.result-panel{display:none;animation:fadeUp .4s ease;}
+.result-panel.active{display:block;}
+.result-header{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-lg) var(--r-lg) 0 0;padding:28px;display:flex;gap:16px;align-items:flex-start;border-bottom:1px solid var(--border);}
+.result-icon-wrap{width:48px;height:48px;border-radius:var(--r);background:var(--signal-dim);border:1px solid rgba(0,188,213,.2);display:flex;align-items:center;justify-content:center;color:var(--signal);font-size:1.3rem;flex-shrink:0;}
+.result-title{font-family:var(--serif);font-size:1.4rem;font-weight:400;color:var(--text);margin-bottom:4px;}
+.result-sub{font-size:.8rem;color:var(--text-3);line-height:1.5;}
+.result-body{background:var(--surface);border:1px solid var(--border);border-top:none;border-radius:0 0 var(--r-lg) var(--r-lg);overflow:hidden;}
+.evidence-section{padding:24px 28px;border-bottom:1px solid var(--border);}
+.evidence-section:last-child{border-bottom:none;}
+.evidence-label{font-size:.65rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text-3);margin-bottom:14px;display:flex;align-items:center;gap:8px;}
+.evidence-label::after{content:'';flex:1;height:1px;background:var(--border);}
 
-.strength-bar-wrap { display:flex; align-items:center; gap:12px; margin-bottom:10px; }
-.strength-bar { flex:1; height:6px; background:var(--surface-3); border-radius:3px; overflow:hidden; }
-.strength-fill { height:100%; border-radius:3px; background:var(--ok); transition:width 1.4s cubic-bezier(.4,0,.2,1); }
-.strength-label { font-family:var(--mono); font-size:.76rem; color:var(--ok); white-space:nowrap; }
-.strength-desc { font-size:.78rem; color:var(--text-3); line-height:1.5; }
+.strength-bar-wrap{display:flex;align-items:center;gap:12px;margin-bottom:10px;}
+.strength-bar{flex:1;height:6px;background:var(--surface-3);border-radius:3px;overflow:hidden;}
+.strength-fill{height:100%;border-radius:3px;background:var(--ok);transition:width 1.4s cubic-bezier(.4,0,.2,1);}
+.strength-label{font-family:var(--mono);font-size:.76rem;color:var(--ok);white-space:nowrap;}
+.strength-desc{font-size:.78rem;color:var(--text-3);line-height:1.5;}
 
-.pa-fact-list { display:flex; flex-direction:column; gap:8px; }
-.pa-fact { display:flex; align-items:flex-start; gap:10px; padding:11px 14px; border-radius:var(--r); background:var(--surface-2); border:1px solid var(--border); font-size:.82rem; line-height:1.55; color:var(--text-2); }
-.pa-fact.strong { background:var(--ok-dim); border-color:rgba(74,222,128,.2); color:var(--text); }
-.pa-fact.warning { background:var(--amber-dim); border-color:rgba(251,191,36,.2); color:var(--text); }
-.pa-fact.missing { background:var(--danger-dim); border-color:rgba(248,113,113,.15); }
-.pa-fact-icon { flex-shrink:0; font-size:.82rem; margin-top:2px; }
+.pa-fact-list{display:flex;flex-direction:column;gap:8px;}
+.pa-fact{display:flex;align-items:flex-start;gap:10px;padding:11px 14px;border-radius:var(--r);background:var(--surface-2);border:1px solid var(--border);font-size:.82rem;line-height:1.55;color:var(--text-2);}
+.pa-fact.strong{background:var(--ok-dim);border-color:rgba(74,222,128,.2);color:var(--text);}
+.pa-fact.warning{background:var(--amber-dim);border-color:rgba(251,191,36,.2);color:var(--text);}
+.pa-fact.missing{background:var(--danger-dim);border-color:rgba(248,113,113,.15);}
+.pa-fact-icon{flex-shrink:0;font-size:.82rem;margin-top:2px;}
 
-.pa-packet-text { background:var(--surface-2); border:1px solid var(--border); border-radius:var(--r); padding:18px; font-family:var(--mono); font-size:.74rem; line-height:1.85; color:var(--text-2); white-space:pre-wrap; max-height:380px; overflow-y:auto; }
+.pa-packet-text{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r);padding:18px;font-family:var(--mono);font-size:.74rem;line-height:1.85;color:var(--text-2);white-space:pre-wrap;max-height:380px;overflow-y:auto;}
 
-.missing-list { display:flex; flex-direction:column; gap:6px; }
-.missing-item { display:flex; gap:9px; align-items:flex-start; font-size:.81rem; color:var(--text-2); line-height:1.55; padding:8px 0; border-bottom:1px solid var(--border); }
-.missing-item:last-child { border-bottom:none; }
+.missing-list{display:flex;flex-direction:column;gap:6px;}
+.missing-item{display:flex;gap:9px;align-items:flex-start;font-size:.81rem;color:var(--text-2);line-height:1.55;padding:8px 0;border-bottom:1px solid var(--border);}
+.missing-item:last-child{border-bottom:none;}
 
-.next-step-list { display:flex; flex-direction:column; gap:9px; counter-reset:step; }
-.next-step { display:flex; gap:12px; align-items:flex-start; font-size:.83rem; line-height:1.55; counter-increment:step; color:var(--text-2); }
-.next-step::before { content:counter(step); flex-shrink:0; width:22px; height:22px; background:var(--signal); color:#0a0b0e; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:.68rem; font-weight:700; margin-top:2px; }
+.next-step-list{display:flex;flex-direction:column;gap:9px;counter-reset:step;}
+.next-step{display:flex;gap:12px;align-items:flex-start;font-size:.83rem;line-height:1.55;counter-increment:step;color:var(--text-2);}
+.next-step::before{content:counter(step);flex-shrink:0;width:22px;height:22px;background:var(--signal);color:#0a0b0e;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.68rem;font-weight:700;margin-top:2px;}
 
-.result-actions { display:flex; gap:9px; flex-wrap:wrap; padding:20px 28px; background:var(--surface-2); border-top:1px solid var(--border); }
-.btn-action { display:inline-flex; align-items:center; gap:6px; padding:10px 18px; min-height:40px; border-radius:var(--r); font-family:var(--sans); font-size:.82rem; font-weight:600; cursor:pointer; transition:all .15s; border:none; }
-.btn-action.primary { background:var(--signal); color:#0a0b0e; box-shadow:0 2px 8px var(--signal-glow); }
-.btn-action.primary:hover { background:var(--signal-2); }
-.btn-action.secondary { background:var(--surface-3); color:var(--text-2); border:1px solid var(--border); }
-.btn-action.secondary:hover { border-color:var(--border-2); color:var(--text); }
+.result-actions{display:flex;gap:9px;flex-wrap:wrap;padding:20px 28px;background:var(--surface-2);border-top:1px solid var(--border);}
+.btn-action{display:inline-flex;align-items:center;gap:6px;padding:10px 18px;min-height:40px;border-radius:var(--r);font-family:var(--sans);font-size:.82rem;font-weight:600;cursor:pointer;transition:all .15s;border:none;}
+.btn-action.primary{background:var(--signal);color:#0a0b0e;box-shadow:0 2px 8px var(--signal-glow);}
+.btn-action.primary:hover{background:var(--signal-2);}
+.btn-action.secondary{background:var(--surface-3);color:var(--text-2);border:1px solid var(--border);}
+.btn-action.secondary:hover{border-color:var(--border-2);color:var(--text);}
 
-/* Loading */
-.loading-overlay { display:none; text-align:center; padding:52px 20px; }
-.loading-overlay.active { display:block; animation:fadeUp .3s ease; }
-.loading-ring { width:52px; height:52px; border:3px solid var(--border-2); border-top-color:var(--signal); border-radius:50%; animation:spin .7s linear infinite; margin:0 auto 20px; }
-@keyframes spin { to{transform:rotate(360deg)} }
-.loading-title { font-family:var(--serif); font-size:1.3rem; font-weight:400; margin-bottom:6px; color:var(--text); }
-.loading-sub { font-size:.82rem; color:var(--text-3); margin-bottom:20px; }
-.loading-steps { display:flex; flex-direction:column; gap:6px; max-width:340px; margin:0 auto; }
-.loading-step { display:flex; align-items:center; gap:9px; font-size:.8rem; color:var(--text-3); padding:9px 14px; border-radius:var(--r); background:var(--surface-2); text-align:left; }
-.loading-step.done { color:var(--ok); background:var(--ok-dim); }
-.loading-step.current { color:var(--text); background:var(--surface-3); font-weight:500; border:1px solid var(--border-2); }
+.loading-overlay{display:none;text-align:center;padding:52px 20px;}
+.loading-overlay.active{display:block;animation:fadeUp .3s ease;}
+.loading-ring{width:52px;height:52px;border:3px solid var(--border-2);border-top-color:var(--signal);border-radius:50%;animation:spin .7s linear infinite;margin:0 auto 20px;}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-title{font-family:var(--serif);font-size:1.3rem;font-weight:400;margin-bottom:6px;color:var(--text);}
+.loading-sub{font-size:.82rem;color:var(--text-3);margin-bottom:20px;}
+.loading-steps{display:flex;flex-direction:column;gap:6px;max-width:340px;margin:0 auto;}
+.loading-step{display:flex;align-items:center;gap:9px;font-size:.8rem;color:var(--text-3);padding:9px 14px;border-radius:var(--r);background:var(--surface-2);text-align:left;}
+.loading-step.done{color:var(--ok);background:var(--ok-dim);}
+.loading-step.current{color:var(--text);background:var(--surface-3);font-weight:500;border:1px solid var(--border-2);}
 
-/* How section */
-.how-section { padding:72px 20px; max-width:860px; margin:0 auto; }
-.how-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:28px; margin-top:36px; }
-.how-num { font-family:var(--serif); font-size:3.2rem; font-weight:400; color:rgba(255,255,255,.05); line-height:1; margin-bottom:6px; }
-.how-title { font-family:var(--serif); font-size:1rem; font-weight:400; color:var(--text); margin-bottom:7px; }
-.how-desc { font-size:.8rem; color:var(--text-3); line-height:1.7; }
+.share-bar{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-lg);padding:22px 24px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:24px;}
+.share-btns{display:flex;gap:8px;}
+.share-btn{display:inline-flex;align-items:center;gap:6px;padding:9px 16px;min-height:38px;border-radius:var(--r);font-size:.78rem;font-weight:600;cursor:pointer;font-family:var(--sans);border:none;transition:all .15s;}
+.share-btn.reddit{background:#FF4500;color:white;}
+.share-btn.copy{background:var(--surface-3);color:var(--text-2);border:1px solid var(--border-2);}
+.share-btn.copy:hover{color:var(--text);border-color:var(--signal);}
 
-/* Share + upsell */
-.share-bar { background:var(--surface-2); border:1px solid var(--border); border-radius:var(--r-lg); padding:22px 24px; display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-top:24px; }
-.share-bar-title { font-weight:600; font-size:.88rem; color:var(--text); margin-bottom:2px; }
-.share-bar-sub { font-size:.74rem; color:var(--text-3); }
-.share-btns { display:flex; gap:8px; }
-.share-btn { display:inline-flex; align-items:center; gap:6px; padding:9px 16px; min-height:38px; border-radius:var(--r); font-size:.78rem; font-weight:600; cursor:pointer; font-family:var(--sans); border:none; transition:all .15s; }
-.share-btn.reddit { background:#FF4500; color:white; }
-.share-btn.reddit:hover { background:#e03d00; }
-.share-btn.copy { background:var(--surface-3); color:var(--text-2); border:1px solid var(--border-2); }
-.share-btn.copy:hover { color:var(--text); border-color:var(--signal); }
+.upsell-block{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-lg);padding:24px;margin-top:16px;display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap;}
+.upsell-features{display:flex;flex-direction:column;gap:6px;font-size:.78rem;color:var(--text-3);min-width:180px;}
+.upsell-features span{display:flex;align-items:center;gap:6px;}
+.upsell-features i{color:var(--ok);width:14px;}
+.upsell-cta{display:inline-flex;align-items:center;gap:7px;padding:11px 22px;min-height:42px;background:var(--signal);color:#0a0b0e;border-radius:var(--r);font-size:.84rem;font-weight:700;box-shadow:0 3px 12px var(--signal-glow);transition:all .15s;}
+.upsell-cta:hover{background:var(--signal-2);}
 
-.upsell-block { background:var(--surface-2); border:1px solid var(--border); border-radius:var(--r-lg); padding:24px; margin-top:16px; display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap; }
-.upsell-features { display:flex; flex-direction:column; gap:6px; font-size:.78rem; color:var(--text-3); min-width:180px; }
-.upsell-features span { display:flex; align-items:center; gap:6px; }
-.upsell-features i { color:var(--ok); width:14px; }
-.upsell-cta { display:inline-flex; align-items:center; gap:7px; padding:11px 22px; min-height:42px; background:var(--signal); color:#0a0b0e; border-radius:var(--r); font-size:.84rem; font-weight:700; box-shadow:0 3px 12px var(--signal-glow); transition:all .15s; }
-.upsell-cta:hover { background:var(--signal-2); }
+footer{border-top:1px solid var(--border);padding:36px max(16px,5vw);display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center;}
+.footer-links{display:flex;gap:20px;}
+.footer-links a{font-size:.78rem;color:var(--text-3);transition:color .15s;}
+.footer-links a:hover{color:var(--signal);}
+.footer-legal{font-size:.71rem;color:var(--text-3);max-width:580px;line-height:1.65;}
 
-/* Footer */
-.footer { border-top:1px solid var(--border); padding:36px max(16px,5vw); display:flex; flex-direction:column; align-items:center; gap:14px; text-align:center; }
-.footer-links { display:flex; gap:20px; }
-.footer-links a { font-size:.78rem; color:var(--text-3); transition:color .15s; }
-.footer-links a:hover { color:var(--signal); }
-.footer-legal { font-size:.71rem; color:var(--text-3); max-width:580px; line-height:1.65; }
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid var(--border-2);color:var(--text);padding:12px 20px;border-radius:var(--r);font-size:.84rem;font-weight:500;z-index:999;display:none;white-space:nowrap;box-shadow:0 6px 20px rgba(0,0,0,.15);}
 
-#toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--surface); border:1px solid var(--border-2); color:var(--text); padding:12px 20px; border-radius:var(--r); font-size:.84rem; font-weight:500; z-index:999; display:none; white-space:nowrap; box-shadow:0 6px 20px rgba(0,0,0,.4); animation:slideUp .2s ease; }
-@keyframes slideUp { from{opacity:0;transform:translateX(-50%) translateY(10px)} to{opacity:1;transform:translateX(-50%) translateY(0)} }
-
-@media(max-width:640px) {
-  .steps-nav { flex-wrap:wrap; } .step-tab { min-width:80px; font-size:.7rem; padding:10px 6px; }
-  .result-header,.evidence-section,.result-actions { padding:18px 20px; }
-  .topbar-cta span { display:none; }
-}
+@media(max-width:640px){.steps-nav{flex-wrap:wrap;}.step-tab{min-width:80px;font-size:.7rem;padding:10px 6px;}.result-header,.evidence-section,.result-actions{padding:18px 20px;}.topbar-app-btn span{display:none;}.topbar-cta span{display:none;}}
 </style>
 </head>
 <body>
@@ -269,36 +214,40 @@ a { text-decoration:none; color:inherit; }
     <span class="topbar-name">Curabook</span>
     <span class="topbar-pill">PHI</span>
   </div>
-  <a href="/signup" class="topbar-cta">
-    <i class="fa-solid fa-shield-halved"></i>
-    <span>Full PHI Access</span>
-  </a>
+  <div class="topbar-actions">
+    <a href="/app" class="topbar-app-btn" id="appLink" style="display:none;">
+      <i class="fa-solid fa-grid-2"></i><span>My PHI</span>
+    </a>
+    <a href="/signup" class="topbar-cta">
+      <i class="fa-solid fa-shield-halved"></i><span>Full PHI Access</span>
+    </a>
+  </div>
 </nav>
 
 <section class="hero">
   <div class="hero-badge"><span class="hero-badge-dot"></span>Insurance denied your GLP-1?</div>
   <h1>Your denial letter has<br><em>a specific weakness.</em></h1>
-  <p class="hero-sub">PHI reads the clinical gaps in your case and builds a physician-ready prior authorization appeal packet using the same criteria insurers use to deny you. 2 minutes. Free.</p>
-  <div class="hero-stats">
-    <div class="stat-card"><div class="stat-num">73%</div><div class="stat-label">of PA denials reversed<br>on appeal with complete docs</div></div>
-    <div class="stat-card"><div class="stat-num">$1,350</div><div class="stat-label">avg monthly cost<br>without coverage</div></div>
-    <div class="stat-card"><div class="stat-num">2 min</div><div class="stat-label">to build your<br>complete packet</div></div>
-  </div>
-</section>
-
-<section class="pain">
-  <div class="pain-grid">
-    <div class="pain-card"><div class="pain-quote">"The denial says my doctor didn't provide sufficient information. What does that even mean?"</div><div class="pain-label">r/Wegovy · 2 days ago</div></div>
-    <div class="pain-card"><div class="pain-quote">"Insurance denied me because I'm not 'diabetic enough.' My A1C is 5.9%."</div><div class="pain-label">r/Ozempic · 1 week ago</div></div>
-    <div class="pain-card"><div class="pain-quote">"PA nightmare. Did everything right and still got denied. Feeling completely abandoned."</div><div class="pain-label">r/Zepbound · 3 days ago</div></div>
-  </div>
+  <p class="hero-sub">PHI reads your stored lab data and builds a physician-ready prior authorization appeal packet using the same clinical criteria insurers use to deny you. 2 minutes. Free. If you're logged in, your data auto-populates.</p>
 </section>
 
 <section class="tool-section">
   <div class="tool-inner">
     <div class="section-label">The PA Architect</div>
     <h2 class="tool-title">Build your appeal packet</h2>
-    <p class="tool-sub">No account. No login. 2 minutes. The packet goes to your doctor — not directly to your insurer.</p>
+    <p class="tool-sub">Your stored health data auto-fills the form. Add anything missing, then generate your packet.</p>
+
+    <!-- Auth status + auto-data -->
+    <div id="authBannerSection"></div>
+
+    <!-- Auto-populated data display -->
+    <div class="auto-data-section" id="autoDataSection" style="display:none;">
+      <div class="auto-data-header">
+        <div class="auto-data-title"><i class="fa-solid fa-database"></i> Auto-populated from your PHI health memory</div>
+        <span class="auth-badge" id="dataCountBadge">Loading…</span>
+      </div>
+      <div class="auto-data-grid" id="autoMarkersGrid"></div>
+      <div class="auto-data-memories" id="autoMemoriesList"></div>
+    </div>
 
     <div class="steps-nav">
       <button class="step-tab active" id="tab1" onclick="goToStep(1)"><span class="step-num">1</span>Medication</button>
@@ -319,7 +268,7 @@ a { text-decoration:none; color:inherit; }
         </div>
       </div>
       <div class="field-group">
-        <label class="field-label">How long have you been on this medication?</label>
+        <label class="field-label">How long have you been on / were you on this medication?</label>
         <select class="field-input field-select" id="duration">
           <option value="">Select duration</option>
           <option value="currently seeking initial coverage">Not yet started — seeking initial PA</option>
@@ -352,14 +301,13 @@ a { text-decoration:none; color:inherit; }
           <option value="BMI below plan threshold or comorbidity not documented">BMI below threshold</option>
           <option value="not diabetic enough — HbA1c below plan threshold">HbA1c not high enough</option>
           <option value="medication not on formulary for this indication">Not on formulary</option>
-          <option value="patient does not meet clinical criteria per plan guidelines">Doesn't meet clinical criteria (vague)</option>
           <option value="requires additional clinical information from prescribing physician">Insufficient info from doctor</option>
           <option value="coverage excluded — weight loss drugs excluded from plan">Weight loss drugs excluded</option>
         </select>
       </div>
       <div class="field-group">
-        <label class="field-label">Exact language from the denial letter <span style="font-weight:400;color:var(--text-3)">(optional)</span></label>
-        <textarea class="field-input field-textarea" id="denialText" placeholder="e.g. 'Denied because the prescribing physician did not provide documentation...'"></textarea>
+        <label class="field-label">Exact language from the denial letter <span style="font-weight:400;color:var(--text-3)">(optional but strengthens the case)</span></label>
+        <textarea class="field-input field-textarea" id="denialText" placeholder="e.g. 'Denied because the prescribing physician did not provide documentation…'"></textarea>
       </div>
       <div class="field-group">
         <label class="field-label">Insurance plan type</label>
@@ -379,29 +327,23 @@ a { text-decoration:none; color:inherit; }
       </div>
     </div>
 
-    <!-- Step 3 -->
+    <!-- Step 3 — auto + manual -->
     <div class="form-panel" id="panel3">
-      <p style="font-size:.82rem;color:var(--text-3);margin-bottom:22px;line-height:1.65;">Enter your most recent lab values. Even partial data helps.</p>
+      <p style="font-size:.82rem;color:var(--text-2);margin-bottom:16px;background:var(--signal-dim);border:1px solid rgba(0,188,213,.2);border-radius:var(--r);padding:10px 14px;display:flex;align-items:center;gap:7px;">
+        <i class="fa-solid fa-wand-magic-sparkles" style="color:var(--signal);"></i>
+        Values auto-populated from your stored data are highlighted. Edit or supplement as needed.
+      </p>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:22px;">
-        <div class="field-group"><label class="field-label">BMI</label><input type="number" class="field-input" id="bmi" placeholder="e.g. 34.2" min="15" max="70" step=".1"><div class="field-hint">≥30 = obesity criterion</div></div>
-        <div class="field-group"><label class="field-label">Weight (lbs)</label><input type="number" class="field-input" id="weight" placeholder="e.g. 215" min="80" max="500"></div>
-        <div class="field-group"><label class="field-label">HbA1c (%)</label><input type="number" class="field-input" id="hba1c" placeholder="e.g. 5.9" min="3" max="15" step=".1"><div class="field-hint">≥5.7 pre-diabetes; ≥6.5 diabetes</div></div>
-        <div class="field-group"><label class="field-label">Fasting Glucose (mg/dL)</label><input type="number" class="field-input" id="glucose" placeholder="e.g. 112"></div>
-        <div class="field-group"><label class="field-label">LDL Cholesterol (mg/dL)</label><input type="number" class="field-input" id="ldl" placeholder="e.g. 145"></div>
-        <div class="field-group"><label class="field-label">Blood Pressure</label><input type="text" class="field-input" id="bp" placeholder="e.g. 138/88"></div>
+        <div class="field-group"><label class="field-label">BMI <span id="bmiBadge"></span></label><input type="number" class="field-input" id="bmi" placeholder="e.g. 34.2" min="15" max="70" step=".1"><div style="font-size:.72rem;color:var(--text-3);margin-top:4px;">≥30 = obesity criterion</div></div>
+        <div class="field-group"><label class="field-label">Weight (lbs) <span id="weightBadge"></span></label><input type="number" class="field-input" id="weight" placeholder="e.g. 215" min="80" max="500"></div>
+        <div class="field-group"><label class="field-label">HbA1c (%) <span id="hba1cBadge"></span></label><input type="number" class="field-input" id="hba1c" placeholder="e.g. 5.9" min="3" max="15" step=".1"><div style="font-size:.72rem;color:var(--text-3);margin-top:4px;">≥5.7 pre-diabetes; ≥6.5 diabetes</div></div>
+        <div class="field-group"><label class="field-label">Fasting Glucose (mg/dL) <span id="glucoseBadge"></span></label><input type="number" class="field-input" id="glucose" placeholder="e.g. 112"></div>
+        <div class="field-group"><label class="field-label">LDL (mg/dL) <span id="ldlBadge"></span></label><input type="number" class="field-input" id="ldl" placeholder="e.g. 145"></div>
+        <div class="field-group"><label class="field-label">Blood Pressure <span id="bpBadge"></span></label><input type="text" class="field-input" id="bp" placeholder="e.g. 138/88"></div>
       </div>
       <div class="field-group">
-        <label class="field-label">Upload a lab report <span style="font-weight:400;color:var(--text-3)">(optional)</span></label>
-        <div class="upload-zone" id="uploadZone" onclick="document.getElementById('labFile').click()">
-          <div class="upload-icon"><i class="fa-solid fa-file-medical"></i></div>
-          <div class="upload-title" id="uploadTitle">Drop lab report here or click to upload</div>
-          <div class="upload-hint">PDF, image, or TXT · Not stored · Processed for values only</div>
-          <input type="file" id="labFile" accept=".pdf,.txt,.jpg,.jpeg,.png,.webp" onchange="handleFileUpload(this)">
-        </div>
-      </div>
-      <div class="field-group">
-        <label class="field-label">Previous weight loss medications tried <span style="font-weight:400;color:var(--text-3)">(step therapy)</span></label>
-        <div class="checkbox-list">
+        <label class="field-label">Previous weight loss medications tried <span style="font-weight:400;color:var(--text-3)">(step therapy evidence)</span></label>
+        <div class="checkbox-list" id="priorMedList">
           <label class="checkbox-item"><input type="checkbox" value="Metformin" class="prior-med"><span>Metformin (only works in ~50% of patients)</span></label>
           <label class="checkbox-item"><input type="checkbox" value="phentermine or qsymia" class="prior-med"><span>Phentermine / Qsymia</span></label>
           <label class="checkbox-item"><input type="checkbox" value="Contrave (naltrexone/bupropion)" class="prior-med"><span>Contrave</span></label>
@@ -418,9 +360,9 @@ a { text-decoration:none; color:inherit; }
     <!-- Step 4 -->
     <div class="form-panel" id="panel4">
       <div class="field-group">
-        <label class="field-label">Relevant health conditions</label>
-        <p class="field-hint" style="margin-bottom:12px;">Check all that apply — these are comorbidities that meet the BMI ≥27 + comorbidity criterion.</p>
-        <div class="checkbox-list">
+        <label class="field-label">Relevant health conditions <span id="comorbBadge"></span></label>
+        <p style="font-size:.76rem;color:var(--text-2);margin-bottom:12px;">These satisfy the BMI ≥27 + comorbidity criterion. Auto-checked from your health memory where detected.</p>
+        <div class="checkbox-list" id="comorbList">
           <label class="checkbox-item"><input type="checkbox" value="Type 2 Diabetes (T2DM)" class="comorbidity"><span>Type 2 Diabetes (T2DM)</span></label>
           <label class="checkbox-item"><input type="checkbox" value="Prediabetes / impaired fasting glucose" class="comorbidity"><span>Prediabetes / impaired fasting glucose</span></label>
           <label class="checkbox-item"><input type="checkbox" value="Hypertension (high blood pressure)" class="comorbidity"><span>Hypertension (high blood pressure)</span></label>
@@ -429,13 +371,12 @@ a { text-decoration:none; color:inherit; }
           <label class="checkbox-item"><input type="checkbox" value="Non-alcoholic fatty liver disease (NAFLD/NASH)" class="comorbidity"><span>Fatty liver disease (NAFLD/NASH)</span></label>
           <label class="checkbox-item"><input type="checkbox" value="Polycystic ovary syndrome (PCOS)" class="comorbidity"><span>PCOS</span></label>
           <label class="checkbox-item"><input type="checkbox" value="Established cardiovascular disease (CVD, CAD, prior MI or stroke)" class="comorbidity"><span>Established cardiovascular disease</span></label>
-          <label class="checkbox-item"><input type="checkbox" value="Hidradenitis Suppurativa (HS) — GLP-1s shown effective in clinical trials" class="comorbidity"><span>Hidradenitis Suppurativa (HS)</span></label>
           <label class="checkbox-item"><input type="checkbox" value="Chronic kidney disease (CKD)" class="comorbidity"><span>Chronic kidney disease (CKD)</span></label>
         </div>
       </div>
       <div class="field-group">
-        <label class="field-label">Anything else your doctor should emphasize? <span style="font-weight:400;color:var(--text-3)">(optional)</span></label>
-        <textarea class="field-input field-textarea" id="additionalContext" placeholder="e.g. 'I was on Zepbound for 8 months and lost 27 lbs. Stopping caused my glucose to rebound significantly.'" style="min-height:80px;"></textarea>
+        <label class="field-label">Additional context for your provider <span style="font-weight:400;color:var(--text-3)">(optional — supplements auto-populated data)</span></label>
+        <textarea class="field-input field-textarea" id="additionalContext" placeholder="e.g. 'I was on Zepbound for 8 months and lost 27 lbs. Stopping caused my glucose to rebound significantly. My endocrinologist supports continuation.'" style="min-height:80px;"></textarea>
       </div>
       <div class="btn-row">
         <button class="btn-secondary" onclick="goToStep(3)"><i class="fa-solid fa-arrow-left"></i> Back</button>
@@ -479,35 +420,23 @@ a { text-decoration:none; color:inherit; }
         </div>
       </div>
       <div class="share-bar">
-        <div style="flex:1;"><div class="share-bar-title">Help someone else fight their denial</div><div class="share-bar-sub">Share this tool with anyone facing a GLP-1 PA nightmare</div></div>
+        <div style="flex:1;"><div style="font-weight:600;font-size:.88rem;color:var(--text);margin-bottom:2px;">Help someone else fight their denial</div><div style="font-size:.74rem;color:var(--text-3);">Share this tool with anyone facing a GLP-1 PA nightmare</div></div>
         <div class="share-btns"><button class="share-btn reddit" onclick="shareReddit()"><i class="fa-brands fa-reddit"></i> Reddit</button><button class="share-btn copy" onclick="copyLink()"><i class="fa-solid fa-link"></i> Copy Link</button></div>
       </div>
-      <div class="upsell-block">
+      <div class="upsell-block" id="upsellBlock">
         <div style="flex:1;min-width:220px;">
-          <div style="font-family:var(--serif);font-size:1.1rem;font-weight:400;color:var(--text);margin-bottom:6px;">Want PHI to monitor your appeal and track your rebound?</div>
-          <p style="font-size:.82rem;color:var(--text-3);line-height:1.65;margin-bottom:16px;">Upload your lab reports, track glucose rebound in real time, and build stronger PA cases as your data accumulates.</p>
+          <div style="font-family:var(--serif);font-size:1.1rem;font-weight:400;color:var(--text);margin-bottom:6px;">Want PHI to monitor your appeal and track your rebound in real time?</div>
+          <p style="font-size:.82rem;color:var(--text-2);line-height:1.65;margin-bottom:16px;">Upload your lab reports, track glucose rebound, and build stronger PA cases as your data accumulates.</p>
           <a href="/signup" class="upsell-cta">Start Free — No Credit Card <i class="fa-solid fa-arrow-right"></i></a>
         </div>
         <div class="upsell-features">
           <span><i class="fa-solid fa-check"></i>Unlimited lab report uploads</span>
           <span><i class="fa-solid fa-check"></i>Glucose rebound cliff alerts</span>
-          <span><i class="fa-solid fa-check"></i>Food Noise Emergency Protocol</span>
           <span><i class="fa-solid fa-check"></i>Muscle Defense protein tracking</span>
           <span><i class="fa-solid fa-check"></i>Stronger PA packets from real data</span>
         </div>
       </div>
     </div>
-  </div>
-</section>
-
-<section class="how-section">
-  <div class="section-label">How It Works</div>
-  <h2 style="font-family:var(--serif);font-size:clamp(1.5rem,4vw,2rem);font-weight:400;max-width:480px;line-height:1.25;color:var(--text);margin-bottom:0;">Four questions. One packet your doctor can use immediately.</h2>
-  <div class="how-grid">
-    <div class="how-step"><div class="how-num">01</div><div class="how-title">Tell PHI what was denied</div><div class="how-desc">Select your medication and denial reason. PHI knows which clinical gaps insurers exploit.</div></div>
-    <div class="how-step"><div class="how-num">02</div><div class="how-title">Share your lab data</div><div class="how-desc">Type your values or upload a lab report. PHI extracts numbers and maps them to PA criteria.</div></div>
-    <div class="how-step"><div class="how-num">03</div><div class="how-title">PHI builds the packet</div><div class="how-desc">Evidence is scored, missing data flagged, and physician-ready documentation is generated.</div></div>
-    <div class="how-step"><div class="how-num">04</div><div class="how-title">Bring it to your doctor</div><div class="how-desc">Print or copy the packet. Your provider fills in chart specifics — you show up prepared.</div></div>
   </div>
 </section>
 
@@ -519,128 +448,408 @@ a { text-decoration:none; color:inherit; }
 <div id="toast"></div>
 
 <script>
-const API = window.location.hostname==='localhost'?'http://localhost:5000':'https://api.curabook.com';
-let generatedPacket='',fileUploaded=null;
+const API = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://api.curabook.com';
+const SUPABASE_URL = "https://pbeaawlxdcrdbvlmpqhc.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBiZWFhd2x4ZGNyZGJ2bG1wcWhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwMDk0MzksImV4cCI6MjA5MTU4NTQzOX0.6bUpYrDbe0mQjjBHX8Qscj-5R8i4-SqAtW_Z1UFzJ10";
 
-function goToStep(n){
-  document.querySelectorAll('.form-panel').forEach(p=>p.classList.remove('active'));
-  document.getElementById(`panel${n}`).classList.add('active');
-  document.querySelectorAll('.step-tab').forEach((t,i)=>{
-    t.classList.remove('active','done');
-    const sn=t.querySelector('.step-num');
-    if(i+1<n){t.classList.add('done');sn.innerHTML='<i class="fa-solid fa-check" style="font-size:.55rem"></i>';}
-    else if(i+1===n){t.classList.add('active');sn.textContent=i+1;}
-    else sn.textContent=i+1;
-  });
-  document.querySelector('.tool-inner').scrollIntoView({behavior:'smooth',block:'start'});
-}
-function nextStep(from){
-  if(from===1){
-    if(!document.querySelector('input[name="med"]:checked')){toast('Select the denied medication');return;}
-    if(!document.querySelector('input[name="reason"]:checked')){toast('Select your treatment reason');return;}
+let _sb = null;
+let _session = null;
+let _storedMarkers = [];
+let _storedMemories = [];
+let generatedPacket = '';
+
+// ── Supabase init ─────────────────────────────────────────────────────────────
+(async () => {
+  try {
+    _sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: true } });
+    const { data } = await _sb.auth.getSession();
+    _session = data?.session;
+    if (_session?.user) {
+      document.getElementById('appLink').style.display = 'flex';
+      renderAuthBanner(true, _session.user.email);
+      await loadStoredData();
+    } else {
+      renderAuthBanner(false);
+    }
+  } catch (e) {
+    console.warn('[APPEAL] Supabase init error:', e);
+    renderAuthBanner(false);
   }
-  if(from===2&&!document.getElementById('denialReason').value){toast('Select the denial reason');return;}
-  goToStep(from+1);
+})();
+
+function renderAuthBanner(isLoggedIn, email) {
+  const el = document.getElementById('authBannerSection');
+  if (!el) return;
+  if (isLoggedIn) {
+    el.innerHTML = `
+      <div class="auth-banner">
+        <div class="auth-icon-wrap" style="width:40px;height:40px;border-radius:10px;background:var(--ok-dim);border:1px solid rgba(16,185,129,.2);display:flex;align-items:center;justify-content:center;color:var(--ok);font-size:1.1rem;flex-shrink:0;"><i class="fa-solid fa-check"></i></div>
+        <div class="auth-banner-text" style="flex:1;">
+          <h4>Signed in as ${escHtml(email || 'you')} <span class="auth-badge">✓ Data auto-loads</span></h4>
+          <p>Your stored lab markers and health memory are automatically populating the form below. You can edit any value.</p>
+        </div>
+        <a href="/app" style="display:inline-flex;align-items:center;gap:6px;padding:9px 16px;background:var(--signal);color:#0a0b0e;border-radius:var(--r);font-size:.8rem;font-weight:700;text-decoration:none;white-space:nowrap;"><i class="fa-solid fa-grid-2"></i> Open PHI</a>
+      </div>`;
+  } else {
+    el.innerHTML = `
+      <div class="auth-banner">
+        <div class="auth-banner-text" style="flex:1;">
+          <h4>Not signed in <span class="auth-badge no">⚠ Manual entry required</span></h4>
+          <p>Sign in to auto-populate your lab values from stored data. Or fill the form manually below — it still generates a full packet.</p>
+        </div>
+        <a href="/login" style="display:inline-flex;align-items:center;gap:6px;padding:9px 16px;background:var(--signal);color:#0a0b0e;border-radius:var(--r);font-size:.8rem;font-weight:700;text-decoration:none;white-space:nowrap;"><i class="fa-solid fa-sign-in-alt"></i> Sign In</a>
+      </div>`;
+  }
 }
-function handleFileUpload(input){
-  const f=input.files?.[0];if(!f)return;fileUploaded=f;
-  document.getElementById('uploadZone').classList.add('has-file');
-  document.getElementById('uploadTitle').textContent=`✓ ${f.name}`;
-  toast(`${f.name} ready`);
+
+async function loadStoredData() {
+  if (!_session?.access_token) return;
+  const h = { 'Authorization': 'Bearer ' + _session.access_token };
+
+  try {
+    const [markersRes, memRes] = await Promise.all([
+      fetch(API + '/api/health-markers', { headers: h }),
+      fetch(API + '/api/memory/facts', { headers: h }),
+    ]);
+
+    if (markersRes.ok) _storedMarkers = await markersRes.json();
+    if (memRes.ok) { const d = await memRes.json(); _storedMemories = d.facts || []; }
+
+    // Render auto-data section
+    renderAutoData();
+
+    // Auto-fill form fields
+    autoFillForm();
+
+  } catch (e) { console.warn('[APPEAL] Data load error:', e); }
 }
-document.addEventListener('DOMContentLoaded',()=>{
-  const z=document.getElementById('uploadZone');
-  z.addEventListener('dragover',e=>{e.preventDefault();z.classList.add('drag-over');});
-  z.addEventListener('dragleave',()=>z.classList.remove('drag-over'));
-  z.addEventListener('drop',e=>{e.preventDefault();z.classList.remove('drag-over');const f=e.dataTransfer?.files?.[0];if(f){fileUploaded=f;z.classList.add('has-file');document.getElementById('uploadTitle').textContent=`✓ ${f.name}`;}});
-});
-function collectFormData(){
-  return{
-    med:document.querySelector('input[name="med"]:checked')?.value||'',
-    reason:document.querySelector('input[name="reason"]:checked')?.value||'',
-    duration:document.getElementById('duration').value,
-    denialReason:document.getElementById('denialReason').value,
-    denialText:document.getElementById('denialText').value,
-    insurancePlan:document.getElementById('insurancePlan').value,
-    bmi:document.getElementById('bmi').value,weight:document.getElementById('weight').value,
-    hba1c:document.getElementById('hba1c').value,glucose:document.getElementById('glucose').value,
-    ldl:document.getElementById('ldl').value,bp:document.getElementById('bp').value,
-    additionalContext:document.getElementById('additionalContext').value,
-    priorMeds:Array.from(document.querySelectorAll('.prior-med:checked')).map(c=>c.value),
-    comorbidities:Array.from(document.querySelectorAll('.comorbidity:checked')).map(c=>c.value),
+
+function renderAutoData() {
+  const section = document.getElementById('autoDataSection');
+  const grid = document.getElementById('autoMarkersGrid');
+  const memList = document.getElementById('autoMemoriesList');
+  const countBadge = document.getElementById('dataCountBadge');
+  if (!section || !grid) return;
+
+  const paMarkers = _storedMarkers.filter(m => /bmi|weight|hba1c|glucose|ldl|hdl|triglyceride|crp|blood pressure/i.test(m.marker_name || ''));
+  const glpMemories = _storedMemories.filter(f => /glp|wegovy|ozempic|zepbound|mounjaro|stopped|insurance|goal weight|prior auth|denied/i.test(f));
+
+  if (paMarkers.length === 0 && glpMemories.length === 0) {
+    section.style.display = 'none';
+    return;
+  }
+
+  section.style.display = 'block';
+  countBadge.textContent = `${paMarkers.length} markers + ${glpMemories.length} facts`;
+
+  grid.innerHTML = paMarkers.slice(0, 8).map(m => {
+    const statusClass = (m.status || '').toLowerCase();
+    return `<div class="auto-data-item">
+      <div class="auto-data-item-name">${escHtml(m.marker_name)}</div>
+      <div class="auto-data-item-value ${statusClass}">${m.value} ${escHtml(m.unit||'')} ${m.status && m.status !== 'UNKNOWN' ? `<small>[${m.status}]</small>` : ''}</div>
+      <div class="auto-data-item-date">${m.date || ''}</div>
+    </div>`;
+  }).join('');
+
+  if (glpMemories.length > 0) {
+    memList.innerHTML = `<div style="font-size:.68rem;font-weight:700;color:var(--signal);text-transform:uppercase;letter-spacing:.06em;margin:10px 0 6px;">From your conversations</div>` +
+      glpMemories.slice(0, 4).map(m => `<div class="auto-data-memory"><i class="fa-solid fa-brain" style="color:var(--signal);flex-shrink:0;font-size:.7rem;margin-top:2px;"></i><span>${escHtml(m)}</span></div>`).join('');
+  }
+}
+
+function autoFillForm() {
+  // BMI
+  const bmiMarker = _storedMarkers.find(m => /bmi/i.test(m.marker_name));
+  if (bmiMarker) fillField('bmi', bmiMarker.value, 'bmiBadge');
+
+  // Weight
+  const weightMarker = _storedMarkers.find(m => /^weight$|^body weight$/i.test(m.marker_name));
+  if (weightMarker) fillField('weight', weightMarker.value, 'weightBadge');
+
+  // HbA1c
+  const hba1cMarker = _storedMarkers.find(m => /hba1c|hemoglobin a1c/i.test(m.marker_name));
+  if (hba1cMarker) fillField('hba1c', hba1cMarker.value, 'hba1cBadge');
+
+  // Glucose
+  const glucoseMarker = _storedMarkers.find(m => /fasting.*glucose|blood glucose|glucose/i.test(m.marker_name));
+  if (glucoseMarker) fillField('glucose', glucoseMarker.value, 'glucoseBadge');
+
+  // LDL
+  const ldlMarker = _storedMarkers.find(m => /^ldl/i.test(m.marker_name));
+  if (ldlMarker) fillField('ldl', ldlMarker.value, 'ldlBadge');
+
+  // Blood pressure
+  const bpMarker = _storedMarkers.find(m => /blood pressure|systolic/i.test(m.marker_name));
+  if (bpMarker) fillField('bp', String(bpMarker.value), 'bpBadge');
+
+  // Auto-select medication from memory
+  const medMemory = _storedMemories.find(f => /wegovy|ozempic|zepbound|mounjaro/i.test(f));
+  if (medMemory) {
+    const medName = /wegovy/i.test(medMemory) ? 'Wegovy (semaglutide)' : /zepbound/i.test(medMemory) ? 'Zepbound (tirzepatide)' : /ozempic/i.test(medMemory) ? 'Ozempic (semaglutide)' : 'Mounjaro (tirzepatide)';
+    const radioBtn = document.querySelector(`input[name="med"][value="${medName}"]`);
+    if (radioBtn) radioBtn.checked = true;
+  }
+
+  // Auto-check comorbidities based on markers
+  if (hba1cMarker && parseFloat(hba1cMarker.value) >= 6.5) checkComorbidity('Type 2 Diabetes (T2DM)');
+  if (hba1cMarker && parseFloat(hba1cMarker.value) >= 5.7 && parseFloat(hba1cMarker.value) < 6.5) checkComorbidity('Prediabetes / impaired fasting glucose');
+  if (ldlMarker && ldlMarker.status === 'HIGH') checkComorbidity('Dyslipidemia (high LDL or triglycerides)');
+  if (bpMarker && bpMarker.status === 'HIGH') checkComorbidity('Hypertension (high blood pressure)');
+
+  // Auto-fill denial reason from memory
+  const deniedMemory = _storedMemories.find(f => /insurance denied|prior auth denied|not covered|not medically necessary/i.test(f));
+  if (deniedMemory) {
+    const sel = document.getElementById('denialReason');
+    if (sel) sel.value = 'not medically necessary — insufficient documentation of BMI or comorbidities';
+  }
+
+  // Auto-fill additional context from memories
+  const glpContext = _storedMemories.filter(f => /stopped|started|lost|regained|months|rebound/i.test(f)).slice(0, 2).join('. ');
+  if (glpContext) {
+    const ta = document.getElementById('additionalContext');
+    if (ta && !ta.value) ta.value = glpContext;
+  }
+
+  // Check if data badge for comorbidities
+  const autoChecked = document.querySelectorAll('.comorbidity:checked').length;
+  if (autoChecked > 0) {
+    const badge = document.getElementById('comorbBadge');
+    if (badge) badge.innerHTML = `<span style="display:inline-flex;align-items:center;gap:4px;font-size:.63rem;font-weight:700;color:var(--signal);background:var(--signal-dim);border:1px solid rgba(0,188,213,.2);border-radius:10px;padding:2px 7px;margin-left:6px;"><i class="fa-solid fa-wand-magic-sparkles"></i> ${autoChecked} auto-detected</span>`;
+  }
+}
+
+function fillField(id, value, badgeId) {
+  const input = document.getElementById(id);
+  const badge = document.getElementById(badgeId);
+  if (input) {
+    input.value = value;
+    input.classList.add('has-auto');
+  }
+  if (badge) badge.innerHTML = `<span class="auto-badge"><i class="fa-solid fa-wand-magic-sparkles"></i> auto</span>`;
+}
+
+function checkComorbidity(value) {
+  const cb = document.querySelector(`.comorbidity[value="${value}"]`);
+  if (cb) cb.checked = true;
+}
+
+// ── Navigation ────────────────────────────────────────────────────────────────
+function goToStep(n) {
+  document.querySelectorAll('.form-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById(`panel${n}`).classList.add('active');
+  document.querySelectorAll('.step-tab').forEach((t, i) => {
+    t.classList.remove('active', 'done');
+    const sn = t.querySelector('.step-num');
+    if (i + 1 < n) { t.classList.add('done'); sn.innerHTML = '<i class="fa-solid fa-check" style="font-size:.55rem"></i>'; }
+    else if (i + 1 === n) { t.classList.add('active'); sn.textContent = i + 1; }
+    else sn.textContent = i + 1;
+  });
+  document.querySelector('.tool-inner').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function nextStep(from) {
+  if (from === 1) {
+    if (!document.querySelector('input[name="med"]:checked')) { toast('Select the denied medication'); return; }
+    if (!document.querySelector('input[name="reason"]:checked')) { toast('Select your treatment reason'); return; }
+  }
+  if (from === 2 && !document.getElementById('denialReason').value) { toast('Select the denial reason'); return; }
+  goToStep(from + 1);
+}
+
+// ── Generate packet ───────────────────────────────────────────────────────────
+function collectFormData() {
+  return {
+    med: document.querySelector('input[name="med"]:checked')?.value || '',
+    reason: document.querySelector('input[name="reason"]:checked')?.value || '',
+    duration: document.getElementById('duration').value,
+    denialReason: document.getElementById('denialReason').value,
+    denialText: document.getElementById('denialText').value,
+    insurancePlan: document.getElementById('insurancePlan').value,
+    bmi: document.getElementById('bmi').value,
+    weight: document.getElementById('weight').value,
+    hba1c: document.getElementById('hba1c').value,
+    glucose: document.getElementById('glucose').value,
+    ldl: document.getElementById('ldl').value,
+    bp: document.getElementById('bp').value,
+    additionalContext: document.getElementById('additionalContext').value,
+    priorMeds: Array.from(document.querySelectorAll('.prior-med:checked')).map(c => c.value),
+    comorbidities: Array.from(document.querySelectorAll('.comorbidity:checked')).map(c => c.value),
   };
 }
-async function generatePacket(){
-  const data=collectFormData();
-  document.getElementById('panel4').style.display='none';
+
+async function generatePacket() {
+  const data = collectFormData();
+  document.getElementById('panel4').style.display = 'none';
   document.getElementById('loading').classList.add('active');
-  const ids=['ls1','ls2','ls3','ls4'];
-  for(let i=0;i<ids.length;i++){
+
+  const steps = ['ls1', 'ls2', 'ls3', 'ls4'];
+  for (let i = 0; i < steps.length; i++) {
     await delay(850);
-    const s=document.getElementById(ids[i]);s.className='loading-step done';
-    s.innerHTML='<i class="fa-solid fa-check"></i> '+s.textContent.trim();
-    if(i+1<ids.length)document.getElementById(ids[i+1]).className='loading-step current';
+    const s = document.getElementById(steps[i]);
+    s.className = 'loading-step done';
+    s.innerHTML = '<i class="fa-solid fa-check"></i> ' + s.textContent.trim();
+    if (i + 1 < steps.length) document.getElementById(steps[i + 1]).className = 'loading-step current';
   }
   await delay(400);
-  let result=null;
-  try{const r=await fetch(`${API}/api/appeal/generate`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data),signal:AbortSignal.timeout(18000)});if(r.ok)result=await r.json();}catch(e){}
-  if(!result)result=buildClientSide(data);
+
+  let result = null;
+
+  // If logged in, try the authenticated advocacy endpoint first
+  if (_session?.access_token) {
+    try {
+      const h = { 'Authorization': 'Bearer ' + _session.access_token };
+      const res = await fetch(`${API}/api/advocacy?medication=${encodeURIComponent(data.med || 'GLP-1')}&raw=false`, { headers: h });
+      if (res.ok) {
+        const d = await res.json();
+        // Convert advocacy format to appeal format
+        result = {
+          score: d.evidence_strength === 'strong' ? 85 : d.evidence_strength === 'moderate' ? 58 : 30,
+          facts: (d.clinical_facts || []).map(f => ({ type: f.pa_relevant ? 'strong' : 'warning', icon: f.pa_relevant ? '✓' : '⚠', text: `${f.label}: ${f.value}` })),
+          missing: d.missing_data || [],
+          nextSteps: d.next_steps || [],
+          packet: d.pa_packet || '',
+        };
+      }
+    } catch (e) { console.warn('[APPEAL] Advocacy endpoint error:', e); }
+  }
+
+  // Fallback to public appeal generate
+  if (!result) {
+    try {
+      const res = await fetch(`${API}/api/appeal/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+        signal: AbortSignal.timeout(18000),
+      });
+      if (res.ok) result = await res.json();
+    } catch (e) { console.warn('[APPEAL] Public generate error:', e); }
+  }
+
+  if (!result) result = buildClientSide(data);
+
   document.getElementById('loading').classList.remove('active');
   showResult(result);
 }
-function buildClientSide(d){
-  const facts=[],missing=[];let score=0;
-  const bmi=parseFloat(d.bmi),hba1c=parseFloat(d.hba1c),ldl=parseFloat(d.ldl);
-  if(d.bmi){if(bmi>=30){facts.push({type:'strong',icon:'✓',text:`BMI ${bmi} — meets obesity criterion (BMI ≥30) independently.`});score+=25;}else if(bmi>=27&&d.comorbidities.length){facts.push({type:'strong',icon:'✓',text:`BMI ${bmi} + ${d.comorbidities.length} comorbidities — meets BMI ≥27 + comorbidity criterion.`});score+=22;}else if(bmi>=27){facts.push({type:'warning',icon:'⚠',text:`BMI ${bmi} — add a documented comorbidity to meet the BMI ≥27 + comorbidity criterion.`});score+=10;}}else{missing.push('BMI not provided — required for most PA criteria. Have your provider document it.');}
-  if(d.hba1c){if(hba1c>=6.5){facts.push({type:'strong',icon:'✓',text:`HbA1c ${hba1c}% — diabetes range. GLP-1 agonists are guideline-recommended first-line therapy.`});score+=25;}else if(hba1c>=5.7){facts.push({type:'strong',icon:'✓',text:`HbA1c ${hba1c}% — pre-diabetes. Documented metabolic dysregulation meets the comorbidity criterion.`});score+=20;}}else{missing.push('HbA1c not provided — most common PA criterion. Request a test if not recent.');}
-  if(d.comorbidities.length>=2){facts.push({type:'strong',icon:'✓',text:`${d.comorbidities.length} comorbidities: ${d.comorbidities.slice(0,3).join(', ')}. Multiple comorbidities significantly strengthen medical necessity.`});score+=18;}else if(d.comorbidities.length===1){facts.push({type:'strong',icon:'✓',text:`Comorbidity: ${d.comorbidities[0]}. Satisfies the BMI ≥27 + comorbidity criterion.`});score+=12;}
-  if(d.priorMeds.length){facts.push({type:'strong',icon:'✓',text:`Step therapy: ${d.priorMeds.join(', ')}. Prior treatments satisfy step therapy requirements.`});score+=15;}else{missing.push('No prior medication history documented. Document any previous weight or diabetes medications.');}
-  if(d.ldl&&ldl>100){facts.push({type:'warning',icon:'↑',text:`LDL ${ldl} mg/dL — elevated cardiovascular risk factor supports medical necessity.`});score+=5;}
-  if(d.additionalContext){facts.push({type:'strong',icon:'📝',text:`Clinical context: "${d.additionalContext.slice(0,200)}${d.additionalContext.length>200?'…':''}"`});score+=8;}
-  score=Math.min(score,100);
-  const labs=[d.bmi&&`• BMI: ${d.bmi} kg/m²`,d.weight&&`• Weight: ${d.weight} lbs`,d.hba1c&&`• HbA1c: ${d.hba1c}%`,d.glucose&&`• Fasting glucose: ${d.glucose} mg/dL`,d.ldl&&`• LDL: ${d.ldl} mg/dL`,d.bp&&`• Blood pressure: ${d.bp}`].filter(Boolean);
-  const packet=`PRIOR AUTHORIZATION APPEAL — CLINICAL DOCUMENTATION\nGenerated: ${new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}\n\nMEDICATION: ${d.med||'[GLP-1 receptor agonist]'}\nINDICATION: ${d.reason||'as documented'}\nDURATION: ${d.duration||'as documented'}\nINSURANCE: ${d.insurancePlan||'commercial'}\nDENIAL BASIS: ${d.denialReason||'per denial letter'}\n\nCLINICAL DATA:\n${labs.join('\n')||'[Provider: attach recent lab values]'}\n\nCOMORBIDITIES:\n${d.comorbidities.map(c=>'• '+c).join('\n')||'[Provider: document comorbidities]'}\n\nPRIOR TREATMENT HISTORY:\n${d.priorMeds.map(m=>'• '+m).join('\n')||'[Provider: document prior medications]'}\n\nCRITERIA MET:\n${bmi>=30?'✓ BMI ≥30 (obesity criterion met independently)\n':''}${bmi>=27&&bmi<30&&d.comorbidities.length?'✓ BMI ≥27 + documented comorbidity\n':''}${hba1c>=5.7?`✓ HbA1c ${hba1c}% — metabolic dysregulation documented\n`:''}${d.comorbidities.length?`✓ ${d.comorbidities.length} comorbidities documented\n`:''}${d.priorMeds.length?'✓ Step therapy requirements satisfied\n':''}\nCLINICAL CONTEXT:\n${d.additionalContext||'[Provider: add specific clinical rationale and prior treatment outcomes]'}\n\nEVIDENCE BASE:\nSupported by SURMOUNT-1/4 (tirzepatide) and STEP-1/4/5 (semaglutide) trial data. ADA 2024 and AACE 2024 guidelines designate GLP-1 receptor agonists as preferred agents for obesity management with metabolic comorbidities.\n\nPROVIDER CERTIFICATION:\nI certify this medication is medically necessary for this patient based on documented clinical criteria and anticipated clinical benefit.\n\nPrescribing Provider: _____________________ NPI: _______________\nDate: _____________________ Signature: _____________________\n\n─────────────────────────────────────────────────────────\n⚕️ Generated by Curabook PHI (curabook.com)\nEducational wellness tool. For provider use only.\n─────────────────────────────────────────────────────────`;
-  const nextSteps=['Bring this packet to your provider appointment — they add the clinical specifics PHI can\'t access.','Ask your provider to document medical necessity explicitly in their chart notes before resubmission.',`Address the ${missing.length} data gap${missing.length!==1?'s':''} above — each one meaningfully strengthens your case.`,'Your provider resubmits the PA. Most payers must respond within 15 days (72 hours for urgent cases).','If denied again, request a peer-to-peer review — your doctor speaks directly with the insurance medical reviewer. This is the most effective escalation path.'];
-  return{score,facts,missing,nextSteps,packet};
+
+function buildClientSide(d) {
+  const facts = [], missing = [];
+  let score = 0;
+  const bmi = parseFloat(d.bmi), hba1c = parseFloat(d.hba1c), ldl = parseFloat(d.ldl);
+
+  if (d.bmi) {
+    if (bmi >= 30) { facts.push({ type: 'strong', icon: '✓', text: `BMI ${bmi} — meets obesity criterion (BMI ≥30) independently.` }); score += 25; }
+    else if (bmi >= 27 && d.comorbidities.length) { facts.push({ type: 'strong', icon: '✓', text: `BMI ${bmi} + ${d.comorbidities.length} comorbidities — meets BMI ≥27 + comorbidity criterion.` }); score += 22; }
+    else { facts.push({ type: 'warning', icon: '⚠', text: `BMI ${bmi} — document a comorbidity to meet the BMI ≥27 + comorbidity criterion.` }); score += 10; }
+  } else missing.push('BMI not provided — required for most PA criteria.');
+
+  if (d.hba1c) {
+    if (hba1c >= 6.5) { facts.push({ type: 'strong', icon: '✓', text: `HbA1c ${hba1c}% — diabetes range. GLP-1 agonists are guideline-recommended first-line therapy.` }); score += 25; }
+    else if (hba1c >= 5.7) { facts.push({ type: 'strong', icon: '✓', text: `HbA1c ${hba1c}% — pre-diabetes. Metabolic dysregulation meets the comorbidity criterion.` }); score += 20; }
+  } else missing.push('HbA1c not provided — most common PA criterion.');
+
+  if (d.comorbidities.length >= 2) { facts.push({ type: 'strong', icon: '✓', text: `${d.comorbidities.length} comorbidities: ${d.comorbidities.slice(0, 3).join(', ')}. Multiple comorbidities strengthen medical necessity significantly.` }); score += 18; }
+  else if (d.comorbidities.length === 1) { facts.push({ type: 'strong', icon: '✓', text: `Comorbidity: ${d.comorbidities[0]}. Satisfies the BMI ≥27 + comorbidity criterion.` }); score += 12; }
+
+  if (d.priorMeds.length) { facts.push({ type: 'strong', icon: '✓', text: `Step therapy: ${d.priorMeds.join(', ')}. Prior treatments satisfy step therapy requirements.` }); score += 15; }
+  else missing.push('No prior medication history documented. Document any previous weight or diabetes medications.');
+
+  if (d.additionalContext) { facts.push({ type: 'strong', icon: '📝', text: `Clinical context: "${d.additionalContext.slice(0, 200)}…"` }); score += 8; }
+  score = Math.min(score, 100);
+
+  const labs = [d.bmi && `• BMI: ${d.bmi} kg/m²`, d.weight && `• Weight: ${d.weight} lbs`, d.hba1c && `• HbA1c: ${d.hba1c}%`, d.glucose && `• Fasting glucose: ${d.glucose} mg/dL`, d.ldl && `• LDL: ${d.ldl} mg/dL`, d.bp && `• Blood pressure: ${d.bp}`].filter(Boolean);
+
+  const packet = `PRIOR AUTHORIZATION APPEAL — CLINICAL DOCUMENTATION
+Generated: ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+
+MEDICATION: ${d.med || '[GLP-1 receptor agonist]'}
+INDICATION: ${d.reason || 'as documented'}
+DURATION: ${d.duration || 'as documented'}
+INSURANCE: ${d.insurancePlan || 'commercial insurance'}
+DENIAL BASIS: ${d.denialReason || 'per denial letter'}
+
+CLINICAL DATA:
+${labs.join('\n') || '[Provider: attach recent lab values]'}
+
+COMORBIDITIES:
+${d.comorbidities.map(c => '• ' + c).join('\n') || '[Provider: document comorbidities]'}
+
+PRIOR TREATMENT HISTORY:
+${d.priorMeds.map(m => '• ' + m).join('\n') || '[Provider: document prior medications]'}
+
+CLINICAL CONTEXT:
+${d.additionalContext || '[Provider: add specific clinical rationale]'}
+
+EVIDENCE BASE:
+Supported by SURMOUNT-1/4 and STEP-1/4/5 trial data. ADA 2024 and AACE 2024 guidelines designate GLP-1 receptor agonists as preferred agents for obesity management with metabolic comorbidities.
+
+PROVIDER CERTIFICATION:
+I certify this medication is medically necessary for this patient.
+
+Prescribing Provider: _____________________ NPI: _______________
+Date: _____________________ Signature: _____________________
+
+─────────────────────────────────────────────────────────
+⚕️ Generated by Curabook PHI (curabook.com) — educational wellness tool.
+─────────────────────────────────────────────────────────`;
+
+  return { score, facts, missing, nextSteps: ['Bring this packet to your provider — they add clinical specifics.', 'Ask your provider to document medical necessity explicitly.', 'If denied again, request a peer-to-peer review.', 'Upload future lab reports to PHI for a stronger automated packet next time.'], packet };
 }
-function showResult(result){
+
+function showResult(result) {
   document.getElementById('resultPanel').classList.add('active');
-  document.getElementById('resultPanel').scrollIntoView({behavior:'smooth',block:'start'});
-  generatedPacket=result.packet||'';
-  const score=result.score||50;
-  const label=score>=70?`Strong — ${score}%`:score>=45?`Moderate — ${score}%`:`Limited — ${score}%`;
-  const desc=score>=70?'Your clinical evidence is strong. A well-prepared provider submission has a high likelihood of reversal.':score>=45?'Your case has merit. Adding the missing data below would significantly strengthen it.':'Your current documentation has gaps. Complete the missing items below before submitting.';
-  setTimeout(()=>{const f=document.getElementById('strengthFill');f.style.width=`${score}%`;f.style.background=score>=70?'var(--ok)':score>=45?'var(--amber)':'var(--danger)';document.getElementById('strengthLabel').style.color=score>=70?'var(--ok)':score>=45?'var(--amber)':'var(--danger)';},300);
-  document.getElementById('strengthLabel').textContent=label;
-  document.getElementById('strengthDesc').textContent=desc;
-  document.getElementById('factList').innerHTML=(result.facts||[]).map(f=>`<div class="pa-fact ${f.type}"><span class="pa-fact-icon">${f.icon}</span><span>${f.text}</span></div>`).join('');
-  document.getElementById('paPacketText').textContent=generatedPacket;
-  const missing=result.missing||[];
-  if(missing.length){document.getElementById('missingList').innerHTML=missing.map(m=>`<div class="missing-item"><i class="fa-solid fa-circle-exclamation" style="color:var(--amber);margin-top:2px;flex-shrink:0;"></i><span>${m}</span></div>`).join('');}
-  else{document.getElementById('missingSection').style.display='none';}
-  document.getElementById('nextStepList').innerHTML=(result.nextSteps||[]).map(s=>`<div class="next-step"><span>${s}</span></div>`).join('');
-  document.getElementById('resultSubline').textContent=`Evidence: ${score>=70?'strong':score>=45?'moderate':'limited'}. ${missing.length} item${missing.length!==1?'s':''} to strengthen.`;
+  document.getElementById('resultPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  generatedPacket = result.packet || '';
+  const score = result.score || 50;
+  const label = score >= 70 ? `Strong — ${score}%` : score >= 45 ? `Moderate — ${score}%` : `Limited — ${score}%`;
+  const desc = score >= 70 ? 'Your clinical evidence is strong. A well-prepared provider submission has a high likelihood of reversal.' : score >= 45 ? 'Your case has merit. Adding the missing data below would significantly strengthen it.' : 'Your current documentation has gaps. Complete the missing items before submitting.';
+  setTimeout(() => {
+    const f = document.getElementById('strengthFill');
+    f.style.width = `${score}%`;
+    f.style.background = score >= 70 ? 'var(--ok)' : score >= 45 ? 'var(--amber)' : 'var(--danger)';
+    document.getElementById('strengthLabel').style.color = score >= 70 ? 'var(--ok)' : score >= 45 ? 'var(--amber)' : 'var(--danger)';
+  }, 300);
+  document.getElementById('strengthLabel').textContent = label;
+  document.getElementById('strengthDesc').textContent = desc;
+  document.getElementById('factList').innerHTML = (result.facts || []).map(f => `<div class="pa-fact ${f.type}"><span class="pa-fact-icon">${f.icon}</span><span>${escHtml(f.text)}</span></div>`).join('');
+  document.getElementById('paPacketText').textContent = generatedPacket;
+  const missing = result.missing || [];
+  if (missing.length) { document.getElementById('missingList').innerHTML = missing.map(m => `<div class="missing-item"><i class="fa-solid fa-circle-exclamation" style="color:var(--amber);flex-shrink:0;"></i><span>${escHtml(m)}</span></div>`).join(''); }
+  else { document.getElementById('missingSection').style.display = 'none'; }
+  document.getElementById('nextStepList').innerHTML = (result.nextSteps || []).map(s => `<div class="next-step"><span>${escHtml(s)}</span></div>`).join('');
+  document.getElementById('resultSubline').textContent = `Evidence: ${score >= 70 ? 'strong' : score >= 45 ? 'moderate' : 'limited'}. ${missing.length} item${missing.length !== 1 ? 's' : ''} to strengthen.`;
+
+  // If logged in, hide the upsell
+  if (_session?.user) document.getElementById('upsellBlock').style.display = 'none';
 }
-function copyPacket(){if(navigator.clipboard&&generatedPacket){navigator.clipboard.writeText(generatedPacket);toast('Copied to clipboard ✓');}}
-function printPacket(){const w=window.open('','_blank');w.document.write(`<!DOCTYPE html><html><head><style>body{font-family:monospace;font-size:12px;line-height:1.8;padding:40px;color:#111;max-width:700px;margin:0 auto;}pre{white-space:pre-wrap;}</style></head><body><pre>${generatedPacket}</pre></body></html>`);w.document.close();w.print();}
-function startOver(){
+
+function copyPacket() { if (navigator.clipboard && generatedPacket) { navigator.clipboard.writeText(generatedPacket); toast('Copied to clipboard ✓'); } }
+function printPacket() { const w = window.open('', '_blank'); w.document.write(`<!DOCTYPE html><html><head><style>body{font-family:monospace;font-size:12px;line-height:1.8;padding:40px;max-width:700px;margin:0 auto;}pre{white-space:pre-wrap;}</style></head><body><pre>${escHtml(generatedPacket)}</pre></body></html>`); w.document.close(); w.print(); }
+function startOver() {
   document.getElementById('resultPanel').classList.remove('active');
   document.getElementById('loading').classList.remove('active');
-  document.getElementById('panel4').style.display='';
-  document.querySelectorAll('input[type=radio]').forEach(r=>r.checked=false);
-  document.querySelectorAll('input[type=checkbox]').forEach(c=>c.checked=false);
-  document.querySelectorAll('input[type=number],input[type=text],textarea,select').forEach(i=>i.value='');
-  fileUploaded=null;
-  const uz=document.getElementById('uploadZone');uz.classList.remove('has-file');document.getElementById('uploadTitle').textContent='Drop lab report here or click to upload';
-  document.getElementById('missingSection').style.display='';
-  const steps=[{id:'ls1',html:'<i class="fa-solid fa-circle-notch fa-spin"></i> Reading denial reason and insurance criteria…',cls:'current'},{id:'ls2',html:'<i class="fa-regular fa-clock"></i> Scoring your clinical evidence strength…',cls:''},{id:'ls3',html:'<i class="fa-regular fa-clock"></i> Building physician-ready documentation…',cls:''},{id:'ls4',html:'<i class="fa-regular fa-clock"></i> Identifying missing data and next steps…',cls:''}];
-  steps.forEach(s=>{const el=document.getElementById(s.id);el.className=`loading-step ${s.cls}`;el.innerHTML=s.html;});
+  document.getElementById('panel4').style.display = '';
+  document.querySelectorAll('input[type=radio]').forEach(r => r.checked = false);
+  document.querySelectorAll('input[type=checkbox]').forEach(c => c.checked = false);
+  document.querySelectorAll('input[type=number],input[type=text],textarea,select').forEach(i => i.value = '');
+  document.getElementById('missingSection').style.display = '';
+  ['ls1','ls2','ls3','ls4'].forEach((id, i) => {
+    const el = document.getElementById(id);
+    el.className = i === 0 ? 'loading-step current' : 'loading-step';
+    const icons = ['<i class="fa-solid fa-circle-notch fa-spin"></i>','<i class="fa-regular fa-clock"></i>','<i class="fa-regular fa-clock"></i>','<i class="fa-regular fa-clock"></i>'];
+    const texts = [' Reading denial reason and insurance criteria…',' Scoring your clinical evidence strength…',' Building physician-ready documentation…',' Identifying missing data and next steps…'];
+    el.innerHTML = icons[i] + texts[i];
+  });
+  // Re-auto-fill if logged in
+  if (_session?.user) autoFillForm();
   goToStep(1);
 }
-function shareReddit(){const u=encodeURIComponent(location.href),t=encodeURIComponent('Free tool to build your GLP-1 insurance PA appeal packet in 2 minutes — no account required');window.open(`https://www.reddit.com/submit?url=${u}&title=${t}`,'_blank');}
-function copyLink(){navigator.clipboard.writeText(location.href);toast('Link copied ✓');}
-function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.style.display='block';clearTimeout(window._tt);window._tt=setTimeout(()=>t.style.display='none',3200);}
-function delay(ms){return new Promise(r=>setTimeout(r,ms));}
+
+function shareReddit() { const u = encodeURIComponent(location.href), t = encodeURIComponent('Free tool to build your GLP-1 insurance PA appeal packet in 2 minutes — no account required'); window.open(`https://www.reddit.com/submit?url=${u}&title=${t}`, '_blank'); }
+function copyLink() { navigator.clipboard.writeText(location.href); toast('Link copied ✓'); }
+function toast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(window._tt); window._tt = setTimeout(() => t.style.display = 'none', 3200); }
+function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+function escHtml(str) { return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
 </script>
 </body>
 </html>

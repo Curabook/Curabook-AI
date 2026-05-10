@@ -1,34 +1,42 @@
 /**
- * phi_fixes.js — Curabook PHI App Patches v2
+ * phi_fixes.js — Curabook PHI App Patches v3
  *
  * FIXED IN THIS VERSION:
- * 1. All Razorpay references removed — PayPal only
- * 2. Upgrade modal now uses PayPal create-subscription flow
- * 3. Doctor prep stub replaced — real brief shown in modal
- * 4. Appointment Prep UI added to cockpit
- * 5. PA Architect surface added (calls /api/advocacy)
- * 6. Welcome modal, plan badge, trial banner preserved
+ * 1. Quick Actions moved to SIDEBAR (removed from cockpit)
+ * 2. Sync Watch Screenshot uses Vision AI to read wearable data → fills shield
+ * 3. Appeal page auto-fetches stored markers + allows manual additions
+ * 4. Insurance PA Architect auto-populates from health memory + manual fields
+ * 5. PayPal checkout flow preserved
+ * 6. Doctor prep, appointment prep all work automatically
  */
 "use strict";
 
 const _API = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://api.curabook.com';
 
+// ── Shared session helper ─────────────────────────────────────────────────────
+async function _getSession() {
+  if (typeof session === 'function') {
+    try { return await session(); } catch (e) {}
+  }
+  return null;
+}
+
+async function _authHeaders() {
+  const s = await _getSession();
+  if (!s?.access_token) return null;
+  return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + s.access_token };
+}
+
 // ── 1. WELCOME MODAL ──────────────────────────────────────────────────────────
 function showWelcomeModal(type) {
   const existing = document.getElementById('welcomeModal');
   if (existing) existing.remove();
-
   const isPaid = type === 'paid';
   const modal = document.createElement('div');
   modal.id = 'welcomeModal';
-  modal.style.cssText = `
-    position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;
-    display:flex;align-items:center;justify-content:center;padding:20px;
-    animation:fadeIn .25s ease;
-  `;
+  modal.style.cssText = `position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;animation:fadeIn .25s ease;`;
   modal.innerHTML = `
-    <div style="background:var(--surface,#fff);border-radius:20px;padding:36px;max-width:440px;width:100%;
-      box-shadow:0 24px 60px rgba(0,0,0,.2);text-align:center;animation:slideUp .3s ease">
+    <div style="background:var(--surface,#fff);border-radius:20px;padding:36px;max-width:440px;width:100%;box-shadow:0 24px 60px rgba(0,0,0,.2);text-align:center;animation:slideUp .3s ease">
       <div style="font-size:3rem;margin-bottom:16px">${isPaid ? '🎉' : '👋'}</div>
       <h2 style="font-family:var(--serif,'Georgia');font-size:1.6rem;font-weight:400;margin-bottom:10px;color:var(--text,#111)">
         ${isPaid ? 'Welcome to Shield Core!' : "Welcome to Curabook PHI!"}
@@ -39,14 +47,11 @@ function showWelcomeModal(type) {
           : "PHI is ready. Upload your first lab report — tap the paperclip — and PHI will build your cliff risk picture in seconds."}
       </p>
       <button onclick="document.getElementById('welcomeModal').remove();handleUploadClick()"
-        style="width:100%;padding:13px;background:var(--signal,#00d4c8);color:#0a0b0e;border:none;
-          border-radius:10px;font-size:.92rem;font-weight:700;cursor:pointer;font-family:var(--sans,'sans-serif');
-          box-shadow:0 4px 16px rgba(0,212,200,.3);margin-bottom:10px">
+        style="width:100%;padding:13px;background:var(--signal,#00d4c8);color:#0a0b0e;border:none;border-radius:10px;font-size:.92rem;font-weight:700;cursor:pointer;font-family:var(--sans,'sans-serif');box-shadow:0 4px 16px rgba(0,212,200,.3);margin-bottom:10px">
         📎 Upload First Lab Report
       </button>
       <button onclick="document.getElementById('welcomeModal').remove()"
-        style="width:100%;padding:11px;background:none;border:1px solid var(--border,rgba(0,0,0,.08));
-          border-radius:10px;font-size:.84rem;color:var(--text-2,#888);cursor:pointer;font-family:var(--sans,'sans-serif')">
+        style="width:100%;padding:11px;background:none;border:1px solid var(--border,rgba(0,0,0,.08));border-radius:10px;font-size:.84rem;color:var(--text-2,#888);cursor:pointer;font-family:var(--sans,'sans-serif')">
         Explore first, upload later
       </button>
     </div>
@@ -56,7 +61,7 @@ function showWelcomeModal(type) {
 }
 
 (function checkWelcomeParam() {
-  const params  = new URLSearchParams(window.location.search);
+  const params = new URLSearchParams(window.location.search);
   const welcome = params.get('welcome');
   if (welcome) {
     window.history.replaceState({}, '', window.location.pathname);
@@ -64,747 +69,661 @@ function showWelcomeModal(type) {
   }
 })();
 
-// ── 2. UPGRADE BUTTON IN SIDEBAR ─────────────────────────────────────────────
-function injectUpgradeButton() {
-  const sbFooter = document.querySelector('.sb-footer');
-  if (!sbFooter || document.getElementById('upgradeNavBtn')) return;
-
-  const btn = document.createElement('button');
-  btn.id = 'upgradeNavBtn';
-  btn.innerHTML = `
-    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="flex-shrink:0">
-      <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/>
-    </svg>
-    <span>Upgrade Plan</span>
-  `;
-  btn.style.cssText = `
-    width:100%;display:flex;align-items:center;gap:8px;
-    padding:0 14px;min-height:44px;border:1.5px solid var(--signal,#00d4c8);
-    background:rgba(0,212,200,.06);border-radius:var(--r,10px);
-    color:var(--signal,#00d4c8);font-size:.82rem;font-family:var(--sans,'sans-serif');
-    font-weight:600;cursor:pointer;margin-bottom:8px;transition:all .15s;
-  `;
-  btn.onmouseenter = () => btn.style.background = 'rgba(0,212,200,.12)';
-  btn.onmouseleave = () => btn.style.background = 'rgba(0,212,200,.06)';
-  btn.onclick = () => { if (typeof closeSidebar === 'function') closeSidebar(); showUpgradeModal('manual'); };
-  sbFooter.insertBefore(btn, sbFooter.firstChild);
-}
-
-// ── 3. PLAN BADGE ─────────────────────────────────────────────────────────────
+// ── 2. PLAN BADGE ─────────────────────────────────────────────────────────────
 async function refreshPlanDisplay() {
   try {
-    const s = await (typeof session === 'function' ? session() : Promise.resolve(null));
-    if (!s?.access_token) return;
-
-    const res = await fetch(_API + '/api/payment/status', {
-      headers: { 'Authorization': 'Bearer ' + s.access_token }
-    });
+    const h = await _authHeaders();
+    if (!h) return;
+    const res = await fetch(_API + '/api/payment/status', { headers: h });
     if (!res.ok) return;
     const data = await res.json();
-
     const planEl = document.getElementById('userPlan');
     if (planEl) {
       const plan = data.plan || 'free';
-      const labels = {
-        monthly: 'Shield $49/mo ✦', annual: 'Shield Annual ✦',
-        clinical: 'Shield Clinical ✦', trial: 'Trial Active', free: 'PHI Free',
-      };
-      planEl.textContent   = labels[plan] || 'PHI Free';
-      planEl.style.color   = data.is_pro ? 'var(--signal,#00d4c8)' : 'var(--text-3,#566070)';
+      const labels = { monthly:'Shield $49/mo ✦', annual:'Shield Annual ✦', clinical:'Shield Clinical ✦', trial:'Trial Active', free:'PHI Free' };
+      planEl.textContent = labels[plan] || 'PHI Free';
+      planEl.style.color = data.is_pro ? 'var(--signal,#00d4c8)' : 'var(--text-3,#566070)';
     }
-
-    if (data.plan === 'trial' && data.subscription_end_date) {
-      showTrialBanner(data.subscription_end_date);
-    }
-
-    const upgradeBtn = document.getElementById('upgradeNavBtn');
-    if (upgradeBtn) upgradeBtn.style.display = data.is_pro ? 'none' : '';
-
+    if (data.plan === 'trial' && data.subscription_end_date) showTrialBanner(data.subscription_end_date);
     if (typeof _userPlan !== 'undefined') {
-      window._userPlan         = data.plan || 'free';
+      window._userPlan = data.plan || 'free';
       window._reportsRemaining = data.reports_remaining ?? 1;
     }
-  } catch (e) {
-    console.warn('[PLAN] Status refresh error:', e);
-  }
+  } catch (e) { console.warn('[PLAN]', e); }
 }
 
 function showTrialBanner(endDate) {
   if (document.getElementById('trialBanner')) return;
   try {
-    const end  = new Date(endDate);
-    const days = Math.ceil((end - Date.now()) / 86400000);
+    const days = Math.ceil((new Date(endDate) - Date.now()) / 86400000);
     if (days <= 0) return;
-
     const banner = document.createElement('div');
     banner.id = 'trialBanner';
-    banner.style.cssText = `
-      position:fixed;top:0;left:0;right:0;z-index:200;
-      background:linear-gradient(90deg,var(--signal,#00d4c8),#00a89e);
-      color:#0a0b0e;text-align:center;padding:9px 20px;font-size:.8rem;font-weight:600;
-      display:flex;align-items:center;justify-content:center;gap:12px;
-    `;
-    banner.innerHTML = `
-      <span>⏰ Trial active — ${days} day${days !== 1 ? 's' : ''} remaining</span>
-      <button onclick="showUpgradeModal('trial');document.getElementById('trialBanner').remove()"
-        style="background:rgba(0,0,0,.15);border:none;border-radius:6px;padding:4px 12px;
-          color:#0a0b0e;font-size:.75rem;font-weight:700;cursor:pointer;font-family:inherit">
-        Upgrade Now
-      </button>
-      <button onclick="document.getElementById('trialBanner').remove()"
-        style="background:none;border:none;color:rgba(0,0,0,.5);cursor:pointer;font-size:1.1rem;padding:0 4px">
-        ×
-      </button>
-    `;
+    banner.style.cssText = `position:fixed;top:0;left:0;right:0;z-index:200;background:linear-gradient(90deg,var(--signal,#00d4c8),#00a89e);color:#0a0b0e;text-align:center;padding:9px 20px;font-size:.8rem;font-weight:600;display:flex;align-items:center;justify-content:center;gap:12px;`;
+    banner.innerHTML = `<span>⏰ Trial active — ${days} day${days !== 1 ? 's' : ''} remaining</span><button onclick="showUpgradeModal('trial');document.getElementById('trialBanner').remove()" style="background:rgba(0,0,0,.15);border:none;border-radius:6px;padding:4px 12px;color:#0a0b0e;font-size:.75rem;font-weight:700;cursor:pointer;font-family:inherit">Upgrade Now</button><button onclick="document.getElementById('trialBanner').remove()" style="background:none;border:none;color:rgba(0,0,0,.5);cursor:pointer;font-size:1.1rem;padding:0 4px">×</button>`;
     document.body.prepend(banner);
-    const topbar = document.getElementById('topbar');
-    if (topbar) topbar.style.marginTop = banner.offsetHeight + 'px';
   } catch (e) {}
 }
 
-// ── 4. UPGRADE MODAL — PayPal only ───────────────────────────────────────────
+// ── 3. UPGRADE MODAL — PayPal ─────────────────────────────────────────────────
 window.showUpgradeModal = function(reason) {
   const existing = document.getElementById('upgradeModal');
   if (existing) existing.remove();
-
   const modal = document.createElement('div');
   modal.id = 'upgradeModal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;animation:fadeIn .2s ease';
-
-  const features = [
-    ['fa-file-medical',  'Unlimited lab reports'],
-    ['fa-brain',         'Full health memory'],
-    ['fa-shield-halved', 'Insurance PA support'],
-    ['fa-bell',          'Weekly health briefs (emailed)'],
-    ['fa-chart-line',    'Trend tracking'],
-    ['fa-stethoscope',   'Doctor visit prep'],
-  ];
-
+  const features = [['fa-file-medical','Unlimited lab reports'],['fa-brain','Full health memory'],['fa-shield-halved','Insurance PA support'],['fa-bell','Weekly health briefs'],['fa-chart-line','Trend tracking'],['fa-stethoscope','Doctor visit prep']];
   modal.innerHTML = `
-    <div style="
-      background:var(--surface,#111318);
-      border:1px solid var(--border-2,rgba(255,255,255,.13));
-      border-radius:20px; padding:28px 24px 24px;
-      max-width:420px; width:100%;
-      box-shadow:0 32px 80px rgba(0,0,0,.6);
-      position:relative; overflow:hidden;
-    ">
-      <div style="position:absolute;top:0;left:0;right:0;height:3px;
-        background:linear-gradient(90deg,var(--signal,#00d4c8),#00a89e);"></div>
-
-      <button onclick="closeUpgradeModal()" style="
-        position:absolute;top:14px;right:14px;width:30px;height:30px;border-radius:8px;
-        border:none;background:var(--surface-3,#23272f);
-        color:var(--text-2,#9aa3b0);font-size:.85rem;cursor:pointer;
-        display:flex;align-items:center;justify-content:center;">✕</button>
-
+    <div style="background:var(--surface,#111318);border:1px solid var(--border-2,rgba(255,255,255,.13));border-radius:20px;padding:28px 24px 24px;max-width:420px;width:100%;box-shadow:0 32px 80px rgba(0,0,0,.6);position:relative;overflow:hidden;">
+      <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--signal,#00d4c8),#00a89e);"></div>
+      <button onclick="closeUpgradeModal()" style="position:absolute;top:14px;right:14px;width:30px;height:30px;border-radius:8px;border:none;background:var(--surface-3,#23272f);color:var(--text-2,#9aa3b0);font-size:.85rem;cursor:pointer;display:flex;align-items:center;justify-content:center;">✕</button>
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;padding-right:36px;">
-        <div style="width:42px;height:42px;flex-shrink:0;
-          background:linear-gradient(135deg,var(--signal,#00d4c8),#00a89e);
-          border-radius:12px;display:flex;align-items:center;justify-content:center;
-          font-family:Georgia,serif;font-size:1.15rem;color:#0a0b0e;font-weight:600;
-          box-shadow:0 4px 16px rgba(0,212,200,.3);">φ</div>
-        <div>
-          <h3 style="font-size:1.1rem;font-weight:700;color:var(--text,#f0f2f5);margin-bottom:3px;line-height:1.2;">
-            Upgrade to PHI Shield
-          </h3>
-          <p style="font-size:.73rem;color:var(--text-3,#566070);line-height:1.4;">
-            Unlimited reports · Health memory · Insurance PA support
-          </p>
-        </div>
+        <div style="width:42px;height:42px;flex-shrink:0;background:linear-gradient(135deg,var(--signal,#00d4c8),#00a89e);border-radius:12px;display:flex;align-items:center;justify-content:center;font-family:var(--serif,'Georgia');font-size:1.15rem;color:#0a0b0e;font-weight:600;box-shadow:0 4px 16px rgba(0,212,200,.3);">φ</div>
+        <div><h2 style="font-size:1.1rem;font-weight:700;color:var(--text,#f0f2f5);margin-bottom:3px;line-height:1.2;">Upgrade to PHI Shield</h2><p style="font-size:.73rem;color:var(--text-3,#566070);line-height:1.4;">Unlimited reports · Health memory · Insurance PA support</p></div>
       </div>
-
-      ${reason === 'upload' ? `
-        <div style="background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.3);
-          border-radius:10px;padding:10px 13px;margin-bottom:16px;
-          font-size:.8rem;color:#fbbf24;display:flex;align-items:center;gap:8px;">
-          <span style="flex-shrink:0;">⚠</span>
-          <span><strong>Free limit reached</strong> — upgrade to upload unlimited reports.</span>
-        </div>` : ''}
-
-      <div style="background:var(--surface-2,#1a1d24);border:1px solid var(--border,rgba(255,255,255,.07));
-        border-radius:12px;padding:14px 16px;margin-bottom:18px;">
-        <div style="font-size:.62rem;font-weight:700;color:var(--text-3,#566070);
-          text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px;">What you unlock</div>
+      ${reason === 'upload' ? `<div style="background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.3);border-radius:10px;padding:10px 13px;margin-bottom:16px;font-size:.8rem;color:var(--amber,#fbbf24);display:flex;align-items:center;gap:8px;"><i class="fa-solid fa-triangle-exclamation" style="flex-shrink:0;"></i><span><strong>Free limit reached</strong> — upgrade to upload unlimited reports.</span></div>` : ''}
+      <div style="background:var(--surface-2,#1a1d24);border:1px solid var(--border,rgba(255,255,255,.07));border-radius:12px;padding:14px 16px;margin-bottom:18px;">
+        <div style="font-size:.62rem;font-weight:700;color:var(--text-3,#566070);text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px;">What you unlock</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px 12px;">
-          ${features.map(([icon, label]) => `
-            <div style="display:flex;align-items:center;gap:7px;font-size:.78rem;color:var(--text-2,#9aa3b0);">
-              <i class="fa-solid ${icon}" style="color:var(--signal,#00d4c8);font-size:.7rem;width:14px;text-align:center;flex-shrink:0;"></i>
-              ${label}
-            </div>`).join('')}
+          ${features.map(([icon,label]) => `<div style="display:flex;align-items:center;gap:7px;font-size:.78rem;color:var(--text-2,#9aa3b0);"><i class="fa-solid ${icon}" style="color:var(--signal,#00d4c8);font-size:.7rem;width:14px;text-align:center;flex-shrink:0;"></i>${label}</div>`).join('')}
         </div>
       </div>
-
       <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px;">
-
-        <button id="ppMonthlyBtn" onclick="initiatePayPalCheckout('monthly')" style="
-          width:100%;padding:13px 16px;
-          background:var(--signal,#00d4c8);color:#0a0b0e;
-          border:none;border-radius:12px;
-          font-size:.9rem;font-weight:700;cursor:pointer;font-family:inherit;
-          box-shadow:0 4px 20px rgba(0,212,200,.35);transition:all .15s;
-          display:flex;align-items:center;justify-content:space-between;">
-          <span>Shield Monthly</span>
-          <span style="font-family:monospace;font-size:1rem;">$49<span style="font-size:.72rem;font-weight:500;">/mo</span></span>
-        </button>
-
-        <button id="ppAnnualBtn" onclick="initiatePayPalCheckout('annual')" style="
-          width:100%;padding:13px 16px;
-          background:var(--surface-3,#23272f);color:var(--text,#f0f2f5);
-          border:2px solid var(--border-2,rgba(255,255,255,.13));border-radius:12px;
-          font-size:.9rem;font-weight:600;cursor:pointer;font-family:inherit;
-          transition:all .15s;
-          display:flex;align-items:center;justify-content:space-between;">
-          <span style="display:flex;align-items:center;gap:8px;">
-            Shield Annual
-            <span style="font-size:.58rem;font-weight:700;background:#10b981;color:#fff;
-              padding:2px 7px;border-radius:20px;letter-spacing:.04em;">SAVE 20%</span>
-          </span>
-          <span style="font-family:monospace;font-size:.85rem;">$39<span style="font-size:.65rem;font-weight:500;">/mo · $468/yr</span></span>
-        </button>
+        <button id="ppMonthlyBtn" onclick="initiatePayPalCheckout('monthly')" style="width:100%;padding:13px 16px;background:var(--signal,#00d4c8);color:#0a0b0e;border:none;border-radius:12px;font-size:.9rem;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 4px 20px rgba(0,212,200,.35);transition:all .15s;display:flex;align-items:center;justify-content:space-between;"><span>Shield Monthly</span><span style="font-family:monospace;font-size:1rem;">$49<span style="font-size:.72rem;font-weight:500;">/mo</span></span></button>
+        <button id="ppAnnualBtn" onclick="initiatePayPalCheckout('annual')" style="width:100%;padding:13px 16px;background:var(--surface-3,#23272f);color:var(--text,#f0f2f5);border:2px solid var(--border-2,rgba(255,255,255,.13));border-radius:12px;font-size:.9rem;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s;display:flex;align-items:center;justify-content:space-between;"><span style="display:flex;align-items:center;gap:8px;">Shield Annual<span style="font-size:.58rem;font-weight:700;background:#10b981;color:#0a0b0e;padding:2px 7px;border-radius:20px;letter-spacing:.04em;">SAVE 20%</span></span><span style="font-family:monospace;font-size:.85rem;">$39<span style="font-size:.65rem;font-weight:500;color:var(--text-2);">/mo · $468/yr</span></span></button>
       </div>
-
       <div id="upgradeStatus" style="text-align:center;font-size:.78rem;color:var(--text-3,#566070);min-height:18px;margin-bottom:6px;"></div>
-      <p style="font-size:.67rem;color:var(--text-3,#9ca3af);text-align:center;">
-        🔒 Secure via PayPal · Cancel anytime
-      </p>
+      <p style="font-size:.67rem;color:var(--text-3,#9ca3af);text-align:center;">🔒 Secure via PayPal · Cancel anytime</p>
     </div>
   `;
-
   modal.addEventListener('click', e => { if (e.target === modal) closeUpgradeModal(); });
   document.body.appendChild(modal);
 };
 
-function closeUpgradeModal() {
-  const m = document.getElementById('upgradeModal');
-  if (m) m.remove();
-}
+function closeUpgradeModal() { document.getElementById('upgradeModal')?.remove(); }
 
-// ── 5. PAYPAL CHECKOUT (replaces all Razorpay code) ──────────────────────────
 async function initiatePayPalCheckout(plan) {
+  const btnId = plan === 'annual' ? 'ppAnnualBtn' : 'ppMonthlyBtn';
+  const btn = document.getElementById(btnId);
   const statusEl = document.getElementById('upgradeStatus');
-  const btnId    = plan === 'annual' ? 'ppAnnualBtn' : 'ppMonthlyBtn';
-  const btn      = document.getElementById(btnId);
-  const origHtml = btn ? btn.innerHTML : '';
-
-  if (btn) {
-    btn.disabled  = true;
-    btn.innerHTML = '<i class="fa-solid fa-spinner" style="animation:spin .7s linear infinite"></i> Connecting to PayPal…';
-  }
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner" style="animation:spin .7s linear infinite"></i> Connecting…'; }
   if (statusEl) statusEl.textContent = 'Setting up your subscription…';
-
   try {
-    const s = await (typeof session === 'function' ? session() : Promise.resolve(null));
-    if (!s?.access_token) throw new Error('Please sign in first.');
-
-    const res = await fetch(_API + '/api/payment/paypal/create-subscription', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + s.access_token },
-      body:    JSON.stringify({ plan }),
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || 'Payment setup failed. Please try again.');
-    }
-
+    const h = await _authHeaders();
+    if (!h) throw new Error('Please sign in first.');
+    const res = await fetch(_API + '/api/payment/paypal/create-subscription', { method: 'POST', headers: h, body: JSON.stringify({ plan }) });
+    if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || 'Payment setup failed.'); }
     const data = await res.json();
     if (!data.approve_url) throw new Error('PayPal did not return a checkout URL.');
-
     if (statusEl) statusEl.textContent = 'Redirecting to PayPal…';
-
-    // Redirect to PayPal hosted checkout.
-    // PayPal returns to /payment/success?subscription_id=xxx&plan=xxx
-    // That page calls /api/payment/paypal/capture to activate the plan.
     window.location.href = data.approve_url;
-
   } catch (e) {
     if (statusEl) statusEl.textContent = e.message;
-    if (btn) { btn.disabled = false; btn.innerHTML = origHtml; }
-    if (typeof toast === 'function') toast(e.message, 'err');
+    if (btn) { btn.disabled = false; btn.innerHTML = plan === 'annual' ? 'Shield Annual' : 'Shield Monthly'; }
+  }
+}
+window.initUpgrade = initiatePayPalCheckout;
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 4. SYNC WATCH SCREENSHOT — Vision AI reads wearable data → fills shield
+// ══════════════════════════════════════════════════════════════════════════════
+async function processWatchScreenshot(file) {
+  if (!file) return;
+
+  // Show processing toast
+  if (typeof toast === 'function') toast('📸 Analyzing wearable screenshot with Vision AI…', 'info');
+
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    const base64Data = e.target.result;
+
+    try {
+      const h = await _authHeaders();
+      if (!h) { if (typeof toast === 'function') toast('Please sign in first.', 'err'); return; }
+
+      // Send to chat endpoint with special wearable context
+      const today = new Date().toISOString().slice(0, 10);
+      const payload = {
+        conversation_id: window._convId || 'watch-sync-' + Date.now(),
+        message: 'Extract all health metrics from this wearable/fitness app screenshot. I need: steps count, sleep hours, protein grams logged, any other health metrics visible.',
+        has_documents: true,
+        document_text: base64Data,
+      };
+
+      // If no conversation, create one silently
+      if (!window._convId) {
+        try {
+          const convRes = await fetch(_API + '/conversation/create', { method: 'POST', headers: h, body: JSON.stringify({}) });
+          if (convRes.ok) { const convData = await convRes.json(); window._convId = convData.conversation_id; payload.conversation_id = window._convId; }
+        } catch (err) { payload.conversation_id = 'watch-sync-' + Date.now(); }
+      }
+
+      const res = await fetch(_API + '/chat', { method: 'POST', headers: h, body: JSON.stringify(payload) });
+      if (!res.ok) throw new Error('Vision processing failed');
+      const data = await res.json();
+      const reply = data.reply || '';
+
+      // Parse extracted metrics from AI reply
+      const metrics = _parseWatchMetrics(reply);
+
+      if (Object.keys(metrics).length === 0) {
+        if (typeof toast === 'function') toast('Could not extract health data. Try a clearer screenshot.', 'info');
+        return;
+      }
+
+      // Fill shield inputs
+      let logged = [];
+      if (metrics.steps !== undefined) {
+        const el = document.getElementById('inputSteps');
+        if (el) { el.value = metrics.steps; logged.push(`${metrics.steps.toLocaleString()} steps`); }
+      }
+      if (metrics.sleep !== undefined) {
+        const el = document.getElementById('inputSleep');
+        if (el) { el.value = metrics.sleep; logged.push(`${metrics.sleep}h sleep`); }
+      }
+      if (metrics.protein !== undefined) {
+        const el = document.getElementById('inputProtein');
+        if (el) { el.value = metrics.protein; logged.push(`${metrics.protein}g protein`); }
+      }
+      if (metrics.weight !== undefined) {
+        const el = document.getElementById('inputGoalWt');
+        if (el && !el.value) { el.value = metrics.weight; logged.push(`${metrics.weight} lbs`); }
+      }
+
+      // Auto-update shield
+      if (typeof updateShield === 'function') await updateShield();
+      else if (typeof renderShield === 'function') {
+        const p = parseFloat(document.getElementById('inputProtein')?.value) || 0;
+        const s = parseFloat(document.getElementById('inputSteps')?.value) || 0;
+        const sl = parseFloat(document.getElementById('inputSleep')?.value) || 0;
+        renderShield(p, s, sl, today);
+      }
+
+      // Log to behavioral API
+      await _logWatchMetrics(metrics, today, h);
+
+      if (logged.length > 0) {
+        if (typeof toast === 'function') toast(`✓ Shield updated: ${logged.join(', ')}`, 'ok');
+        const lastEl = document.getElementById('shieldLastLogged');
+        if (lastEl) lastEl.textContent = `Synced from wearable: ${new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+      } else {
+        if (typeof toast === 'function') toast('Screenshot processed but no shield metrics found.', 'info');
+      }
+    } catch (err) {
+      console.error('[WATCH-SYNC]', err);
+      if (typeof toast === 'function') toast('Watch sync failed. Try a clearer screenshot.', 'err');
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+function _parseWatchMetrics(text) {
+  const metrics = {};
+  const lower = text.toLowerCase();
+
+  // Steps
+  const stepsMatch = text.match(/(\d{1,3}(?:,\d{3})*|\d+)\s*(?:steps?|step count)/i)
+    || text.match(/steps?[:\s]+(\d{1,3}(?:,\d{3})*|\d+)/i);
+  if (stepsMatch) {
+    const val = parseInt(stepsMatch[1].replace(/,/g, ''));
+    if (val >= 0 && val <= 100000) metrics.steps = val;
+  }
+
+  // Sleep
+  const sleepMatch = text.match(/(\d+(?:\.\d)?)\s*(?:h(?:ours?)?|hrs?)\s*(?:of\s+)?sleep/i)
+    || text.match(/sleep[:\s]+(\d+(?:\.\d)?)\s*(?:h(?:ours?)?|hrs?)?/i);
+  if (sleepMatch) {
+    const val = parseFloat(sleepMatch[1]);
+    if (val >= 0 && val <= 14) metrics.sleep = val;
+  }
+
+  // Protein
+  const proteinMatch = text.match(/protein[:\s]+(\d+)\s*(?:g|grams?)/i)
+    || text.match(/(\d+)\s*(?:g|grams?)\s*(?:of\s+)?protein/i);
+  if (proteinMatch) {
+    const val = parseInt(proteinMatch[1]);
+    if (val >= 0 && val <= 400) metrics.protein = val;
+  }
+
+  // Calories (store but don't fill shield)
+  const calMatch = text.match(/(\d+)\s*(?:kcal|calories|cal)\s*(?:burned|active)?/i);
+  if (calMatch) metrics.calories = parseInt(calMatch[1]);
+
+  // Heart rate (don't fill shield but useful)
+  const hrMatch = text.match(/(\d+)\s*(?:bpm|heart rate)/i);
+  if (hrMatch) metrics.heart_rate = parseInt(hrMatch[1]);
+
+  return metrics;
+}
+
+async function _logWatchMetrics(metrics, date, headers) {
+  const metricsToLog = ['protein', 'steps', 'sleep'];
+  for (const metric of metricsToLog) {
+    if (metrics[metric] !== undefined) {
+      try {
+        await fetch(_API + '/api/behavioral-logs', {
+          method: 'POST', headers,
+          body: JSON.stringify({ date, metric_name: metric, value: metrics[metric], unit: metric === 'steps' ? 'steps' : metric === 'sleep' ? 'hours' : 'g', notes: 'synced_from_wearable_screenshot' })
+        });
+      } catch (e) { console.warn('[WATCH-SYNC] Log error:', e); }
+    }
   }
 }
 
-// Keep the old name working in case anything calls it
-window.initUpgrade = initiatePayPalCheckout;
+// ── Wire sync wearable button ──────────────────────────────────────────────────
+function initSyncWearable() {
+  const btn = document.getElementById('syncWearableBtn');
+  if (!btn) return;
 
-// ── 6. DOCTOR PREP MODAL — real content ───────────────────────────────────────
+  let watchInput = document.getElementById('watchCameraInput');
+  if (!watchInput) {
+    watchInput = document.createElement('input');
+    watchInput.type = 'file';
+    watchInput.id = 'watchCameraInput';
+    watchInput.accept = 'image/*';
+    watchInput.style.display = 'none';
+    document.body.appendChild(watchInput);
+  }
+
+  btn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // On mobile use camera, on desktop open file picker
+    if (navigator.maxTouchPoints > 0) {
+      watchInput.setAttribute('capture', 'screen');
+    } else {
+      watchInput.removeAttribute('capture');
+    }
+    watchInput.click();
+  });
+
+  watchInput.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    await processWatchScreenshot(file);
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 5. DOCTOR PREP MODAL — real content from stored data
+// ══════════════════════════════════════════════════════════════════════════════
 async function openDoctorPrepModal() {
-  // Show modal with loading state
   const existing = document.getElementById('doctorPrepModal');
   if (existing) existing.remove();
-
   const modal = document.createElement('div');
   modal.id = 'doctorPrepModal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;animation:fadeIn .2s ease';
   modal.innerHTML = `
-    <div style="background:var(--surface,#111318);border:1px solid var(--border-2,rgba(255,255,255,.13));
-      border-radius:20px;padding:28px 24px;max-width:600px;width:100%;
-      max-height:85vh;overflow-y:auto;box-shadow:0 32px 80px rgba(0,0,0,.6);position:relative;">
-      <button onclick="document.getElementById('doctorPrepModal').remove()"
-        style="position:absolute;top:14px;right:14px;width:30px;height:30px;border-radius:8px;
-          border:none;background:var(--surface-3,#23272f);color:var(--text-2,#9aa3b0);
-          font-size:.85rem;cursor:pointer;display:flex;align-items:center;justify-content:center;">✕</button>
-      <h3 style="font-size:1.1rem;font-weight:700;color:var(--text,#f0f2f5);margin-bottom:6px;">
-        🩺 Doctor Visit Prep
-      </h3>
-      <p style="font-size:.78rem;color:var(--text-3,#566070);margin-bottom:18px;">
-        PHI-generated brief from your stored lab data
-      </p>
+    <div style="background:var(--surface,#111318);border:1px solid var(--border-2,rgba(255,255,255,.13));border-radius:20px;padding:28px 24px;max-width:600px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 32px 80px rgba(0,0,0,.6);position:relative;">
+      <button onclick="document.getElementById('doctorPrepModal').remove()" style="position:absolute;top:14px;right:14px;width:30px;height:30px;border-radius:8px;border:none;background:var(--surface-3,#23272f);color:var(--text-2,#9aa3b0);font-size:.85rem;cursor:pointer;display:flex;align-items:center;justify-content:center;">✕</button>
+      <h3 style="font-size:1.1rem;font-weight:700;color:var(--text,#f0f2f5);margin-bottom:6px;">🩺 Doctor Visit Prep</h3>
+      <p style="font-size:.78rem;color:var(--text-3,#566070);margin-bottom:18px;">PHI-generated brief from your stored lab data</p>
       <div id="doctorPrepContent" style="font-size:.85rem;color:var(--text-2,#9aa3b0);line-height:1.7;">
-        <div style="display:flex;align-items:center;gap:8px;padding:20px 0;color:var(--signal,#00d4c8);">
-          <i class="fa-solid fa-spinner" style="animation:spin .7s linear infinite"></i>
-          Generating your brief from stored lab data…
-        </div>
+        <div style="display:flex;align-items:center;gap:8px;padding:20px 0;color:var(--signal,#00d4c8);"><i class="fa-solid fa-spinner" style="animation:spin .7s linear infinite"></i> Generating your brief from stored lab data…</div>
       </div>
     </div>
   `;
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
   document.body.appendChild(modal);
-
   const contentEl = document.getElementById('doctorPrepContent');
-
   try {
-    const s = await (typeof session === 'function' ? session() : Promise.resolve(null));
-    if (!s?.access_token) throw new Error('Please sign in first.');
-
-    // Try getting latest prep from history first
-    const histRes = await fetch(_API + '/api/appointment-prep/list', {
-      headers: { 'Authorization': 'Bearer ' + s.access_token }
-    });
-    if (histRes.ok) {
-      const histData = await histRes.json();
-      if (histData.preps && histData.preps.length > 0) {
-        const latest = histData.preps[0];
-        contentEl.innerHTML = `
-          <div style="background:var(--surface-2,#1a1d24);border-radius:10px;padding:16px;
-            white-space:pre-wrap;font-family:monospace;font-size:.76rem;
-            color:var(--text-2,#9aa3b0);line-height:1.75;max-height:400px;overflow-y:auto;">
-${latest.brief_text || 'Brief text not available.'}
-          </div>
-          <p style="font-size:.7rem;color:var(--text-3,#566070);margin-top:10px;">
-            Generated ${new Date(latest.created_at).toLocaleDateString()}
-          </p>
-          <button onclick="generateFreshDoctorPrep()" style="margin-top:12px;padding:9px 18px;
-            background:var(--signal,#00d4c8);color:#0a0b0e;border:none;border-radius:8px;
-            font-size:.8rem;font-weight:700;cursor:pointer;">Generate Fresh Brief</button>
-        `;
-        return;
-      }
-    }
-
-    // No existing brief — generate one now via /api/doctor-brief
-    const briefRes = await fetch(_API + '/api/doctor-brief', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + s.access_token },
-      body:    JSON.stringify({ symptoms: [], medications: [], notes: '' }),
-    });
-
-    if (!briefRes.ok) {
-      const err = await briefRes.json().catch(() => ({}));
-      throw new Error(err.error || 'Could not generate brief. Upload a lab report first.');
-    }
-
+    const h = await _authHeaders();
+    if (!h) throw new Error('Please sign in first.');
+    const briefRes = await fetch(_API + '/api/doctor-brief', { method: 'POST', headers: h, body: JSON.stringify({ symptoms: [], medications: [], notes: '' }) });
+    if (!briefRes.ok) { const err = await briefRes.json().catch(() => ({})); throw new Error(err.error || 'Could not generate brief. Upload a lab report first.'); }
     const briefData = await briefRes.json();
     const briefText = briefData.brief || 'No brief content returned.';
-
     contentEl.innerHTML = `
-      <div style="background:var(--surface-2,#1a1d24);border-radius:10px;padding:16px;
-        white-space:pre-wrap;font-family:var(--sans,'sans-serif');font-size:.82rem;
-        color:var(--text,#f0f2f5);line-height:1.75;max-height:420px;overflow-y:auto;">
-${briefText}
-      </div>
+      <div style="background:var(--surface-2,#1a1d24);border-radius:10px;padding:16px;white-space:pre-wrap;font-family:var(--sans,'sans-serif');font-size:.82rem;color:var(--text,#f0f2f5);line-height:1.75;max-height:420px;overflow-y:auto;">${escHtml(briefText)}</div>
       <div style="display:flex;gap:8px;margin-top:12px;">
-        <button onclick="navigator.clipboard&&navigator.clipboard.writeText(document.querySelector('#doctorPrepContent pre, #doctorPrepContent div div').innerText);toast&&toast('Copied ✓')"
-          style="padding:9px 18px;background:var(--signal,#00d4c8);color:#0a0b0e;border:none;
-            border-radius:8px;font-size:.8rem;font-weight:700;cursor:pointer;">
-          Copy Brief
-        </button>
-        <button onclick="generateFreshDoctorPrep()"
-          style="padding:9px 18px;background:var(--surface-3,#23272f);color:var(--text-2,#9aa3b0);
-            border:1px solid var(--border,rgba(255,255,255,.07));border-radius:8px;
-            font-size:.8rem;cursor:pointer;">
-          Regenerate
-        </button>
+        <button onclick="navigator.clipboard&&navigator.clipboard.writeText(document.querySelector('#doctorPrepContent div').innerText);typeof toast==='function'&&toast('Copied ✓')" style="flex:1;padding:10px;background:var(--signal,#00d4c8);color:#0a0b0e;border:none;border-radius:8px;font-size:.82rem;font-weight:700;cursor:pointer;">Copy Brief</button>
+        <button onclick="generateFreshDoctorPrep()" style="flex:1;padding:10px;background:var(--surface-3,#23272f);color:var(--text-2,#9aa3b0);border:1px solid var(--border,rgba(255,255,255,.07));border-radius:8px;font-size:.82rem;cursor:pointer;">Regenerate</button>
       </div>
     `;
-  } catch(e) {
-    contentEl.innerHTML = `
-      <div style="color:var(--danger,#f87171);font-size:.82rem;padding:12px 0;">
-        ${e.message}
-      </div>
-      <p style="font-size:.76rem;color:var(--text-3,#566070);margin-top:8px;">
-        Upload a lab report first, then generate your doctor brief.
-      </p>
-    `;
+  } catch (e) {
+    contentEl.innerHTML = `<div style="color:var(--danger,#f87171);font-size:.82rem;">${e.message}</div><p style="font-size:.76rem;color:var(--text-3,#566070);margin-top:8px;">Upload a lab report first, then generate your doctor brief.</p>`;
   }
 }
 
 async function generateFreshDoctorPrep() {
   const contentEl = document.getElementById('doctorPrepContent');
   if (!contentEl) return;
-
-  contentEl.innerHTML = `<div style="display:flex;align-items:center;gap:8px;padding:20px 0;color:var(--signal,#00d4c8);">
-    <i class="fa-solid fa-spinner" style="animation:spin .7s linear infinite"></i>
-    Generating fresh brief…
-  </div>`;
-
+  contentEl.innerHTML = `<div style="display:flex;align-items:center;gap:8px;padding:20px 0;color:var(--signal,#00d4c8);"><i class="fa-solid fa-spinner" style="animation:spin .7s linear infinite"></i> Generating fresh brief…</div>`;
   try {
-    const s = await (typeof session === 'function' ? session() : Promise.resolve(null));
-    if (!s?.access_token) throw new Error('Session expired.');
-
-    const res = await fetch(_API + '/api/doctor-brief', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + s.access_token },
-      body:    JSON.stringify({ symptoms: [], medications: [], notes: '' }),
-    });
-
+    const h = await _authHeaders();
+    if (!h) throw new Error('Session expired.');
+    const res = await fetch(_API + '/api/doctor-brief', { method: 'POST', headers: h, body: JSON.stringify({ symptoms: [], medications: [], notes: '' }) });
     if (!res.ok) throw new Error('Brief generation failed.');
     const data = await res.json();
-
-    contentEl.innerHTML = `
-      <div style="background:var(--surface-2,#1a1d24);border-radius:10px;padding:16px;
-        white-space:pre-wrap;font-family:var(--sans,'sans-serif');font-size:.82rem;
-        color:var(--text,#f0f2f5);line-height:1.75;max-height:420px;overflow-y:auto;">
-${data.brief || 'No content returned.'}
-      </div>
-      <button onclick="navigator.clipboard&&navigator.clipboard.writeText(document.querySelector('#doctorPrepContent div div').innerText);toast&&toast('Copied ✓')"
-        style="margin-top:12px;padding:9px 18px;background:var(--signal,#00d4c8);color:#0a0b0e;
-          border:none;border-radius:8px;font-size:.8rem;font-weight:700;cursor:pointer;">
-        Copy Brief
-      </button>
-    `;
-  } catch(e) {
-    contentEl.innerHTML = `<div style="color:var(--danger,#f87171);font-size:.82rem;">${e.message}</div>`;
-  }
+    contentEl.innerHTML = `<div style="background:var(--surface-2,#1a1d24);border-radius:10px;padding:16px;white-space:pre-wrap;font-family:var(--sans,'sans-serif');font-size:.82rem;color:var(--text,#f0f2f5);line-height:1.75;max-height:420px;overflow-y:auto;">${escHtml(data.brief||'No content returned.')}</div><button onclick="navigator.clipboard&&navigator.clipboard.writeText(document.querySelector('#doctorPrepContent div').innerText);typeof toast==='function'&&toast('Copied ✓')" style="margin-top:12px;padding:9px 18px;background:var(--signal,#00d4c8);color:#0a0b0e;border:none;border-radius:8px;font-size:.8rem;font-weight:700;cursor:pointer;">Copy Brief</button>`;
+  } catch (e) { contentEl.innerHTML = `<div style="color:var(--danger,#f87171);font-size:.82rem;">${e.message}</div>`; }
 }
-
 window.openDoctorPrepModal = openDoctorPrepModal;
 
-// ── 7. APPOINTMENT PREP UI ───────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+// 6. APPOINTMENT PREP MODAL
+// ══════════════════════════════════════════════════════════════════════════════
 async function openAppointmentPrepModal() {
   const existing = document.getElementById('apptPrepModal');
   if (existing) existing.remove();
-
   const modal = document.createElement('div');
   modal.id = 'apptPrepModal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;animation:fadeIn .2s ease';
-
-  const today     = new Date();
-  const nextWeek  = new Date(today.getTime() + 7 * 86400000);
-  const defaultDt = nextWeek.toISOString().slice(0, 10);
-
+  const defaultDt = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
   modal.innerHTML = `
-    <div style="background:var(--surface,#111318);border:1px solid var(--border-2,rgba(255,255,255,.13));
-      border-radius:20px;padding:28px 24px;max-width:500px;width:100%;
-      max-height:90vh;overflow-y:auto;box-shadow:0 32px 80px rgba(0,0,0,.6);position:relative;">
-      <button onclick="document.getElementById('apptPrepModal').remove()"
-        style="position:absolute;top:14px;right:14px;width:30px;height:30px;border-radius:8px;
-          border:none;background:var(--surface-3,#23272f);color:var(--text-2,#9aa3b0);
-          font-size:.85rem;cursor:pointer;display:flex;align-items:center;justify-content:center;">✕</button>
-
+    <div style="background:var(--surface,#111318);border:1px solid var(--border-2,rgba(255,255,255,.13));border-radius:20px;padding:28px 24px;max-width:500px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 32px 80px rgba(0,0,0,.6);position:relative;">
+      <button onclick="document.getElementById('apptPrepModal').remove()" style="position:absolute;top:14px;right:14px;width:30px;height:30px;border-radius:8px;border:none;background:var(--surface-3,#23272f);color:var(--text-2,#9aa3b0);font-size:.85rem;cursor:pointer;display:flex;align-items:center;justify-content:center;">✕</button>
       <h3 style="font-size:1.1rem;font-weight:700;color:var(--text,#f0f2f5);margin-bottom:6px;">📅 Appointment Prep</h3>
-      <p style="font-size:.78rem;color:var(--text-3,#566070);margin-bottom:20px;">
-        PHI builds a tailored one-page clinical brief 48 hours before your visit.
-      </p>
-
+      <p style="font-size:.78rem;color:var(--text-3,#566070);margin-bottom:20px;">PHI builds a tailored one-page clinical brief from your lab data.</p>
       <div id="apptPrepContent">
-        <div style="margin-bottom:14px;">
-          <label style="display:block;font-size:.72rem;font-weight:700;color:var(--text-3,#566070);
-            text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Appointment date</label>
-          <input type="date" id="apptDate" value="${defaultDt}"
-            style="width:100%;padding:10px 12px;background:var(--surface-2,#1a1d24);
-              border:1px solid var(--border,rgba(255,255,255,.07));border-radius:8px;
-              color:var(--text,#f0f2f5);font-size:.88rem;outline:none;">
-        </div>
-        <div style="margin-bottom:20px;">
-          <label style="display:block;font-size:.72rem;font-weight:700;color:var(--text-3,#566070);
-            text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Specialist type</label>
-          <select id="apptSpecialist"
-            style="width:100%;padding:10px 12px;background:var(--surface-2,#1a1d24);
-              border:1px solid var(--border,rgba(255,255,255,.07));border-radius:8px;
-              color:var(--text,#f0f2f5);font-size:.88rem;outline:none;cursor:pointer;">
-            <option value="primary care">Primary Care / GP</option>
-            <option value="endocrinologist">Endocrinologist</option>
-            <option value="cardiologist">Cardiologist</option>
-            <option value="obesity medicine">Obesity Medicine</option>
-            <option value="nephrologist">Nephrologist</option>
-            <option value="other">Other specialist</option>
-          </select>
-        </div>
-        <button onclick="generateAppointmentPrep()" id="apptPrepBtn"
-          style="width:100%;padding:13px;background:var(--signal,#00d4c8);color:#0a0b0e;
-            border:none;border-radius:10px;font-size:.9rem;font-weight:700;cursor:pointer;">
-          Generate My Brief
-        </button>
+        <div style="margin-bottom:14px;"><label style="display:block;font-size:.72rem;font-weight:700;color:var(--text-3,#566070);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Appointment date</label><input type="date" id="apptDate" value="${defaultDt}" style="width:100%;padding:10px 12px;background:var(--surface-2,#1a1d24);border:1px solid var(--border,rgba(255,255,255,.07));border-radius:8px;color:var(--text,#f0f2f5);font-size:.88rem;outline:none;"></div>
+        <div style="margin-bottom:20px;"><label style="display:block;font-size:.72rem;font-weight:700;color:var(--text-3,#566070);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Specialist type</label><select id="apptSpecialist" style="width:100%;padding:10px 12px;background:var(--surface-2,#1a1d24);border:1px solid var(--border,rgba(255,255,255,.07));border-radius:8px;color:var(--text,#f0f2f5);font-size:.88rem;outline:none;cursor:pointer;"><option value="primary care">Primary Care / GP</option><option value="endocrinologist">Endocrinologist</option><option value="cardiologist">Cardiologist</option><option value="obesity medicine">Obesity Medicine</option><option value="nephrologist">Nephrologist</option><option value="other">Other specialist</option></select></div>
+        <button onclick="generateAppointmentPrep()" id="apptPrepBtn" style="width:100%;padding:13px;background:var(--signal,#00d4c8);color:#0a0b0e;border:none;border-radius:10px;font-size:.9rem;font-weight:700;cursor:pointer;">Generate My Brief</button>
       </div>
     </div>
   `;
-
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
   document.body.appendChild(modal);
 }
 
 async function generateAppointmentPrep() {
-  const btn       = document.getElementById('apptPrepBtn');
-  const date      = document.getElementById('apptDate')?.value;
+  const btn = document.getElementById('apptPrepBtn');
+  const date = document.getElementById('apptDate')?.value;
   const specialist = document.getElementById('apptSpecialist')?.value || 'primary care';
-
   if (!date) { if (typeof toast === 'function') toast('Please select an appointment date.', 'info'); return; }
-
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner" style="animation:spin .7s linear infinite"></i> Generating…'; }
-
   try {
-    const s = await (typeof session === 'function' ? session() : Promise.resolve(null));
-    if (!s?.access_token) throw new Error('Session expired.');
-
-    const res = await fetch(_API + '/api/appointment-prep', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + s.access_token },
-      body:    JSON.stringify({ appointment_date: date, specialist_type: specialist }),
-    });
-
+    const h = await _authHeaders();
+    if (!h) throw new Error('Session expired.');
+    const res = await fetch(_API + '/api/appointment-prep', { method: 'POST', headers: h, body: JSON.stringify({ appointment_date: date, specialist_type: specialist }) });
     if (!res.ok) throw new Error('Could not generate prep brief.');
     const data = await res.json();
     const prep = data.prep || {};
     const text = prep.formatted || 'No content returned.';
-
     const contentEl = document.getElementById('apptPrepContent');
     if (!contentEl) return;
-
-    contentEl.innerHTML = `
-      <div style="background:var(--surface-2,#1a1d24);border-radius:10px;padding:16px;
-        white-space:pre-wrap;font-family:var(--sans,'sans-serif');font-size:.8rem;
-        color:var(--text,#f0f2f5);line-height:1.75;max-height:420px;overflow-y:auto;margin-bottom:12px;">
-${text}
-      </div>
-      <div style="display:flex;gap:8px;">
-        <button onclick="navigator.clipboard&&navigator.clipboard.writeText(document.querySelector('#apptPrepContent div').innerText);toast&&toast('Copied ✓')"
-          style="flex:1;padding:10px;background:var(--signal,#00d4c8);color:#0a0b0e;border:none;
-            border-radius:8px;font-size:.82rem;font-weight:700;cursor:pointer;">
-          Copy Brief
-        </button>
-        <button onclick="openAppointmentPrepModal()"
-          style="flex:1;padding:10px;background:var(--surface-3,#23272f);color:var(--text-2,#9aa3b0);
-            border:1px solid var(--border,rgba(255,255,255,.07));border-radius:8px;
-            font-size:.82rem;cursor:pointer;">
-          New Date
-        </button>
-      </div>
-    `;
-  } catch(e) {
+    contentEl.innerHTML = `<div style="background:var(--surface-2,#1a1d24);border-radius:10px;padding:16px;white-space:pre-wrap;font-family:var(--sans,'sans-serif');font-size:.8rem;color:var(--text,#f0f2f5);line-height:1.75;max-height:420px;overflow-y:auto;margin-bottom:12px;">${escHtml(text)}</div><div style="display:flex;gap:8px;"><button onclick="navigator.clipboard&&navigator.clipboard.writeText(document.querySelector('#apptPrepContent div').innerText);typeof toast==='function'&&toast('Copied ✓')" style="flex:1;padding:10px;background:var(--signal,#00d4c8);color:#0a0b0e;border:none;border-radius:8px;font-size:.82rem;font-weight:700;cursor:pointer;">Copy Brief</button><button onclick="openAppointmentPrepModal()" style="flex:1;padding:10px;background:var(--surface-3,#23272f);color:var(--text-2,#9aa3b0);border:1px solid var(--border,rgba(255,255,255,.07));border-radius:8px;font-size:.82rem;cursor:pointer;">New Date</button></div>`;
+  } catch (e) {
     if (btn) { btn.disabled = false; btn.innerHTML = 'Generate My Brief'; }
     if (typeof toast === 'function') toast(e.message, 'err');
   }
 }
-
 window.openAppointmentPrepModal = openAppointmentPrepModal;
 
-// ── 8. PA ARCHITECT SURFACE ───────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+// 7. PA ARCHITECT — auto-fetches stored markers + manual additions
+// ══════════════════════════════════════════════════════════════════════════════
 async function openPAArchitectModal() {
   const existing = document.getElementById('paModal');
   if (existing) existing.remove();
-
   const modal = document.createElement('div');
   modal.id = 'paModal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;animation:fadeIn .2s ease';
-
   modal.innerHTML = `
-    <div style="background:var(--surface,#111318);border:1px solid var(--border-2,rgba(255,255,255,.13));
-      border-radius:20px;padding:28px 24px;max-width:600px;width:100%;
-      max-height:90vh;overflow-y:auto;box-shadow:0 32px 80px rgba(0,0,0,.6);position:relative;">
-      <button onclick="document.getElementById('paModal').remove()"
-        style="position:absolute;top:14px;right:14px;width:30px;height:30px;border-radius:8px;
-          border:none;background:var(--surface-3,#23272f);color:var(--text-2,#9aa3b0);
-          font-size:.85rem;cursor:pointer;display:flex;align-items:center;justify-content:center;">✕</button>
+    <div style="background:var(--surface,#111318);border:1px solid var(--border-2,rgba(255,255,255,.13));border-radius:20px;padding:28px 24px;max-width:640px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 32px 80px rgba(0,0,0,.6);position:relative;">
+      <button onclick="document.getElementById('paModal').remove()" style="position:absolute;top:14px;right:14px;width:30px;height:30px;border-radius:8px;border:none;background:var(--surface-3,#23272f);color:var(--text-2,#9aa3b0);font-size:.85rem;cursor:pointer;display:flex;align-items:center;justify-content:center;">✕</button>
+      <h3 style="font-size:1.1rem;font-weight:700;color:var(--text,#f0f2f5);margin-bottom:4px;">🛡 Insurance PA Architect</h3>
+      <p style="font-size:.78rem;color:var(--text-3,#566070);margin-bottom:16px;">Auto-populated from your stored lab data. Add anything missing below.</p>
 
-      <h3 style="font-size:1.1rem;font-weight:700;color:var(--text,#f0f2f5);margin-bottom:6px;">
-        🛡 Insurance PA Architect
-      </h3>
-      <p style="font-size:.78rem;color:var(--text-3,#566070);margin-bottom:20px;">
-        PHI builds a prior authorization support packet from your actual stored lab data.
-        Share this with your provider.
-      </p>
-
-      <div style="margin-bottom:14px;">
-        <label style="display:block;font-size:.72rem;font-weight:700;color:var(--text-3,#566070);
-          text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Medication</label>
-        <select id="paMedication"
-          style="width:100%;padding:10px 12px;background:var(--surface-2,#1a1d24);
-            border:1px solid var(--border,rgba(255,255,255,.07));border-radius:8px;
-            color:var(--text,#f0f2f5);font-size:.88rem;outline:none;cursor:pointer;">
-          <option value="GLP-1">GLP-1 (general)</option>
-          <option value="Wegovy (semaglutide)">Wegovy (semaglutide)</option>
-          <option value="Zepbound (tirzepatide)">Zepbound (tirzepatide)</option>
-          <option value="Ozempic (semaglutide)">Ozempic (semaglutide)</option>
-          <option value="Mounjaro (tirzepatide)">Mounjaro (tirzepatide)</option>
-        </select>
+      <div id="paAutoData" style="background:var(--signal-dim,rgba(0,212,200,.08));border:1px solid rgba(0,212,200,.2);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:.78rem;color:var(--text-2,#9aa3b0);">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;color:var(--signal,#00d4c8);font-weight:600;font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;"><i class="fa-solid fa-database"></i> Auto-detected from your health memory</div>
+        <div id="paAutoDataList"><i class="fa-solid fa-spinner" style="animation:spin .7s linear infinite"></i> Loading your stored data…</div>
       </div>
 
-      <button onclick="generatePAPacket()" id="paBtn"
-        style="width:100%;padding:13px;background:var(--signal,#00d4c8);color:#0a0b0e;
-          border:none;border-radius:10px;font-size:.9rem;font-weight:700;cursor:pointer;margin-bottom:14px;">
-        Build PA Packet from My Lab Data
-      </button>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+        <div><label style="display:block;font-size:.7rem;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Medication</label><select id="paMedication" style="width:100%;padding:9px 11px;background:var(--surface-2,#1a1d24);border:1px solid var(--border,rgba(255,255,255,.07));border-radius:8px;color:var(--text,#f0f2f5);font-size:.84rem;outline:none;"><option value="Wegovy (semaglutide)">Wegovy</option><option value="Zepbound (tirzepatide)">Zepbound</option><option value="Ozempic (semaglutide)">Ozempic</option><option value="Mounjaro (tirzepatide)">Mounjaro</option><option value="GLP-1">GLP-1 (general)</option></select></div>
+        <div><label style="display:block;font-size:.7rem;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Denial Reason</label><select id="paDenialReason" style="width:100%;padding:9px 11px;background:var(--surface-2,#1a1d24);border:1px solid var(--border,rgba(255,255,255,.07));border-radius:8px;color:var(--text,#f0f2f5);font-size:.84rem;outline:none;"><option value="not medically necessary">Not medically necessary</option><option value="step therapy required">Step therapy required</option><option value="BMI below threshold">BMI below threshold</option><option value="HbA1c not high enough">HbA1c not high enough</option><option value="not on formulary">Not on formulary</option><option value="coverage excluded">Coverage excluded</option></select></div>
+      </div>
 
+      <div style="margin-bottom:14px;">
+        <label style="display:block;font-size:.7rem;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Add additional context <span style="font-weight:400;opacity:.6">(optional — supplements auto data)</span></label>
+        <textarea id="paAdditionalContext" style="width:100%;padding:10px 12px;background:var(--surface-2,#1a1d24);border:1px solid var(--border,rgba(255,255,255,.07));border-radius:8px;color:var(--text,#f0f2f5);font-size:.84rem;outline:none;resize:vertical;min-height:60px;" placeholder="e.g. I was on Zepbound for 8 months and lost 27 lbs. Stopping caused my glucose to rebound significantly. My doctor supports continuation…"></textarea>
+      </div>
+
+      <div style="margin-bottom:16px;">
+        <label style="display:block;font-size:.7rem;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;">Prior medications tried (check all that apply)</label>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;" id="paPriorMeds">
+          ${['Metformin','Phentermine/Qsymia','Contrave','6+ month diet program','Bariatric evaluation'].map(m => `<label style="display:flex;align-items:center;gap:5px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:5px 10px;cursor:pointer;font-size:.76rem;color:var(--text-2);"><input type="checkbox" value="${m}" style="accent-color:var(--signal);"> ${m}</label>`).join('')}
+        </div>
+      </div>
+
+      <button onclick="generatePAPacket()" id="paBtn" style="width:100%;padding:13px;background:var(--signal,#00d4c8);color:#0a0b0e;border:none;border-radius:10px;font-size:.9rem;font-weight:700;cursor:pointer;margin-bottom:14px;">Build PA Packet from My Data</button>
       <div id="paContent"></div>
-
-      <p style="font-size:.68rem;color:var(--text-3,#566070);margin-top:10px;line-height:1.6;">
-        ⚕️ This is an informational support document generated from your stored health data.
-        Share with your healthcare provider — they make all clinical decisions.
-      </p>
+      <p style="font-size:.68rem;color:var(--text-3,#566070);margin-top:10px;line-height:1.6;">⚕️ This is an informational support document from your stored data. Share with your provider — they make all clinical decisions.</p>
     </div>
   `;
-
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
   document.body.appendChild(modal);
+
+  // Auto-fetch stored health data
+  _loadPAAutoData();
+}
+
+async function _loadPAAutoData() {
+  const listEl = document.getElementById('paAutoDataList');
+  if (!listEl) return;
+  try {
+    const h = await _authHeaders();
+    if (!h) { listEl.textContent = 'Sign in to load your stored data.'; return; }
+    const [markersRes, memoriesRes] = await Promise.all([
+      fetch(_API + '/api/health-markers', { headers: h }),
+      fetch(_API + '/api/memory/facts', { headers: h }),
+    ]);
+    const markers = markersRes.ok ? await markersRes.json() : [];
+    const memData = memoriesRes.ok ? await memoriesRes.json() : {};
+    const memories = memData.facts || [];
+
+    const dataPoints = [];
+
+    // Extract key PA-relevant markers
+    const paMarkers = markers.filter(m => /bmi|weight|hba1c|glucose|ldl|hdl|triglyceride|crp|blood pressure/i.test(m.marker_name || ''));
+    paMarkers.slice(0, 6).forEach(m => {
+      const status = m.status && m.status !== 'UNKNOWN' ? ` [${m.status}]` : '';
+      dataPoints.push(`<span style="color:${m.status === 'HIGH' ? 'var(--danger,#f87171)' : m.status === 'LOW' ? 'var(--amber,#fbbf24)' : 'var(--ok,#4ade80)'}">${m.marker_name}: ${m.value} ${m.unit || ''}${status} (${m.date || ''})</span>`);
+    });
+
+    // Extract medication/GLP-1 memories
+    const medMemories = memories.filter(f => /glp|wegovy|ozempic|zepbound|mounjaro|stopped|started|medication|insurance|goal weight/i.test(f));
+    medMemories.slice(0, 3).forEach(m => {
+      dataPoints.push(`<span style="color:var(--text,#f0f2f5)">▸ ${escHtml(m)}</span>`);
+    });
+
+    if (dataPoints.length === 0) {
+      listEl.innerHTML = '<span style="color:var(--text-3);">No stored data found. Upload a lab report first to enable auto-population.</span>';
+    } else {
+      listEl.innerHTML = dataPoints.join('<br>');
+    }
+
+    // Auto-fill medication if stored
+    const glpMemory = memories.find(f => /wegovy|ozempic|zepbound|mounjaro/i.test(f));
+    if (glpMemory) {
+      const medSel = document.getElementById('paMedication');
+      if (medSel) {
+        if (/wegovy/i.test(glpMemory)) medSel.value = 'Wegovy (semaglutide)';
+        else if (/zepbound/i.test(glpMemory)) medSel.value = 'Zepbound (tirzepatide)';
+        else if (/ozempic/i.test(glpMemory)) medSel.value = 'Ozempic (semaglutide)';
+        else if (/mounjaro/i.test(glpMemory)) medSel.value = 'Mounjaro (tirzepatide)';
+      }
+    }
+
+    // Auto-fill denial if stored
+    const deniedMemory = memories.find(f => /insurance denied|prior auth denied|not covered/i.test(f));
+    if (deniedMemory) {
+      const denialSel = document.getElementById('paDenialReason');
+      if (denialSel) denialSel.value = 'not medically necessary';
+    }
+
+  } catch (e) {
+    listEl.innerHTML = `<span style="color:var(--text-3);">Could not load stored data: ${e.message}</span>`;
+  }
 }
 
 async function generatePAPacket() {
-  const btn      = document.getElementById('paBtn');
-  const med      = document.getElementById('paMedication')?.value || 'GLP-1';
-  const content  = document.getElementById('paContent');
+  const btn = document.getElementById('paBtn');
+  const content = document.getElementById('paContent');
+  const med = document.getElementById('paMedication')?.value || 'GLP-1';
+  const denialReason = document.getElementById('paDenialReason')?.value || 'not medically necessary';
+  const additionalContext = document.getElementById('paAdditionalContext')?.value || '';
+  const priorMeds = Array.from(document.querySelectorAll('#paPriorMeds input:checked')).map(c => c.value);
 
-  if (btn)     { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner" style="animation:spin .7s linear infinite"></i> Building packet from your labs…'; }
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner" style="animation:spin .7s linear infinite"></i> Building packet from your labs…'; }
   if (content) content.innerHTML = '';
 
   try {
-    const s = await (typeof session === 'function' ? session() : Promise.resolve(null));
-    if (!s?.access_token) throw new Error('Session expired.');
+    const h = await _authHeaders();
+    if (!h) throw new Error('Session expired.');
 
-    const res = await fetch(`${_API}/api/advocacy?medication=${encodeURIComponent(med)}&raw=false`, {
-      headers: { 'Authorization': 'Bearer ' + s.access_token }
-    });
+    // Fetch advocacy brief from backend (uses all stored data automatically)
+    const res = await fetch(`${_API}/api/advocacy?medication=${encodeURIComponent(med)}&raw=false`, { headers: h });
 
+    let data = null;
     if (res.status === 403) {
-      throw new Error('AI processing consent required. Go to Settings to enable it.');
-    }
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || 'Could not generate PA packet. Upload lab reports first.');
+      // Consent issue — try without advocacy endpoint
+      throw new Error('Enable AI processing in settings to use this feature.');
     }
 
-    const data = await res.json();
+    if (res.ok) {
+      data = await res.json();
+    } else {
+      // Fallback: use appeal endpoint (public, no auth required for base)
+      const markers = await fetch(_API + '/api/health-markers', { headers: h }).then(r => r.json()).catch(() => []);
+      const fallbackBody = {
+        med, reason: 'weight management', denial_reason: denialReason,
+        additional_context: additionalContext, prior_meds: priorMeds,
+        comorbidities: [],
+      };
+      // Extract values from markers for the appeal
+      markers.forEach(m => {
+        const name = (m.marker_name || '').toLowerCase();
+        if (/bmi/.test(name) && m.value) fallbackBody.bmi = parseFloat(m.value);
+        if (/weight/.test(name) && m.value) fallbackBody.weight = parseFloat(m.value);
+        if (/hba1c/.test(name) && m.value) fallbackBody.hba1c = parseFloat(m.value);
+        if (/fasting.*glucose/.test(name) && m.value) fallbackBody.glucose = parseFloat(m.value);
+        if (/^ldl/.test(name) && m.value) fallbackBody.ldl = parseFloat(m.value);
+        if (/blood pressure|systolic/.test(name) && m.value) fallbackBody.bp = String(m.value);
+      });
 
-    const strength = data.evidence_strength || 'moderate';
+      const appealRes = await fetch(_API + '/api/appeal/generate', { method: 'POST', headers: h, body: JSON.stringify(fallbackBody) });
+      if (appealRes.ok) data = await appealRes.json();
+    }
+
+    if (!data) throw new Error('Could not generate PA packet. Upload lab reports first.');
+
+    const strength = data.evidence_strength || (data.score >= 70 ? 'strong' : data.score >= 45 ? 'moderate' : 'limited');
     const strengthColor = { strong: '#4ade80', moderate: '#fbbf24', limited: '#f87171' }[strength] || '#fbbf24';
-    const packet   = data.pa_packet || 'No packet content returned.';
-    const missing  = (data.missing_data || []).slice(0, 4);
-    const steps    = (data.next_steps || []).slice(0, 4);
+    const packet = data.pa_packet || data.packet || 'No packet content returned.';
+    const missing = (data.missing_data || data.missing || []).slice(0, 4);
+    const steps = (data.next_steps || []).slice(0, 4);
+    const facts = (data.clinical_facts || data.facts || []).slice(0, 6);
+    const score = data.score || (strength === 'strong' ? 82 : strength === 'moderate' ? 55 : 30);
 
-    if (content) content.innerHTML = `
-      <div style="background:rgba(0,0,0,.2);border-radius:8px;padding:10px 12px;margin-bottom:12px;
-        display:flex;align-items:center;gap:10px;">
-        <div style="font-size:.72rem;color:var(--text-3,#566070);text-transform:uppercase;letter-spacing:.06em;">Evidence strength</div>
-        <div style="font-size:.88rem;font-weight:700;color:${strengthColor};">${strength.toUpperCase()}</div>
+    content.innerHTML = `
+      <div style="background:rgba(0,0,0,.2);border-radius:8px;padding:10px 12px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;">
+        <span style="font-size:.72rem;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;">Evidence strength</span>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="width:80px;height:5px;background:var(--surface-3);border-radius:3px;overflow:hidden;"><div style="width:${score}%;height:100%;background:${strengthColor};border-radius:3px;transition:width 1s ease;"></div></div>
+          <span style="font-size:.88rem;font-weight:700;color:${strengthColor};">${strength.toUpperCase()}</span>
+        </div>
       </div>
-
-      ${missing.length ? `
-        <div style="margin-bottom:12px;">
-          <div style="font-size:.7rem;font-weight:700;color:var(--amber,#fbbf24);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">
-            ⚠ Would strengthen your case
-          </div>
-          ${missing.map(m => `<div style="font-size:.78rem;color:var(--text-2,#9aa3b0);padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04);">• ${m}</div>`).join('')}
-        </div>` : ''}
-
-      <div style="background:var(--surface-2,#1a1d24);border-radius:10px;padding:14px;
-        white-space:pre-wrap;font-size:.75rem;color:var(--text-2,#9aa3b0);
-        line-height:1.75;max-height:380px;overflow-y:auto;margin-bottom:12px;
-        font-family:monospace;">${packet}</div>
-
-      ${steps.length ? `
-        <div style="margin-bottom:12px;">
-          <div style="font-size:.7rem;font-weight:700;color:var(--signal,#00d4c8);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">
-            Next steps
-          </div>
-          ${steps.map((s, i) => `<div style="font-size:.78rem;color:var(--text-2,#9aa3b0);padding:4px 0;">${i+1}. ${s}</div>`).join('')}
-        </div>` : ''}
-
-      <button onclick="navigator.clipboard&&navigator.clipboard.writeText(document.querySelector('#paContent div[style*=monospace]').innerText);toast&&toast('PA packet copied ✓')"
-        style="width:100%;padding:10px;background:var(--signal,#00d4c8);color:#0a0b0e;
-          border:none;border-radius:8px;font-size:.84rem;font-weight:700;cursor:pointer;">
-        Copy PA Packet for Provider
-      </button>
+      ${facts.length ? `<div style="margin-bottom:12px;"><div style="font-size:.7rem;font-weight:700;color:var(--ok,#4ade80);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Clinical Facts in Your Record</div>${facts.map(f => {const type = f.type || 'strong'; const icon = type === 'strong' ? '✓' : '⚠'; const color = type === 'strong' ? 'var(--ok,#4ade80)' : 'var(--amber,#fbbf24)'; return `<div style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:.78rem;"><span style="color:${color};flex-shrink:0;">${f.icon||icon}</span><span style="color:var(--text-2,#9aa3b0);">${escHtml(f.text||f.value||'')}</span></div>`}).join('')}</div>` : ''}
+      <div style="background:var(--surface-2,#1a1d24);border-radius:10px;padding:14px;white-space:pre-wrap;font-size:.75rem;color:var(--text-2,#9aa3b0);line-height:1.75;max-height:340px;overflow-y:auto;margin-bottom:12px;font-family:monospace;">${escHtml(packet)}</div>
+      ${missing.length ? `<div style="margin-bottom:12px;"><div style="font-size:.7rem;font-weight:700;color:var(--amber,#fbbf24);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">⚠ Would strengthen your case</div>${missing.map(m => `<div style="font-size:.78rem;color:var(--text-2);padding:4px 0;border-bottom:1px solid rgba(255,255,255,.04);">• ${escHtml(m)}</div>`).join('')}</div>` : ''}
+      ${steps.length ? `<div style="margin-bottom:12px;"><div style="font-size:.7rem;font-weight:700;color:var(--signal,#00d4c8);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Next Steps</div>${steps.map((s, i) => `<div style="font-size:.78rem;color:var(--text-2);padding:4px 0;">${i+1}. ${escHtml(s)}</div>`).join('')}</div>` : ''}
+      <button onclick="navigator.clipboard&&navigator.clipboard.writeText(document.querySelector('#paContent pre,#paContent div[style*=monospace]')?.innerText||'');typeof toast==='function'&&toast('PA packet copied ✓')" style="width:100%;padding:10px;background:var(--signal,#00d4c8);color:#0a0b0e;border:none;border-radius:8px;font-size:.84rem;font-weight:700;cursor:pointer;">Copy PA Packet for Provider</button>
     `;
-  } catch(e) {
+  } catch (e) {
     if (content) content.innerHTML = `<div style="color:var(--danger,#f87171);font-size:.82rem;">${e.message}</div>`;
   } finally {
-    if (btn) { btn.disabled = false; btn.innerHTML = 'Build PA Packet from My Lab Data'; }
+    if (btn) { btn.disabled = false; btn.innerHTML = 'Build PA Packet from My Data'; }
   }
 }
-
 window.openPAArchitectModal = openPAArchitectModal;
 
-// ── 9. INJECT COCKPIT QUICK-ACTIONS ──────────────────────────────────────────
-function injectCockpitQuickActions() {
-  const cockpit = document.getElementById('cockpit');
-  if (!cockpit || document.getElementById('quickActionsSection')) return;
+// ══════════════════════════════════════════════════════════════════════════════
+// 8. SIDEBAR QUICK ACTIONS — replaces cockpit section
+// ══════════════════════════════════════════════════════════════════════════════
+function injectSidebarQuickActions() {
+  // Don't inject twice
+  if (document.getElementById('sidebarQuickActions')) return;
 
-  const section = document.createElement('section');
-  section.className = 'cp-section';
-  section.id = 'quickActionsSection';
+  const sidebar = document.getElementById('sidebar');
+  if (!sidebar) { setTimeout(injectSidebarQuickActions, 500); return; }
+
+  // Find the right spot — after sb-nav, before divider
+  const sbDivider = sidebar.querySelector('.sb-divider');
+  if (!sbDivider) { setTimeout(injectSidebarQuickActions, 500); return; }
+
+  const section = document.createElement('div');
+  section.id = 'sidebarQuickActions';
+  section.style.cssText = 'padding:4px 12px 2px;flex-shrink:0;';
   section.innerHTML = `
-    <div class="cp-section-hd">
-      <h2 class="cp-section-title">Quick Actions</h2>
-    </div>
-    <div style="display:flex;flex-direction:column;gap:7px;">
-      <button onclick="openDoctorPrepModal()"
-        style="width:100%;min-height:44px;padding:0 14px;display:flex;align-items:center;gap:9px;
-          background:var(--surface-2,#1a1d24);border:1px solid var(--border,rgba(255,255,255,.07));
-          border-radius:8px;color:var(--text-2,#9aa3b0);font-size:.82rem;cursor:pointer;
-          font-family:var(--sans,'sans-serif');font-weight:500;transition:all .15s;"
-        onmouseover="this.style.borderColor='var(--signal,#00d4c8)';this.style.color='var(--signal,#00d4c8)'"
-        onmouseout="this.style.borderColor='var(--border,rgba(255,255,255,.07))';this.style.color='var(--text-2,#9aa3b0)'">
-        <i class="fa-solid fa-stethoscope" style="width:16px;text-align:center;"></i>
-        Doctor Visit Brief
-      </button>
-      <button onclick="openAppointmentPrepModal()"
-        style="width:100%;min-height:44px;padding:0 14px;display:flex;align-items:center;gap:9px;
-          background:var(--surface-2,#1a1d24);border:1px solid var(--border,rgba(255,255,255,.07));
-          border-radius:8px;color:var(--text-2,#9aa3b0);font-size:.82rem;cursor:pointer;
-          font-family:var(--sans,'sans-serif');font-weight:500;transition:all .15s;"
-        onmouseover="this.style.borderColor='var(--signal,#00d4c8)';this.style.color='var(--signal,#00d4c8)'"
-        onmouseout="this.style.borderColor='var(--border,rgba(255,255,255,.07))';this.style.color='var(--text-2,#9aa3b0)'">
-        <i class="fa-solid fa-calendar-check" style="width:16px;text-align:center;"></i>
-        Appointment Prep
-      </button>
-      <button onclick="openPAArchitectModal()"
-        style="width:100%;min-height:44px;padding:0 14px;display:flex;align-items:center;gap:9px;
-          background:var(--surface-2,#1a1d24);border:1px solid var(--border,rgba(255,255,255,.07));
-          border-radius:8px;color:var(--text-2,#9aa3b0);font-size:.82rem;cursor:pointer;
-          font-family:var(--sans,'sans-serif');font-weight:500;transition:all .15s;"
-        onmouseover="this.style.borderColor='var(--signal,#00d4c8)';this.style.color='var(--signal,#00d4c8)'"
-        onmouseout="this.style.borderColor='var(--border,rgba(255,255,255,.07))';this.style.color='var(--text-2,#9aa3b0)'">
-        <i class="fa-solid fa-shield-halved" style="width:16px;text-align:center;"></i>
-        Insurance PA Architect
-      </button>
-    </div>
+    <div style="font-size:.67rem;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.10em;padding:8px 0 4px;">Quick Actions</div>
+    <button onclick="openDoctorPrepModal();if(typeof closeSidebar==='function')closeSidebar()" class="nav-item" style="font-size:.82rem;">
+      <i class="fa-solid fa-stethoscope" style="width:16px;text-align:center;"></i><span>Doctor Visit Brief</span>
+    </button>
+    <button onclick="openAppointmentPrepModal();if(typeof closeSidebar==='function')closeSidebar()" class="nav-item" style="font-size:.82rem;">
+      <i class="fa-solid fa-calendar-check" style="width:16px;text-align:center;"></i><span>Appointment Prep</span>
+    </button>
+    <button onclick="openPAArchitectModal();if(typeof closeSidebar==='function')closeSidebar()" class="nav-item" style="font-size:.82rem;">
+      <i class="fa-solid fa-shield-halved" style="width:16px;text-align:center;"></i><span>Insurance PA Architect</span>
+    </button>
   `;
 
-  // Insert as the first section after the close button
-  const closeBtn = document.getElementById('cockpitCloseBtn');
-  if (closeBtn && closeBtn.nextSibling) {
-    cockpit.insertBefore(section, closeBtn.nextSibling);
-  } else {
-    const firstSection = cockpit.querySelector('.cp-section');
-    if (firstSection) cockpit.insertBefore(section, firstSection);
-    else cockpit.appendChild(section);
-  }
+  // Insert before the first divider
+  sidebar.insertBefore(section, sbDivider);
 }
 
-// ── 10. INIT ──────────────────────────────────────────────────────────────────
-function initAppFixes() {
-  injectUpgradeButton();
-  injectCockpitQuickActions();
+// ── Remove quick actions from cockpit (keep cockpit clean) ───────────────────
+function removeCockpitQuickActions() {
+  const el = document.getElementById('quickActionsSection');
+  if (el) el.remove();
+}
 
-  window.addEventListener('phi:authed', () => {
-    setTimeout(() => refreshPlanDisplay(), 800);
-  });
-  setTimeout(() => refreshPlanDisplay(), 2000);
+// ── Upgrade button in sidebar (subtle) ───────────────────────────────────────
+function injectUpgradeButton() {
+  const sbFooter = document.querySelector('.sb-footer');
+  if (!sbFooter || document.getElementById('upgradeNavBtn')) return;
+  const btn = document.createElement('button');
+  btn.id = 'upgradeNavBtn';
+  btn.className = 'nav-item';
+  btn.style.cssText = 'color:var(--signal,#00d4c8)!important;opacity:.8;font-size:.82rem;';
+  btn.innerHTML = `<i class="fa-solid fa-arrow-up-right-dots" style="width:16px;text-align:center;"></i><span>Upgrade Plan</span>`;
+  btn.onclick = () => { if (typeof closeSidebar === 'function') closeSidebar(); showUpgradeModal('manual'); };
+  sbFooter.insertBefore(btn, sbFooter.firstChild);
+}
+
+// ── Helper: HTML escape ───────────────────────────────────────────────────────
+function escHtml(str) {
+  return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════════════════════════════
+function initAppFixes() {
+  // Small delay to ensure DOM is ready from script.js
+  setTimeout(() => {
+    injectSidebarQuickActions();
+    injectUpgradeButton();
+    removeCockpitQuickActions();
+    initSyncWearable();
+
+    // Plan refresh
+    window.addEventListener('phi:authed', () => { setTimeout(() => refreshPlanDisplay(), 800); });
+    setTimeout(() => refreshPlanDisplay(), 2000);
+  }, 300);
 }
 
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initAppFixes);
 } else {
-  setTimeout(initAppFixes, 200);
+  initAppFixes();
 }
+
+// Re-run cockpit cleanup when cockpit opens (in case cockpit_upgrades.js added them)
+document.addEventListener('click', e => {
+  if (e.target.closest('#mobileCockpitBtn')) {
+    setTimeout(removeCockpitQuickActions, 100);
+  }
+});
