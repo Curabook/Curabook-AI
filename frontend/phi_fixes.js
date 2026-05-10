@@ -208,7 +208,7 @@ async function processWatchScreenshot(file) {
     const authHeader = { 'Authorization': h['Authorization'] };
     const today = new Date().toISOString().slice(0, 10);
 
-    const res = await fetch(_API + '/api/analyze', { method: 'POST', headers: authHeader, body: formData });
+    const res = await fetch(_API + '/analyze', { method: 'POST', headers: authHeader, body: formData });
     if (!res.ok) {
       const errText = await res.text().catch(() => res.status);
       throw new Error('Vision API error: ' + errText);
@@ -341,37 +341,29 @@ async function _logWatchMetrics(metrics, date, headers) {
 
 // ── Wire sync wearable button ──────────────────────────────────────────────────
 function initSyncWearable() {
-  const btn = document.getElementById('syncWearableBtn');
-  if (!btn) return;
-
-  let watchInput = document.getElementById('watchCameraInput');
-  if (!watchInput) {
-    watchInput = document.createElement('input');
-    watchInput.type = 'file';
-    watchInput.id = 'watchCameraInput';
-    watchInput.accept = 'image/*';
-    watchInput.style.display = 'none';
-    document.body.appendChild(watchInput);
-  }
-
-  btn.addEventListener('click', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    // On mobile use camera, on desktop open file picker
-    if (navigator.maxTouchPoints > 0) {
-      watchInput.setAttribute('capture', 'screen');
-    } else {
-      watchInput.removeAttribute('capture');
+  // script.js already creates cameraInput + wires syncWearableBtn click.
+  // We wait for that to finish, then REPLACE cameraInput's change handler
+  // so our Vision AI path runs instead of the default addFile() path.
+  // We never touch the button itself — that prevents the double-picker bug.
+  function _hijackCameraInput() {
+    const cameraInput = document.getElementById('cameraInput');
+    if (!cameraInput) {
+      // script.js hasn't run initSyncWearable yet — wait for it
+      setTimeout(_hijackCameraInput, 300);
+      return;
     }
-    watchInput.click();
-  });
+    // Clone the element to strip ALL existing listeners (including script.js's)
+    const fresh = cameraInput.cloneNode(true);
+    cameraInput.parentNode.replaceChild(fresh, cameraInput);
 
-  watchInput.addEventListener('change', async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    e.target.value = '';
-    await processWatchScreenshot(file);
-  });
+    fresh.addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      e.target.value = '';
+      await processWatchScreenshot(file);
+    });
+  }
+  _hijackCameraInput();
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
