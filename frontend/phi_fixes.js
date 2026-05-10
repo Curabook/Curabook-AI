@@ -89,6 +89,9 @@ async function refreshPlanDisplay() {
       window._userPlan = data.plan || 'free';
       window._reportsRemaining = data.reports_remaining ?? 1;
     }
+    // Show upgrade pill only for free/trial users
+    const pill = document.getElementById('upgradeNavBtn');
+    if (pill) pill.style.display = data.is_pro ? 'none' : 'inline-block';
   } catch (e) { console.warn('[PLAN]', e); }
 }
 
@@ -641,56 +644,97 @@ async function generatePAPacket() {
 window.openPAArchitectModal = openPAArchitectModal;
 
 // ══════════════════════════════════════════════════════════════════════════════
-// 8. SIDEBAR QUICK ACTIONS — replaces cockpit section
+// 8. QUICK ACTIONS — injected into user dropdown (not sidebar history area)
 // ══════════════════════════════════════════════════════════════════════════════
-function injectSidebarQuickActions() {
-  // Don't inject twice
-  if (document.getElementById('sidebarQuickActions')) return;
 
-  const sidebar = document.getElementById('sidebar');
-  if (!sidebar) { setTimeout(injectSidebarQuickActions, 500); return; }
+function injectQuickActionsIntoDropdown() {
+  if (document.getElementById('quickActionsDropdownItems')) return;
 
-  // Find the right spot — after sb-nav, before divider
-  const sbDivider = sidebar.querySelector('.sb-divider');
-  if (!sbDivider) { setTimeout(injectSidebarQuickActions, 500); return; }
+  // Wait for user dropdown to exist
+  const dropdown = document.getElementById('userDropdown');
+  if (!dropdown) { setTimeout(injectQuickActionsIntoDropdown, 400); return; }
 
-  const section = document.createElement('div');
-  section.id = 'sidebarQuickActions';
-  section.style.cssText = 'padding:4px 12px 2px;flex-shrink:0;';
-  section.innerHTML = `
-    <div style="font-size:.67rem;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.10em;padding:8px 0 4px;">Quick Actions</div>
-    <button onclick="openDoctorPrepModal();if(typeof closeSidebar==='function')closeSidebar()" class="nav-item" style="font-size:.82rem;">
-      <i class="fa-solid fa-stethoscope" style="width:16px;text-align:center;"></i><span>Doctor Visit Brief</span>
+  // Inject styles for quick-action items inside dropdown
+  if (!document.getElementById('qaDropdownStyles')) {
+    const style = document.createElement('style');
+    style.id = 'qaDropdownStyles';
+    style.textContent = `
+      .qa-dd-label {
+        font-size:.6rem;font-weight:700;color:var(--text-3);
+        text-transform:uppercase;letter-spacing:.1em;
+        padding:8px 14px 4px;display:block;
+      }
+      .qa-dd-item {
+        width:100%;min-height:40px;padding:0 14px;
+        font-size:.82rem;color:var(--text-2);
+        display:flex;align-items:center;gap:9px;
+        transition:background .15s;text-align:left;font-weight:500;
+        cursor:pointer;border:none;background:none;font-family:inherit;
+      }
+      .qa-dd-item:hover { background:var(--surface-2,#1a1d24); color:var(--text); }
+      .qa-dd-item i { width:15px;text-align:center;font-size:.78rem;color:var(--text-3); }
+      .qa-dd-item:hover i { color:var(--signal,#00d4c8); }
+      .qa-dd-divider { height:1px;background:var(--border,rgba(255,255,255,.07));margin:2px 0; }
+    `;
+    document.head.appendChild(style);
+  }
+
+  // Build the quick action items block
+  const wrap = document.createElement('div');
+  wrap.id = 'quickActionsDropdownItems';
+  wrap.innerHTML = `
+    <div class="qa-dd-divider"></div>
+    <span class="qa-dd-label">Quick Actions</span>
+    <button class="qa-dd-item" onclick="openDoctorPrepModal();closeUserMenu()">
+      <i class="fa-solid fa-stethoscope"></i><span>Doctor Visit Brief</span>
     </button>
-    <button onclick="openAppointmentPrepModal();if(typeof closeSidebar==='function')closeSidebar()" class="nav-item" style="font-size:.82rem;">
-      <i class="fa-solid fa-calendar-check" style="width:16px;text-align:center;"></i><span>Appointment Prep</span>
+    <button class="qa-dd-item" onclick="openAppointmentPrepModal();closeUserMenu()">
+      <i class="fa-solid fa-calendar-check"></i><span>Appointment Prep</span>
     </button>
-    <button onclick="openPAArchitectModal();if(typeof closeSidebar==='function')closeSidebar()" class="nav-item" style="font-size:.82rem;">
-      <i class="fa-solid fa-shield-halved" style="width:16px;text-align:center;"></i><span>Insurance PA Architect</span>
+    <button class="qa-dd-item" onclick="openPAArchitectModal();closeUserMenu()">
+      <i class="fa-solid fa-shield-halved"></i><span>Insurance PA Architect</span>
     </button>
+    <div class="qa-dd-divider"></div>
   `;
 
-  // Insert before the first divider
-  sidebar.insertBefore(section, sbDivider);
+  // Insert at the top of the dropdown, before the theme toggle
+  dropdown.insertBefore(wrap, dropdown.firstChild);
 }
 
 // ── Remove quick actions from cockpit (keep cockpit clean) ───────────────────
 function removeCockpitQuickActions() {
-  const el = document.getElementById('quickActionsSection');
-  if (el) el.remove();
+  ['quickActionsSection', 'sidebarQuickActions'].forEach(id => {
+    document.getElementById(id)?.remove();
+  });
 }
 
-// ── Upgrade button in sidebar (subtle) ───────────────────────────────────────
+// ── Upgrade button: small pill in the user-plan line, not a full nav-item ────
 function injectUpgradeButton() {
-  const sbFooter = document.querySelector('.sb-footer');
-  if (!sbFooter || document.getElementById('upgradeNavBtn')) return;
-  const btn = document.createElement('button');
-  btn.id = 'upgradeNavBtn';
-  btn.className = 'nav-item';
-  btn.style.cssText = 'color:var(--signal,#00d4c8)!important;opacity:.8;font-size:.82rem;';
-  btn.innerHTML = `<i class="fa-solid fa-arrow-up-right-dots" style="width:16px;text-align:center;"></i><span>Upgrade Plan</span>`;
-  btn.onclick = () => { if (typeof closeSidebar === 'function') closeSidebar(); showUpgradeModal('manual'); };
-  sbFooter.insertBefore(btn, sbFooter.firstChild);
+  // Already injected or user is pro — skip
+  if (document.getElementById('upgradeNavBtn')) return;
+  const planEl = document.getElementById('userPlan');
+  if (!planEl) return;
+
+  const pill = document.createElement('button');
+  pill.id = 'upgradeNavBtn';
+  pill.style.cssText = `
+    display:none;           /* shown only for free/trial users via refreshPlanDisplay */
+    margin-left:6px;
+    padding:1px 7px;
+    background:var(--signal-dim,rgba(0,212,200,.1));
+    border:1px solid rgba(0,212,200,.25);
+    border-radius:20px;
+    font-size:.58rem;font-weight:700;
+    color:var(--signal,#00d4c8);
+    cursor:pointer;
+    font-family:inherit;
+    vertical-align:middle;
+    transition:all .15s;
+    line-height:1.4;
+  `;
+  pill.textContent = 'Upgrade';
+  pill.onclick = (e) => { e.stopPropagation(); closeUserMenu(); showUpgradeModal('manual'); };
+  planEl.parentNode.insertBefore(pill, planEl.nextSibling);
 }
 
 // ── Helper: HTML escape ───────────────────────────────────────────────────────
@@ -702,14 +746,12 @@ function escHtml(str) {
 // INIT
 // ══════════════════════════════════════════════════════════════════════════════
 function initAppFixes() {
-  // Small delay to ensure DOM is ready from script.js
   setTimeout(() => {
-    injectSidebarQuickActions();
+    injectQuickActionsIntoDropdown();
     injectUpgradeButton();
     removeCockpitQuickActions();
     initSyncWearable();
 
-    // Plan refresh
     window.addEventListener('phi:authed', () => { setTimeout(() => refreshPlanDisplay(), 800); });
     setTimeout(() => refreshPlanDisplay(), 2000);
   }, 300);
@@ -721,9 +763,7 @@ if (document.readyState === 'loading') {
   initAppFixes();
 }
 
-// Re-run cockpit cleanup when cockpit opens (in case cockpit_upgrades.js added them)
+// Clean up cockpit whenever it opens
 document.addEventListener('click', e => {
-  if (e.target.closest('#mobileCockpitBtn')) {
-    setTimeout(removeCockpitQuickActions, 100);
-  }
+  if (e.target.closest('#mobileCockpitBtn')) setTimeout(removeCockpitQuickActions, 100);
 });
