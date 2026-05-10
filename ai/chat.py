@@ -208,7 +208,7 @@ def build_chat_messages(
 
     messages: List[Dict[str, str]] = [{"role": "system", "content": "\n".join(system_parts)}]
     has_health_data = bool(health_context and health_context.strip())
-    
+
     if has_health_data:
         messages.append({
             "role": "system",
@@ -327,27 +327,131 @@ def save_chat_turn(supabase: Any, user_id: str, conversation_id: str,
     from datetime import datetime, timezone, timedelta
     try:
         now = datetime.now(timezone.utc)
-        
-        # FIX: explicitly assign 'created_at' in python to prevent postgres transaction microsecond collisions
         supabase.table("chats").insert({
-             "user_id": user_id, 
+             "user_id": user_id,
              "conversation_id": conversation_id,
-             "role": "user",      
+             "role": "user",
              "content": str(user_msg  or "").strip(),
              "created_at": now.isoformat()
         }).execute()
-        
         ai_time = now + timedelta(milliseconds=100)
-        
         supabase.table("chats").insert({
-             "user_id": user_id, 
+             "user_id": user_id,
              "conversation_id": conversation_id,
-             "role": "assistant", 
+             "role": "assistant",
              "content": str(ai_reply or "").strip(),
              "created_at": ai_time.isoformat()
         }).execute()
     except Exception as e:
         print(f"[CHAT SAVE ERROR] {e}")
 
+
+# ── FIXED: Real doctor prep generator (was a one-line stub) ───────────────────
+
 def generate_doctor_prep(document_text: str, markers: List[Dict], user_name: str) -> str:
-    return "Here is your GLP-1 Maintenance doctor visit brief."
+    """
+    Generate a real, structured doctor visit preparation brief from uploaded
+    document text and extracted markers.
+
+    This replaces the previous stub that returned a hardcoded string.
+    Falls back to a rule-based brief if LLM is unavailable.
+    """
+    if not document_text and not markers:
+        return (
+            "No document data available to generate a doctor prep brief. "
+            "Upload a lab report to enable this feature."
+        )
+
+    name_prefix = f"{user_name}, your" if user_name else "Your"
+
+    # Rule-based brief built from extracted markers (works without LLM)
+    abnormal = [m for m in markers if m.get("status") in ("HIGH", "LOW")]
+    normal   = [m for m in markers if m.get("status") == "NORMAL"]
+
+    # Build rule-based content as fallback
+    abnormal_lines = []
+    for m in abnormal[:6]:
+        direction = "above" if m.get("status") == "HIGH" else "below"
+        name_m = m.get("marker", m.get("marker_name", "Unknown"))
+        abnormal_lines.append(
+            f"  • {name_m}: {m.get('value')} {m.get('unit','')} — "
+            f"{direction} normal range {m.get('reference_range','')}"
+        )
+
+    normal_summary = ", ".join(
+        f"{m.get('marker', m.get('marker_name',''))} ({m.get('value')} {m.get('unit','')})"
+        for m in normal[:5]
+    )
+
+    rule_based = f"""**PHI DOCTOR VISIT BRIEF**
+
+**{name_prefix} Lab Highlights:**
+{chr(10).join(abnormal_lines) if abnormal_lines else '  ✅ All measured markers within normal range'}
+
+**Normal Markers:** {normal_summary or 'None recorded'}
+
+**Suggested Questions for Your Provider:**
+{'  1. My ' + abnormal[0].get('marker', abnormal[0].get('marker_name','')) + ' is ' + str(abnormal[0].get('status','')) + ' at ' + str(abnormal[0].get('value','')) + ' ' + abnormal[0].get('unit','') + ' — what is the clinical significance and what changes should I make?' if abnormal else '  1. Are there additional markers worth tracking for GLP-1 maintenance?'}
+  2. Based on these results, should I adjust my medication, diet, or activity level?
+  3. When should I repeat these labs to track trends?
+
+**What to Bring:** This report, a list of current medications and doses, and any symptoms you've noticed since your last visit.
+
+---
+⚕️ *For informational purposes only. Always follow your doctor's advice.*"""
+
+    # Attempt LLM enhancement
+    openai_key = os.getenv("OPENAI_API_KEY")
+    if not openai_key:
+        return rule_based
+
+    # Prepare compact data for LLM
+    markers_text = "\n".join(
+        f"  {m.get('marker', m.get('marker_name',''))}: {m.get('value')} {m.get('unit','')} "
+        f"[{m.get('status','UNKNOWN')}] ref:{m.get('reference_range','')}"
+        for m in markers[:12]
+    ) or "  No markers extracted."
+
+    prompt_messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are PHI, a GLP-1 cliff prevention co-pilot. "
+                "Generate a structured doctor visit preparation brief from the patient's lab data. "
+                "\n\nFormat EXACTLY as:\n"
+                "**THE LEAD** — single most urgent finding with specific number + date + direction\n"
+                "**GLP-1 STATUS** — note any medication-relevant markers\n"
+                "**THREE QUESTIONS** — tailored to their actual abnormal markers\n"
+                "**WHAT TO REQUEST** — ApoB, fasting insulin, or body composition if indicated\n"
+                "\nRules: US units only (lbs, mg/dL). Never diagnose. "
+                "Use 'your data shows' not 'you have'. Max 350 words. "
+                "End with the disclaimer: ⚕️ For informational purposes only."
+            )
+        },
+        {
+            "role": "user",
+            "content": (
+                f"Patient name: {user_name or 'the patient'}\n\n"
+                f"EXTRACTED MARKERS:\n{markers_text}\n\n"
+                f"DOCUMENT EXCERPT (first 1500 chars):\n{document_text[:1500]}\n\n"
+                "Generate the doctor visit brief."
+            )
+        }
+    ]
+
+    try:
+        from openai import OpenAI
+        resp = OpenAI(api_key=openai_key, timeout=20.0).chat.completions.create(
+            model="gpt-4o-mini",
+            messages=prompt_messages,
+            temperature=0.3,
+            max_tokens=600,
+        )
+        result = (resp.choices[0].message.content or "").strip()
+        if result and len(result) > 100:
+            print(f"[DOCTOR PREP] LLM generated {len(result)} chars for {user_name or 'user'}")
+            return result
+    except Exception as e:
+        print(f"[DOCTOR PREP] LLM error, using rule-based fallback: {e}")
+
+    return rule_based

@@ -7,7 +7,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-    <script src="https://checkout.razorpay.com/v1/checkout.js" defer></script>
     <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
     :root {
@@ -132,20 +131,20 @@
     </div>
     <div class="left-content">
         <h1 class="left-headline">The food noise<br>is <em>real.</em><br>So is the shield.</h1>
-        <p class="left-sub">70% of GLP-1 users regain weight within a year of stopping. PHI monitors your glucose, lean mass, and rebound signals — so you're never blindsided by the cliff.</p>
+        <p class="left-sub">70% of GLP-1 users regain weight within a year of stopping. PHI monitors your rebound signals — and helps you fight back when insurance says no.</p>
     </div>
     <div class="feature-list">
         <div class="feature-item">
             <div class="feature-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
-            <div class="feature-text"><h4>Cliff alert detection</h4><p>Automatic glucose rebound, HbA1c drift, and weight surge alerts from your labs</p></div>
+            <div class="feature-text"><h4>Cliff alert detection</h4><p>Automatic glucose rebound and HbA1c drift alerts from your labs</p></div>
         </div>
         <div class="feature-item">
             <div class="feature-icon"><i class="fa-solid fa-dumbbell"></i></div>
-            <div class="feature-text"><h4>Muscle Defense Protocol</h4><p>Daily protein target + Metabolic Shield score to protect lean mass</p></div>
+            <div class="feature-text"><h4>Muscle Defense Protocol</h4><p>Daily protein target + Metabolic Shield score</p></div>
         </div>
         <div class="feature-item">
             <div class="feature-icon"><i class="fa-solid fa-shield-halved"></i></div>
-            <div class="feature-text"><h4>Insurance PA support</h4><p>PHI builds your prior authorization packet from your actual lab data</p></div>
+            <div class="feature-text"><h4>Insurance PA support</h4><p>PA packet built from your actual lab data</p></div>
         </div>
     </div>
 </div>
@@ -203,10 +202,11 @@
                 <div class="op-dot" id="dot4"></div>
             </div>
 
+            <!-- Panel A: GLP-1 status -->
             <div id="panelA">
                 <div class="onboarding-header">
                     <h2>One quick question</h2>
-                    <p>PHI uses this to set your Cliff Risk baseline the moment you log in. Takes 30 seconds.</p>
+                    <p>PHI uses this to set your Cliff Risk baseline the moment you log in.</p>
                 </div>
                 <div class="form-label" style="margin-bottom:10px">Where are you in your GLP-1 journey?</div>
                 <div class="glp1-option-grid">
@@ -236,10 +236,11 @@
                 </div>
             </div>
 
+            <!-- Panel B: Goal weight -->
             <div id="panelB" style="display:none">
                 <div class="onboarding-header">
                     <h2>Your goal weight?</h2>
-                    <p>PHI calculates your daily Muscle Defense protein target immediately — so your Shield is active from day one.</p>
+                    <p>PHI calculates your Muscle Defense protein target immediately.</p>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Goal weight (lbs) <span class="optional">— or your current weight if unsure</span></label>
@@ -255,10 +256,11 @@
                 </div>
             </div>
 
+            <!-- Panel C: Primary concern -->
             <div id="panelC" style="display:none">
                 <div class="onboarding-header">
                     <h2>Biggest concern right now?</h2>
-                    <p>PHI will surface the most relevant insights and alerts for what matters most to you.</p>
+                    <p>PHI will surface the most relevant insights for what matters most to you.</p>
                 </div>
                 <div class="concern-list">
                     <button class="concern-item" data-val="food_noise" onclick="selectOption(this,'concern')">
@@ -275,11 +277,11 @@
                     </button>
                     <button class="concern-item" data-val="muscle_loss" onclick="selectOption(this,'concern')">
                         <i class="fa-solid fa-dumbbell"></i>
-                        <span class="concern-label">Muscle loss / body composition while losing weight</span>
+                        <span class="concern-label">Muscle loss / body composition changes</span>
                     </button>
                     <button class="concern-item" data-val="labs" onclick="selectOption(this,'concern')">
                         <i class="fa-solid fa-flask"></i>
-                        <span class="concern-label">Understanding my lab results and what they mean</span>
+                        <span class="concern-label">Understanding my lab results</span>
                     </button>
                 </div>
                 <div class="onboarding-nav">
@@ -288,34 +290,35 @@
                 </div>
             </div>
 
+            <!-- Panel D: Plan selection — PayPal only -->
             <div id="panelD" style="display:none">
                 <div class="onboarding-header">
                     <h2>Choose your plan</h2>
                     <p>GLP-1s cost $1,350/month. PHI protects those results for 97% less.</p>
                 </div>
-                
+
                 <p id="planStatusMsg" class="status-msg"></p>
-                
+
                 <div class="plan-cards">
                     <div class="plan-card selected" id="planMonthly" onclick="selectPlan('monthly')">
                         <div class="plan-popular-badge">Most Popular</div>
                         <div class="plan-card-info">
                             <div class="plan-card-name">Shield Core — Monthly</div>
-                            <div class="plan-card-desc">Unlimited reports · Weekly alerts · PA support</div>
+                            <div class="plan-card-desc">Unlimited reports · Weekly email briefs · PA support</div>
                         </div>
                         <div>
-                            <div class="plan-price-num">$39</div>
+                            <div class="plan-price-num">$49</div>
                             <div class="plan-price-period">/month</div>
                         </div>
                     </div>
                     <div class="plan-card" id="planAnnual" onclick="selectPlan('annual')">
                         <div class="plan-card-info">
                             <div class="plan-card-name">Shield Core — Annual</div>
-                            <div class="plan-card-desc">2 months free vs monthly billing</div>
+                            <div class="plan-card-desc">2 months free vs monthly — $39/mo</div>
                         </div>
                         <div>
-                            <div class="plan-price-num" style="color:var(--brand-dark)">$374</div>
-                            <div class="plan-price-period">$31/mo · save 20%</div>
+                            <div class="plan-price-num" style="color:var(--brand-dark)">$468</div>
+                            <div class="plan-price-period">billed annually</div>
                         </div>
                     </div>
                     <div class="plan-card" id="planFree" onclick="selectPlan('free')">
@@ -330,15 +333,16 @@
                     </div>
                 </div>
                 <div class="free-plan-info" id="freePlanNote" style="display:none">
-                    You can always upgrade later from inside the app. Your data, chats, and lab reports are saved regardless of plan.
+                    You can upgrade anytime from inside the app. All your data is saved regardless of plan.
                 </div>
                 <div class="onboarding-nav">
                     <button class="btn-back" onclick="goToPanel('C')">← Back</button>
-                    <button class="btn-next" id="finishBtn" onclick="finishOnboarding()">Continue to Payment →</button>
+                    <button class="btn-next" id="finishBtn" onclick="finishOnboarding()">Continue →</button>
                 </div>
             </div>
         </div>
 
+        <!-- Email confirmation state -->
         <div id="successState" class="success-state">
             <div class="success-icon"><i class="fa-solid fa-envelope-open-text"></i></div>
             <h2 class="success-title" id="successTitle">Almost there!</h2>
@@ -354,14 +358,13 @@
 </div>
 
 <script>
-const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://api.curabook.com';
+const API_BASE     = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'https://api.curabook.com';
 const SUPABASE_URL = "https://pbeaawlxdcrdbvlmpqhc.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBiZWFhd2x4ZGNyZGJ2bG1wcWhjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwMDk0MzksImV4cCI6MjA5MTU4NTQzOX0.6bUpYrDbe0mQjjBHX8Qscj-5R8i4-SqAtW_Z1UFzJ10";
 
 let supabaseClient = null;
-let _userId = null;
-let _accessToken = null;
-let _redirecting = false;
+let _userId        = null;
+let _accessToken   = null;
 
 const ob = { glp1Status: null, goalWeight: null, concern: null, plan: 'monthly' };
 
@@ -373,18 +376,16 @@ function initSupabase() {
 
 function setStatus(msg, type = '') {
     const el = document.getElementById('status-msg');
-    if(el) { el.textContent = msg; el.className = 'status-msg ' + type; }
+    if (el) { el.textContent = msg; el.className = 'status-msg ' + type; }
 }
 
 function goToPanel(panel) {
-    ['A', 'B', 'C', 'D'].forEach(p => {
+    ['A','B','C','D'].forEach(p => {
         const el = document.getElementById('panel' + p);
-        if(el) el.style.display = p === panel ? 'block' : 'none';
+        if (el) el.style.display = p === panel ? 'block' : 'none';
     });
-    const idx = { 'A': 0, 'B': 1, 'C': 2, 'D': 3 }[panel];
-    document.querySelectorAll('.op-dot').forEach((dot, i) => {
-        dot.classList.toggle('active', i <= idx);
-    });
+    const idx = {'A':0,'B':1,'C':2,'D':3}[panel];
+    document.querySelectorAll('.op-dot').forEach((dot, i) => dot.classList.toggle('active', i <= idx));
 }
 
 function selectOption(btn, field) {
@@ -394,28 +395,27 @@ function selectOption(btn, field) {
     btn.classList.add('selected');
     ob[field] = btn.dataset.val;
     if (field === 'glp1Status') document.getElementById('nextA').disabled = false;
-    if (field === 'concern') document.getElementById('nextC').disabled = false;
+    if (field === 'concern')    document.getElementById('nextC').disabled = false;
 }
 
 function selectPlan(plan) {
     ob.plan = plan;
     document.querySelectorAll('.plan-card').forEach(c => c.classList.remove('selected'));
-    const activeCard = document.getElementById('plan' + plan.charAt(0).toUpperCase() + plan.slice(1));
-    if (activeCard) activeCard.classList.add('selected');
+    const card = document.getElementById('plan' + plan.charAt(0).toUpperCase() + plan.slice(1));
+    if (card) card.classList.add('selected');
     document.getElementById('freePlanNote').style.display = plan === 'free' ? 'block' : 'none';
-    document.getElementById('finishBtn').textContent = plan === 'free' ? 'Start Free →' : 'Continue to Payment →';
+    document.getElementById('finishBtn').textContent = plan === 'free' ? 'Start Free →' : 'Continue to PayPal →';
 }
 
 async function saveConsentToBackend(token) {
-    if (!token) return false;
+    if (!token) return;
     try {
-        const resp = await fetch(`${API_BASE}/api/consent`, {
-            method: 'POST',
+        await fetch(`${API_BASE}/api/consent`, {
+            method:  'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-            body: JSON.stringify({ consents: ['data_processing', 'ai_processing', 'document_processing'] })
+            body:    JSON.stringify({ consents: ['data_processing','ai_processing','document_processing'] })
         });
-        return resp.ok;
-    } catch (err) { return false; }
+    } catch (e) {}
 }
 
 async function saveOnboardingData() {
@@ -442,95 +442,60 @@ async function saveOnboardingData() {
             const protein = Math.round(ob.goalWeight * 0.545 * 10) / 10;
             facts.push(`User's goal weight is ${ob.goalWeight} lbs — Muscle Defense protein target: ${protein}g/day`);
         }
-        if (ob.concern) {
-            const labels = {
-                'food_noise':    'User reports food noise/ghrelin surge as primary concern',
-                'weight_regain': 'User is concerned about weight regain after stopping GLP-1',
-                'insurance':     'User has insurance/prior authorization concerns for GLP-1',
-                'muscle_loss':   'User is concerned about muscle loss and body composition',
-                'labs':          'User wants help understanding their lab results'
-            };
-            if (labels[ob.concern]) facts.push(labels[ob.concern]);
-        }
+        const concernLabels = {
+            'food_noise':    'User reports food noise/ghrelin surge as primary concern',
+            'weight_regain': 'User is concerned about weight regain after stopping GLP-1',
+            'insurance':     'User has insurance/prior authorization concerns for GLP-1',
+            'muscle_loss':   'User is concerned about muscle loss and body composition',
+            'labs':          'User wants help understanding their lab results',
+        };
+        if (ob.concern && concernLabels[ob.concern]) facts.push(concernLabels[ob.concern]);
 
         const now = new Date().toISOString();
         for (const fact of facts) {
             await supabaseClient.from('conversation_memories').insert({
                 user_id: _userId, fact, category: 'onboarding', is_active: true, created_at: now,
-            }).catch(()=>{});
+            }).catch(() => {});
         }
     } catch (e) { console.warn('[ONBOARDING] Save error (non-fatal):', e); }
 }
 
-async function startPayment() {
-    const btn = document.getElementById('finishBtn');
-    const msgEl = document.getElementById('planStatusMsg');
-    if (msgEl) { msgEl.textContent = 'Connecting to payment…'; msgEl.className = 'status-msg success'; }
-    
-    const { data: { session } } = await supabaseClient.auth.getSession();
-    if (!session?.access_token) throw new Error('Session expired. Please refresh.');
-    
-    const res = await fetch(API_BASE + '/api/payment/razorpay/order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + session.access_token },
-        body: JSON.stringify({ plan: ob.plan })
-    });
-    
-    if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || 'Payment setup failed. Try again.');
+// ── PayPal checkout (replaces all previous Razorpay code) ────────────────────
+async function startPayPalCheckout() {
+    const btn    = document.getElementById('finishBtn');
+    const msgEl  = document.getElementById('planStatusMsg');
+
+    if (msgEl) { msgEl.textContent = 'Connecting to PayPal…'; msgEl.className = 'status-msg success'; }
+    if (btn)   { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Connecting…'; }
+
+    try {
+        const { data: { session } } = await supabaseClient.auth.getSession();
+        if (!session?.access_token) throw new Error('Session expired. Please refresh.');
+
+        const res = await fetch(API_BASE + '/api/payment/paypal/create-subscription', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + session.access_token },
+            body:    JSON.stringify({ plan: ob.plan }),
+        });
+
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || 'Payment setup failed. Please try again.');
+        }
+
+        const data = await res.json();
+        if (!data.approve_url) throw new Error('PayPal did not return a checkout URL.');
+
+        if (msgEl) msgEl.textContent = 'Redirecting to PayPal…';
+
+        // PayPal redirects back to /payment/success?subscription_id=xxx&plan=xxx
+        // That page calls /api/payment/paypal/capture to activate the plan.
+        window.location.href = data.approve_url;
+
+    } catch (e) {
+        if (msgEl) { msgEl.textContent = e.message; msgEl.className = 'status-msg error'; }
+        if (btn)   { btn.disabled = false; btn.textContent = ob.plan === 'free' ? 'Start Free →' : 'Continue to PayPal →'; }
     }
-    
-    const data = await res.json();
-    if (!data.order_id && !data.subscription_id) throw new Error('Invalid payment response');
-    
-    if (typeof Razorpay === 'undefined') {
-        window.location.href = '/app?upgrade=' + ob.plan;
-        return;
-    }
-    
-    const options = {
-        key: data.razorpay_key_id,
-        amount: data.amount,
-        currency: data.currency || 'USD',
-        name: 'Curabook PHI',
-        description: data.description || 'Shield Core Plan',
-        handler: async (response) => {
-            try {
-                const vRes = await fetch(API_BASE + '/api/payment/razorpay/verify', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + session.access_token },
-                    body: JSON.stringify({
-                        order_id: data.order_id || '',
-                        subscription_id: data.subscription_id || response.razorpay_subscription_id || '',
-                        payment_id: response.razorpay_payment_id,
-                        signature: response.razorpay_signature,
-                        plan: ob.plan
-                    })
-                });
-                const vData = await vRes.json();
-                if (vData.success) {
-                    window.location.href = '/app?welcome=paid';
-                } else {
-                    throw new Error('Payment verification failed');
-                }
-            } catch(e) {
-                if (msgEl) { msgEl.textContent = 'Payment verified but activation failed. Contact support.'; msgEl.className = 'status-msg error'; }
-                setTimeout(() => window.location.href = '/app', 2000);
-            }
-        },
-        prefill: { email: session.user?.email || '' },
-        theme: { color: '#00BCD5' },
-        modal: { ondismiss: () => {
-            btn.disabled = false;
-            btn.innerHTML = 'Continue to Payment →';
-            if (msgEl) { msgEl.textContent = 'Payment cancelled.'; msgEl.className = 'status-msg error'; }
-        }}
-    };
-    if (data.mode === 'subscription') options.subscription_id = data.subscription_id;
-    else options.order_id = data.order_id;
-    
-    new Razorpay(options).open();
 }
 
 async function finishOnboarding() {
@@ -542,60 +507,64 @@ async function finishOnboarding() {
             const { data: { session } } = await supabaseClient.auth.getSession();
             if (session) { _userId = session.user.id; _accessToken = session.access_token; }
         }
-
         if (_userId && _accessToken) {
             await saveConsentToBackend(_accessToken);
             await saveOnboardingData();
             localStorage.setItem('phi_onboarded_' + _userId, 'true');
         }
-
         if (ob.goalWeight) localStorage.setItem('phi_goal_wt', String(ob.goalWeight));
-        if (_userId) { try { localStorage.setItem(`phi_terms_${_userId}`, Date.now().toString()); } catch (e) {} }
+        if (_userId) { try { localStorage.setItem(`phi_terms_${_userId}`, Date.now().toString()); } catch(e) {} }
 
         if (ob.plan === 'free') {
             window.location.href = '/app?welcome=1';
         } else {
-            await startPayment();
+            await startPayPalCheckout();
         }
     } catch (e) {
         const msgEl = document.getElementById('planStatusMsg');
         if (msgEl) { msgEl.textContent = e.message || 'Something went wrong. Please try again.'; msgEl.className = 'status-msg error'; }
-        if (btn) { btn.disabled = false; btn.innerHTML = ob.plan === 'free' ? 'Start Free →' : 'Continue to Payment →'; }
+        if (btn) { btn.disabled = false; btn.textContent = ob.plan === 'free' ? 'Start Free →' : 'Continue to PayPal →'; }
     }
 }
 
+// ── Goal weight input handler ──────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
     const gwInput = document.getElementById('goalWeight');
     if (gwInput) {
         gwInput.addEventListener('input', () => {
-            const gw = parseFloat(gwInput.value);
+            const gw      = parseFloat(gwInput.value);
             const preview = document.getElementById('proteinPreview');
-            const calc = document.getElementById('proteinCalc');
-            const nextB = document.getElementById('nextB');
+            const calc    = document.getElementById('proteinCalc');
+            const nextB   = document.getElementById('nextB');
             if (gw >= 80 && gw <= 400) {
-                const target = Math.round(gw * 0.545 * 10) / 10;
+                const target  = Math.round(gw * 0.545 * 10) / 10;
                 const perMeal = Math.round(target / 3 * 10) / 10;
-                calc.textContent = `${target}g protein/day (${perMeal}g per meal)`;
+                calc.textContent     = `${target}g protein/day (${perMeal}g per meal)`;
                 preview.style.display = 'block';
-                nextB.disabled = false;
-                ob.goalWeight = gw;
+                nextB.disabled        = false;
+                ob.goalWeight         = gw;
             } else {
                 preview.style.display = 'none';
-                nextB.disabled = true;
+                nextB.disabled        = true;
             }
         });
     }
 
+    // Pre-select plan from URL param
     const urlParams = new URLSearchParams(window.location.search);
-    if(urlParams.get('plan')){
-        ob.plan = urlParams.get('plan');
-        setTimeout(()=>{ selectPlan(ob.plan); }, 100);
+    const planParam = urlParams.get('plan');
+    if (planParam) { ob.plan = planParam; setTimeout(() => selectPlan(planParam), 100); }
+
+    // Show onboarding if coming from Google OAuth
+    if (window.location.hash === '#onboarding') {
+        document.getElementById('signupStep').style.display = 'none';
+        document.getElementById('onboardingStep').style.display = 'block';
+        goToPanel('A');
     }
 });
 
+// ── Email/password signup ──────────────────────────────────────────────────
 document.getElementById('signupBtn').addEventListener('click', async () => {
-    if (!supabaseClient) { setStatus("Loading… please wait", "error"); return; }
-
     const firstName = document.getElementById('firstName').value.trim();
     const lastName  = document.getElementById('lastName').value.trim();
     const email     = document.getElementById('email').value.trim();
@@ -605,9 +574,9 @@ document.getElementById('signupBtn').addEventListener('click', async () => {
 
     if (!email || !password) { setStatus('Please enter your email and password.', 'error'); return; }
     if (password.length < 8) { setStatus('Password must be at least 8 characters.', 'error'); return; }
-    if (!terms.checked) { setStatus('Please accept the Terms and Privacy Policy to continue.', 'error'); return; }
+    if (!terms.checked)      { setStatus('Please accept the Terms and Privacy Policy.', 'error'); return; }
 
-    btn.disabled = true;
+    btn.disabled  = true;
     btn.innerHTML = '<span class="spinner"></span> Creating account…';
     setStatus('', '');
 
@@ -622,14 +591,14 @@ document.getElementById('signupBtn').addEventListener('click', async () => {
 
         if (error) {
             setStatus(error.message, 'error');
-            btn.disabled = false;
+            btn.disabled  = false;
             btn.innerHTML = 'Create Free Account';
             return;
         }
 
         if (data.user) {
             _userId = data.user.id;
-            try { localStorage.setItem(`phi_terms_${data.user.id}`, Date.now().toString()); } catch (e) {}
+            try { localStorage.setItem(`phi_terms_${data.user.id}`, Date.now().toString()); } catch(e) {}
             localStorage.setItem('phi_pending_firstname', firstName);
         }
 
@@ -638,24 +607,26 @@ document.getElementById('signupBtn').addEventListener('click', async () => {
             setStatus('Saving your preferences…', 'success');
             await saveConsentToBackend(_accessToken);
             setStatus('', '');
-            document.getElementById('signupStep').style.display = 'none';
+            document.getElementById('signupStep').style.display  = 'none';
             document.getElementById('onboardingStep').style.display = 'block';
         } else {
-            document.getElementById('signupStep').style.display = 'none';
+            // Email confirmation required
+            document.getElementById('signupStep').style.display  = 'none';
             document.getElementById('successState').style.display = 'block';
             if (firstName) document.getElementById('successTitle').textContent = `Almost there, ${firstName}!`;
             document.getElementById('successEmail').textContent = email;
         }
     } catch (err) {
         setStatus('Something went wrong. Please try again.', 'error');
-        btn.disabled = false;
+        btn.disabled  = false;
         btn.innerHTML = 'Create Free Account';
     }
 });
 
+// ── Google OAuth ───────────────────────────────────────────────────────────
 document.getElementById('googleBtn').addEventListener('click', async () => {
     if (!supabaseClient) return;
-    try { localStorage.setItem('phi_google_terms_accepted', 'true'); } catch(e){}
+    try { localStorage.setItem('phi_google_terms_accepted', 'true'); } catch(e) {}
     await supabaseClient.auth.signInWithOAuth({
         provider: 'google',
         options: { redirectTo: `${window.location.origin}/signup` },
@@ -668,19 +639,15 @@ document.addEventListener('keydown', e => {
     }
 });
 
+// ── Init ───────────────────────────────────────────────────────────────────
 try {
     initSupabase();
 
-    if (window.location.hash === '#onboarding') {
-        document.getElementById('signupStep').style.display = 'none';
-        document.getElementById('onboardingStep').style.display = 'block';
-        goToPanel('A');
-    }
-
     supabaseClient.auth.onAuthStateChange(async (event, session) => {
         if (event === 'SIGNED_IN' && session?.user && !_accessToken) {
-            _userId = session.user.id;
+            _userId      = session.user.id;
             _accessToken = session.access_token;
+
             const isGoogle = session.user.app_metadata?.provider === 'google';
             if (isGoogle) {
                 const done = localStorage.getItem('phi_onboarded_' + _userId);
@@ -688,8 +655,8 @@ try {
                     window.location.replace('/app');
                 } else {
                     await saveConsentToBackend(session.access_token);
-                    try { localStorage.setItem(`phi_terms_${session.user.id}`, Date.now().toString()); } catch (e) {}
-                    document.getElementById('signupStep').style.display = 'none';
+                    try { localStorage.setItem(`phi_terms_${session.user.id}`, Date.now().toString()); } catch(e) {}
+                    document.getElementById('signupStep').style.display     = 'none';
                     document.getElementById('onboardingStep').style.display = 'block';
                     goToPanel('A');
                 }
