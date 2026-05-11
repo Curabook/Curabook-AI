@@ -118,6 +118,30 @@
     .success-link { font-size:13px; color:var(--muted); }
     .success-link a { color:var(--brand); text-decoration:none; font-weight:500; }
 
+
+    /* ── LAST DOSE DATE ── */
+    .dose-date-group {
+        display: none;
+        margin-top: 0;
+        padding: 16px;
+        background: rgba(0,188,213,.04);
+        border: 1px solid rgba(0,188,213,.2);
+        border-radius: 10px;
+        animation: fadeIn .3s ease;
+    }
+    .dose-date-label { display: block; font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+    .dose-date-hint { font-size: 11.5px; color: var(--muted); line-height: 1.5; margin-bottom: 9px; display: block; }
+    .dose-date-input { width: 100%; padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 8px; font-size: 14px; font-family: var(--font); color: var(--text); background: var(--white); outline: none; transition: border-color .2s; }
+    .dose-date-input:focus { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(0,188,213,.1); }
+    .cz-preview {
+        display: none; margin-top: 10px; padding: 10px 13px;
+        background: rgba(245,158,11,.08); border: 1px solid rgba(245,158,11,.3);
+        border-radius: 8px; font-size: 12.5px; line-height: 1.55;
+        animation: fadeIn .3s ease;
+    }
+    .cz-preview strong { color: #b45309; display: block; margin-bottom: 3px; font-size: 13px; }
+    .dose-note { font-size: 11px; color: #9ca3af; margin-top: 8px; font-style: italic; }
+
     @media (max-width:900px) { .left-panel { display:none; } .right-panel { width:100%; padding:40px 24px; } }
     </style>
 </head>
@@ -394,7 +418,18 @@ function selectOption(btn, field) {
        .forEach(el => el.classList.remove('selected'));
     btn.classList.add('selected');
     ob[field] = btn.dataset.val;
-    if (field === 'glp1Status') document.getElementById('nextA').disabled = false;
+    if (field === 'glp1Status') {
+        document.getElementById('nextA').disabled = false;
+        // Reveal date fields based on status
+        const lastDoseGrp   = document.getElementById('lastDoseGroup');
+        const expectedGrp   = document.getElementById('expectedStopGroup');
+        const val = btn.dataset.val;
+        if (lastDoseGrp)   lastDoseGrp.style.display   = val === 'stopped'   ? 'block' : 'none';
+        if (expectedGrp)   expectedGrp.style.display   = val === 'tapering'  ? 'block' : 'none';
+        // Reset critical zone preview when status changes
+        const czPrev = document.getElementById('czPreview');
+        if (czPrev) czPrev.style.display = 'none';
+    }
     if (field === 'concern')    document.getElementById('nextC').disabled = false;
 }
 
@@ -421,11 +456,19 @@ async function saveConsentToBackend(token) {
 async function saveOnboardingData() {
     if (!_userId || !supabaseClient) return;
     try {
+        // Collect date fields
+        const lastDoseInput = document.getElementById('lastDoseDate');
+        const expectedStopInput = document.getElementById('expectedStopDate');
+        ob.lastDoseDate    = lastDoseInput?.value    || null;
+        ob.expectedStopDate = expectedStopInput?.value || null;
+
         await supabaseClient.from('glp1_onboarding').upsert({
-            user_id:         _userId,
-            glp1_status:     ob.glp1Status,
-            goal_weight_lbs: ob.goalWeight,
-            primary_concern: ob.concern,
+            user_id:              _userId,
+            glp1_status:          ob.glp1Status,
+            goal_weight_lbs:      ob.goalWeight,
+            primary_concern:      ob.concern,
+            last_dose_date:       ob.lastDoseDate    || null,
+            expected_stop_date:   ob.expectedStopDate || null,
         }, { onConflict: 'user_id' });
 
         const profilePayload = { user_id: _userId, glp1_status: ob.glp1Status };
@@ -450,6 +493,16 @@ async function saveOnboardingData() {
             'labs':          'User wants help understanding their lab results',
         };
         if (ob.concern && concernLabels[ob.concern]) facts.push(concernLabels[ob.concern]);
+
+        // Add last dose date as memory fact
+        if (ob.lastDoseDate) {
+            const d = new Date(ob.lastDoseDate);
+            const daysAgo = Math.floor((new Date() - d) / 86400000);
+            facts.push(`User stopped GLP-1 medication on ${ob.lastDoseDate} (${daysAgo} days ago) — Critical Zone monitoring active`);
+        }
+        if (ob.expectedStopDate) {
+            facts.push(`User is tapering GLP-1, expected last dose: ${ob.expectedStopDate}`);
+        }
 
         const now = new Date().toISOString();
         for (const fact of facts) {
@@ -547,6 +600,36 @@ document.addEventListener('DOMContentLoaded', () => {
                 preview.style.display = 'none';
                 nextB.disabled        = true;
             }
+        });
+    }
+
+    // Set max date for last dose = today
+    const lastDoseEl = document.getElementById('lastDoseDate');
+    if (lastDoseEl) lastDoseEl.max = new Date().toISOString().split('T')[0];
+
+    // Set min date for expected stop = tomorrow
+    const expStopEl = document.getElementById('expectedStopDate');
+    if (expStopEl) {
+        const tmr = new Date(); tmr.setDate(tmr.getDate() + 1);
+        expStopEl.min = tmr.toISOString().split('T')[0];
+    }
+
+    // Critical zone preview on date selection
+    if (lastDoseEl) {
+        lastDoseEl.addEventListener('change', function() {
+            const czPrev = document.getElementById('czPreview');
+            const czMsg  = document.getElementById('czMsg');
+            const czTitle = document.getElementById('czTitle');
+            if (!this.value || !czPrev) return;
+            const daysAgo = Math.floor((new Date() - new Date(this.value)) / 86400000);
+            let msg = '';
+            if (daysAgo < 0) return;
+            else if (daysAgo === 0) msg = 'Your Critical Zone starts today. PHI will alert you daily for the next 4 weeks.';
+            else if (daysAgo <= 7)  msg = 'You\'re ' + daysAgo + ' day' + (daysAgo===1?'':'s') + ' in. PHI is activating your Critical Zone monitoring for the next ' + (28-daysAgo) + ' days.';
+            else if (daysAgo <= 28) msg = 'Week ' + Math.ceil(daysAgo/7) + ' of your Critical Zone. PHI will monitor your remaining ' + (28-daysAgo) + ' peak-risk days.';
+            else { czTitle.textContent = '📊 Post–Critical Zone'; msg = 'Your 4-week peak window has passed. PHI will track your 30-day and 90-day metabolic stability markers.'; }
+            czMsg.textContent = msg;
+            czPrev.style.display = 'block';
         });
     }
 

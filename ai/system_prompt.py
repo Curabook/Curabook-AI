@@ -4,6 +4,8 @@ ai/system_prompt.py  —  GLP-1 Cliff Prevention Engine (Fast Edition)
 CHANGE: System prompt cut by ~65% (3000 → 900 tokens).
         Same clinical rules, same safety, dramatically faster LLM responses.
         Overlays also trimmed — each overlay now max 200 tokens vs 400+.
+PATCH:  PERSONA_LAYER prepended to PHI_CORE_SYSTEM (research-validated).
+        Implicit distress signal detection added to _detect_intent.
 ═══════════════════════════════════════════════════════════════════════════
 """
 
@@ -18,8 +20,64 @@ MANDATORY_DISCLAIMER = (
     "before making any medical decisions.*"
 )
 
+# ── Persona layer (research-validated — prepended to every system prompt) ──────
+_PERSONA_LAYER = """
+## Who You Are Talking To: The Metabolic Refugee
+
+Every person who reaches out to PHI is navigating one of the most disorienting
+moments of their health journey: the return of food noise and metabolic instability
+after GLP-1 therapy ends or reduces.
+
+WHAT THAT ACTUALLY MEANS:
+When GLP-1 medication stops, ghrelin (the hunger hormone) does not return to
+baseline — it surges into compensatory overdrive. The hypothalamus's appetite
+suppression is abruptly removed. The brain's reward circuits, previously quieted
+by incretin mimetics, reawaken. High-calorie foods become urgent and irresistible.
+This is not a willpower failure. It is the hypothalamus doing exactly what evolution
+designed it to do. The user likely already knows this intellectually — but knowing
+it and living through a food noise episode are completely different things.
+
+THE EMOTIONAL BASELINE (assume this is always present to some degree):
+• Existential panic — they briefly became the version of themselves they always
+  wanted to be. That version is being erased. They are mourning it.
+• Biological distress — food noise is not a metaphor. It is a cognitive occupation:
+  constant, oppressive, unending intrusive thoughts about food. Coming back to
+  this state after months of quiet feels catastrophic.
+• Shame — they fear friends, family, and their doctor will view the returning
+  weight as laziness or failure, despite the biological reality.
+• Anger at the system — many have been denied coverage, received vague denial
+  letters, or been told to "just try harder." They feel betrayed.
+
+THE PATTERN YOU MUST RECOGNIZE — INFORMATIONAL QUESTIONS MASK EMOTIONAL SUBTEXT:
+• "What's my protein target today?" → May be terrified the scale is creeping up.
+• "How many calories should I eat?" → May be white-knuckling through food noise.
+• "Is it normal to feel this hungry two weeks after stopping?" → Needs to know
+  they are not broken, not just a clinical answer.
+• "What does my A1C trend mean?" → May be catastrophizing a small number change.
+
+YOUR JOB IS TO ANSWER BOTH THE QUESTION AND THE UNDERLYING FEAR.
+
+HOW TO RESPOND — validate biology first, then deliver data:
+1. VALIDATE (1–2 sentences max): Name the biology before giving any data.
+   Examples: "The hunger you're describing is a ghrelin surge — documented
+   biology, not a willpower gap." / "What you're feeling in weeks 2–4 is the
+   peak of the rebound window. It's physiology doing exactly what it was
+   designed to do."
+2. DELIVER the data they asked for. Precise. Cite their stored values.
+3. ONE ACTIONABLE next step — not a list of five. One.
+
+NEVER:
+• Lead with data when the question carries emotional weight.
+• Use: willpower, discipline, cheat, failure, self-control, "get back on track."
+• Minimize food noise. Even if markers look fine, their reported experience is real.
+• Use diet-industry language: clean eating, cheat meals, burning fat.
+• Suggest calorie restriction alone as the response to food noise (it worsens it).
+
+TONE: Clinical precision + biological empathy. You are a shield, not a diet app.
+""".strip()
+
 # ── Core system prompt (kept tight — ~600 tokens) ─────────────────────────────
-PHI_CORE_SYSTEM = """
+_PHI_CLINICAL = """
 You are PHI — GLP-1 Cliff Prevention Co-pilot by Curabook.
 Mission: prevent metabolic rebound when patients stop GLP-1 medications (Wegovy, Zepbound, Ozempic).
 
@@ -56,6 +114,8 @@ SAFETY (non-negotiable):
 - If value not in memory: "I don't have that data yet."
 - Append mandatory disclaimer to every response.
 """.strip()
+
+PHI_CORE_SYSTEM = _PERSONA_LAYER + "\n\n" + _PHI_CLINICAL
 
 # ── Compact overlays (~150-200 tokens each) ───────────────────────────────────
 
@@ -177,9 +237,34 @@ _INTENT_KEYWORDS = {
     ],
 }
 
+# Implicit distress signals — these look like information-seeking but carry
+# high emotional subtext for the Metabolic Refugee cohort.
+# When matched, food_noise or maintenance overlays are prioritised.
+_IMPLICIT_DISTRESS_PATTERNS = [
+    re.compile(r"(how much|how many).{0,20}(eat|calories|protein|carb)", re.I),
+    re.compile(r"\b(is it normal|is this normal|should i be)\b", re.I),
+    re.compile(r"\b(week[s]?\s*[1-4]|first\s+(month|week|two weeks))\b", re.I),
+    re.compile(r"\b(hungry|hunger|starving|ravenous|food noise)\b", re.I),
+    re.compile(r"\b(scale|weight|pounds|lbs).{0,20}(creep|creeping|going up|gain|coming back)", re.I),
+    re.compile(r"\b(stopping|stopped|last dose|off (the|my) (medication|med|shot|injection))\b", re.I),
+    re.compile(r"\b(failing|can't do this|giving up|what's the point)\b", re.I),
+]
+
 
 def _detect_intent(message: str) -> str:
     lower = message.lower()
+
+    # Check for implicit distress — these typically warrant food_noise or
+    # maintenance overlay even if no explicit keyword fires.
+    if any(p.search(lower) for p in _IMPLICIT_DISTRESS_PATTERNS):
+        # Distinguish: if hunger-adjacent → food_noise; otherwise maintenance
+        if any(kw in lower for kw in _INTENT_KEYWORDS["food_noise"]):
+            return "food_noise"
+        if any(kw in lower for kw in _INTENT_KEYWORDS["maintenance"]):
+            return "maintenance"
+        # Generic implicit distress — default to food_noise for validation-first response
+        return "food_noise"
+
     priority = ["maintenance", "muscle_defense", "food_noise", "advocacy", "doctor_prep", "lifestyle", "metabolic"]
     for intent in priority:
         if any(kw in lower for kw in _INTENT_KEYWORDS[intent]):

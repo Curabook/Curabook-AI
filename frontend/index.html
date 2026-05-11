@@ -309,6 +309,49 @@ footer p { font-size: .72rem; color: var(--muted-2); }
 .fade-up { opacity: 1; }
 .d1 { } .d2 { } .d3 { }
 
+/* ── FOOD NOISE VALIDATION ──────────────────────────────────────── */
+.food-noise-section {
+    padding: 80px max(20px, 6vw);
+    background: #0a0a0a;
+    border-top: 1px solid rgba(0,188,213,.12);
+    border-bottom: 1px solid rgba(0,188,213,.12);
+}
+.food-noise-inner { max-width: 1100px; margin: 0 auto; }
+.fn-quote-wrap { text-align: center; margin-bottom: 52px; }
+.fn-quote-mark {
+    font-family: var(--serif); font-size: 5rem; line-height: 0.4;
+    color: rgba(0,188,213,.18); display: block; margin-bottom: 20px;
+}
+.fn-quote {
+    font-family: var(--serif); font-size: clamp(1.15rem, 2.5vw, 1.5rem);
+    font-style: italic; color: rgba(255,255,255,.85); max-width: 680px;
+    margin: 0 auto 14px; line-height: 1.6;
+}
+.fn-attribution { font-size: .73rem; color: rgba(255,255,255,.3); letter-spacing: .05em; text-transform: uppercase; }
+.fn-body { text-align: center; max-width: 640px; margin: 0 auto 52px; }
+.fn-body h2 { font-family: var(--serif); font-size: clamp(1.6rem, 3.5vw, 2.4rem); color: white; margin-bottom: 16px; font-weight: 400; }
+.fn-body h2 em { color: var(--brand); font-style: italic; }
+.fn-body p { font-size: .95rem; color: rgba(255,255,255,.45); line-height: 1.75; margin-bottom: 12px; }
+.fn-body p strong { color: rgba(255,255,255,.75); }
+.fn-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 44px; }
+.fn-card {
+    background: rgba(255,255,255,.03); border: 1px solid rgba(0,188,213,.14);
+    border-radius: var(--r-xl); padding: 28px 22px; text-align: center;
+    transition: border-color .2s, transform .2s;
+}
+.fn-card:hover { border-color: rgba(0,188,213,.38); transform: translateY(-2px); }
+.fn-card-icon { font-size: 1.8rem; margin-bottom: 14px; }
+.fn-card h3 { font-size: .9rem; font-weight: 700; color: rgba(255,255,255,.85); margin-bottom: 8px; }
+.fn-card p { font-size: .8rem; color: rgba(255,255,255,.4); line-height: 1.65; }
+.fn-cta { text-align: center; }
+.fn-cta-pre { font-size: .9rem; color: rgba(255,255,255,.4); margin-bottom: 20px; }
+
+/* ── PLAN CARD — per-day additions ──────────────────────────────── */
+.plan-perday { font-size: .75rem; color: var(--ok); font-weight: 700; margin-top: 2px; }
+.plan-perday-compare { font-size: .71rem; color: var(--muted); font-style: italic; margin-top: 3px; }
+.plan-retention { font-size: .73rem; color: var(--muted); text-align: center; margin-top: 12px; line-height: 1.5; }
+.plan-retention strong { color: var(--text); }
+
 /* ── RESPONSIVE ─────────────────────────────────────────────────── */
 @media (max-width: 900px) {
     .nav-links { display: none; }
@@ -390,6 +433,47 @@ footer p { font-size: .72rem; color: var(--muted-2); }
     </div>
   </div>
 </section>
+
+<!-- FOOD NOISE VALIDATION -->
+<section class="food-noise-section" id="food-noise">
+  <div class="food-noise-inner">
+    <div class="fn-quote-wrap">
+      <span class="fn-quote-mark">&ldquo;</span>
+      <p class="fn-quote">The food noise came back, and my hunger is in overdrive. It felt like my lizard brain was constantly seeking out the next meal.</p>
+      <div class="fn-attribution">Documented GLP-1 withdrawal experience &mdash; r/Wegovy</div>
+    </div>
+    <div class="fn-body">
+      <h2>This isn't willpower.<br><em>This is biology.</em></h2>
+      <p>When you stop GLP-1 medication, your ghrelin — the hunger hormone — doesn't return to baseline. It surges into overdrive. The food noise you suddenly hear again isn't you failing. It's your hypothalamus doing exactly what evolution designed it to do.</p>
+      <p>Weight can start coming back within <strong>2–4 weeks</strong> of your last dose — not because you lost discipline, but because the biology is working against you at a level no willpower can override unaided.</p>
+    </div>
+    <div class="fn-cards">
+      <div class="fn-card">
+        <div class="fn-card-icon">🧠</div>
+        <h3>Food Noise Is Real</h3>
+        <p>GLP-1s silenced your brain's appetite centers. When they stop, those circuits reawaken — loudly. PHI tracks the noise and coaches you through the loudest weeks.</p>
+      </div>
+      <div class="fn-card">
+        <div class="fn-card-icon">📅</div>
+        <h3>The 2–4 Week Critical Zone</h3>
+        <p>Clinical data shows the metabolic rebound peaks in the first month. PHI sends predictive alerts — "Your hunger signal will likely peak in the next 48 hours" — so you're never blindsided.</p>
+      </div>
+      <div class="fn-card">
+        <div class="fn-card-icon">🛡️</div>
+        <h3>The Shield, Not the Diet</h3>
+        <p>You don't need another calorie tracker. You need a biological shield. PHI monitors your metabolic markers and fights the insurance system — so you can focus on staying healthy.</p>
+      </div>
+    </div>
+    <div class="fn-cta">
+      <p class="fn-cta-pre">You've already done the hard part. Let us help you hold onto it.</p>
+      <button class="btn-hero-primary" onclick="location.href='/signup'" style="margin:0 auto;">
+        <i class="fa-solid fa-shield-halved"></i>
+        Start Your Shield — Free
+      </button>
+    </div>
+  </div>
+</section>
+
 
 <!-- THE PROBLEM -->
 <section class="section bg-gray" id="problem">
@@ -553,6 +637,10 @@ footer p { font-size: .72rem; color: var(--muted-2); }
         <div class="plan-price" id="corePrice">$49</div>
         <div class="plan-period" id="corePeriod">per month</div>
         <div class="plan-save-pill" id="coreSave" style="display:none">Save $120/yr — $39/mo billed annually</div>
+        <div id="planPerDay" style="display:none;margin-top:-4px;margin-bottom:10px;">
+          <div class="plan-perday">That&rsquo;s $1.28/day</div>
+          <div class="plan-perday-compare">Your GLP-1 cost ~$45/day. Your shield is less than a coffee.</div>
+        </div>
         <div style="height:4px"></div>
         <div class="plan-desc">Continuous monitoring, unlimited labs, weekly cliff alerts — everything to protect the results you worked so hard to earn.</div>
         <ul class="plan-features">
@@ -565,6 +653,7 @@ footer p { font-size: .72rem; color: var(--muted-2); }
           <li><div class="pf-check">✓</div>Unlimited priority AI chat</li>
         </ul>
         <button class="btn-plan solid" id="coreBtn" onclick="goCheckout()">Start Shield Core</button>
+        <p class="plan-retention" id="planRetentionNote" style="display:none;"><strong>2× more likely</strong> to still be managing their metabolic health at 12 months. Cancel anytime.</p>
       </div>
 
       <!-- SHIELD CLINICAL -->
