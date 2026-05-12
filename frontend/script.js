@@ -343,7 +343,7 @@ function _renderPlanBadge() {
   const planEl = el("userPlan");
   if (planEl) {
     const isPro = _userPlan === "pro" || _userPlan === "annual";
-    planEl.textContent = isPro ? "PHI Pro ✦" : "PHI Free";
+    planEl.textContent = isPro ? "Curabook Pro ✦" : "Curabook Free";
     planEl.style.color = isPro ? "var(--signal)" : "var(--text-3)";
   }
 }
@@ -413,7 +413,7 @@ function showUpgradeModal(reason = "manual") {
         ">φ</div>
         <div>
           <h2 style="font-family:var(--serif);font-size:1.2rem;font-weight:400;
-            color:var(--text);margin-bottom:2px;line-height:1.2;">Upgrade to PHI Pro</h2>
+            color:var(--text);margin-bottom:2px;line-height:1.2;">Upgrade to Curabook Pro</h2>
           <p style="font-size:.73rem;color:var(--text-3);line-height:1.4;">
             Unlimited reports · Health memory · Insurance PA support
           </p>
@@ -560,8 +560,8 @@ async function initiateRazorpayCheckout(plan = "monthly") {
       key:         data.razorpay_key_id,
       amount:      data.amount,
       currency:    data.currency || "USD",
-      name:        "Curabook PHI",
-      description: data.description || `PHI ${plan.charAt(0).toUpperCase() + plan.slice(1)} Plan`,
+      name:        "Curabook",
+      description: data.description || `Curabook ${plan.charAt(0).toUpperCase() + plan.slice(1)} Plan`,
       handler: async function(response) {
         try {
           const verifyH = await headers();
@@ -581,7 +581,7 @@ async function initiateRazorpayCheckout(plan = "monthly") {
             _userPlan = vRes.data.plan || plan;
             _reportsRemaining = 9999;
             _renderPlanBadge();
-            toast(`🎉 ${vRes.data.message || "Welcome to PHI Pro! Unlimited reports unlocked."}`, "ok");
+            toast(`🎉 ${vRes.data.message || "Welcome to Curabook Pro! Unlimited reports unlocked."}`, "ok");
             closeUpgradeModal();
             setTimeout(() => location.reload(), 2000);
           } else {
@@ -725,7 +725,7 @@ function switchView(view) {
   closeSidebar();
   if (view === "health") loadHealthView();
   if (view === "reports") loadReportsView();
-  setText("convTitle", { chat: "Chat with PHI", health: "My Health", reports: "Lab Reports" }[view] || "");
+  setText("convTitle", { chat: "Chat with Curabook", health: "My Health", reports: "Lab Reports" }[view] || "");
 }
 
 async function loadHealthView() {
@@ -769,7 +769,7 @@ function buildHealthViewHTML(markers, dashboard) {
     <div class="cliff-card risk-${riskLevel}">
       <div><div class="cliff-num risk-${riskLevel}">${riskLevel === "none" ? "✓" : riskScore}</div></div>
       <div class="cliff-detail"><h3>${riskLabel}</h3><p>${riskDesc}</p>
-      ${riskLevel !== "none" ? `<button class="alert-cta" data-ask="Run a full cliff risk analysis on my stored data. What are my urgent signals?">Ask PHI →</button>` : ""}
+      ${riskLevel !== "none" ? `<button class="alert-cta" data-ask="Run a full cliff risk analysis on my stored data. What are my urgent signals?">Ask Curabook →</button>` : ""}
       </div></div></div>`;
 
   if (cliffalerts.length) {
@@ -800,7 +800,7 @@ function buildHealthViewHTML(markers, dashboard) {
 
   // FIX-2: Show health memory facts in health view
   if (_cachedMemories.length > 0) {
-    html += `<div class="hv-section"><div class="hv-heading"><i class="fa-solid fa-brain"></i>PHI Health Memory (${_cachedMemories.length} facts)</div><div class="alert-feed">`;
+    html += `<div class="hv-section"><div class="hv-heading"><i class="fa-solid fa-brain"></i>Curabook Health Memory (${_cachedMemories.length} facts)</div><div class="alert-feed">`;
     _cachedMemories.slice(0, 5).forEach(fact => {
       html += `<div class="alert-item ok" style="border-left-color:var(--signal);background:var(--signal-dim)">
         <div class="alert-desc" style="color:var(--text)">${esc(fact)}</div></div>`;
@@ -823,7 +823,7 @@ async function loadReportsView() {
     }
     list.innerHTML = data.preps.map(p => {
       const date = p.generated_at ? new Date(p.generated_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "";
-      return `<div class="report-card"><div class="report-icon"><i class="fa-solid fa-file-medical-alt"></i></div><div class="report-meta"><div class="report-name">${esc(p.filename || "Lab Report")}</div><div class="report-date">${date}</div><div class="report-tags"><span class="report-tag info">Lab</span></div></div><button class="report-ask-btn" onclick="askAboutReport('${esc(p.filename || "report")}')">Ask PHI →</button></div>`;
+      return `<div class="report-card"><div class="report-icon"><i class="fa-solid fa-file-medical-alt"></i></div><div class="report-meta"><div class="report-name">${esc(p.filename || "Lab Report")}</div><div class="report-date">${date}</div><div class="report-tags"><span class="report-tag info">Lab</span></div></div><button class="report-ask-btn" onclick="askAboutReport('${esc(p.filename || "report")}')">Ask Curabook →</button></div>`;
     }).join("");
   } catch { list.innerHTML = `<div class="hv-empty">Could not load reports.</div>`; }
 }
@@ -1108,7 +1108,7 @@ async function sendMessage(text) {
     let dotCount = 0;
     const typingInterval = setInterval(() => {
       dotCount = (dotCount + 1) % 4;
-      updateTyping(botRow, "PHI is thinking" + ".".repeat(dotCount));
+      updateTyping(botRow, "Curabook is thinking" + ".".repeat(dotCount));
     }, 600);
 
     const res = await fetch(API + "/chat", { method: "POST", headers: h, body: JSON.stringify(payload) });
@@ -1305,7 +1305,7 @@ function renderAI(elem, text) {
   if (parts.length > 1 || text.includes("⚕️")) {
     const l = document.createElement("p");
     l.className = "phi-legal";
-    l.textContent = "⚕️ PHI is an educational wellness tool. Always consult your healthcare provider.";
+    l.textContent = "⚕️ Curabook is an educational wellness tool. Always consult your healthcare provider.";
     elem.appendChild(l);
   }
 }
@@ -1588,9 +1588,9 @@ function initVoice() {
 function exportChat() {
   const msgs = el("chatDisplay")?.querySelectorAll(".chat-msg");
   if (!msgs?.length) { toast("No conversation to export.", "err"); return; }
-  let out = `Curabook PHI — Chat Export\n${"=".repeat(40)}\n\n`;
+  let out = `Curabook — Chat Export\n${"=".repeat(40)}\n\n`;
   msgs.forEach(m => {
-    const role = m.classList.contains("user-msg") ? "You" : "PHI";
+    const role = m.classList.contains("user-msg") ? "You" : "Curabook";
     out += `${role}:\n${m.querySelector(".msg-body")?.innerText?.trim() || ""}\n\n`;
   });
   const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob([out], { type: "text/plain" })), download: `phi-chat-${Date.now()}.txt` });
@@ -1720,12 +1720,12 @@ function initFeedback() {
       <div class="feedback-header">
         <div class="feedback-icon-wrap"><i class="fa-regular fa-comment-dots"></i></div>
         <div>
-          <h3 class="feedback-title">How's PHI working for you?</h3>
+          <h3 class="feedback-title">How's Curabook working for you?</h3>
           <p class="feedback-sub">Your feedback shapes what we build next.</p>
         </div>
       </div>
 
-      <div class="feedback-nps-label">How likely are you to recommend PHI? (1 = not at all, 10 = absolutely)</div>
+      <div class="feedback-nps-label">How likely are you to recommend Curabook? (1 = not at all, 10 = absolutely)</div>
       <div class="feedback-nps-row" id="feedbackNpsRow">
         ${[...Array(10)].map((_, i) => `<button class="nps-btn" data-val="${i+1}">${i+1}</button>`).join("")}
       </div>
@@ -1757,7 +1757,7 @@ function initFeedback() {
       <div id="feedbackSuccess" class="feedback-success">
         <div class="feedback-success-icon">🎉</div>
         <strong>Thank you!</strong>
-        <p>We read every message. Your input directly shapes PHI.</p>
+        <p>We read every message. Your input directly shapes Curabook.</p>
       </div>
     </div>`;
   document.body.appendChild(modal);
