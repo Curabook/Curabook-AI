@@ -89,7 +89,7 @@
         <p class="left-sub">The food noise doesn't have to win. PHI picks up exactly where you left off — your labs, your markers, your cliff risk. All of it.</p>
     </div>
     <div class="trust-badges">
-        <div class="trust-item"><i class="fa-solid fa-shield-halved"></i> HIPAA-Ready architecture</div>
+        <div class="trust-item"><i class="fa-solid fa-shield-halved"></i> Educational wellness tool only</div>
         <div class="trust-item"><i class="fa-solid fa-lock"></i> AES-256 Encrypted</div>
         <div class="trust-item"><i class="fa-solid fa-ban"></i> Your data is never sold</div>
         <div class="trust-item"><i class="fa-solid fa-user-secret"></i> AI never sees your name or ID</div>
@@ -112,7 +112,11 @@
             <input type="password" id="password" class="form-input" placeholder="Your password" autocomplete="current-password">
         </div>
         <a href="#" class="forgot-link" id="forgotLink">Forgot password?</a>
-        <button id="loginBtn" class="btn-primary">Sign In</button>
+        <label class="terms-row" id="consentRow">
+            <input type="checkbox" id="consentCheck">
+            <span>I agree to the <a href="/terms" target="_blank">Terms of Service</a> and <a href="/privacy" target="_blank">Privacy Policy</a>, and consent to Curabook processing my health data.</span>
+        </label>
+        <button id="loginBtn" class="btn-primary" disabled>Sign In</button>
         <div class="divider">or</div>
         <button id="googleBtn" class="btn-google">
             <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google">
@@ -120,7 +124,7 @@
         </button>
         <div class="compliance-strip">
             <i class="fa-solid fa-shield-halved"></i>
-            HIPAA-Ready &nbsp;·&nbsp; AES-256 Encrypted &nbsp;·&nbsp; Zero Data Selling
+            AES-256 Encrypted &nbsp;·&nbsp; AI never sees your name &nbsp;·&nbsp; Never sold
         </div>
     </div>
 </div>
@@ -211,7 +215,7 @@ function showGoogleTermsModal(user, session) {
                 <li>Data never sold to advertisers or third parties</li>
                 <li>Export or delete all data at any time</li>
             </ul>
-            <div class="consent-badge"><i class="fa-solid fa-shield-halved"></i> HIPAA-Ready &nbsp;·&nbsp; GDPR Compliant</div>
+            <div class="consent-badge"><i class="fa-solid fa-lock"></i> AES-256 Encrypted &nbsp;·&nbsp; AI never sees your name &nbsp;·&nbsp; Never sold</div>
             <label class="terms-row">
                 <input type="checkbox" id="googleTermsCheck">
                 <span>I agree to the <a href="/terms" target="_blank">Terms of Service</a> and <a href="/privacy" target="_blank">Privacy Policy</a>, and consent to PHI processing my health data as described.</span>
@@ -252,12 +256,18 @@ function showGoogleTermsModal(user, session) {
     });
 }
 
+// Enable Sign In only when consent is ticked
+document.getElementById("consentCheck").addEventListener("change", function() {
+    document.getElementById("loginBtn").disabled = !this.checked;
+});
+
 document.getElementById("loginBtn").addEventListener("click", async () => {
     const email    = document.getElementById("email").value.trim();
     const password = document.getElementById("password").value;
     const btn      = document.getElementById("loginBtn");
     
     if (!email || !password) { setStatus("Please enter your email and password.", "error"); return; }
+    if (!document.getElementById("consentCheck").checked) { setStatus("Please accept the Terms of Service to continue.", "error"); return; }
     
     setLoading(btn, true);
     setStatus("", "");
