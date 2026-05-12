@@ -371,6 +371,166 @@ footer p { font-size: .72rem; color: var(--muted-2); }
     .btn-hero-primary, .btn-hero-secondary { width: 100%; justify-content: center; }
     .stats-strip { grid-template-columns: 1fr; }
 }
+
+/* ── TWO-PATH HERO ──────────────────────────────────────────────── */
+.hero-paths {
+    display: grid; grid-template-columns: 1fr auto 1fr;
+    gap: 0; margin: 44px auto 36px; max-width: 920px; width: 100%;
+    align-items: stretch;
+}
+.hero-path-card {
+    background: var(--white); border: 1.5px solid var(--border);
+    border-radius: var(--r-xl); padding: 28px 24px;
+    display: flex; flex-direction: column; text-align: left;
+}
+.hero-path-card--insurance { border-color: rgba(239,68,68,.3); }
+.hero-path-card--shield    { border-color: var(--brand-border); }
+
+.hpc-eyebrow {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: .68rem; font-weight: 700; letter-spacing: .07em;
+    text-transform: uppercase; margin-bottom: 12px;
+}
+.hero-path-card--insurance .hpc-eyebrow { color: var(--danger); }
+.hero-path-card--shield    .hpc-eyebrow { color: var(--brand);  }
+
+.hpc-verbatim {
+    font-family: var(--serif); font-size: .88rem; font-style: italic;
+    line-height: 1.6; margin: 0 0 14px; padding: 10px 14px;
+    border-left: 3px solid; border-radius: 0 8px 8px 0;
+}
+.hero-path-card--insurance .hpc-verbatim {
+    color: #7f1d1d; background: rgba(239,68,68,.04);
+    border-left-color: var(--danger);
+}
+.hero-path-card--shield .hpc-verbatim {
+    color: #164e63; background: var(--brand-dim);
+    border-left-color: var(--brand);
+}
+
+.hpc-title {
+    font-family: var(--serif); font-size: 1.15rem; font-weight: 400;
+    color: var(--text); margin-bottom: 10px; line-height: 1.3;
+}
+.hpc-desc { font-size: .82rem; color: var(--muted); line-height: 1.7; margin-bottom: 14px; flex: 1; }
+.hpc-proof { list-style: none; display: flex; flex-direction: column; gap: 7px; margin-bottom: 18px; }
+.hpc-proof li { display: flex; align-items: center; gap: 8px; font-size: .8rem; color: var(--muted); }
+.hpc-proof li i { color: var(--ok); font-size: .72rem; }
+
+.hpc-btn {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    width: 100%; padding: 13px 18px; border-radius: 99px; border: none;
+    font-size: .88rem; font-weight: 700; font-family: var(--font);
+    cursor: pointer; transition: all .2s;
+}
+.hpc-btn--insurance { background: var(--danger); color: white; box-shadow: 0 4px 16px rgba(239,68,68,.22); }
+.hpc-btn--insurance:hover { background: #dc2626; transform: translateY(-2px); }
+.hpc-btn--shield    { background: var(--brand);  color: white; box-shadow: 0 4px 16px var(--brand-glow); }
+.hpc-btn--shield:hover { background: var(--brand-dark); transform: translateY(-2px); }
+
+.hpc-divider { display: flex; align-items: center; justify-content: center; padding: 0 20px; }
+.hpc-or {
+    font-size: .72rem; font-weight: 700; color: var(--muted-2);
+    text-transform: uppercase; letter-spacing: .1em;
+    padding: 7px 10px; border: 1.5px solid var(--border);
+    border-radius: 20px; background: var(--white);
+}
+
+/* ── PRICE ANCHOR ───────────────────────────────────────────────── */
+.price-anchor-wrap {
+    max-width: 620px; width: 100%; margin: 36px auto 0;
+    background: var(--dark); border-radius: var(--r-xl);
+    padding: 28px 24px 20px;
+    box-shadow: 0 32px 64px rgba(0,0,0,.14), 0 0 0 1px rgba(0,0,0,.08);
+}
+.price-anchor-inner {
+    display: grid; grid-template-columns: 1fr auto 1fr;
+    align-items: center; margin-bottom: 18px;
+}
+.pa-col { text-align: center; padding: 0 12px; }
+.pa-col--vs { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.pa-vs-line { width: 1px; height: 28px; background: rgba(255,255,255,.1); }
+.pa-vs-label { font-size: .65rem; font-weight: 700; color: rgba(255,255,255,.2); text-transform: uppercase; letter-spacing: .1em; }
+.pa-label { font-size: .6rem; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: rgba(255,255,255,.3); margin-bottom: 7px; }
+.pa-amount { font-family: var(--mono); font-size: 2.6rem; font-weight: 500; line-height: 1; margin-bottom: 6px; }
+.pa-amount span { font-size: .9rem; font-weight: 400; }
+.pa-amount--high { color: var(--danger); }
+.pa-amount--phi  { color: var(--brand);  }
+.pa-note { font-size: .68rem; color: rgba(255,255,255,.28); line-height: 1.5; }
+.pa-tagline {
+    text-align: center; font-size: .79rem; color: rgba(255,255,255,.38);
+    line-height: 1.6; padding-top: 16px; border-top: 1px solid rgba(255,255,255,.06);
+}
+.pa-tagline i { color: var(--brand); margin-right: 5px; }
+.pa-tagline strong { color: rgba(255,255,255,.65); }
+
+/* ── HOW IT WORKS — TWO JOURNEYS ────────────────────────────────── */
+.journey-block {
+    border-radius: var(--r-xl); padding: 36px 32px;
+}
+.journey-block--insurance {
+    background: rgba(239,68,68,.03);
+    border: 1.5px solid rgba(239,68,68,.14);
+}
+.journey-block--shield {
+    background: var(--brand-dim);
+    border: 1.5px solid var(--brand-border);
+}
+.journey-label {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: .76rem; font-weight: 700; letter-spacing: .06em;
+    text-transform: uppercase; padding: 6px 14px; border-radius: 20px;
+    margin-bottom: 4px;
+    background: rgba(239,68,68,.1); color: var(--danger);
+    border: 1px solid rgba(239,68,68,.2);
+}
+
+/* ── FINAL CTA TWO PATHS ────────────────────────────────────────── */
+.final-paths {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 16px; margin: 32px auto 28px; max-width: 560px;
+}
+.final-path {
+    border-radius: var(--r-xl); padding: 22px 20px; text-align: left;
+}
+.final-path--insurance {
+    background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.25);
+}
+.final-path--shield {
+    background: rgba(0,188,213,.08); border: 1px solid rgba(0,188,213,.2);
+}
+.final-path-label {
+    font-size: .65rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .09em; margin-bottom: 8px;
+}
+.final-path--insurance .final-path-label { color: #fca5a5; }
+.final-path--shield    .final-path-label { color: var(--brand); }
+.final-path-desc {
+    font-size: .81rem; color: rgba(255,255,255,.45);
+    line-height: 1.6; margin-bottom: 14px;
+}
+.final-path-btn {
+    width: 100%; padding: 11px 14px; border: none; border-radius: 10px;
+    font-size: .82rem; font-weight: 700; cursor: pointer;
+    font-family: var(--font); display: flex; align-items: center;
+    justify-content: center; gap: 6px; transition: all .15s;
+}
+.final-path-btn--insurance { background: var(--danger); color: white; }
+.final-path-btn--insurance:hover { background: #dc2626; }
+.final-path-btn--shield { background: var(--brand); color: #0a0a0a; }
+.final-path-btn--shield:hover { background: var(--brand-dark); }
+
+/* ── RESPONSIVE ─────────────────────────────────────────────────── */
+@media (max-width: 720px) {
+    .hero-paths { grid-template-columns: 1fr; }
+    .hpc-divider { padding: 14px 0; }
+    .price-anchor-inner { grid-template-columns: 1fr; gap: 14px; }
+    .pa-col--vs { flex-direction: row; }
+    .pa-vs-line { width: 28px; height: 1px; }
+    .journey-block { padding: 24px 18px; }
+    .journey-block .steps { grid-template-columns: 1fr !important; }
+    .final-paths { grid-template-columns: 1fr; max-width: 100%; }
+}
 </style>
 </head>
 <body>
@@ -387,7 +547,7 @@ footer p { font-size: .72rem; color: var(--muted-2); }
     <a href="#how">How It Works</a>
     <a href="#features">Features</a>
     <a href="#pricing">Pricing</a>
-    <a href="/appeal" class="accent"><i class="fa-solid fa-file-shield" style="font-size:.75rem;margin-right:3px"></i>Free PA Tool</a>
+    <a href="/appeal" class="accent"><i class="fa-solid fa-file-shield" style="font-size:.75rem;margin-right:3px"></i>PA Architect</a>
     <a href="/login">Sign In</a>
   </div>
   <div class="nav-actions">
@@ -399,40 +559,89 @@ footer p { font-size: .72rem; color: var(--muted-2); }
 <!-- HERO -->
 <section class="hero">
   <div class="hero-badge"><span class="pulse"></span>For Wegovy · Zepbound · Ozempic users</div>
-  <h1>Don't let stopping GLP-1<br>erase <em>everything you earned.</em></h1>
+
+  <h1>The scale is creeping up.<br>The insurance denied you.<br><em>Curabook fights both.</em></h1>
+
   <p class="hero-sub">
-    The food noise comes back. The scale creeps up. The insurance denials land.
-    <strong>Curabook's Metabolic Shield catches the rebound before it starts</strong> — and helps you fight back when it does.
+    Most people who stop GLP-1 medications have no plan for what happens next.
+    <strong>Curabook is that plan.</strong>
+    Tell us which situation you're in — we handle the rest.
   </p>
-  <div class="hero-cta">
-    <button class="btn-hero-primary" onclick="location.href='/signup'">
-      <i class="fa-solid fa-shield-halved"></i>
-      Start Free — No Card Needed
-    </button>
-    <button class="btn-hero-secondary" onclick="location.href='/appeal'">
-      <i class="fa-solid fa-file-contract"></i>
-      Free PA Appeal Tool
-    </button>
-  </div>
-  <div class="hero-trust">
-    <div class="trust-item"><i class="fa-solid fa-check"></i> Free to start</div>
-    <div class="trust-item"><i class="fa-solid fa-check"></i> AES-256 encrypted</div>
-    <div class="trust-item"><i class="fa-solid fa-check"></i> AI never sees your name</div>
-    <div class="trust-item"><i class="fa-solid fa-check"></i> Data never sold</div>
+
+  <!-- TWO-PATH CARDS — user sees themselves immediately -->
+  <div class="hero-paths">
+
+    <div class="hero-path-card hero-path-card--insurance">
+      <div class="hpc-eyebrow"><i class="fa-solid fa-circle-xmark"></i> Insurance cut you off</div>
+      <blockquote class="hpc-verbatim">
+        "I'm caught in the PA nightmare and feel like the insurance company is conspiring to keep me sick."
+      </blockquote>
+      <h3 class="hpc-title">We build your appeal.<br>You take it to your doctor.</h3>
+      <p class="hpc-desc">Curabook assembles a physician-ready prior authorization packet from your actual lab markers — your glucose trajectory, HbA1c, BMI, comorbidities — using the same clinical language insurers use to deny you.</p>
+      <ul class="hpc-proof">
+        <li><i class="fa-solid fa-check"></i> Done in 2 minutes</li>
+        <li><i class="fa-solid fa-check"></i> Built from your real data, not a template</li>
+        <li><i class="fa-solid fa-check"></i> Patients have won on second appeal using this</li>
+      </ul>
+      <button class="hpc-btn hpc-btn--insurance" onclick="location.href='/appeal'">
+        <i class="fa-solid fa-file-contract"></i> Build My Appeal Packet
+      </button>
+    </div>
+
+    <div class="hpc-divider"><span class="hpc-or">or</span></div>
+
+    <div class="hero-path-card hero-path-card--shield">
+      <div class="hpc-eyebrow"><i class="fa-solid fa-circle-exclamation"></i> You stopped the medication</div>
+      <blockquote class="hpc-verbatim">
+        "The food noise came back and my hunger is in overdrive. It's like my lizard brain just took over."
+      </blockquote>
+      <h3 class="hpc-title">Curabook monitors the rebound<br>before it becomes regain.</h3>
+      <p class="hpc-desc">The first 2–4 weeks after your last dose are the Critical Zone. Your ghrelin surges. The scale starts creeping. Curabook catches it from your lab data and sends predictive alerts — day by day — through the hardest weeks.</p>
+      <ul class="hpc-proof">
+        <li><i class="fa-solid fa-check"></i> Cliff alerts from your actual glucose & HbA1c</li>
+        <li><i class="fa-solid fa-check"></i> Daily protein target — Muscle Defense Protocol</li>
+        <li><i class="fa-solid fa-check"></i> Food noise tracking — biology, not willpower</li>
+      </ul>
+      <button class="hpc-btn hpc-btn--shield" onclick="location.href='/signup'">
+        <i class="fa-solid fa-shield-halved"></i> Activate My Metabolic Shield
+      </button>
+    </div>
+
   </div>
 
-  <div class="dashboard-wrap fade-up">
-    <div class="db-bar"><span></span><span></span><span></span></div>
-    <div class="db-metrics">
-      <div class="db-metric"><div class="db-val ok">94%</div><div class="db-label">Shield Score</div></div>
-      <div class="db-metric"><div class="db-val ok">Normal</div><div class="db-label">Glucose</div></div>
-      <div class="db-metric"><div class="db-val warn">Watch</div><div class="db-label">HbA1c trend</div></div>
+  <!-- Price anchor — research: frame as "bargain insurance" vs $1,350 medication -->
+  <div class="price-anchor-wrap fade-up">
+    <div class="price-anchor-inner">
+      <div class="pa-col">
+        <div class="pa-label">Your GLP-1 medication cost</div>
+        <div class="pa-amount pa-amount--high">$1,350<span>/mo</span></div>
+        <div class="pa-note">Average retail price without insurance</div>
+      </div>
+      <div class="pa-col pa-col--vs">
+        <div class="pa-vs-line"></div>
+        <div class="pa-vs-label">vs</div>
+        <div class="pa-vs-line"></div>
+      </div>
+      <div class="pa-col">
+        <div class="pa-label">Curabook — full protection</div>
+        <div class="pa-amount pa-amount--phi">$49<span>/mo</span></div>
+        <div class="pa-note">Protects the results from everything you already spent</div>
+      </div>
     </div>
-    <div class="db-alert">
-      <i class="fa-solid fa-circle-check" style="flex-shrink:0"></i>
-      Metabolic Shield™ active — no rebound signals detected in your latest markers
+    <div class="pa-tagline">
+      <i class="fa-solid fa-shield-halved"></i>
+      Bargain insurance for the body you already earned.
+      <strong>97% less than the medication. 100% of the protection.</strong>
     </div>
   </div>
+
+  <div class="hero-trust" style="margin-top:32px;">
+    <div class="trust-item"><i class="fa-solid fa-lock"></i> AES-256 encrypted</div>
+    <div class="trust-item"><i class="fa-solid fa-user-secret"></i> AI never sees your name</div>
+    <div class="trust-item"><i class="fa-solid fa-ban"></i> Data never sold</div>
+    <div class="trust-item"><i class="fa-solid fa-shield-halved"></i> Educational tool only</div>
+  </div>
+
 </section>
 
 <!-- FOOD NOISE VALIDATION -->
@@ -444,11 +653,11 @@ footer p { font-size: .72rem; color: var(--muted-2); }
       <div class="fn-attribution">Documented GLP-1 withdrawal experience &mdash; r/Wegovy</div>
     </div>
     <div class="fn-body">
-      <h2>This isn't willpower.<br><em>This is biology.</em></h2>
-      <p>When you stop GLP-1 medication, your ghrelin — the hunger hormone — doesn't return to baseline. It surges into overdrive. The food noise you suddenly hear again isn't you failing. It's your hypothalamus doing exactly what evolution designed it to do.</p>
-      <p>Weight can start coming back within <strong>2–4 weeks</strong> of your last dose — not because you lost discipline, but because the biology is working against you at a level no willpower can override unaided.</p>
+      <h2>Food noise is real.<br><em>We know because we've heard it.</em></h2>
+      <p>That voice telling you to eat — constantly, oppressively, without pause — is not weakness. It's ghrelin. When GLP-1 medication stops, the hormone that was suppressed for months surges back into overdrive. The quiet you briefly lived in was real. The noise that's back is real. Neither has anything to do with your willpower.</p>
+      <p><strong>The scale can start creeping within 2–4 weeks of your last dose.</strong> Not because you failed — because the biology is designed to fight back. Curabook is the only tool built specifically for this moment.</p>
     </div>
-    <div class="fn-cards">
+        <div class="fn-cards">
       <div class="fn-card">
         <div class="fn-card-icon">🧠</div>
         <h3>Food Noise Is Real</h3>
@@ -466,11 +675,16 @@ footer p { font-size: .72rem; color: var(--muted-2); }
       </div>
     </div>
     <div class="fn-cta">
-      <p class="fn-cta-pre">You've already done the hard part. Let us help you hold onto it.</p>
-      <button class="btn-hero-primary" onclick="location.href='/signup'" style="margin:0 auto;">
-        <i class="fa-solid fa-shield-halved"></i>
-        Start Your Shield — Free
-      </button>
+      <p class="fn-cta-pre">You spent months earning these results. Don't give them back without a fight.</p>
+      <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
+        <button class="btn-hero-primary" onclick="location.href='/signup'" style="margin:0;">
+          <i class="fa-solid fa-shield-halved"></i> Activate My Shield — $49/mo
+        </button>
+        <button class="btn-hero-secondary" onclick="location.href='/appeal'" style="margin:0;">
+          <i class="fa-solid fa-file-contract"></i> Build My Appeal Packet
+        </button>
+      </div>
+      <p style="font-size:.74rem;color:rgba(255,255,255,.22);margin-top:12px;">First lab upload included · No credit card to start · Cancel anytime</p>
     </div>
   </div>
 </section>
@@ -499,31 +713,72 @@ footer p { font-size: .72rem; color: var(--muted-2); }
 
 <!-- HOW IT WORKS -->
 <section class="section" id="how">
-  <div class="section-inner" style="text-align:center">
-    <div class="section-tag" style="justify-content:center">How It Works</div>
-    <h2>From lab report to<br><em>Metabolic Shield™</em> in minutes</h2>
-    <div class="steps fade-up">
-      <div class="step">
-        <div class="step-num">1</div>
-        <div class="step-head">Upload your labs</div>
-        <div class="step-body">Drop any Quest, LabCorp, or doctor PDF. Curabook reads every value instantly — or snap a photo of your results.</div>
+  <div class="section-inner">
+    <div style="text-align:center;margin-bottom:52px;">
+      <div class="section-tag" style="justify-content:center">How It Works</div>
+      <h2>Two situations.<br><em>One platform built for both.</em></h2>
+    </div>
+
+    <!-- Journey A: Insurance -->
+    <div class="journey-block journey-block--insurance">
+      <div class="journey-label">
+        <i class="fa-solid fa-file-shield"></i> If insurance denied your GLP-1
       </div>
-      <div class="step">
-        <div class="step-num">2</div>
-        <div class="step-head">Curabook builds your baseline</div>
-        <div class="step-body">Your on-medication results become your personal benchmark. Every marker measured against <em>you</em>, not population averages.</div>
+      <div class="steps" style="grid-template-columns:repeat(3,1fr);margin-top:24px;">
+        <div class="step">
+          <div class="step-num" style="border-color:var(--danger);color:var(--danger);">1</div>
+          <div class="step-head">Enter your denial</div>
+          <div class="step-body">Tell Curabook what the letter said. "Not medically necessary." "BMI below threshold." "Insufficient documentation." It identifies the exact weakness in their argument.</div>
+        </div>
+        <div class="step">
+          <div class="step-num" style="border-color:var(--danger);color:var(--danger);">2</div>
+          <div class="step-head">Curabook builds your case</div>
+          <div class="step-body">Your glucose trajectory, HbA1c trend, BMI, weight history, and comorbidities are assembled into a physician-ready appeal packet — with clinical citations the insurer can't ignore.</div>
+        </div>
+        <div class="step">
+          <div class="step-num" style="border-color:var(--danger);color:var(--danger);">3</div>
+          <div class="step-head">Take it to your doctor</div>
+          <div class="step-body">Print or copy the packet. Your doctor submits it. If denied again, Curabook builds a stronger second appeal from your updated data.</div>
+        </div>
       </div>
-      <div class="step">
-        <div class="step-num">3</div>
-        <div class="step-head">Get your Shield Score</div>
-        <div class="step-body">Curabook monitors glucose, HbA1c, lean mass, and behavioral signals — and alerts you the moment anything shifts toward the cliff.</div>
-      </div>
-      <div class="step">
-        <div class="step-num">4</div>
-        <div class="step-head">Walk in prepared</div>
-        <div class="step-body">Curabook generates your doctor brief and insurance PA packet from your actual data — not generic templates.</div>
+      <div style="text-align:center;margin-top:28px;">
+        <button class="hpc-btn hpc-btn--insurance" onclick="location.href='/appeal'" style="display:inline-flex;width:auto;padding:13px 28px;">
+          <i class="fa-solid fa-file-contract"></i> Build My Appeal Packet
+        </button>
       </div>
     </div>
+
+    <div style="height:24px;"></div>
+
+    <!-- Journey B: Tapering -->
+    <div class="journey-block journey-block--shield">
+      <div class="journey-label" style="background:var(--brand-dim);color:var(--brand);border-color:var(--brand-border);">
+        <i class="fa-solid fa-shield-halved"></i> If you stopped or are tapering off the medication
+      </div>
+      <div class="steps" style="grid-template-columns:repeat(3,1fr);margin-top:24px;">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-head">Upload your last labs</div>
+          <div class="step-body">Drop any Quest or LabCorp PDF. Curabook sets your on-medication baseline — every future reading is measured against you personally, not population averages.</div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-head">Curabook activates your Shield</div>
+          <div class="step-body">Your glucose, HbA1c, protein intake, and food noise level are monitored continuously. Curabook alerts you the moment a rebound signal appears — weeks before it shows on the scale.</div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-head">Survive the biology</div>
+          <div class="step-body">Curabook coaches you through the Critical Zone — the 2–4 weeks when ghrelin peaks — with protein targets, behavioral prompts, and daily predictive alerts.</div>
+        </div>
+      </div>
+      <div style="text-align:center;margin-top:28px;">
+        <button class="hpc-btn hpc-btn--shield" onclick="location.href='/signup'" style="display:inline-flex;width:auto;padding:13px 28px;">
+          <i class="fa-solid fa-shield-halved"></i> Activate My Metabolic Shield
+        </button>
+      </div>
+    </div>
+
   </div>
 </section>
 
@@ -600,8 +855,8 @@ footer p { font-size: .72rem; color: var(--muted-2); }
 <section class="section bg-gray" id="pricing">
   <div class="section-inner" style="text-align:center">
     <div class="section-tag" style="justify-content:center">Pricing</div>
-    <h2>Less than 3 days of <em>Wegovy or Zepbound</em></h2>
-    <p class="section-lead" style="margin:0 auto">GLP-1 medications cost $1,350/month. Curabook protects those results for 97% less — and works whether you're still on medication or coming off.</p>
+    <h2>You spent $10,000+ on medication.<br><em>Protect it for $49/month.</em></h2>
+    <p class="section-lead" style="margin:0 auto">GLP-1 costs $1,350/month. Curabook does both jobs — fights your insurer and monitors your rebound — for 97% less. First lab report upload included in every plan.</p>
 
     <div class="billing-toggle">
       <span class="toggle-label on" id="lbl-monthly" onclick="setBilling('monthly')">Monthly</span>
@@ -643,7 +898,7 @@ footer p { font-size: .72rem; color: var(--muted-2); }
           <div class="plan-perday-compare">Your GLP-1 cost ~$45/day. Your shield is less than a coffee.</div>
         </div>
         <div style="height:4px"></div>
-        <div class="plan-desc">Continuous monitoring, unlimited labs, weekly cliff alerts — everything to protect the results you worked so hard to earn.</div>
+        <div class="plan-desc">For people who stopped or are tapering. Continuous rebound monitoring, unlimited lab uploads, weekly cliff alerts, food noise tracking, and Muscle Defense coaching — everything for the Critical Zone.</div>
         <ul class="plan-features">
           <li><div class="pf-check">✓</div>Unlimited lab uploads</li>
           <li><div class="pf-check">✓</div>Full Metabolic Shield™ monitoring</li>
@@ -663,7 +918,7 @@ footer p { font-size: .72rem; color: var(--muted-2); }
         <div class="plan-price">$99</div>
         <div class="plan-period">per month</div>
         <div style="height:28px"></div>
-        <div class="plan-desc">For active rebound, insurance denials, or anyone who needs the complete clinical intelligence picture.</div>
+        <div class="plan-desc">For people fighting active insurance denials. Everything in Shield Core, plus the full PA Architect that pulls directly from your stored lab data to build physician-ready appeal packets.</div>
         <ul class="plan-features">
           <li><div class="pf-check">✓</div>Everything in Shield Core</li>
           <li><div class="pf-check">✓</div>Insurance PA Architect</li>
@@ -716,17 +971,32 @@ footer p { font-size: .72rem; color: var(--muted-2); }
 
 <!-- FINAL CTA -->
 <section class="final-cta">
-  <div style="max-width:580px;margin:0 auto">
-    <div class="section-tag" style="justify-content:center">Start Today</div>
-    <h2>You worked hard<br>to lose that weight.<br><em>Don't lose it again.</em></h2>
-    <p>Curabook's Metabolic Shield™ is free to start. Upload your first lab report and see your cliff risk in minutes.</p>
-    <button class="btn-cta-final" onclick="location.href='/signup'">
-      <i class="fa-solid fa-shield-halved"></i>
-      Start Free — Upload Your Labs
-    </button>
+  <div style="max-width:700px;margin:0 auto;">
+    <div class="section-tag" style="justify-content:center;">Which situation are you in?</div>
+    <h2>You already did the hard part.<br><em>Don't lose it now.</em></h2>
+    <p>The weight you lost took months of injections, side effects, and thousands of dollars. Curabook protects that investment — whether you're fighting your insurer or fighting the biology.</p>
+
+    <div class="final-paths">
+      <div class="final-path final-path--insurance">
+        <div class="final-path-label">Insurance denied you</div>
+        <p class="final-path-desc">Build a physician-ready appeal packet from your lab data.</p>
+        <button onclick="location.href='/appeal'" class="final-path-btn final-path-btn--insurance">
+          <i class="fa-solid fa-file-contract"></i> Build My Appeal Packet
+        </button>
+      </div>
+      <div class="final-path final-path--shield">
+        <div class="final-path-label">You stopped the medication</div>
+        <p class="final-path-desc">Activate your Metabolic Shield and monitor the rebound.</p>
+        <button onclick="location.href='/signup'" class="final-path-btn final-path-btn--shield">
+          <i class="fa-solid fa-shield-halved"></i> Activate My Shield — $49/mo
+        </button>
+        <p style="font-size:.7rem;color:rgba(255,255,255,.25);margin-top:8px;">First lab upload included · Cancel anytime</p>
+      </div>
+    </div>
+
     <div class="cta-badges">
-      <span>✦ Free to start</span>
       <span>✦ AES-256 encrypted</span>
+      <span>✦ AI never sees your name</span>
       <span>✦ Cancel anytime</span>
       <span>✦ Educational tool only</span>
     </div>
@@ -744,7 +1014,7 @@ footer p { font-size: .72rem; color: var(--muted-2); }
     <a href="#how">How It Works</a>
     <a href="#features">Features</a>
     <a href="#pricing">Pricing</a>
-    <a href="/appeal">Free PA Tool</a>
+    <a href="/appeal">PA Architect</a>
     <a href="/login">Sign In</a>
     <a href="/privacy">Privacy</a>
     <a href="/terms">Terms</a>
