@@ -16,59 +16,54 @@
     </style>
 </head>
 <body>
-    <a href="signup.html" class="back-link">← Back to Curabook</a>
+    <a href="/" class="back-link" id="backLink">← Back to Curabook</a>
+    <script>
+      const ref = document.referrer;
+      if (ref) document.getElementById('backLink').href = ref;
+    </script>
 
     <h1>Privacy Policy</h1>
     <p>Last Updated: April 2026</p>
 
     <div class="badge-container">
-        <span class="badge">GDPR Compliant</span>
-        <span class="badge">DPDP Act 2023 (India)</span>
         <span class="badge">AES-256 Encrypted</span>
+        <span class="badge">AI Never Sees Your Name</span>
+        <span class="badge">Never Sold</span>
     </div>
 
-    <p>At Curabook.com, your privacy is fundamental. We are committed to protecting your personal health information and personal data. Curabook PHI is an educational wellness tool — it is not a covered entity under HIPAA, and does not provide medical diagnosis or treatment.</p>
+    <p>Curabook is a small, independent platform built to help people manage their health after GLP-1 medication. We take your data seriously — not because a law forces us to, but because you're trusting us with something personal.</p>
 
-    <h2>1. Data We Collect</h2>
+    <h2>1. What We Collect</h2>
     <ul>
-        <li><strong>Account Information:</strong> Email address and authentication details (via Supabase).</li>
-        <li><strong>Health Data:</strong> Medical documents (PDFs/Text) you explicitly upload.</li>
-        <li><strong>Conversations:</strong> Chat logs generated during your interaction with the AI.</li>
-        <li><strong>Activity Logs:</strong> Behavioral data you choose to log (steps, sleep, food).</li>
+        <li><strong>Email address</strong> — used to create and identify your account.</li>
+        <li><strong>Lab reports and health documents</strong> — only what you choose to upload.</li>
+        <li><strong>Chat history</strong> — your conversations with the AI, stored so you don't lose context.</li>
+        <li><strong>Behavioral logs</strong> — steps, sleep, food entries you manually log.</li>
+    </ul>
+    <p>We don't collect anything in the background. No tracking pixels, no ad identifiers, no device fingerprinting.</p>
+
+    <h2>2. How We Use It</h2>
+    <ul>
+        <li>To give you personalised responses based on your own lab data.</li>
+        <li>To maintain your health history across sessions.</li>
+        <li>Before anything reaches an AI model, your name and personal identifiers are removed. The AI works only from anonymised health data.</li>
+    </ul>
+    <p>We do not use your data to train AI models without your explicit opt-in.</p>
+
+    <h2>3. How We Protect It</h2>
+    <p>Your data is stored with AES-256 encryption at rest and transmitted over TLS. We use Supabase for database infrastructure, which is hosted on secured cloud servers. Access to your data is restricted — our team cannot read your health documents or chat history in plain text.</p>
+
+    <h2>4. Your Control</h2>
+    <ul>
+        <li><strong>Delete your account</strong> — removes all your data permanently. Go to Settings → Delete Account.</li>
+        <li><strong>Export your data</strong> — download everything as JSON from Settings → Export My Data.</li>
+        <li><strong>Questions or requests</strong> — email us at <a href="mailto:privacy@curabook.com">privacy@curabook.com</a> and we'll respond within 5 business days.</li>
     </ul>
 
-    <h2>2. How We Use Your Data</h2>
-    <p>We use your data solely to:</p>
-    <ul>
-        <li>Provide personalised health information responses based on your stored lab data.</li>
-        <li>Maintain your conversation and health history.</li>
-        <li>Improve AI accuracy (only with fully anonymised data — your name and ID are removed before any AI processing).</li>
-    </ul>
+    <h2>5. Medical Disclaimer</h2>
+    <p>Curabook is an educational wellness tool — not a doctor, not a diagnostic service, not a substitute for medical advice. Everything it tells you is for informational purposes only. Always talk to a qualified healthcare professional before making decisions about your health.</p>
 
-    <h2>3. Data Security</h2>
-    <p>We use industry-standard AES-256 encryption for database storage and TLS 1.3 for all data in transit. Your name and personal identifiers are stripped before any content is sent to AI models. We do not sell your personal health data to third parties under any circumstances.</p>
-
-    <h2>4. GDPR Rights (Europe)</h2>
-    <p>Under the General Data Protection Regulation, you have the right to:</p>
-    <ul>
-        <li>Access your data at any time.</li>
-        <li>Rectify inaccurate data.</li>
-        <li><strong>Right to Erasure ("Right to be Forgotten"):</strong> Delete your account and all associated data permanently via Settings → Delete Account.</li>
-        <li>Portability: export all your data as JSON via Settings → Export My Data.</li>
-    </ul>
-
-    <h2>5. DPDP Act Compliance (India)</h2>
-    <p>In accordance with the Digital Personal Data Protection Act, 2023:</p>
-    <ul>
-        <li><strong>Consent:</strong> We process data only with your explicit consent, provided at account creation.</li>
-        <li><strong>Data Fiduciary:</strong> Curabook.com acts as the Data Fiduciary responsible for your data security.</li>
-        <li><strong>Grievance Redressal:</strong> For data-related concerns, contact us at privacy@curabook.com.</li>
-    </ul>
-
-    <h2>6. Medical Disclaimer</h2>
-    <p>Curabook PHI is an educational wellness tool. It does not provide medical diagnoses, treatment recommendations, or prescriptions. Always consult a qualified healthcare professional before making any decisions about your health. PHI is not a substitute for professional medical advice.</p>
-
-    <h2>7. Contact Us</h2>
-    <p>Questions about this policy: <a href="mailto:privacy@curabook.com">privacy@curabook.com</a></p>
+    <h2>6. Contact</h2>
+    <p>For any privacy concerns: <a href="mailto:privacy@curabook.com">privacy@curabook.com</a></p>
 </body>
 </html>

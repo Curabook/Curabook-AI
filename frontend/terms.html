@@ -15,7 +15,11 @@
     </style>
 </head>
 <body>
-    <a href="signup.html" class="back-link">← Back to Curabook</a>
+    <a href="/" class="back-link" id="backLink">← Back to Curabook</a>
+    <script>
+      const ref = document.referrer;
+      if (ref) document.getElementById('backLink').href = ref;
+    </script>
     
     <h1>Terms of Service</h1>
     <p>Last Updated: February 2026</p>
