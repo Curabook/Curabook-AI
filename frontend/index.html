@@ -394,8 +394,11 @@ section { position: relative; z-index: 1; }
 .plan-duo {
   display: grid; grid-template-columns: 1fr; gap: 12px;
 }
-@media (min-width: 580px) {
-  .plan-duo { grid-template-columns: 1fr 1fr; max-width: 740px; margin: 0 auto; }
+@media (min-width: 640px) {
+  .plan-duo { grid-template-columns: 1fr 1fr; }
+}
+@media (min-width: 960px) {
+  .plan-duo { grid-template-columns: 1fr 1.06fr 1fr; max-width: 960px; margin: 0 auto; align-items: start; }
 }
 
 .plan {
@@ -726,6 +729,23 @@ footer {
           <li><span class="pf-check">✓</span>Insurance PA Architect</li>
         </ul>
         <button class="plan-btn plan-btn--solid" onclick="location.href='/signup?plan=core'">Start Shield Core</button>
+      </div>
+
+      <!-- Clinical -->
+      <div class="plan">
+        <div class="plan-name">Shield Clinical</div>
+        <div class="plan-price"><sup>$</sup>99</div>
+        <div class="plan-period">per month · cancel anytime</div>
+        <div class="plan-hr"></div>
+        <ul class="plan-perks">
+          <li><span class="pf-check">✓</span>Everything in Shield Core</li>
+          <li><span class="pf-check">✓</span>Insurance PA Architect</li>
+          <li><span class="pf-check">✓</span>Appeal letter generator</li>
+          <li><span class="pf-check">✓</span>Cross-marker pattern insights</li>
+          <li><span class="pf-check">✓</span>Body composition tracking</li>
+          <li><span class="pf-check">✓</span>Priority support</li>
+        </ul>
+        <button class="plan-btn plan-btn--outline" onclick="location.href='/signup?plan=clinical'">Start Shield Clinical</button>
       </div>
     </div>
 
