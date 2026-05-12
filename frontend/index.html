@@ -3,533 +3,575 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Curabook — GLP-1 Cliff Prevention · Personal Health Intelligence</title>
-<meta name="description" content="70% of GLP-1 users regain weight within a year of stopping. Curabook monitors your rebound signals and fights your insurance denials — before the cliff hits.">
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital,wght@0,400;0,600;1,400;1,600&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<title>Curabook — Don't Lose What You Worked For</title>
+<meta name="description" content="You worked hard to lose that weight. Curabook watches the signals so you don't have to.">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;1,400;1,500&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-<script src="https://checkout.razorpay.com/v1/checkout.js" defer></script>
+
 <style>
-*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+/* ═══════════════════════════════════════════════════════════
+   TOKENS — exact mirror of style.css
+═══════════════════════════════════════════════════════════ */
 :root {
-    --brand: #00BCD5;
-    --brand-dark: #0097a7;
-    --brand-glow: rgba(0,188,213,.2);
-    --brand-dim: rgba(0,188,213,.08);
-    --brand-border: rgba(0,188,213,.22);
-    --text: #111111;
-    --muted: #6b7280;
-    --muted-2: #9ca3af;
-    --border: #e5e7eb;
-    --border-2: #d1d5db;
-    --bg: #fafafa;
-    --white: #ffffff;
-    --surface: #f4f5f7;
-    --dark: #0a0a0a;
-    --danger: #ef4444;
-    --amber: #f59e0b;
-    --ok: #10b981;
-    --font: 'Plus Jakarta Sans', 'Segoe UI', sans-serif;
-    --serif: 'Instrument Serif', Georgia, serif;
-    --mono: 'DM Mono', 'Courier New', monospace;
-    --r: 10px; --r-lg: 16px; --r-xl: 24px;
+  --r-xs: 4px;
+  --r-sm: 8px;
+  --r:    12px;
+  --r-lg: 16px;
+  --r-xl: 24px;
+
+  --serif: 'Playfair Display', Georgia, 'Times New Roman', serif;
+  --sans:  'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  --mono:  'DM Mono', 'Fira Mono', 'Courier New', monospace;
+
+  --touch: 48px;
+
+  --bg:          #f4f6f9;
+  --surface:     #ffffff;
+  --surface-2:   #f0f3f7;
+  --surface-3:   #e8ecf1;
+  --surface-4:   #dde3eb;
+  --text:        #0d1117;
+  --text-2:      #5a6475;
+  --text-3:      #9aa3b0;
+  --border:      rgba(0,0,0,.08);
+  --border-2:    rgba(0,0,0,.14);
+  --signal:      #00BCD5;
+  --signal-2:    #007a88;
+  --signal-dim:  rgba(0,158,175,.10);
+  --signal-glow: rgba(0,158,175,.18);
+  --danger:      #e53e3e;
+  --danger-dim:  rgba(229,62,62,.10);
+  --amber:       #fbbf24;
+  --ok:          #16a34a;
+  --ok-dim:      rgba(22,163,74,.10);
+  --shadow:      0 12px 40px rgba(0,0,0,.10);
+  --shadow-md:   0 4px 16px rgba(0,0,0,.08);
+  --shadow-sm:   0 1px 4px rgba(0,0,0,.06);
+
+  --sat: env(safe-area-inset-top,    0px);
+  --sar: env(safe-area-inset-right,  0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left,   0px);
 }
-html { font-size: 16px; scroll-behavior: smooth; }
-body { font-family: var(--font); background: var(--white); color: var(--text); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+
+/* ═══════════════════════════════════════════════════════════
+   RESET
+═══════════════════════════════════════════════════════════ */
+*, *::before, *::after {
+  margin: 0; padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+html {
+  font-size: 15px;
+  -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.6;
+}
+button { cursor: pointer; font-family: inherit; border: none; background: none; }
 a { text-decoration: none; color: inherit; }
-button { cursor: pointer; font-family: inherit; }
 
-/* ── NAV ───────────────────────────────────────────────────────── */
-nav {
-    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 0 max(24px, 5vw); height: 66px;
-    background: rgba(255,255,255,.93);
-    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-    border-bottom: 1px solid var(--border);
-    transition: box-shadow .3s;
+/* Grain texture — same as app */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0;
 }
-nav.scrolled { box-shadow: 0 2px 12px rgba(0,0,0,.06); }
-.nav-logo { display: flex; align-items: center; gap: 10px; }
-.nav-icon { width: 36px; height: 36px; background: var(--brand); border-radius: 9px; display: flex; align-items: center; justify-content: center; color: white; font-size: 15px; }
-.nav-name { font-family: var(--serif); font-size: 1.25rem; color: var(--text); font-weight: 400; }
-.nav-tag { font-size: 10px; background: var(--brand-dim); color: var(--brand); padding: 2px 7px; border-radius: 20px; font-weight: 700; border: 1px solid var(--brand-border); }
-.nav-sub { font-size: 10px; color: var(--muted-2); font-weight: 500; letter-spacing: .03em; white-space: nowrap; }
-.nav-links { display: flex; align-items: center; gap: 28px; }
-.nav-links a { font-size: .85rem; color: var(--muted); transition: color .2s; font-weight: 500; }
-.nav-links a:hover { color: var(--text); }
-.nav-links a.accent { color: var(--brand); font-weight: 600; }
-.nav-actions { display: flex; align-items: center; gap: 8px; }
-.btn-nav-ghost { font-size: .85rem; font-weight: 600; padding: 8px 16px; border-radius: var(--r); border: 1.5px solid var(--border); color: var(--muted); background: none; transition: all .15s; }
-.btn-nav-ghost:hover { border-color: var(--text); color: var(--text); }
-.btn-nav-solid { font-size: .85rem; font-weight: 700; padding: 9px 20px; border-radius: var(--r); background: var(--brand); color: white; border: none; transition: all .15s; }
-.btn-nav-solid:hover { background: var(--brand-dark); }
 
-/* ── HERO ───────────────────────────────────────────────────────── */
+* { scrollbar-width: thin; scrollbar-color: var(--surface-3) transparent; }
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 99px; }
+
+/* ═══════════════════════════════════════════════════════════
+   NAV
+═══════════════════════════════════════════════════════════ */
+nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 max(16px, 4vw);
+  padding-top: var(--sat);
+  height: calc(56px + var(--sat));
+  background: rgba(244,246,249,.92);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+  transition: box-shadow .3s;
+}
+nav.scrolled { box-shadow: 0 2px 24px rgba(0,0,0,.5); }
+
+.nav-logo { display: flex; align-items: center; gap: 9px; }
+.nav-logo-mark {
+  width: 32px; height: 32px; border-radius: var(--r-sm);
+  background: var(--signal); display: flex; align-items: center; justify-content: center;
+  color: #0a0b0e; font-size: 13px;
+  box-shadow: 0 0 12px var(--signal-glow);
+  flex-shrink: 0;
+}
+.nav-logo-name {
+  font-family: var(--serif); font-size: 1.15rem; font-weight: 400;
+  color: var(--text); letter-spacing: -.01em;
+}
+.nav-logo-tag {
+  font-size: .6rem; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--signal);
+  padding: 2px 7px; border-radius: 99px;
+  background: var(--signal-dim); border: 1px solid rgba(0,212,200,.2);
+  display: none;
+}
+@media (min-width: 400px) { .nav-logo-tag { display: inline-flex; } }
+
+.nav-actions { display: flex; align-items: center; gap: 8px; }
+.btn-ghost-nav {
+  height: 40px; padding: 0 14px;
+  font-size: .8rem; font-weight: 600; color: var(--text-2);
+  border: 1px solid var(--border-2); border-radius: var(--r);
+  background: none; transition: color .15s, border-color .15s;
+  display: flex; align-items: center;
+}
+.btn-ghost-nav:hover { color: var(--text); border-color: rgba(255,255,255,.25); }
+.btn-signal-nav {
+  height: 40px; padding: 0 16px;
+  font-size: .8rem; font-weight: 700; color: #0a0b0e;
+  background: var(--signal); border-radius: var(--r);
+  transition: opacity .15s;
+  display: flex; align-items: center;
+}
+.btn-signal-nav:hover { opacity: .88; }
+
+/* ═══════════════════════════════════════════════════════════
+   HERO
+═══════════════════════════════════════════════════════════ */
 .hero {
-    min-height: 100vh; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; text-align: center;
-    padding: 120px max(20px, 6vw) 80px;
-    position: relative; overflow: hidden;
-    background: linear-gradient(180deg, #f8fffe 0%, var(--white) 100%);
+  position: relative; z-index: 1;
+  min-height: 100svh;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  text-align: center;
+  padding: calc(56px + var(--sat) + 48px) max(20px, 5vw) 72px;
+  overflow: hidden;
 }
 .hero::before {
-    content: ''; position: absolute; top: 0; left: 50%; transform: translateX(-50%);
-    width: 800px; height: 400px;
-    background: radial-gradient(ellipse, rgba(0,188,213,.07) 0%, transparent 70%);
-    pointer-events: none;
+  content: '';
+  position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+  width: min(900px, 160vw); height: min(500px, 80vw);
+  background: radial-gradient(ellipse, rgba(0,212,200,.07) 0%, transparent 65%);
+  pointer-events: none;
 }
-.hero-badge {
-    display: inline-flex; align-items: center; gap: 7px;
-    padding: 6px 14px; background: var(--brand-dim);
-    border: 1px solid var(--brand-border); border-radius: 20px;
-    font-size: .72rem; font-weight: 700; color: var(--brand);
-    letter-spacing: .07em; text-transform: uppercase; margin-bottom: 28px;
+
+.hero-eyebrow {
+  font-size: .62rem; font-weight: 700; letter-spacing: .16em;
+  text-transform: uppercase; color: var(--signal);
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 24px;
+  opacity: 0; animation: fadeUp .5s .1s ease forwards;
 }
-.pulse { width: 6px; height: 6px; border-radius: 50%; background: var(--brand); animation: pulse 2s ease infinite; }
-@keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(0,188,213,.4); } 50% { box-shadow: 0 0 0 6px rgba(0,188,213,0); } }
+.eyebrow-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--signal); flex-shrink: 0;
+  animation: pulseDot 2.5s ease infinite;
+}
+@keyframes pulseDot {
+  0%,100% { box-shadow: 0 0 0 0 rgba(0,212,200,.4); }
+  50%      { box-shadow: 0 0 0 6px rgba(0,212,200,0); }
+}
+
 .hero h1 {
-    font-family: var(--serif); font-size: clamp(2.6rem, 6vw, 5rem);
-    font-weight: 400; line-height: 1.08; letter-spacing: -.025em; color: var(--text);
-    max-width: 860px; margin: 0 auto 22px;
+  font-family: var(--serif);
+  font-size: clamp(2rem, 7.5vw, 4.8rem);
+  font-weight: 400; line-height: 1.1; letter-spacing: -.025em;
+  color: var(--text); max-width: 840px; margin: 0 auto 18px;
+  opacity: 0; animation: fadeUp .6s .2s ease forwards;
 }
-.hero h1 em { font-style: italic; color: var(--brand); }
+.hero h1 em { font-style: italic; color: var(--signal); }
+.hero h1 .cross {
+  text-decoration: line-through;
+  text-decoration-color: var(--danger);
+  color: var(--text-3);
+}
+
 .hero-sub {
-    font-size: clamp(1rem, 2vw, 1.15rem); font-weight: 400;
-    color: var(--muted); line-height: 1.75; max-width: 600px; margin: 0 auto 44px;
+  font-size: clamp(.88rem, 2.5vw, 1.05rem);
+  color: var(--text-2); line-height: 1.85;
+  max-width: 480px; margin: 0 auto 44px;
+  font-weight: 300;
+  opacity: 0; animation: fadeUp .6s .3s ease forwards;
 }
 .hero-sub strong { color: var(--text); font-weight: 600; }
-.hero-cta { display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap; margin-bottom: 48px; }
-.btn-hero-primary {
-    display: inline-flex; align-items: center; gap: 8px;
-    padding: 14px 28px; background: var(--brand); color: white;
-    border-radius: 99px; font-size: .95rem; font-weight: 700; border: none;
-    box-shadow: 0 6px 20px var(--brand-glow); transition: all .2s;
-}
-.btn-hero-primary:hover { background: var(--brand-dark); transform: translateY(-2px); box-shadow: 0 10px 28px var(--brand-glow); }
-.btn-hero-secondary {
-    display: inline-flex; align-items: center; gap: 7px;
-    padding: 14px 24px; background: none;
-    border: 1.5px solid var(--border-2); border-radius: 99px;
-    font-size: .95rem; font-weight: 600; color: var(--muted); transition: all .2s;
-}
-.btn-hero-secondary:hover { border-color: var(--brand); color: var(--brand); }
-.hero-trust { display: flex; align-items: center; justify-content: center; gap: 22px; flex-wrap: wrap; font-size: .78rem; color: var(--muted-2); }
-.trust-item { display: flex; align-items: center; gap: 5px; }
-.trust-item i { color: var(--brand); font-size: .75rem; }
 
-/* ── DASHBOARD MOCK ─────────────────────────────────────────────── */
-.dashboard-wrap {
-    max-width: 700px; width: 100%; margin: 52px auto 0;
-    background: var(--dark); border-radius: var(--r-xl);
-    padding: 20px 20px 16px;
-    box-shadow: 0 40px 80px rgba(0,0,0,.15), 0 0 0 1px rgba(0,0,0,.08);
+/* Two-path choice */
+.choice {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  max-width: 860px; width: 100%;
+  margin: 0 auto 44px;
+  opacity: 0; animation: fadeUp .6s .42s ease forwards;
 }
-.db-bar { display: flex; gap: 5px; margin-bottom: 16px; }
-.db-bar span { width: 9px; height: 9px; border-radius: 50%; }
-.db-bar span:nth-child(1) { background: #ff5f57; }
-.db-bar span:nth-child(2) { background: #ffbd2e; }
-.db-bar span:nth-child(3) { background: #28c840; }
-.db-metrics { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-bottom: 12px; }
-.db-metric { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.07); border-radius: 12px; padding: 14px 12px; text-align: center; }
-.db-val { font-family: var(--mono); font-size: 1.8rem; font-weight: 500; margin-bottom: 3px; }
-.db-val.ok { color: var(--brand); }
-.db-val.warn { color: var(--amber); }
-.db-val.alert { color: var(--danger); }
-.db-label { font-size: .62rem; color: rgba(255,255,255,.4); text-transform: uppercase; letter-spacing: .08em; }
-.db-alert {
-    background: rgba(0,188,213,.08); border: 1px solid rgba(0,188,213,.2);
-    border-radius: 9px; padding: 10px 14px;
-    display: flex; align-items: center; gap: 8px;
-    font-size: .79rem; color: var(--brand);
+@media (min-width: 580px) {
+  .choice {
+    grid-template-columns: 1fr auto 1fr;
+    gap: 0; align-items: stretch;
+  }
 }
 
-/* ── SHARED SECTION STYLES ──────────────────────────────────────── */
-.section { padding: 96px max(20px, 6vw); }
-.section-inner { max-width: 1100px; margin: 0 auto; }
+.choice-card {
+  border-radius: var(--r-xl); padding: 22px 20px;
+  text-align: left; display: flex; flex-direction: column; gap: 10px;
+  transition: transform .2s; position: relative;
+}
+.choice-card:hover { transform: translateY(-2px); }
+.choice-card--red {
+  background: var(--danger-dim);
+  border: 1.5px solid rgba(248,113,113,.2);
+}
+.choice-card--teal {
+  background: var(--signal-dim);
+  border: 1.5px solid rgba(0,212,200,.18);
+}
+
+.choice-situation {
+  font-size: .6rem; font-weight: 700;
+  letter-spacing: .12em; text-transform: uppercase;
+}
+.choice-card--red  .choice-situation { color: var(--danger); }
+.choice-card--teal .choice-situation { color: var(--signal); }
+
+.choice-voice {
+  font-family: var(--serif);
+  font-size: .87rem; font-style: italic;
+  line-height: 1.7; color: var(--text-2); flex: 1;
+}
+
+.choice-btn {
+  min-height: 42px; padding: 0 16px;
+  border-radius: 99px; font-size: .8rem; font-weight: 700;
+  display: inline-flex; align-items: center; gap: 7px;
+  width: fit-content; align-self: flex-start;
+  transition: opacity .15s, transform .15s;
+}
+.choice-btn:hover { opacity: .86; transform: translateX(3px); }
+.choice-card--red  .choice-btn { background: var(--danger);  color: #0a0b0e; }
+.choice-card--teal .choice-btn { background: var(--signal);  color: #0a0b0e; }
+
+.choice-divider {
+  display: none; align-items: center; justify-content: center; padding: 0 14px;
+}
+@media (min-width: 580px) { .choice-divider { display: flex; } }
+.or-pill {
+  font-size: .58rem; font-weight: 700; color: var(--text-3);
+  text-transform: uppercase; letter-spacing: .1em;
+  padding: 5px 9px; border: 1px solid var(--border-2);
+  border-radius: 99px; background: var(--surface);
+}
+
+/* Proof strip */
+.proof-strip {
+  display: flex; align-items: center; justify-content: center;
+  flex-wrap: wrap; gap: 5px 18px;
+  font-size: .7rem; color: var(--text-3);
+  opacity: 0; animation: fadeUp .5s .54s ease forwards;
+}
+.proof-item { display: flex; align-items: center; gap: 5px; }
+.proof-item i { color: var(--signal); font-size: .6rem; }
+
+/* ═══════════════════════════════════════════════════════════
+   SHARED SECTION
+═══════════════════════════════════════════════════════════ */
+section { position: relative; z-index: 1; }
+.section-pad { padding: 72px max(20px, 5vw); }
+@media (min-width: 1024px) { .section-pad { padding: 96px max(24px, 6vw); } }
+.section-inner { max-width: 1060px; margin: 0 auto; }
+
 .section-tag {
-    display: inline-flex; align-items: center; gap: 8px;
-    font-size: .68rem; font-weight: 700; color: var(--brand);
-    letter-spacing: .12em; text-transform: uppercase; margin-bottom: 14px;
+  font-size: .6rem; font-weight: 700; letter-spacing: .15em;
+  text-transform: uppercase; color: var(--signal);
+  margin-bottom: 14px;
+  display: flex; align-items: center; gap: 10px;
 }
-.section-tag::before { content: ''; width: 20px; height: 1.5px; background: var(--brand); }
-h2 { font-family: var(--serif); font-size: clamp(2rem, 4vw, 3rem); font-weight: 400; line-height: 1.1; letter-spacing: -.02em; margin-bottom: 14px; color: var(--text); }
-h2 em { font-style: italic; color: var(--brand); }
-.section-lead { font-size: 1rem; color: var(--muted); line-height: 1.75; max-width: 580px; }
-.bg-gray { background: var(--surface); }
-.bg-dark-panel { background: var(--dark); }
+.section-tag::before { content: ''; width: 16px; height: 1.5px; background: var(--signal); flex-shrink: 0; }
 
-/* ── STATS STRIP ────────────────────────────────────────────────── */
-.stats-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; margin-top: 52px; }
-.stat-box { background: var(--white); padding: 28px 22px; }
-.stat-num { font-family: var(--mono); font-size: 2.6rem; font-weight: 500; color: var(--brand); line-height: 1; margin-bottom: 8px; }
-.stat-label { font-size: .82rem; color: var(--muted); line-height: 1.5; }
-
-/* ── QUOTE ──────────────────────────────────────────────────────── */
-.pull-quote {
-    margin-top: 44px; padding: 28px 32px;
-    background: var(--brand-dim); border-left: 3px solid var(--brand);
-    border-radius: 0 var(--r-lg) var(--r-lg) 0; border: 1px solid var(--brand-border);
-    border-left: 3px solid var(--brand);
+.section-h2 {
+  font-family: var(--serif);
+  font-size: clamp(1.65rem, 4vw, 2.8rem);
+  font-weight: 400; line-height: 1.12; letter-spacing: -.02em;
+  color: var(--text); margin-bottom: 44px; max-width: 560px;
 }
-.pull-quote p { font-family: var(--serif); font-size: 1.25rem; font-style: italic; color: var(--text); line-height: 1.6; margin-bottom: 10px; }
-.pull-quote cite { font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; font-style: normal; }
+.section-h2 em { font-style: italic; color: var(--signal); }
 
-/* ── STEPS ──────────────────────────────────────────────────────── */
-.steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; margin-top: 52px; position: relative; }
-.steps::before { content: ''; position: absolute; top: 27px; left: calc(12.5% + 27px); right: calc(12.5% + 27px); height: 1px; background: var(--border); }
-.step { text-align: center; padding: 0 14px; position: relative; z-index: 1; }
-.step-num {
-    width: 54px; height: 54px; border-radius: 50%;
-    background: var(--white); border: 2px solid var(--border);
-    display: flex; align-items: center; justify-content: center;
-    font-family: var(--serif); font-size: 1.3rem; font-style: italic; color: var(--brand);
-    margin: 0 auto 18px;
+/* ═══════════════════════════════════════════════════════════
+   HOW IT WORKS
+═══════════════════════════════════════════════════════════ */
+#how {
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
 }
-.step-head { font-size: .9rem; font-weight: 700; margin-bottom: 8px; color: var(--text); }
-.step-body { font-size: .82rem; color: var(--muted); line-height: 1.6; }
 
-/* ── FEATURES GRID ──────────────────────────────────────────────── */
-.features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 52px; }
-.feature-card {
-    background: var(--white); border: 1.5px solid var(--border);
-    border-radius: var(--r-xl); padding: 26px 22px;
-    transition: border-color .2s, transform .2s, box-shadow .2s;
+.moments {
+  display: grid; grid-template-columns: 1fr;
+  gap: 1px; background: var(--border);
+  border-radius: var(--r-xl); overflow: hidden;
 }
-.feature-card:hover { border-color: var(--brand); transform: translateY(-3px); box-shadow: 0 12px 32px rgba(0,0,0,.06); }
-.feature-icon {
-    width: 42px; height: 42px; border-radius: 10px;
-    background: var(--brand-dim); border: 1px solid var(--brand-border);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 1rem; color: var(--brand); margin-bottom: 16px;
-}
-.feature-title { font-size: .95rem; font-weight: 700; margin-bottom: 8px; color: var(--text); }
-.feature-body { font-size: .82rem; color: var(--muted); line-height: 1.7; }
+@media (min-width: 640px) { .moments { grid-template-columns: repeat(3, 1fr); } }
 
-/* ── TESTIMONIALS ───────────────────────────────────────────────── */
-.testimonials { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 52px; }
-.testimonial {
-    background: var(--white); border: 1.5px solid var(--border);
-    border-radius: var(--r-xl); padding: 24px 20px;
+.moment { background: var(--surface); padding: 26px 22px; }
+@media (min-width: 1024px) { .moment { padding: 34px 28px; } }
+.moment-num {
+  font-family: var(--mono); font-size: .65rem; font-weight: 500;
+  color: var(--signal); letter-spacing: .08em;
+  margin-bottom: 14px; opacity: .7;
 }
-.stars { color: var(--amber); font-size: .82rem; margin-bottom: 12px; letter-spacing: 2px; }
-.t-text { font-family: var(--serif); font-size: .96rem; font-style: italic; color: var(--text); line-height: 1.65; margin-bottom: 16px; }
-.t-author { font-size: .75rem; font-weight: 700; color: var(--text); }
-.t-detail { font-size: .72rem; color: var(--muted); margin-top: 2px; }
-
-/* ── PRICING ────────────────────────────────────────────────────── */
-.billing-toggle { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 32px; }
-.toggle-label { font-size: .85rem; color: var(--muted); cursor: pointer; font-weight: 600; transition: color .2s; }
-.toggle-label.on { color: var(--text); }
-.toggle-track { width: 50px; height: 27px; background: var(--border-2); border-radius: 99px; position: relative; cursor: pointer; transition: background .25s; }
-.toggle-track.active { background: var(--brand); }
-.toggle-knob { position: absolute; top: 3px; left: 3px; width: 21px; height: 21px; border-radius: 50%; background: white; box-shadow: 0 1px 4px rgba(0,0,0,.2); transition: transform .25s; }
-.toggle-track.active .toggle-knob { transform: translateX(23px); }
-.save-badge { background: var(--brand-dim); color: var(--brand); font-size: .65rem; font-weight: 700; padding: 3px 9px; border-radius: 20px; border: 1px solid var(--brand-border); }
-
-.pricing-grid { display: grid; grid-template-columns: 1fr 1.08fr 1fr; gap: 16px; margin-top: 44px; align-items: start; }
-.plan-card {
-    background: var(--white); border: 1.5px solid var(--border);
-    border-radius: var(--r-xl); padding: 30px 24px; position: relative;
-    transition: box-shadow .2s, border-color .2s;
+.moment-title {
+  font-size: .93rem; font-weight: 600;
+  color: var(--text); margin-bottom: 9px; line-height: 1.4;
 }
-.plan-card:hover { box-shadow: 0 12px 40px rgba(0,0,0,.08); }
-.plan-card.featured { border-color: var(--brand); transform: scale(1.02); }
+.moment-body {
+  font-size: .81rem; color: var(--text-2); line-height: 1.8; font-weight: 300;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   VOICES
+═══════════════════════════════════════════════════════════ */
+#voices { background: var(--bg); }
+
+.voice-heading {
+  font-family: var(--serif);
+  font-size: clamp(1.6rem, 4vw, 2.5rem);
+  font-weight: 400; font-style: italic;
+  color: var(--text); text-align: center;
+  margin-bottom: 40px; line-height: 1.25; letter-spacing: -.015em;
+}
+
+.voice-cards {
+  display: grid; grid-template-columns: 1fr; gap: 10px;
+}
+@media (min-width: 580px)  { .voice-cards { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 1024px) { .voice-cards { grid-template-columns: repeat(3, 1fr); } }
+
+.voice-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-lg); padding: 22px 20px;
+  position: relative; transition: border-color .2s;
+}
+.voice-card:hover { border-color: var(--border-2); }
+.voice-card::before {
+  content: '"'; position: absolute; top: 10px; right: 16px;
+  font-family: var(--serif); font-size: 3rem;
+  color: var(--signal); opacity: .1; line-height: 1;
+}
+.voice-stars { color: var(--amber); font-size: .7rem; letter-spacing: 3px; margin-bottom: 12px; }
+.voice-text {
+  font-family: var(--serif); font-size: .87rem; font-style: italic;
+  line-height: 1.75; color: var(--text-2); margin-bottom: 16px;
+}
+.voice-author { font-size: .68rem; color: var(--text-3); }
+.voice-author strong { color: var(--text-2); font-weight: 600; font-style: normal; }
+
+/* ═══════════════════════════════════════════════════════════
+   PRICING
+═══════════════════════════════════════════════════════════ */
+#pricing {
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.pricing-header { text-align: center; margin-bottom: 40px; }
+.pricing-header .section-tag { justify-content: center; }
+.pricing-header .section-tag::before { display: none; }
+.pricing-header .section-h2 { margin: 0 auto 8px; max-width: 420px; }
+.pricing-sub { font-size: .84rem; color: var(--text-3); font-weight: 300; }
+
+.plan-duo {
+  display: grid; grid-template-columns: 1fr; gap: 12px;
+}
+@media (min-width: 580px) {
+  .plan-duo { grid-template-columns: 1fr 1fr; max-width: 740px; margin: 0 auto; }
+}
+
+.plan {
+  background: var(--surface-2); border: 1.5px solid var(--border);
+  border-radius: var(--r-xl); padding: 26px 22px;
+  display: flex; flex-direction: column; position: relative;
+}
+.plan--featured {
+  border-color: rgba(0,212,200,.28);
+  background: var(--surface);
+  box-shadow: 0 0 0 1px rgba(0,212,200,.07), var(--shadow-md);
+}
 .plan-badge {
-    position: absolute; top: -11px; left: 50%; transform: translateX(-50%);
-    background: var(--brand); color: white; font-size: .6rem; font-weight: 700;
-    padding: 3px 12px; border-radius: 20px; letter-spacing: .08em; white-space: nowrap; text-transform: uppercase;
+  position: absolute; top: -11px; left: 22px;
+  background: var(--signal); color: #0a0b0e;
+  font-size: .56rem; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; padding: 3px 11px; border-radius: 99px;
 }
-.plan-tier { font-size: .68rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 10px; color: var(--muted); }
-.plan-tier.pro { color: var(--brand); }
-.plan-price { font-family: var(--mono); font-size: 2.8rem; font-weight: 500; color: var(--text); line-height: 1; margin-bottom: 4px; }
-.plan-period { font-size: .8rem; color: var(--muted); margin-bottom: 4px; }
-.plan-save-pill { display: inline-block; background: var(--brand-dim); color: var(--brand); font-size: .63rem; font-weight: 700; padding: 2px 9px; border-radius: 20px; border: 1px solid var(--brand-border); margin-bottom: 16px; }
-.plan-desc { font-size: .83rem; color: var(--muted); line-height: 1.65; padding-bottom: 16px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
-.plan-features { list-style: none; display: flex; flex-direction: column; gap: 10px; margin-bottom: 24px; }
-.plan-features li { display: flex; align-items: flex-start; gap: 8px; font-size: .82rem; color: var(--muted); line-height: 1.5; }
-.pf-check { flex-shrink: 0; width: 16px; height: 16px; border-radius: 50%; background: var(--brand-dim); border: 1px solid var(--brand-border); display: flex; align-items: center; justify-content: center; font-size: .45rem; color: var(--brand); margin-top: 2px; }
-.pf-off { background: var(--surface); border-color: var(--border); color: var(--muted-2); opacity: .5; }
-.btn-plan {
-    display: block; width: 100%; padding: 13px; border-radius: 99px;
-    font-size: .85rem; font-weight: 700; text-align: center;
-    border: none; cursor: pointer; font-family: var(--font); transition: all .2s;
+.plan-name {
+  font-size: .6rem; font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--text-3); margin-bottom: 16px;
 }
-.btn-plan.solid { background: var(--brand); color: white; box-shadow: 0 4px 14px var(--brand-glow); }
-.btn-plan.solid:hover { background: var(--brand-dark); transform: translateY(-1px); }
-.btn-plan.ghost { background: none; border: 1.5px solid var(--border-2); color: var(--muted); }
-.btn-plan.ghost:hover { border-color: var(--brand); color: var(--brand); }
-.pricing-notes { display: flex; align-items: center; justify-content: center; gap: 20px; flex-wrap: wrap; margin-top: 28px; font-size: .77rem; color: var(--muted); }
+.plan--featured .plan-name { color: var(--signal); }
+.plan-price {
+  font-family: var(--mono); font-size: 2.8rem; font-weight: 500;
+  line-height: 1; color: var(--text); margin-bottom: 4px;
+}
+.plan-price sup { font-size: 1.1rem; vertical-align: super; }
+.plan-period { font-size: .74rem; color: var(--text-3); margin-bottom: 20px; font-weight: 300; }
+.plan-hr { height: 1px; background: var(--border); margin-bottom: 20px; }
+.plan-perks {
+  list-style: none; flex: 1;
+  display: flex; flex-direction: column; gap: 10px; margin-bottom: 24px;
+}
+.plan-perks li {
+  font-size: .8rem; color: var(--text-2);
+  display: flex; gap: 9px; align-items: flex-start;
+  line-height: 1.5; font-weight: 300;
+}
+.pf-check {
+  flex-shrink: 0; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--signal-dim); border: 1px solid rgba(0,212,200,.2);
+  display: flex; align-items: center; justify-content: center;
+  font-size: .48rem; color: var(--signal); margin-top: 1px; font-weight: 700;
+}
+.plan-btn {
+  min-height: var(--touch); display: flex; align-items: center; justify-content: center;
+  border-radius: var(--r); font-size: .84rem; font-weight: 700;
+  transition: opacity .15s, transform .15s; cursor: pointer; font-family: var(--sans);
+}
+.plan-btn:hover { opacity: .88; transform: translateY(-1px); }
+.plan-btn--solid { background: var(--signal); color: #0a0b0e; border: none; }
+.plan-btn--outline {
+  background: none; border: 1.5px solid var(--border-2); color: var(--text-2);
+}
+
+.pricing-notes {
+  display: flex; align-items: center; justify-content: center;
+  flex-wrap: wrap; gap: 5px 18px; margin-top: 24px;
+  font-size: .7rem; color: var(--text-3);
+}
 .pricing-notes span { display: flex; align-items: center; gap: 5px; }
-.dot { width: 4px; height: 4px; border-radius: 50%; background: var(--brand); }
+.pricing-notes span i { color: var(--signal); font-size: .6rem; }
 
-/* ── TRUST ──────────────────────────────────────────────────────── */
-.trust-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 52px; }
-.trust-card { background: var(--white); border: 1.5px solid var(--border); border-radius: var(--r-xl); padding: 24px 20px; }
-.trust-icon { width: 40px; height: 40px; border-radius: 10px; background: var(--brand-dim); border: 1px solid var(--brand-border); display: flex; align-items: center; justify-content: center; font-size: 1rem; color: var(--brand); margin-bottom: 14px; }
-.trust-title { font-size: .92rem; font-weight: 700; margin-bottom: 8px; color: var(--text); }
-.trust-body { font-size: .81rem; color: var(--muted); line-height: 1.65; }
-.disclaimer-box { margin-top: 36px; padding: 20px 24px; background: var(--surface); border-radius: var(--r-lg); border: 1px solid var(--border); border-left: 3px solid var(--muted-2); }
-.disclaimer-box p { font-size: .79rem; color: var(--muted); line-height: 1.65; }
+/* ═══════════════════════════════════════════════════════════
+   FINAL CTA
+═══════════════════════════════════════════════════════════ */
+.final {
+  background: var(--bg); text-align: center; overflow: hidden;
+  padding: 96px max(20px, 5vw) calc(80px + var(--sab));
+  position: relative; z-index: 1;
+}
+.final::before {
+  content: '';
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+  width: min(700px, 160vw); height: min(500px, 100vw);
+  background: radial-gradient(ellipse, rgba(0,212,200,.07) 0%, transparent 65%);
+  pointer-events: none;
+}
+.final-tag {
+  font-size: .6rem; font-weight: 700; letter-spacing: .15em;
+  text-transform: uppercase; color: var(--signal);
+  margin-bottom: 18px; position: relative;
+}
+.final h2 {
+  font-family: var(--serif);
+  font-size: clamp(1.9rem, 6vw, 3.8rem);
+  font-weight: 400; line-height: 1.1; letter-spacing: -.025em;
+  color: var(--text); margin-bottom: 14px;
+  max-width: 660px; margin-left: auto; margin-right: auto;
+  position: relative;
+}
+.final h2 em { font-style: italic; color: var(--signal); }
+.final-sub {
+  font-size: .92rem; color: var(--text-3);
+  max-width: 400px; margin: 0 auto 44px;
+  line-height: 1.8; font-weight: 300; position: relative;
+}
+.final-actions {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  position: relative;
+}
+.btn-final-primary {
+  min-height: var(--touch); padding: 0 36px;
+  border-radius: 99px; font-size: .9rem; font-weight: 700;
+  color: #0a0b0e; background: var(--signal);
+  box-shadow: 0 8px 28px var(--signal-glow);
+  transition: all .2s; border: none;
+  display: inline-flex; align-items: center; gap: 8px;
+}
+.btn-final-primary:hover { transform: translateY(-2px); box-shadow: 0 14px 36px rgba(0,212,200,.35); }
+.btn-final-ghost {
+  font-size: .78rem; color: var(--text-3);
+  background: none; min-height: var(--touch); padding: 0 16px;
+  display: flex; align-items: center; transition: color .15s;
+}
+.btn-final-ghost:hover { color: var(--text-2); }
 
-/* ── FINAL CTA ──────────────────────────────────────────────────── */
-.final-cta {
-    background: var(--dark); text-align: center;
-    padding: 100px max(20px, 6vw); position: relative; overflow: hidden;
-}
-.final-cta::before {
-    content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
-    width: 600px; height: 600px; border-radius: 50%;
-    background: radial-gradient(ellipse, rgba(0,188,213,.1), transparent 70%);
-    pointer-events: none;
-}
-.final-cta h2 { color: white; position: relative; z-index: 1; }
-.final-cta h2 em { color: var(--brand); }
-.final-cta p { color: rgba(255,255,255,.5); margin: 0 auto 40px; max-width: 520px; font-size: 1rem; line-height: 1.7; position: relative; z-index: 1; }
-.btn-cta-final {
-    display: inline-flex; align-items: center; gap: 9px;
-    padding: 16px 36px; background: var(--brand); color: white;
-    border-radius: 99px; font-size: 1rem; font-weight: 700; border: none;
-    box-shadow: 0 6px 28px var(--brand-glow); transition: all .2s; position: relative; z-index: 1;
-}
-.btn-cta-final:hover { background: var(--brand-dark); transform: translateY(-2px); }
-.cta-badges { display: flex; align-items: center; justify-content: center; gap: 20px; flex-wrap: wrap; margin-top: 24px; font-size: .76rem; color: rgba(255,255,255,.4); position: relative; z-index: 1; }
-
-/* ── FOOTER ─────────────────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════════════
+   FOOTER
+═══════════════════════════════════════════════════════════ */
 footer {
-    background: var(--white); border-top: 1px solid var(--border);
-    padding: 32px max(24px, 5vw);
-    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding: 24px max(20px, 5vw);
+  padding-bottom: calc(24px + var(--sab));
+  display: flex; flex-direction: column; gap: 14px;
+  position: relative; z-index: 1;
 }
-.footer-logo { display: flex; align-items: center; gap: 10px; }
-.footer-links { display: flex; gap: 20px; flex-wrap: wrap; }
-.footer-links a { font-size: .77rem; color: var(--muted); transition: color .2s; }
-.footer-links a:hover { color: var(--text); }
-footer p { font-size: .72rem; color: var(--muted-2); }
-
-/* ── ANIMATIONS ─────────────────────────────────────────────────── */
-.fade-up { opacity: 1; }
-.d1 { } .d2 { } .d3 { }
-
-/* ── FOOD NOISE VALIDATION ──────────────────────────────────────── */
-.food-noise-section {
-    padding: 80px max(20px, 6vw);
-    background: #0a0a0a;
-    border-top: 1px solid rgba(0,188,213,.12);
-    border-bottom: 1px solid rgba(0,188,213,.12);
+@media (min-width: 640px) {
+  footer { flex-direction: row; align-items: center; flex-wrap: wrap; }
 }
-.food-noise-inner { max-width: 1100px; margin: 0 auto; }
-.fn-quote-wrap { text-align: center; margin-bottom: 52px; }
-.fn-quote-mark {
-    font-family: var(--serif); font-size: 5rem; line-height: 0.4;
-    color: rgba(0,188,213,.18); display: block; margin-bottom: 20px;
+.footer-logo {
+  display: flex; align-items: center; gap: 8px;
+  font-family: var(--serif); font-size: .92rem; color: var(--text-2);
 }
-.fn-quote {
-    font-family: var(--serif); font-size: clamp(1.15rem, 2.5vw, 1.5rem);
-    font-style: italic; color: rgba(255,255,255,.85); max-width: 680px;
-    margin: 0 auto 14px; line-height: 1.6;
+.footer-links {
+  display: flex; gap: 4px; flex-wrap: wrap;
 }
-.fn-attribution { font-size: .73rem; color: rgba(255,255,255,.3); letter-spacing: .05em; text-transform: uppercase; }
-.fn-body { text-align: center; max-width: 640px; margin: 0 auto 52px; }
-.fn-body h2 { font-family: var(--serif); font-size: clamp(1.6rem, 3.5vw, 2.4rem); color: white; margin-bottom: 16px; font-weight: 400; }
-.fn-body h2 em { color: var(--brand); font-style: italic; }
-.fn-body p { font-size: .95rem; color: rgba(255,255,255,.45); line-height: 1.75; margin-bottom: 12px; }
-.fn-body p strong { color: rgba(255,255,255,.75); }
-.fn-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 44px; }
-.fn-card {
-    background: rgba(255,255,255,.03); border: 1px solid rgba(0,188,213,.14);
-    border-radius: var(--r-xl); padding: 28px 22px; text-align: center;
-    transition: border-color .2s, transform .2s;
+@media (min-width: 640px) { .footer-links { margin-left: auto; } }
+.footer-links a {
+  font-size: .72rem; color: var(--text-3);
+  min-height: var(--touch); padding: 0 10px;
+  display: flex; align-items: center; transition: color .15s;
+  border-radius: var(--r-sm);
 }
-.fn-card:hover { border-color: rgba(0,188,213,.38); transform: translateY(-2px); }
-.fn-card-icon { font-size: 1.8rem; margin-bottom: 14px; }
-.fn-card h3 { font-size: .9rem; font-weight: 700; color: rgba(255,255,255,.85); margin-bottom: 8px; }
-.fn-card p { font-size: .8rem; color: rgba(255,255,255,.4); line-height: 1.65; }
-.fn-cta { text-align: center; }
-.fn-cta-pre { font-size: .9rem; color: rgba(255,255,255,.4); margin-bottom: 20px; }
-
-/* ── PLAN CARD — per-day additions ──────────────────────────────── */
-.plan-perday { font-size: .75rem; color: var(--ok); font-weight: 700; margin-top: 2px; }
-.plan-perday-compare { font-size: .71rem; color: var(--muted); font-style: italic; margin-top: 3px; }
-.plan-retention { font-size: .73rem; color: var(--muted); text-align: center; margin-top: 12px; line-height: 1.5; }
-.plan-retention strong { color: var(--text); }
-
-/* ── RESPONSIVE ─────────────────────────────────────────────────── */
-@media (max-width: 900px) {
-    .nav-links { display: none; }
-    .steps { grid-template-columns: 1fr 1fr; }
-    .steps::before { display: none; }
-    .features { grid-template-columns: 1fr; }
-    .testimonials { grid-template-columns: 1fr; }
-    .pricing-grid { grid-template-columns: 1fr; }
-    .plan-card.featured { transform: none; }
-    .trust-grid { grid-template-columns: 1fr; }
-    .stats-strip { grid-template-columns: 1fr 1fr; }
-    .db-metrics { grid-template-columns: 1fr 1fr; }
-}
-@media (max-width: 600px) {
-    .hero-cta { flex-direction: column; }
-    .btn-hero-primary, .btn-hero-secondary { width: 100%; justify-content: center; }
-    .stats-strip { grid-template-columns: 1fr; }
+.footer-links a:hover { color: var(--text-2); }
+.footer-copy {
+  font-size: .65rem; color: var(--text-3); width: 100%; font-weight: 300;
 }
 
-/* ── TWO-PATH HERO ──────────────────────────────────────────────── */
-.hero-paths {
-    display: grid; grid-template-columns: 1fr auto 1fr;
-    gap: 0; margin: 44px auto 36px; max-width: 920px; width: 100%;
-    align-items: stretch;
+/* ═══════════════════════════════════════════════════════════
+   FADE-IN ON SCROLL
+═══════════════════════════════════════════════════════════ */
+.fade-in {
+  opacity: 0; transform: translateY(18px);
+  transition: opacity .6s ease, transform .6s ease;
 }
-.hero-path-card {
-    background: var(--white); border: 1.5px solid var(--border);
-    border-radius: var(--r-xl); padding: 28px 24px;
-    display: flex; flex-direction: column; text-align: left;
-}
-.hero-path-card--insurance { border-color: rgba(239,68,68,.3); }
-.hero-path-card--shield    { border-color: var(--brand-border); }
+.fade-in.visible { opacity: 1; transform: translateY(0); }
 
-.hpc-eyebrow {
-    display: inline-flex; align-items: center; gap: 6px;
-    font-size: .68rem; font-weight: 700; letter-spacing: .07em;
-    text-transform: uppercase; margin-bottom: 12px;
-}
-.hero-path-card--insurance .hpc-eyebrow { color: var(--danger); }
-.hero-path-card--shield    .hpc-eyebrow { color: var(--brand);  }
-
-.hpc-verbatim {
-    font-family: var(--serif); font-size: .88rem; font-style: italic;
-    line-height: 1.6; margin: 0 0 14px; padding: 10px 14px;
-    border-left: 3px solid; border-radius: 0 8px 8px 0;
-}
-.hero-path-card--insurance .hpc-verbatim {
-    color: #7f1d1d; background: rgba(239,68,68,.04);
-    border-left-color: var(--danger);
-}
-.hero-path-card--shield .hpc-verbatim {
-    color: #164e63; background: var(--brand-dim);
-    border-left-color: var(--brand);
+/* ═══════════════════════════════════════════════════════════
+   KEYFRAMES
+═══════════════════════════════════════════════════════════ */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-.hpc-title {
-    font-family: var(--serif); font-size: 1.15rem; font-weight: 400;
-    color: var(--text); margin-bottom: 10px; line-height: 1.3;
-}
-.hpc-desc { font-size: .82rem; color: var(--muted); line-height: 1.7; margin-bottom: 14px; flex: 1; }
-.hpc-proof { list-style: none; display: flex; flex-direction: column; gap: 7px; margin-bottom: 18px; }
-.hpc-proof li { display: flex; align-items: center; gap: 8px; font-size: .8rem; color: var(--muted); }
-.hpc-proof li i { color: var(--ok); font-size: .72rem; }
-
-.hpc-btn {
-    display: flex; align-items: center; justify-content: center; gap: 8px;
-    width: 100%; padding: 13px 18px; border-radius: 99px; border: none;
-    font-size: .88rem; font-weight: 700; font-family: var(--font);
-    cursor: pointer; transition: all .2s;
-}
-.hpc-btn--insurance { background: var(--danger); color: white; box-shadow: 0 4px 16px rgba(239,68,68,.22); }
-.hpc-btn--insurance:hover { background: #dc2626; transform: translateY(-2px); }
-.hpc-btn--shield    { background: var(--brand);  color: white; box-shadow: 0 4px 16px var(--brand-glow); }
-.hpc-btn--shield:hover { background: var(--brand-dark); transform: translateY(-2px); }
-
-.hpc-divider { display: flex; align-items: center; justify-content: center; padding: 0 20px; }
-.hpc-or {
-    font-size: .72rem; font-weight: 700; color: var(--muted-2);
-    text-transform: uppercase; letter-spacing: .1em;
-    padding: 7px 10px; border: 1.5px solid var(--border);
-    border-radius: 20px; background: var(--white);
-}
-
-/* ── PRICE ANCHOR ───────────────────────────────────────────────── */
-.price-anchor-wrap {
-    max-width: 620px; width: 100%; margin: 36px auto 0;
-    background: var(--dark); border-radius: var(--r-xl);
-    padding: 28px 24px 20px;
-    box-shadow: 0 32px 64px rgba(0,0,0,.14), 0 0 0 1px rgba(0,0,0,.08);
-}
-.price-anchor-inner {
-    display: grid; grid-template-columns: 1fr auto 1fr;
-    align-items: center; margin-bottom: 18px;
-}
-.pa-col { text-align: center; padding: 0 12px; }
-.pa-col--vs { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-.pa-vs-line { width: 1px; height: 28px; background: rgba(255,255,255,.1); }
-.pa-vs-label { font-size: .65rem; font-weight: 700; color: rgba(255,255,255,.2); text-transform: uppercase; letter-spacing: .1em; }
-.pa-label { font-size: .6rem; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: rgba(255,255,255,.3); margin-bottom: 7px; }
-.pa-amount { font-family: var(--mono); font-size: 2.6rem; font-weight: 500; line-height: 1; margin-bottom: 6px; }
-.pa-amount span { font-size: .9rem; font-weight: 400; }
-.pa-amount--high { color: var(--danger); }
-.pa-amount--phi  { color: var(--brand);  }
-.pa-note { font-size: .68rem; color: rgba(255,255,255,.28); line-height: 1.5; }
-.pa-tagline {
-    text-align: center; font-size: .79rem; color: rgba(255,255,255,.38);
-    line-height: 1.6; padding-top: 16px; border-top: 1px solid rgba(255,255,255,.06);
-}
-.pa-tagline i { color: var(--brand); margin-right: 5px; }
-.pa-tagline strong { color: rgba(255,255,255,.65); }
-
-/* ── HOW IT WORKS — TWO JOURNEYS ────────────────────────────────── */
-.journey-block {
-    border-radius: var(--r-xl); padding: 36px 32px;
-}
-.journey-block--insurance {
-    background: rgba(239,68,68,.03);
-    border: 1.5px solid rgba(239,68,68,.14);
-}
-.journey-block--shield {
-    background: var(--brand-dim);
-    border: 1.5px solid var(--brand-border);
-}
-.journey-label {
-    display: inline-flex; align-items: center; gap: 8px;
-    font-size: .76rem; font-weight: 700; letter-spacing: .06em;
-    text-transform: uppercase; padding: 6px 14px; border-radius: 20px;
-    margin-bottom: 4px;
-    background: rgba(239,68,68,.1); color: var(--danger);
-    border: 1px solid rgba(239,68,68,.2);
-}
-
-/* ── FINAL CTA TWO PATHS ────────────────────────────────────────── */
-.final-paths {
-    display: grid; grid-template-columns: 1fr 1fr;
-    gap: 16px; margin: 32px auto 28px; max-width: 560px;
-}
-.final-path {
-    border-radius: var(--r-xl); padding: 22px 20px; text-align: left;
-}
-.final-path--insurance {
-    background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.25);
-}
-.final-path--shield {
-    background: rgba(0,188,213,.08); border: 1px solid rgba(0,188,213,.2);
-}
-.final-path-label {
-    font-size: .65rem; font-weight: 700; text-transform: uppercase;
-    letter-spacing: .09em; margin-bottom: 8px;
-}
-.final-path--insurance .final-path-label { color: #fca5a5; }
-.final-path--shield    .final-path-label { color: var(--brand); }
-.final-path-desc {
-    font-size: .81rem; color: rgba(255,255,255,.45);
-    line-height: 1.6; margin-bottom: 14px;
-}
-.final-path-btn {
-    width: 100%; padding: 11px 14px; border: none; border-radius: 10px;
-    font-size: .82rem; font-weight: 700; cursor: pointer;
-    font-family: var(--font); display: flex; align-items: center;
-    justify-content: center; gap: 6px; transition: all .15s;
-}
-.final-path-btn--insurance { background: var(--danger); color: white; }
-.final-path-btn--insurance:hover { background: #dc2626; }
-.final-path-btn--shield { background: var(--brand); color: #0a0a0a; }
-.final-path-btn--shield:hover { background: var(--brand-dark); }
-
-/* ── RESPONSIVE ─────────────────────────────────────────────────── */
-@media (max-width: 720px) {
-    .hero-paths { grid-template-columns: 1fr; }
-    .hpc-divider { padding: 14px 0; }
-    .price-anchor-inner { grid-template-columns: 1fr; gap: 14px; }
-    .pa-col--vs { flex-direction: row; }
-    .pa-vs-line { width: 28px; height: 1px; }
-    .journey-block { padding: 24px 18px; }
-    .journey-block .steps { grid-template-columns: 1fr !important; }
-    .final-paths { grid-template-columns: 1fr; max-width: 100%; }
+/* ═══════════════════════════════════════════════════════════
+   REDUCED MOTION
+═══════════════════════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    transition-duration: .01ms !important;
+  }
 }
 </style>
 </head>
@@ -538,536 +580,204 @@ footer p { font-size: .72rem; color: var(--muted-2); }
 <!-- NAV -->
 <nav id="mainNav">
   <div class="nav-logo">
-    <div class="nav-icon"><i class="fa-solid fa-heart-pulse"></i></div>
-    <span class="nav-name">Curabook</span>
-    <span class="nav-sub">Personal Health Intelligence</span>
-  </div>
-  <div class="nav-links">
-    <a href="#problem">The Problem</a>
-    <a href="#how">How It Works</a>
-    <a href="#features">Features</a>
-    <a href="#pricing">Pricing</a>
-    <a href="/appeal" class="accent"><i class="fa-solid fa-file-shield" style="font-size:.75rem;margin-right:3px"></i>PA Architect</a>
-    <a href="/login">Sign In</a>
+    <div class="nav-logo-mark"><i class="fa-solid fa-heart-pulse"></i></div>
+    <span class="nav-logo-name">Curabook</span>
+    <span class="nav-logo-tag">PHI</span>
   </div>
   <div class="nav-actions">
-    <button class="btn-nav-ghost" onclick="location.href='/login'">Sign In</button>
-    <button class="btn-nav-solid" onclick="location.href='/signup'">Start Free</button>
+    <button class="btn-ghost-nav" onclick="location.href='/login'">Sign in</button>
+    <button class="btn-signal-nav" onclick="location.href='/signup'">Get started</button>
   </div>
 </nav>
 
-<!-- HERO -->
+<!-- ═══ HERO ═══ -->
 <section class="hero">
-  <div class="hero-badge"><span class="pulse"></span>For Wegovy · Zepbound · Ozempic users</div>
+  <div class="hero-eyebrow">
+    <div class="eyebrow-dot"></div>
+    Personal Health Intelligence
+  </div>
 
-  <h1>The scale is creeping up.<br>The insurance denied you.<br><em>Curabook fights both.</em></h1>
+  <h1>
+    You didn't lose that weight<br>
+    just to <span class="cross">gain it back</span> quietly.
+  </h1>
 
   <p class="hero-sub">
-    Most people who stop GLP-1 medications have no plan for what happens next.
-    <strong>Curabook is that plan.</strong>
-    Tell us which situation you're in — we handle the rest.
+    Most people stop GLP-1 and don't notice the rebound until it's too late.
+    <strong>Curabook watches the signals.</strong> You focus on living.
   </p>
 
-  <!-- TWO-PATH CARDS — user sees themselves immediately -->
-  <div class="hero-paths">
-
-    <div class="hero-path-card hero-path-card--insurance">
-      <div class="hpc-eyebrow"><i class="fa-solid fa-circle-xmark"></i> Insurance cut you off</div>
-      <blockquote class="hpc-verbatim">
-        "I'm caught in the PA nightmare and feel like the insurance company is conspiring to keep me sick."
-      </blockquote>
-      <h3 class="hpc-title">We build your appeal.<br>You take it to your doctor.</h3>
-      <p class="hpc-desc">Curabook assembles a physician-ready prior authorization packet from your actual lab markers — your glucose trajectory, HbA1c, BMI, comorbidities — using the same clinical language insurers use to deny you.</p>
-      <ul class="hpc-proof">
-        <li><i class="fa-solid fa-check"></i> Done in 2 minutes</li>
-        <li><i class="fa-solid fa-check"></i> Built from your real data, not a template</li>
-        <li><i class="fa-solid fa-check"></i> Patients have won on second appeal using this</li>
-      </ul>
-      <button class="hpc-btn hpc-btn--insurance" onclick="location.href='/appeal'">
-        <i class="fa-solid fa-file-contract"></i> Build My Appeal Packet
+  <div class="choice">
+    <div class="choice-card choice-card--red">
+      <div class="choice-situation">Insurance denied you</div>
+      <p class="choice-voice">"My doctor says I need it. My insurer disagrees. I don't know how to fight this."</p>
+      <button class="choice-btn" onclick="location.href='/appeal'">
+        Build my appeal <i class="fa-solid fa-arrow-right" style="font-size:.65rem"></i>
       </button>
     </div>
 
-    <div class="hpc-divider"><span class="hpc-or">or</span></div>
+    <div class="choice-divider">
+      <span class="or-pill">or</span>
+    </div>
 
-    <div class="hero-path-card hero-path-card--shield">
-      <div class="hpc-eyebrow"><i class="fa-solid fa-circle-exclamation"></i> You stopped the medication</div>
-      <blockquote class="hpc-verbatim">
-        "The food noise came back and my hunger is in overdrive. It's like my lizard brain just took over."
-      </blockquote>
-      <h3 class="hpc-title">Curabook monitors the rebound<br>before it becomes regain.</h3>
-      <p class="hpc-desc">The first 2–4 weeks after your last dose are the Critical Zone. Your ghrelin surges. The scale starts creeping. Curabook catches it from your lab data and sends predictive alerts — day by day — through the hardest weeks.</p>
-      <ul class="hpc-proof">
-        <li><i class="fa-solid fa-check"></i> Cliff alerts from your actual glucose & HbA1c</li>
-        <li><i class="fa-solid fa-check"></i> Daily protein target — Muscle Defense Protocol</li>
-        <li><i class="fa-solid fa-check"></i> Food noise tracking — biology, not willpower</li>
-      </ul>
-      <button class="hpc-btn hpc-btn--shield" onclick="location.href='/signup'">
-        <i class="fa-solid fa-shield-halved"></i> Activate My Metabolic Shield
+    <div class="choice-card choice-card--teal">
+      <div class="choice-situation">You stopped the medication</div>
+      <p class="choice-voice">"I'm off it now. I'm scared the weight will creep back and I won't catch it in time."</p>
+      <button class="choice-btn" onclick="location.href='/signup'">
+        Protect my progress <i class="fa-solid fa-arrow-right" style="font-size:.65rem"></i>
       </button>
     </div>
-
   </div>
 
-  <!-- Price anchor — research: frame as "bargain insurance" vs $1,350 medication -->
-  <div class="price-anchor-wrap fade-up">
-    <div class="price-anchor-inner">
-      <div class="pa-col">
-        <div class="pa-label">Your GLP-1 medication cost</div>
-        <div class="pa-amount pa-amount--high">$1,350<span>/mo</span></div>
-        <div class="pa-note">Average retail price without insurance</div>
-      </div>
-      <div class="pa-col pa-col--vs">
-        <div class="pa-vs-line"></div>
-        <div class="pa-vs-label">vs</div>
-        <div class="pa-vs-line"></div>
-      </div>
-      <div class="pa-col">
-        <div class="pa-label">Curabook — full protection</div>
-        <div class="pa-amount pa-amount--phi">$49<span>/mo</span></div>
-        <div class="pa-note">Protects the results from everything you already spent</div>
-      </div>
-    </div>
-    <div class="pa-tagline">
-      <i class="fa-solid fa-shield-halved"></i>
-      Bargain insurance for the body you already earned.
-      <strong>97% less than the medication. 100% of the protection.</strong>
-    </div>
-  </div>
-
-  <div class="hero-trust" style="margin-top:32px;">
-    <div class="trust-item"><i class="fa-solid fa-lock"></i> AES-256 encrypted</div>
-    <div class="trust-item"><i class="fa-solid fa-user-secret"></i> AI never sees your name</div>
-    <div class="trust-item"><i class="fa-solid fa-ban"></i> Data never sold</div>
-    <div class="trust-item"><i class="fa-solid fa-shield-halved"></i> Educational tool only</div>
-  </div>
-
-</section>
-
-<!-- FOOD NOISE VALIDATION -->
-<section class="food-noise-section" id="food-noise">
-  <div class="food-noise-inner">
-    <div class="fn-quote-wrap">
-      <span class="fn-quote-mark">&ldquo;</span>
-      <p class="fn-quote">The food noise came back, and my hunger is in overdrive. It felt like my lizard brain was constantly seeking out the next meal.</p>
-      <div class="fn-attribution">Documented GLP-1 withdrawal experience &mdash; r/Wegovy</div>
-    </div>
-    <div class="fn-body">
-      <h2>Food noise is real.<br><em>We know because we've heard it.</em></h2>
-      <p>That voice telling you to eat — constantly, oppressively, without pause — is not weakness. It's ghrelin. When GLP-1 medication stops, the hormone that was suppressed for months surges back into overdrive. The quiet you briefly lived in was real. The noise that's back is real. Neither has anything to do with your willpower.</p>
-      <p><strong>The scale can start creeping within 2–4 weeks of your last dose.</strong> Not because you failed — because the biology is designed to fight back. Curabook is the only tool built specifically for this moment.</p>
-    </div>
-        <div class="fn-cards">
-      <div class="fn-card">
-        <div class="fn-card-icon">🧠</div>
-        <h3>Food Noise Is Real</h3>
-        <p>GLP-1s silenced your brain's appetite centers. When they stop, those circuits reawaken — loudly. Curabook tracks the noise and coaches you through the loudest weeks.</p>
-      </div>
-      <div class="fn-card">
-        <div class="fn-card-icon">📅</div>
-        <h3>The 2–4 Week Critical Zone</h3>
-        <p>Clinical data shows the metabolic rebound peaks in the first month. Curabook sends predictive alerts — "Your hunger signal will likely peak in the next 48 hours" — so you're never blindsided.</p>
-      </div>
-      <div class="fn-card">
-        <div class="fn-card-icon">🛡️</div>
-        <h3>The Shield, Not the Diet</h3>
-        <p>You don't need another calorie tracker. You need a biological shield. Curabook monitors your metabolic markers and fights the insurance system — so you can focus on staying healthy.</p>
-      </div>
-    </div>
-    <div class="fn-cta">
-      <p class="fn-cta-pre">You spent months earning these results. Don't give them back without a fight.</p>
-      <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
-        <button class="btn-hero-primary" onclick="location.href='/signup'" style="margin:0;">
-          <i class="fa-solid fa-shield-halved"></i> Activate My Shield — $49/mo
-        </button>
-        <button class="btn-hero-secondary" onclick="location.href='/appeal'" style="margin:0;">
-          <i class="fa-solid fa-file-contract"></i> Build My Appeal Packet
-        </button>
-      </div>
-      <p style="font-size:.74rem;color:rgba(255,255,255,.22);margin-top:12px;">First lab upload included · No credit card to start · Cancel anytime</p>
-    </div>
+  <div class="proof-strip">
+    <div class="proof-item"><i class="fa-solid fa-circle-check"></i> Lab marker tracking</div>
+    <div class="proof-item"><i class="fa-solid fa-circle-check"></i> AI rebound signals</div>
+    <div class="proof-item"><i class="fa-solid fa-circle-check"></i> Insurance PA Architect</div>
+    <div class="proof-item"><i class="fa-solid fa-circle-check"></i> Free to start</div>
   </div>
 </section>
 
-
-<!-- THE PROBLEM -->
-<section class="section bg-gray" id="problem">
+<!-- ═══ HOW IT WORKS ═══ -->
+<section id="how" class="section-pad fade-in">
   <div class="section-inner">
-    <div class="section-tag">The GLP-1 Cliff</div>
-    <h2 style="max-width:680px">70% of users regain weight<br>within a year of <em>stopping.</em></h2>
-    <p class="section-lead">The medication worked. But the moment you stop, your biology fights back — ghrelin surges, glucose climbs, hunger returns like a freight train. Most people don't know it's happening until they've gained back 10, 20, 30 pounds.</p>
+    <div class="section-tag">How it works</div>
+    <h2 class="section-h2">Three things happen when you stop GLP-1.<br><em>We watch all three.</em></h2>
 
-    <div class="stats-strip">
-      <div class="stat-box fade-up"><div class="stat-num">4×</div><div class="stat-label">Faster weight regain vs. other methods — starting within weeks of the last dose</div></div>
-      <div class="stat-box fade-up d1"><div class="stat-num">+23%</div><div class="stat-label">Average glucose rise within 8 weeks of stopping GLP-1 medication</div></div>
-      <div class="stat-box fade-up d2"><div class="stat-num">39%</div><div class="stat-label">Of lost weight is lean muscle — not fat — without targeted support</div></div>
-      <div class="stat-box fade-up d3"><div class="stat-num">$1,350</div><div class="stat-label">Average monthly retail cost without insurance — leaving most people stranded</div></div>
-    </div>
-
-    <div class="pull-quote fade-up">
-      <p>"The food noise came back and my hunger is in overdrive. It's like my lizard brain just took over again two weeks after my last dose."</p>
-      <cite>r/Wegovy — documented GLP-1 withdrawal experience</cite>
+    <div class="moments">
+      <div class="moment">
+        <div class="moment-num">01 — appetite</div>
+        <div class="moment-title">Your hunger signals return — differently</div>
+        <p class="moment-body">Upload your labs. Curabook tracks GLP-1 sensitivity, insulin response, and metabolic markers that predict hunger returning before you feel it.</p>
+      </div>
+      <div class="moment">
+        <div class="moment-num">02 — patterns</div>
+        <div class="moment-title">Small changes compound faster than you think</div>
+        <p class="moment-body">Log what you eat, how you sleep, when you move. The AI connects your habits to your numbers and flags when patterns shift — weeks before the scale does.</p>
+      </div>
+      <div class="moment">
+        <div class="moment-num">03 — record</div>
+        <div class="moment-title">You have evidence when it matters</div>
+        <p class="moment-body">Every marker and trend lives in your profile. When you talk to your doctor — or fight your insurer — you walk in with data, not memory.</p>
+      </div>
     </div>
   </div>
 </section>
 
-<!-- HOW IT WORKS -->
-<section class="section" id="how">
+<!-- ═══ VOICES ═══ -->
+<section id="voices" class="section-pad fade-in">
   <div class="section-inner">
-    <div style="text-align:center;margin-bottom:52px;">
-      <div class="section-tag" style="justify-content:center">How It Works</div>
-      <h2>Two situations.<br><em>One platform built for both.</em></h2>
-    </div>
-
-    <!-- Journey A: Insurance -->
-    <div class="journey-block journey-block--insurance">
-      <div class="journey-label">
-        <i class="fa-solid fa-file-shield"></i> If insurance denied your GLP-1
+    <h2 class="voice-heading">The fear is real.<br>So is the relief.</h2>
+    <div class="voice-cards">
+      <div class="voice-card">
+        <div class="voice-stars">★★★★★</div>
+        <p class="voice-text">I lost 34 pounds over 14 months. When my insurance stopped covering it, I panicked. Curabook helped me build the packet that got my coverage reinstated.</p>
+        <div class="voice-author"><strong>Priya M.</strong> · Off semaglutide 4 months</div>
       </div>
-      <div class="steps" style="grid-template-columns:repeat(3,1fr);margin-top:24px;">
-        <div class="step">
-          <div class="step-num" style="border-color:var(--danger);color:var(--danger);">1</div>
-          <div class="step-head">Enter your denial</div>
-          <div class="step-body">Tell Curabook what the letter said. "Not medically necessary." "BMI below threshold." "Insufficient documentation." It identifies the exact weakness in their argument.</div>
-        </div>
-        <div class="step">
-          <div class="step-num" style="border-color:var(--danger);color:var(--danger);">2</div>
-          <div class="step-head">Curabook builds your case</div>
-          <div class="step-body">Your glucose trajectory, HbA1c trend, BMI, weight history, and comorbidities are assembled into a physician-ready appeal packet — with clinical citations the insurer can't ignore.</div>
-        </div>
-        <div class="step">
-          <div class="step-num" style="border-color:var(--danger);color:var(--danger);">3</div>
-          <div class="step-head">Take it to your doctor</div>
-          <div class="step-body">Print or copy the packet. Your doctor submits it. If denied again, Curabook builds a stronger second appeal from your updated data.</div>
-        </div>
+      <div class="voice-card">
+        <div class="voice-stars">★★★★★</div>
+        <p class="voice-text">I didn't realise how much I'd drifted until I looked at my Metabolic Shield. Three markers had shifted. My doctor and I caught it early because of those alerts.</p>
+        <div class="voice-author"><strong>James R.</strong> · 8 months post-GLP-1</div>
       </div>
-      <div style="text-align:center;margin-top:28px;">
-        <button class="hpc-btn hpc-btn--insurance" onclick="location.href='/appeal'" style="display:inline-flex;width:auto;padding:13px 28px;">
-          <i class="fa-solid fa-file-contract"></i> Build My Appeal Packet
-        </button>
+      <div class="voice-card">
+        <div class="voice-stars">★★★★★</div>
+        <p class="voice-text">Knowing something is watching the numbers makes the anxiety manageable. I finally feel like I'm not doing this alone.</p>
+        <div class="voice-author"><strong>Saara K.</strong> · Tapering down</div>
       </div>
     </div>
-
-    <div style="height:24px;"></div>
-
-    <!-- Journey B: Tapering -->
-    <div class="journey-block journey-block--shield">
-      <div class="journey-label" style="background:var(--brand-dim);color:var(--brand);border-color:var(--brand-border);">
-        <i class="fa-solid fa-shield-halved"></i> If you stopped or are tapering off the medication
-      </div>
-      <div class="steps" style="grid-template-columns:repeat(3,1fr);margin-top:24px;">
-        <div class="step">
-          <div class="step-num">1</div>
-          <div class="step-head">Upload your last labs</div>
-          <div class="step-body">Drop any Quest or LabCorp PDF. Curabook sets your on-medication baseline — every future reading is measured against you personally, not population averages.</div>
-        </div>
-        <div class="step">
-          <div class="step-num">2</div>
-          <div class="step-head">Curabook activates your Shield</div>
-          <div class="step-body">Your glucose, HbA1c, protein intake, and food noise level are monitored continuously. Curabook alerts you the moment a rebound signal appears — weeks before it shows on the scale.</div>
-        </div>
-        <div class="step">
-          <div class="step-num">3</div>
-          <div class="step-head">Survive the biology</div>
-          <div class="step-body">Curabook coaches you through the Critical Zone — the 2–4 weeks when ghrelin peaks — with protein targets, behavioral prompts, and daily predictive alerts.</div>
-        </div>
-      </div>
-      <div style="text-align:center;margin-top:28px;">
-        <button class="hpc-btn hpc-btn--shield" onclick="location.href='/signup'" style="display:inline-flex;width:auto;padding:13px 28px;">
-          <i class="fa-solid fa-shield-halved"></i> Activate My Metabolic Shield
-        </button>
-      </div>
-    </div>
-
   </div>
 </section>
 
-<!-- FEATURES -->
-<section class="section bg-gray" id="features">
+<!-- ═══ PRICING ═══ -->
+<section id="pricing" class="section-pad fade-in">
   <div class="section-inner">
-    <div class="section-tag">What Curabook Does</div>
-    <h2>Three pillars against <em>the cliff</em></h2>
-    <div class="features">
-      <div class="feature-card fade-up">
-        <div class="feature-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
-        <div class="feature-title">Rebound Signal Detector</div>
-        <div class="feature-body">Curabook automatically detects glucose rebound (+15% threshold), HbA1c drift, and weight regain signals — weeks before your next appointment, using your own baseline as the reference point. Not population averages. You.</div>
-      </div>
-      <div class="feature-card fade-up d1">
-        <div class="feature-icon"><i class="fa-solid fa-dumbbell"></i></div>
-        <div class="feature-title">Muscle Defense Protocol</div>
-        <div class="feature-body">Goal Weight × 0.545 = your daily protein target (g). Curabook tracks protein intake, steps, sleep, and ghrelin surge patterns — then connects your habits directly to your lab markers so you know what's working.</div>
-      </div>
-      <div class="feature-card fade-up d2">
-        <div class="feature-icon"><i class="fa-solid fa-file-shield"></i></div>
-        <div class="feature-title">Insurance PA Architect</div>
-        <div class="feature-body">Curabook builds a physician-ready prior authorization packet from your actual data — citing your specific glucose trajectory, HbA1c trend, and comorbidities. Don't get denied. Fight back with the same clinical language insurers use.</div>
-      </div>
-      <div class="feature-card fade-up">
-        <div class="feature-icon"><i class="fa-solid fa-brain"></i></div>
-        <div class="feature-title">Persistent Health Memory</div>
-        <div class="feature-body">Every conversation, every lab report, every marker — Curabook remembers it all. No repeating yourself every visit. Curabook knows your GLP-1 status, goal weight, and what you told it six months ago.</div>
-      </div>
-      <div class="feature-card fade-up d1">
-        <div class="feature-icon"><i class="fa-solid fa-chart-line"></i></div>
-        <div class="feature-title">Weekly Metabolic Brief</div>
-        <div class="feature-body">Every Monday, Curabook sends a personalized 5-point brief: what changed, what Curabook noticed, one action for the week, and one specific question to ask your doctor at your next visit.</div>
-      </div>
-      <div class="feature-card fade-up d2">
-        <div class="feature-icon"><i class="fa-solid fa-stethoscope"></i></div>
-        <div class="feature-title">Doctor Visit Prep</div>
-        <div class="feature-body">48 hours before any appointment, Curabook generates a complete clinical summary — the lead finding, trend data, and three targeted questions tailored to your specific markers and concerns. Walk in knowing exactly what to say.</div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- TESTIMONIALS -->
-<section class="section">
-  <div class="section-inner">
-    <div class="section-tag">From the community</div>
-    <h2>Metabolic Refugees who <em>found their shield</em></h2>
-    <p class="section-lead">Built for people who briefly lived in the promised land of metabolic health — and refuse to be expelled from it.</p>
-    <div class="testimonials">
-      <div class="testimonial fade-up">
-        <div class="stars">★★★★★</div>
-        <p class="t-text">"I finally have something that validates that food noise is real — not a willpower problem. Curabook caught my glucose creeping up 3 weeks after my last Zepbound dose before I even noticed on the scale."</p>
-        <div class="t-author">M.K., 54</div>
-        <div class="t-detail">Stopped Zepbound · Monitoring for rebound</div>
-      </div>
-      <div class="testimonial fade-up d1">
-        <div class="stars">★★★★★</div>
-        <p class="t-text">"The PA Architect built a packet my doctor called the most thorough she'd ever seen from a patient. Insurance approved on the second appeal. I'd been denied three times before finding Curabook."</p>
-        <div class="t-author">R.T., 47</div>
-        <div class="t-detail">Wegovy · Insurance PA approved</div>
-      </div>
-      <div class="testimonial fade-up d2">
-        <div class="stars">★★★★★</div>
-        <p class="t-text">"Curabook's protein targeting kept my muscle mass stable. I only regained 4 lbs over 3 months after stopping — instead of everything like the first time I came off. The Muscle Defense protocol actually works."</p>
-        <div class="t-author">D.S., 41</div>
-        <div class="t-detail">Ozempic · Maintaining results post-stop</div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- PRICING -->
-<section class="section bg-gray" id="pricing">
-  <div class="section-inner" style="text-align:center">
-    <div class="section-tag" style="justify-content:center">Pricing</div>
-    <h2>You spent $10,000+ on medication.<br><em>Protect it for $49/month.</em></h2>
-    <p class="section-lead" style="margin:0 auto">GLP-1 costs $1,350/month. Curabook does both jobs — fights your insurer and monitors your rebound — for 97% less. First lab report upload included in every plan.</p>
-
-    <div class="billing-toggle">
-      <span class="toggle-label on" id="lbl-monthly" onclick="setBilling('monthly')">Monthly</span>
-      <div class="toggle-track" id="billingTrack" onclick="toggleBilling()">
-        <div class="toggle-knob"></div>
-      </div>
-      <span class="toggle-label" id="lbl-annual" onclick="setBilling('annual')">Annual</span>
-      <span class="save-badge">Save 20%</span>
+    <div class="pricing-header">
+      <div class="section-tag">Simple pricing</div>
+      <h2 class="section-h2">Start free.<br><em>Upgrade when you're ready.</em></h2>
+      <p class="pricing-sub">No credit card to begin. Cancel from your phone in 30 seconds.</p>
     </div>
 
-    <div class="pricing-grid">
-      <!-- FREE -->
-      <div class="plan-card fade-up">
-        <div class="plan-tier">Free</div>
-        <div class="plan-price">$0</div>
-        <div class="plan-period">Forever free</div>
-        <div style="height:28px"></div>
-        <div class="plan-desc">Try Curabook with your first lab report. See your Shield™ score and cliff risk — no card needed, no time limit on chat.</div>
-        <ul class="plan-features">
-          <li><div class="pf-check">✓</div>Upload 1 lab report</li>
-          <li><div class="pf-check">✓</div>Initial Shield™ score</li>
-          <li><div class="pf-check">✓</div>Unlimited AI chat</li>
-          <li style="opacity:.45"><div class="pf-check pf-off">–</div>No ongoing monitoring</li>
-          <li style="opacity:.45"><div class="pf-check pf-off">–</div>No weekly alerts</li>
-          <li style="opacity:.45"><div class="pf-check pf-off">–</div>No PA Architect</li>
+    <div class="plan-duo">
+      <div class="plan">
+        <div class="plan-name">Shield Free</div>
+        <div class="plan-price"><sup>$</sup>0</div>
+        <div class="plan-period">forever free</div>
+        <div class="plan-hr"></div>
+        <ul class="plan-perks">
+          <li><span class="pf-check">✓</span>AI health chat — unlimited</li>
+          <li><span class="pf-check">✓</span>Upload &amp; read your lab reports</li>
+          <li><span class="pf-check">✓</span>5 key marker tracking</li>
+          <li><span class="pf-check">✓</span>Basic rebound signals</li>
         </ul>
-        <button class="btn-plan ghost" onclick="location.href='/signup?plan=free'">Start Free</button>
+        <button class="plan-btn plan-btn--outline" onclick="location.href='/signup?plan=free'">Start free — no card needed</button>
       </div>
 
-      <!-- SHIELD CORE -->
-      <div class="plan-card featured fade-up d1">
-        <div class="plan-badge">Most Popular</div>
-        <div class="plan-tier pro">Shield Core</div>
-        <div class="plan-price" id="corePrice">$49</div>
-        <div class="plan-period" id="corePeriod">per month</div>
-        <div class="plan-save-pill" id="coreSave" style="display:none">Save $120/yr — $39/mo billed annually</div>
-        <div id="planPerDay" style="display:none;margin-top:-4px;margin-bottom:10px;">
-          <div class="plan-perday">That&rsquo;s $1.28/day</div>
-          <div class="plan-perday-compare">Your GLP-1 cost ~$45/day. Your shield is less than a coffee.</div>
-        </div>
-        <div style="height:4px"></div>
-        <div class="plan-desc">For people who stopped or are tapering. Continuous rebound monitoring, unlimited lab uploads, weekly cliff alerts, food noise tracking, and Muscle Defense coaching — everything for the Critical Zone.</div>
-        <ul class="plan-features">
-          <li><div class="pf-check">✓</div>Unlimited lab uploads</li>
-          <li><div class="pf-check">✓</div>Full Metabolic Shield™ monitoring</li>
-          <li><div class="pf-check">✓</div>Weekly cliff & rebound alerts</li>
-          <li><div class="pf-check">✓</div>Muscle Defense Protocol</li>
-          <li><div class="pf-check">✓</div>Doctor visit prep brief</li>
-          <li><div class="pf-check">✓</div>Persistent health memory</li>
-          <li><div class="pf-check">✓</div>Unlimited priority AI chat</li>
+      <div class="plan plan--featured">
+        <div class="plan-badge">Most chosen</div>
+        <div class="plan-name">Shield Core</div>
+        <div class="plan-price"><sup>$</sup>49</div>
+        <div class="plan-period">per month · cancel anytime</div>
+        <div class="plan-hr"></div>
+        <ul class="plan-perks">
+          <li><span class="pf-check">✓</span>Everything in free</li>
+          <li><span class="pf-check">✓</span>Full Metabolic Shield — all markers</li>
+          <li><span class="pf-check">✓</span>Weekly trend alerts</li>
+          <li><span class="pf-check">✓</span>Behavioral pattern detection</li>
+          <li><span class="pf-check">✓</span>Doctor visit prep summaries</li>
+          <li><span class="pf-check">✓</span>Insurance PA Architect</li>
         </ul>
-        <button class="btn-plan solid" id="coreBtn" onclick="goCheckout()">Start Shield Core</button>
-        <p class="plan-retention" id="planRetentionNote" style="display:none;"><strong>2× more likely</strong> to still be managing their metabolic health at 12 months. Cancel anytime.</p>
-      </div>
-
-      <!-- SHIELD CLINICAL -->
-      <div class="plan-card fade-up d2">
-        <div class="plan-tier">Shield Clinical</div>
-        <div class="plan-price">$99</div>
-        <div class="plan-period">per month</div>
-        <div style="height:28px"></div>
-        <div class="plan-desc">For people fighting active insurance denials. Everything in Shield Core, plus the full PA Architect that pulls directly from your stored lab data to build physician-ready appeal packets.</div>
-        <ul class="plan-features">
-          <li><div class="pf-check">✓</div>Everything in Shield Core</li>
-          <li><div class="pf-check">✓</div>Insurance PA Architect</li>
-          <li><div class="pf-check">✓</div>Appeal letter generator</li>
-          <li><div class="pf-check">✓</div>Cross-marker pattern insights</li>
-          <li><div class="pf-check">✓</div>Body composition tracking</li>
-          <li><div class="pf-check">✓</div>Priority support</li>
-        </ul>
-        <button class="btn-plan ghost" onclick="location.href='/signup?plan=clinical'">Start Shield Clinical</button>
+        <button class="plan-btn plan-btn--solid" onclick="location.href='/signup?plan=core'">Start Shield Core</button>
       </div>
     </div>
 
     <div class="pricing-notes">
-      <span><span class="dot"></span>No credit card for free tier</span>
-      <span><span class="dot"></span>Cancel anytime</span>
-      <span><span class="dot"></span>AES-256 encrypted</span>
-      <span><span class="dot"></span>Annual = 2 months free</span>
+      <span><i class="fa-solid fa-lock"></i> AES-256 encrypted</span>
+      <span><i class="fa-solid fa-user-secret"></i> AI never sees your name</span>
+      <span><i class="fa-solid fa-circle-info"></i> Educational tool only</span>
     </div>
   </div>
 </section>
 
-<!-- TRUST & PRIVACY -->
-<section class="section">
-  <div class="section-inner">
-    <div class="section-tag">Privacy & Safety</div>
-    <h2>Your data belongs to you. <em>Full stop.</em></h2>
-    <p class="section-lead">Curabook is an educational wellness tool — not a medical device, not a diagnostic service. We help you understand your own health data and navigate the systems that affect your care.</p>
-    <div class="trust-grid">
-      <div class="trust-card fade-up">
-        <div class="trust-icon"><i class="fa-solid fa-lock"></i></div>
-        <div class="trust-title">AES-256 Encrypted</div>
-        <div class="trust-body">Your lab reports and health data are encrypted at rest and in transit — the same standard used by banks and financial institutions worldwide.</div>
-      </div>
-      <div class="trust-card fade-up d1">
-        <div class="trust-icon"><i class="fa-solid fa-user-secret"></i></div>
-        <div class="trust-title">AI Never Sees Your Name</div>
-        <div class="trust-body">Before any data is analyzed by AI, your name and personal identifiers are stripped. Curabook's intelligence works entirely from anonymized health data.</div>
-      </div>
-      <div class="trust-card fade-up d2">
-        <div class="trust-icon"><i class="fa-solid fa-ban"></i></div>
-        <div class="trust-title">Never Sold, Never Shared</div>
-        <div class="trust-body">Your health data is never sold to advertisers, insurers, or any third party. Export or delete your complete record instantly, at any time.</div>
-      </div>
-    </div>
-    <div class="disclaimer-box fade-up">
-      <p><strong>Important:</strong> Curabook is an educational wellness tool and is not a medical device. It does not provide medical diagnoses, treatment recommendations, or prescriptions. All insights are for informational and educational purposes only. Always consult your qualified healthcare provider before making any clinical decisions.</p>
-    </div>
+<!-- ═══ FINAL CTA ═══ -->
+<section class="final fade-in">
+  <div class="final-tag">You already did the hard part</div>
+  <h2>Don't let it slip away <em>silently.</em></h2>
+  <p class="final-sub">The work was months of effort, side effects, and willpower. Curabook makes sure you notice if anything changes.</p>
+  <div class="final-actions">
+    <button class="btn-final-primary" onclick="location.href='/signup'">
+      Protect my progress
+      <i class="fa-solid fa-arrow-right" style="font-size:.75rem"></i>
+    </button>
+    <button class="btn-final-ghost" onclick="location.href='/appeal'">Just need help with insurance?</button>
   </div>
 </section>
 
-<!-- FINAL CTA -->
-<section class="final-cta">
-  <div style="max-width:700px;margin:0 auto;">
-    <div class="section-tag" style="justify-content:center;">Which situation are you in?</div>
-    <h2>You already did the hard part.<br><em>Don't lose it now.</em></h2>
-    <p>The weight you lost took months of injections, side effects, and thousands of dollars. Curabook protects that investment — whether you're fighting your insurer or fighting the biology.</p>
-
-    <div class="final-paths">
-      <div class="final-path final-path--insurance">
-        <div class="final-path-label">Insurance denied you</div>
-        <p class="final-path-desc">Build a physician-ready appeal packet from your lab data.</p>
-        <button onclick="location.href='/appeal'" class="final-path-btn final-path-btn--insurance">
-          <i class="fa-solid fa-file-contract"></i> Build My Appeal Packet
-        </button>
-      </div>
-      <div class="final-path final-path--shield">
-        <div class="final-path-label">You stopped the medication</div>
-        <p class="final-path-desc">Activate your Metabolic Shield and monitor the rebound.</p>
-        <button onclick="location.href='/signup'" class="final-path-btn final-path-btn--shield">
-          <i class="fa-solid fa-shield-halved"></i> Activate My Shield — $49/mo
-        </button>
-        <p style="font-size:.7rem;color:rgba(255,255,255,.25);margin-top:8px;">First lab upload included · Cancel anytime</p>
-      </div>
-    </div>
-
-    <div class="cta-badges">
-      <span>✦ AES-256 encrypted</span>
-      <span>✦ AI never sees your name</span>
-      <span>✦ Cancel anytime</span>
-      <span>✦ Educational tool only</span>
-    </div>
-  </div>
-</section>
-
-<!-- FOOTER -->
+<!-- ═══ FOOTER ═══ -->
 <footer>
   <div class="footer-logo">
-    <div class="nav-icon" style="width:30px;height:30px;font-size:13px"><i class="fa-solid fa-heart-pulse"></i></div>
-    <span style="font-family:var(--serif);font-size:1.1rem;color:var(--text)">Curabook</span>
+    <i class="fa-solid fa-heart-pulse" style="color:var(--signal);font-size:.8rem"></i>
+    Curabook
   </div>
   <div class="footer-links">
-    <a href="#problem">The Problem</a>
-    <a href="#how">How It Works</a>
-    <a href="#features">Features</a>
-    <a href="#pricing">Pricing</a>
+    <a href="/login">Sign in</a>
     <a href="/appeal">PA Architect</a>
-    <a href="/login">Sign In</a>
     <a href="/privacy">Privacy</a>
     <a href="/terms">Terms</a>
     <a href="mailto:support@curabook.com">Contact</a>
   </div>
-  <p>© 2026 Curabook · Personal Health Intelligence. Educational tool only. Not a substitute for medical advice.</p>
+  <p class="footer-copy">© 2026 Curabook · Educational wellness tool. Not a substitute for medical advice.</p>
 </footer>
 
 <script>
-// Nav scroll effect
 window.addEventListener('scroll', () => {
-  document.getElementById('mainNav').classList.toggle('scrolled', window.scrollY > 20);
-});
+  document.getElementById('mainNav').classList.toggle('scrolled', window.scrollY > 10);
+}, { passive: true });
 
-
-
-// Billing toggle
-let billing = 'monthly';
-
-function setBilling(mode) {
-  billing = mode;
-  const track = document.getElementById('billingTrack');
-  const lblM  = document.getElementById('lbl-monthly');
-  const lblA  = document.getElementById('lbl-annual');
-  const price = document.getElementById('corePrice');
-  const period = document.getElementById('corePeriod');
-  const save  = document.getElementById('coreSave');
-  const btn   = document.getElementById('coreBtn');
-
-  if (mode === 'annual') {
-    track.classList.add('active');
-    lblM.classList.remove('on'); lblA.classList.add('on');
-    price.textContent  = '$39';
-    period.textContent = 'per month — billed $468/yr';
-    save.style.display = 'inline-block';
-    btn.textContent    = 'Start Annual — Best Value';
-  } else {
-    track.classList.remove('active');
-    lblM.classList.add('on'); lblA.classList.remove('on');
-    price.textContent  = '$49';
-    period.textContent = 'per month';
-    save.style.display = 'none';
-    btn.textContent    = 'Start Shield Core';
-  }
-}
-
-function toggleBilling() {
-  setBilling(billing === 'monthly' ? 'annual' : 'monthly');
-}
-
-function goCheckout() {
-  location.href = '/signup?plan=' + billing;
-}
+const io = new IntersectionObserver(
+  entries => entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); }),
+  { threshold: 0.06 }
+);
+document.querySelectorAll('.fade-in').forEach(el => io.observe(el));
 </script>
+
 </body>
 </html>
