@@ -1,7 +1,7 @@
 """
 app.py — Safety-hardened & Route-Synchronized
 CHANGES FROM PREVIOUS VERSION:
-  - Razorpay payment blueprint registered (replaces Stripe)
+  - PayPal payment blueprint registered (replaces Razorpay)
   - payment_routes now always loaded (was optional try/except)
   - retention_bp registered (was missing, caused /api/appointment-prep 404)
   - Demo mode removed — demo_routes.py deleted
@@ -19,9 +19,9 @@ from supabase import create_client, Client
 load_dotenv()
 print("🚀 Using environment variables")
 
-SUPABASE_URL  = os.getenv("SUPABASE_URL")
-SUPABASE_KEY  = os.getenv("SUPABASE_KEY")
-GROQ_API_KEY  = os.getenv("GROQ_API_KEY")
+SUPABASE_URL   = os.getenv("SUPABASE_URL")
+SUPABASE_KEY   = os.getenv("SUPABASE_KEY")
+GROQ_API_KEY   = os.getenv("GROQ_API_KEY")
 ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")
 
 if not ENCRYPTION_KEY:
@@ -49,12 +49,13 @@ if _openai_key: print("✅ OpenAI configured (primary AI)")
 elif _groq_key: print("✅ Groq configured")
 else:           print("⚠️ No AI key set — chat will not work")
 
-# Razorpay config check
-_razorpay_key = os.getenv("RAZORPAY_KEY_ID")
-if _razorpay_key:
-    print(f"✅ Razorpay configured ({'live' if 'live' in _razorpay_key else 'test'} mode)")
+# PayPal config check
+_paypal_client_id = os.getenv("PAYPAL_CLIENT_ID")
+if _paypal_client_id:
+    _paypal_env = os.getenv("PAYPAL_ENV", "sandbox")
+    print(f"✅ PayPal configured ({_paypal_env} mode)")
 else:
-    print("⚠️ RAZORPAY_KEY_ID not set — payment endpoints will return 503")
+    print("⚠️ PAYPAL_CLIENT_ID not set — payment endpoints will return 503")
 
 try:
     from groq import Groq
@@ -71,11 +72,11 @@ from services.rate_limiter import get_rate_limiter
 _limiter = get_rate_limiter()
 
 RATE_LIMITS = {
-    "/chat":                (20, 60),
-    "/conversation/create": (10, 60),
-    "/history":             (120, 60),
-    "/analyze":             (10, 60),
-    "/api/payment/razorpay/order": (5, 60),
+    "/chat":                                   (20,  60),
+    "/conversation/create":                    (10,  60),
+    "/history":                                (120, 60),
+    "/analyze":                                (10,  60),
+    "/api/payment/paypal/create-subscription": (5,   60),
 }
 
 def get_client_key(route: str) -> str:
@@ -103,12 +104,14 @@ CORS(
 def _apply_cors(response):
     origin = request.headers.get("Origin", "")
     if origin:
-        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Origin"]      = origin
         response.headers["Access-Control-Allow-Credentials"] = "true"
     else:
         response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Demo-Session, X-Founder-Secret"
+    response.headers["Access-Control-Allow-Headers"] = (
+        "Content-Type, Authorization, X-Demo-Session, X-Founder-Secret"
+    )
     return response
 
 @app.before_request
@@ -123,14 +126,14 @@ def handle_options_preflight():
 def add_security_headers(response):
     _apply_cors(response)
     response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "DENY"
-    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["X-Frame-Options"]        = "DENY"
+    response.headers["X-XSS-Protection"]       = "1; mode=block"
     return response
 
 @app.before_request
 def check_rate_limit():
     track("requests_total")
-    route = request.path
+    route        = request.path
     limit_config = RATE_LIMITS.get(route)
     if limit_config:
         limit, window = limit_config
@@ -154,8 +157,8 @@ from api.profile_routes      import profile_bp
 from api.intelligence_routes import intelligence_bp
 from api.cron_routes         import cron_bp
 from api.startup_routes      import startup_bp
-from api.retention_routes    import retention_bp  # was missing — caused 404 on appointment prep
-from api.analytics_routes import analytics_bp
+from api.retention_routes    import retention_bp
+from api.analytics_routes    import analytics_bp
 
 app.register_blueprint(auth_bp)
 app.register_blueprint(chat_bp)
@@ -169,11 +172,10 @@ app.register_blueprint(startup_bp)
 app.register_blueprint(retention_bp)
 app.register_blueprint(analytics_bp)
 
-
-# Payment routes — Razorpay (required, not optional)
+# Payment routes — PayPal (required, not optional)
 from api.payment_routes import payment_bp
 app.register_blueprint(payment_bp)
-print("✅ Razorpay payment routes registered")
+print("✅ PayPal payment routes registered")
 
 # Demo mode removed — demo_routes.py deleted, DEMO_MODE env var no longer used
 
@@ -214,16 +216,15 @@ def debug_routes():
 @app.route("/health", methods=["GET"])
 def health_check():
     return jsonify({
-        "status":   "healthy",
-        "openai":   bool(_openai_key),
-        "groq":     bool(_groq_key),
-        "razorpay": bool(_razorpay_key),
-        "workers":  _worker_count,
+        "status":  "healthy",
+        "openai":  bool(_openai_key),
+        "groq":    bool(_groq_key),
+        "paypal":  bool(_paypal_client_id),
+        "workers": _worker_count,
     })
 
 @app.route("/api/stats", methods=["GET"])
 def api_stats():
-    """Internal stats endpoint for monitoring."""
     from services.job_queue import queue_stats
     return jsonify({
         **_stats,

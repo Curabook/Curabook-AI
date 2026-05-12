@@ -6,7 +6,7 @@
  * FIX-1: AUTH PERSISTENCE FOREVER
  *   Root cause: __phi_auth_ready flag + _onSignInRunning guard was preventing
  *   re-initialization on tab revisit because getSession() returned a valid session
- *   but onSignIn was skipped due to state flags. 
+ *   but onSignIn was skipped due to state flags.
  *   Fix: On every page load, always call onSignIn() if a valid session exists.
  *   We store user_id + access_token in localStorage so performance_patch renders
  *   cached data instantly. Auth state is re-validated on every boot.
@@ -22,11 +22,11 @@
  *   Upgraded from basic to full NPS widget with color-coded scores,
  *   category selection, and smooth success animation.
  *
- * FIX-4: RAZORPAY INTERNATIONAL PAYMENT TIERS
+ * FIX-4: PAYPAL PAYMENT TIERS (replaces Razorpay)
  *   Free tier: 1 report upload, unlimited chat.
  *   Pro tier: unlimited reports, full marker memory, advocacy briefs.
- *   Razorpay checkout flow with proper signature verification.
- *   Upgrade modal shown when free tier limit is hit.
+ *   PayPal subscription flow — redirects to PayPal hosted checkout.
+ *   No Razorpay SDK needed.
  *
  * FIX-5: SPEED IMPROVEMENTS
  *   - Parallel startup fetches (history + markers + shield in one call)
@@ -59,7 +59,7 @@ let _consentsSaved = false;
 let _consentsPromise = null;
 let _redirecting   = false;
 
-// FIX-4: Payment state
+// Payment state
 let _userPlan         = "free";
 let _reportsRemaining = 1;
 
@@ -116,7 +116,6 @@ async function doSignOut() {
   _authInitialized = false; _authInProgress = false;
   setSendingState(false);
   try {
-    // FIX-1: Clear ALL auth-related localStorage keys on sign out
     const keysToRemove = Object.keys(localStorage).filter(k =>
       k.startsWith("sb-") || k.startsWith("supabase") || k.startsWith("gotrue") ||
       k.startsWith("pkce") || k.startsWith("phi_cache") || k === "phi-auth-token" ||
@@ -136,8 +135,6 @@ function wakeUpServer() {
 
 // ══════════════════════════════════════════════════════════════════════════════
 // BOOT — FIX-1: ALWAYS re-initialize on every page load
-// The key insight: we never cache "already initialized" across page loads.
-// Every page load must validate the session and call onSignIn().
 // ══════════════════════════════════════════════════════════════════════════════
 async function boot() {
   wakeUpServer();
@@ -152,7 +149,6 @@ async function boot() {
       }
     });
 
-    // FIX-1: Listen for auth state changes
     _sb.auth.onAuthStateChange(async (event, session) => {
       console.log("[AUTH]", event, session?.user?.email?.slice(0, 8) ?? "none");
 
@@ -167,21 +163,15 @@ async function boot() {
 
       if (event === "TOKEN_REFRESHED" && session?.user) {
         _user = session.user;
-        // Update stored token for performance_patch
         try { localStorage.setItem("phi_user_id", _user.id); } catch (e) {}
         return;
       }
-
-      // Don't handle SIGNED_IN from onAuthStateChange if boot() already handled it
-      // This prevents double-initialization
     });
 
-    // FIX-1: PRIMARY init — getSession() on EVERY page load, no flag checks
     const { data: { session } } = await _sb.auth.getSession();
     if (session?.user) {
       await _runOnSignIn(session.user, session);
     } else {
-      // Check for OAuth hash in URL
       const hash = window.location.hash;
       if (!hash || !hash.includes("access_token")) {
         if (!IS_LOCAL) {
@@ -198,8 +188,6 @@ async function boot() {
       }
     });
 
-    // FIX-1: Handle page becoming visible after being hidden (tab switching)
-    // Re-validate session silently
     document.addEventListener("visibilitychange", async () => {
       if (!document.hidden && _user) {
         try {
@@ -220,7 +208,6 @@ async function boot() {
   }
 }
 
-// FIX-1: Single clean entry point for sign-in initialization
 async function _runOnSignIn(user, session) {
   if (_authInProgress) {
     console.log("[AUTH] Init already in progress, skipping");
@@ -238,7 +225,7 @@ async function _runOnSignIn(user, session) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// ON SIGN IN — Complete init, always runs on every page load
+// ON SIGN IN
 // ══════════════════════════════════════════════════════════════════════════════
 async function onSignIn(user, session) {
   console.log("[AUTH] onSignIn for", user.email?.slice(0, 8));
@@ -247,11 +234,9 @@ async function onSignIn(user, session) {
   _shieldRetries = 0;
   _user = user;
 
-  // FIX-1: Store user_id AND access_token for performance_patch
   try {
     localStorage.setItem("phi_user_id", user.id);
     if (session?.access_token) {
-      // Store in the format performance_patch expects
       localStorage.setItem("phi_access_token", session.access_token);
     }
   } catch (e) {}
@@ -272,18 +257,16 @@ async function onSignIn(user, session) {
   window.__phi_user_id = user.id;
   window.dispatchEvent(new CustomEvent("phi:authed", { detail: { userId: user.id } }));
 
-  // FIX-1: Parallel load — all data fetches run simultaneously
   await Promise.allSettled([
     saveConsents().catch(e => console.warn("[CONSENT]", e)),
     loadHistory(),
     loadMarkersData(),
     loadPaymentStatus(),
-    _refreshMemoryCache(),  // FIX-2: pre-load memories on startup
+    _refreshMemoryCache(),
   ]);
 
   await autoLoadShield();
 
-  // Restore goal weight
   const gw = localStorage.getItem("phi_goal_wt");
   if (gw) {
     if (el("inputGoalWt")) el("inputGoalWt").value = gw;
@@ -291,7 +274,6 @@ async function onSignIn(user, session) {
     calcProteinDisplay(parseFloat(gw), false);
   }
 
-  // Show memory count in cockpit
   _updateMemoryCountDisplay();
 
   console.log("[AUTH] Init complete for", user.email?.slice(0, 8));
@@ -315,7 +297,6 @@ async function _refreshMemoryCache() {
 }
 
 function _updateMemoryCountDisplay() {
-  // Show memory count badge in cockpit if element exists
   const badge = el("memoryCountBadge");
   if (badge) {
     badge.textContent = _memoryCount > 0 ? `${_memoryCount} facts stored` : "No facts yet";
@@ -323,7 +304,7 @@ function _updateMemoryCountDisplay() {
   }
 }
 
-// ── FIX-4: Payment status ─────────────────────────────────────────────────
+// ── Payment status ─────────────────────────────────────────────────────────
 async function loadPaymentStatus() {
   const h = await headers();
   if (!h) return;
@@ -342,15 +323,15 @@ async function loadPaymentStatus() {
 function _renderPlanBadge() {
   const planEl = el("userPlan");
   if (planEl) {
-    const isPro = _userPlan === "pro" || _userPlan === "annual";
+    const isPro = _userPlan === "pro" || _userPlan === "annual" || _userPlan === "monthly" || _userPlan === "clinical";
     planEl.textContent = isPro ? "Curabook Pro ✦" : "Curabook Free";
     planEl.style.color = isPro ? "var(--signal)" : "var(--text-3)";
   }
 }
 
-// ── FIX-4: Upload click gate ───────────────────────────────────────────────
+// ── Upload click gate ──────────────────────────────────────────────────────
 function handleUploadClick() {
-  const isPro = _userPlan === "pro" || _userPlan === "annual";
+  const isPro = _userPlan === "pro" || _userPlan === "annual" || _userPlan === "monthly" || _userPlan === "clinical";
   if (!isPro && _reportsRemaining <= 0) {
     showUpgradeModal("upload");
     return;
@@ -358,7 +339,7 @@ function handleUploadClick() {
   el("fileInput")?.click();
 }
 
-// ── FIX-4: Upgrade modal ───────────────────────────────────────────────────
+// ── FIX-4: Upgrade modal — PayPal ─────────────────────────────────────────
 function showUpgradeModal(reason = "manual") {
   const existing = el("upgradeModal");
   if (existing) existing.remove();
@@ -384,33 +365,26 @@ function showUpgradeModal(reason = "manual") {
       position:relative;
       overflow:hidden;
     ">
-
-      <!-- top accent line -->
       <div style="position:absolute;top:0;left:0;right:0;height:3px;
         background:linear-gradient(90deg,var(--signal),var(--signal-2));"></div>
 
-      <!-- close -->
       <button onclick="closeUpgradeModal()" style="
         position:absolute;top:14px;right:14px;
         width:30px;height:30px;border-radius:8px;
         border:none;background:var(--surface-3);color:var(--text-2);
         font-size:.85rem;cursor:pointer;
         display:flex;align-items:center;justify-content:center;
-        transition:all .15s;
-      " onmouseover="this.style.background='var(--surface-4)'"
-         onmouseout="this.style.background='var(--surface-3)'">
+        transition:all .15s;">
         <i class="fa-solid fa-xmark"></i>
       </button>
 
-      <!-- header -->
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;padding-right:36px;">
         <div style="
           width:42px;height:42px;flex-shrink:0;
           background:linear-gradient(135deg,var(--signal),var(--signal-2));
           border-radius:12px;display:flex;align-items:center;justify-content:center;
           font-family:var(--serif);font-size:1.15rem;color:#0a0b0e;font-weight:600;
-          box-shadow:0 4px 16px var(--signal-glow);
-        ">φ</div>
+          box-shadow:0 4px 16px var(--signal-glow);">φ</div>
         <div>
           <h2 style="font-family:var(--serif);font-size:1.2rem;font-weight:400;
             color:var(--text);margin-bottom:2px;line-height:1.2;">Upgrade to Curabook Pro</h2>
@@ -420,23 +394,19 @@ function showUpgradeModal(reason = "manual") {
         </div>
       </div>
 
-      <!-- upload limit banner -->
       ${reason === "upload" ? `
         <div style="
           background:var(--amber-dim);border:1px solid rgba(251,191,36,.3);
           border-radius:10px;padding:10px 13px;margin-bottom:16px;
           font-size:.8rem;color:var(--amber);
-          display:flex;align-items:center;gap:8px;
-        ">
+          display:flex;align-items:center;gap:8px;">
           <i class="fa-solid fa-triangle-exclamation" style="flex-shrink:0;"></i>
           <span><strong>Free limit reached</strong> — You've used your 1 free report upload.</span>
         </div>` : ""}
 
-      <!-- feature list -->
       <div style="
         background:var(--surface-2);border:1px solid var(--border);
-        border-radius:12px;padding:14px 16px;margin-bottom:18px;
-      ">
+        border-radius:12px;padding:14px 16px;margin-bottom:18px;">
         <div style="font-size:.62rem;font-weight:700;color:var(--text-3);
           text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px;">What you unlock</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px 12px;">
@@ -455,11 +425,9 @@ function showUpgradeModal(reason = "manual") {
         </div>
       </div>
 
-      <!-- plan buttons — VERTICAL stack so both are always visible -->
       <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px;">
 
-        <!-- Monthly -->
-        <button id="rzpMonthlyBtn" onclick="initiateRazorpayCheckout('monthly')" style="
+        <button id="ppMonthlyBtn" onclick="initiatePayPalCheckout('monthly')" style="
           width:100%;padding:13px 16px;
           background:var(--signal);color:#0a0b0e;
           border:none;border-radius:12px;
@@ -467,14 +435,12 @@ function showUpgradeModal(reason = "manual") {
           cursor:pointer;font-family:var(--sans);
           box-shadow:0 4px 20px var(--signal-glow);
           transition:all .15s;
-          display:flex;align-items:center;justify-content:space-between;
-        ">
+          display:flex;align-items:center;justify-content:space-between;">
           <span>Monthly</span>
-          <span style="font-family:var(--mono);font-size:1rem;">$39<span style="font-size:.72rem;font-weight:500;">/mo</span></span>
+          <span style="font-family:var(--mono);font-size:1rem;">$49<span style="font-size:.72rem;font-weight:500;">/mo</span></span>
         </button>
 
-        <!-- Annual — explicit dark bg + light text so it's always readable -->
-        <button id="rzpAnnualBtn" onclick="initiateRazorpayCheckout('annual')" style="
+        <button id="ppAnnualBtn" onclick="initiatePayPalCheckout('annual')" style="
           width:100%;padding:13px 16px;
           background:var(--surface-3);color:var(--text);
           border:2px solid var(--border-2);border-radius:12px;
@@ -482,25 +448,23 @@ function showUpgradeModal(reason = "manual") {
           cursor:pointer;font-family:var(--sans);
           transition:all .15s;
           display:flex;align-items:center;justify-content:space-between;
-          position:relative;
-        ">
+          position:relative;">
           <span style="display:flex;align-items:center;gap:8px;">
             Annual
             <span style="
               font-size:.58rem;font-weight:700;
               background:var(--ok);color:#0a0b0e;
-              padding:2px 7px;border-radius:20px;letter-spacing:.04em;
-            ">SAVE 20%</span>
+              padding:2px 7px;border-radius:20px;letter-spacing:.04em;">SAVE 20%</span>
           </span>
           <span style="font-family:var(--mono);font-size:1rem;color:var(--text);">$379<span style="font-size:.72rem;font-weight:500;color:var(--text-2);">/yr</span></span>
         </button>
 
       </div>
 
-      <!-- trust line -->
+      <div id="upgradeStatus" style="text-align:center;font-size:.78rem;color:var(--text-3);min-height:18px;margin-bottom:6px;"></div>
       <p style="font-size:.67rem;color:var(--text-3);text-align:center;line-height:1.6;">
         <i class="fa-solid fa-lock" style="font-size:.6rem;margin-right:3px;"></i>
-        Secure via Razorpay · No card stored · Cancel anytime
+        Secure via PayPal · No card stored · Cancel anytime
       </p>
     </div>
   `;
@@ -514,13 +478,19 @@ function closeUpgradeModal() {
   if (m) m.remove();
 }
 
-// ── FIX-4: Razorpay checkout — handles both order_id (one-time) and subscription_id flows ──
-async function initiateRazorpayCheckout(plan = "monthly") {
-  const PLAN_LABELS = { monthly: "Monthly — $49/mo", annual: "Annual — $399/yr", clinical: "Clinical — $99/mo" };
-  const btnId = plan === "annual" ? "rzpAnnualBtn" : "rzpMonthlyBtn";
-  const btn = el(btnId);
+// ── FIX-4: PayPal checkout ─────────────────────────────────────────────────
+async function initiatePayPalCheckout(plan = "monthly") {
+  const PLAN_LABELS = { monthly: "Monthly — $49/mo", annual: "Annual — $379/yr", clinical: "Clinical — $99/mo" };
+  const btnId    = plan === "annual" ? "ppAnnualBtn" : "ppMonthlyBtn";
+  const btn      = el(btnId);
+  const statusEl = el("upgradeStatus");
   const origLabel = PLAN_LABELS[plan] || "Upgrade";
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner" style="animation:spin .7s linear infinite"></i>'; }
+
+  if (btn) {
+    btn.disabled  = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner" style="animation:spin .7s linear infinite"></i>';
+  }
+  if (statusEl) { statusEl.textContent = "Connecting to PayPal…"; statusEl.style.color = "var(--text-3)"; }
 
   const h = await headers();
   if (!h) {
@@ -530,92 +500,34 @@ async function initiateRazorpayCheckout(plan = "monthly") {
   }
 
   try {
-    const { ok, data } = await apiJson("/api/payment/razorpay/order", {
-      method: "POST",
+    const res = await fetch(API + "/api/payment/paypal/create-subscription", {
+      method:  "POST",
       headers: h,
-      body: JSON.stringify({ plan })
+      body:    JSON.stringify({ plan }),
+      signal:  AbortSignal.timeout(15000),
     });
 
-    // Backend returns either order_id (one-time) or subscription_id (recurring)
-    if (!ok || (!data?.order_id && !data?.subscription_id)) {
-      toast(data?.error || "Payment setup failed. Please try again.", "err");
-      if (btn) { btn.disabled = false; btn.innerHTML = origLabel; }
-      return;
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      throw new Error(d.error || `Payment setup failed (${res.status}). Please try again.`);
     }
 
-    // Ensure Razorpay SDK is available (loaded from <head>, but guard anyway)
-    if (typeof Razorpay === "undefined") {
-      await new Promise((resolve, reject) => {
-        const s = document.createElement("script");
-        s.src = "https://checkout.razorpay.com/v1/checkout.js";
-        s.onload = resolve;
-        s.onerror = () => reject(new Error("Razorpay script failed to load"));
-        document.head.appendChild(s);
-      });
-    }
+    const data = await res.json();
+    if (!data.approve_url) throw new Error("PayPal did not return a checkout URL. Please try again.");
 
-    // Build Razorpay options — handle subscription vs one-time
-    const isSubscription = data.mode === "subscription" || !!data.subscription_id;
-    const options = {
-      key:         data.razorpay_key_id,
-      amount:      data.amount,
-      currency:    data.currency || "USD",
-      name:        "Curabook",
-      description: data.description || `Curabook ${plan.charAt(0).toUpperCase() + plan.slice(1)} Plan`,
-      handler: async function(response) {
-        try {
-          const verifyH = await headers();
-          if (!verifyH) return;
-          const vRes = await apiJson("/api/payment/razorpay/verify", {
-            method: "POST",
-            headers: verifyH,
-            body: JSON.stringify({
-              order_id:        data.order_id        || "",
-              subscription_id: data.subscription_id || response.razorpay_subscription_id || "",
-              payment_id:      response.razorpay_payment_id,
-              signature:       response.razorpay_signature,
-              plan:            plan,
-            })
-          });
-          if (vRes.ok && vRes.data?.success) {
-            _userPlan = vRes.data.plan || plan;
-            _reportsRemaining = 9999;
-            _renderPlanBadge();
-            toast(`🎉 ${vRes.data.message || "Welcome to Curabook Pro! Unlimited reports unlocked."}`, "ok");
-            closeUpgradeModal();
-            setTimeout(() => location.reload(), 2000);
-          } else {
-            toast("Payment verification failed. Contact support@curabook.com", "err");
-          }
-        } catch (e) {
-          console.error("[RAZORPAY verify]", e);
-          toast("Verification error. Contact support@curabook.com", "err");
-        }
-      },
-      prefill: { email: _user?.email || "" },
-      theme:   { color: "#00d4c8" },
-      modal:   {
-        ondismiss: () => {
-          if (btn) { btn.disabled = false; btn.innerHTML = origLabel; }
-          toast("Payment cancelled.", "info");
-        }
-      }
-    };
+    if (statusEl) statusEl.textContent = "Redirecting to PayPal…";
 
-    // Wire the correct Razorpay key depending on flow
-    if (isSubscription) {
-      options.subscription_id = data.subscription_id;
-    } else {
-      options.order_id = data.order_id;
-    }
-
-    const rzp = new Razorpay(options);
-    rzp.open();
+    // Redirect to PayPal hosted checkout.
+    // PayPal returns user to FRONTEND_URL/payment/success?subscription_id=xxx
+    // which payment_routes.py serves (app.html), and phi_fixes.js calls
+    // /api/payment/paypal/capture to activate the plan in the database.
+    window.location.href = data.approve_url;
 
   } catch (e) {
-    console.error("[RAZORPAY]", e);
-    toast("Payment unavailable. Please try again.", "err");
+    console.error("[UPGRADE]", e);
+    if (statusEl) { statusEl.textContent = e.message; statusEl.style.color = "var(--danger)"; }
     if (btn) { btn.disabled = false; btn.innerHTML = origLabel; }
+    toast(e.message, "err");
   }
 }
 
@@ -639,7 +551,7 @@ async function headers(ct = true) {
 async function apiFetch(path, opts = {}) {
   const doFetch = async () => {
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 45000); // FIX-5: 45s timeout
+    const t = setTimeout(() => ctrl.abort(), 45000);
     try {
       const r = await fetch(API + path, { ...opts, signal: ctrl.signal });
       clearTimeout(t);
@@ -798,7 +710,6 @@ function buildHealthViewHTML(markers, dashboard) {
     html += `</div></div>`;
   }
 
-  // FIX-2: Show health memory facts in health view
   if (_cachedMemories.length > 0) {
     html += `<div class="hv-section"><div class="hv-heading"><i class="fa-solid fa-brain"></i>Curabook Health Memory (${_cachedMemories.length} facts)</div><div class="alert-feed">`;
     _cachedMemories.slice(0, 5).forEach(fact => {
@@ -1007,7 +918,7 @@ async function _logBehavioralMetrics(metrics) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// SEND MESSAGE — FIX-2: health memory context handled server-side synchronously
+// SEND MESSAGE
 // ══════════════════════════════════════════════════════════════════════════════
 async function handleSend() {
   if (_isSending) return;
@@ -1046,7 +957,6 @@ async function sendMessage(text) {
       if (!id) throw new Error("Could not connect to database.");
     }
 
-    // Parse + log behavioral data client-side BEFORE API call (FIX-5: speed)
     const parsedMetrics = _parseUserBehavioralData(text);
     if (Object.keys(parsedMetrics).length > 0) {
       await _logBehavioralMetrics(parsedMetrics);
@@ -1059,9 +969,8 @@ async function sendMessage(text) {
       renderShield(p, s, sl, new Date().toISOString().slice(0, 10));
     }
 
-    // Handle file upload with payment gate
     if (_uploads.length) {
-      const isPro = _userPlan === "pro" || _userPlan === "annual";
+      const isPro = _userPlan === "pro" || _userPlan === "annual" || _userPlan === "monthly" || _userPlan === "clinical";
       if (!isPro && _reportsRemaining <= 0) {
         _isSending = false;
         setSendingState(false);
@@ -1079,7 +988,6 @@ async function sendMessage(text) {
           _reportsRemaining = Math.max(0, _reportsRemaining - 1);
           _renderPlanBadge();
         }
-        // FIX-2: Refresh memories after upload (new markers stored)
         setTimeout(() => _refreshMemoryCache(), 2000);
       } else if (result === null) {
         const ta = el("chatInput"); if (ta) { ta.value = text; autoGrow(ta); }
@@ -1104,7 +1012,6 @@ async function sendMessage(text) {
       document_text:   _docCtx.hasDoc ? (_docCtx.text || "") : "",
     };
 
-    // FIX-5: Animated typing indicator
     let dotCount = 0;
     const typingInterval = setInterval(() => {
       dotCount = (dotCount + 1) % 4;
@@ -1114,7 +1021,6 @@ async function sendMessage(text) {
     const res = await fetch(API + "/chat", { method: "POST", headers: h, body: JSON.stringify(payload) });
     clearInterval(typingInterval);
 
-    // Handle 402 upgrade required
     if (res.status === 402) {
       const d = await res.json().catch(() => {});
       botRow?.remove();
@@ -1167,8 +1073,6 @@ async function _postChatActions(reply, userText, responseData) {
   const userMsgs = el("chatDisplay")?.querySelectorAll(".chat-msg.user-msg");
   if (userMsgs?.length === 1 && _convId) renameConversation(_convId, userText);
 
-  // FIX-2: Always refresh memory cache after AI reply
-  // This ensures the UI reflects any facts the AI just stored
   if (_replyHasMemoryData(reply) || _replyHasMarkerData(reply)) {
     setTimeout(async () => {
       await _refreshMemoryCache();
@@ -1192,7 +1096,6 @@ async function _postChatActions(reply, userText, responseData) {
     setTimeout(() => refreshShieldFromBehavioral(), 1000);
   }
 
-  // Update payment state from response
   if (responseData?.plan) {
     _userPlan = responseData.plan;
     if (responseData.reports_remaining !== undefined) {
@@ -1254,10 +1157,7 @@ async function processUpload(file) {
       const refreshed = await handleUnauthorized(); if (!refreshed) return null;
       const s2 = await session(); if (s2) res = await doUp(s2.access_token);
     }
-    if (res.status === 402) {
-      showUpgradeModal("upload");
-      return null;
-    }
+    if (res.status === 402) { showUpgradeModal("upload"); return null; }
     if (res.status === 403) {
       _consentsSaved = false; await saveConsents().catch(() => {});
       const s2 = await session(); if (s2) res = await doUp(s2.access_token);
@@ -1267,7 +1167,7 @@ async function processUpload(file) {
     const result = await res.json();
     setTimeout(async () => {
       await loadMarkersData();
-      await _refreshMemoryCache(); // FIX-2: refresh after upload
+      await _refreshMemoryCache();
       setTimeout(() => refreshShieldFromBehavioral(), 2000);
     }, 2000);
     return result;
@@ -1561,10 +1461,40 @@ function updateNoiseReadout() {
 }
 
 async function logNoiseLevel() {
+  const btn = el("logNoiseBtn");
+  if (btn?.disabled) return; // Prevent double-clicks
+  
   const val = parseInt(el("noiseSlider")?.value || 5);
-  const h = await headers(); if (!h) { toast("Sign in to log.", "info"); return; }
-  await apiFetch("/api/behavioral-logs", { method: "POST", headers: h, body: JSON.stringify({ date: new Date().toISOString().slice(0, 10), metric_name: "food_noise", value: val, unit: "1-10" }) }).catch(() => {});
-  toast(`Food noise ${val}/10 logged ✓`, "info");
+  const h = await headers(); 
+  if (!h) { toast("Sign in to log.", "info"); return; }
+
+  // 1. Lock the button UI
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Logging...';
+  }
+
+  try {
+    await apiFetch("/api/behavioral-logs", { 
+      method: "POST", 
+      headers: h, 
+      body: JSON.stringify({ 
+        date: new Date().toISOString().slice(0, 10), 
+        metric_name: "food_noise", 
+        value: val, 
+        unit: "1-10" 
+      }) 
+    });
+    toast(`Food noise ${val}/10 logged ✓`, "ok");
+  } catch (err) {
+    toast("Failed to log food noise.", "err");
+  } finally {
+    // 2. Release the lock and restore UI
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = 'Log Noise Level'; // Or whatever your original button text was
+    }
+  }
 }
 
 // ── Voice ──────────────────────────────────────────────────────────────────
@@ -1599,138 +1529,91 @@ function exportChat() {
 
 // ══════════════════════════════════════════════════════════════════════════════
 // FIX-3: FEEDBACK SYSTEM — Full NPS (1-10) + category + smooth animation
-// UI-FIX: Feedback button moved from floating FAB to sidebar nav item (#navFeedbackBtn).
-//         The FAB was invisible on mobile (hidden under nav) and cluttered desktop.
-//         openFeedback() is exposed on window so the sidebar button can call it.
 // ══════════════════════════════════════════════════════════════════════════════
 function initFeedback() {
-  // UI-FIX: No FAB button created here — sidebar nav item #navFeedbackBtn triggers openFeedback()
-  // window.openFeedback is exposed below so onclick="openFeedback()" in HTML works
-
-  // Inject feedback modal styles
   const style = document.createElement("style");
   style.textContent = `
     .feedback-modal-overlay {
-      position: fixed; inset: 0; background: rgba(0,0,0,.7);
-      z-index: 9990; display: none; align-items: flex-end;
-      justify-content: center; padding: 0 0 80px;
+      position:fixed; inset:0; background:rgba(0,0,0,.7);
+      z-index:9990; display:none; align-items:flex-end;
+      justify-content:center; padding:0 0 80px;
     }
-    @media(min-width:640px) { .feedback-modal-overlay { align-items: center; padding: 20px; } }
-    .feedback-modal-overlay.open { display: flex; }
-
+    @media(min-width:640px) { .feedback-modal-overlay { align-items:center; padding:20px; } }
+    .feedback-modal-overlay.open { display:flex; }
     .feedback-modal {
-      background: var(--surface); border: 1px solid var(--border-2);
-      border-radius: 20px 20px 0 0; padding: 24px 20px;
-      width: 100%; max-width: 440px; position: relative;
-      animation: slideUp .25s ease;
-      max-height: 90vh; overflow-y: auto;
+      background:var(--surface); border:1px solid var(--border-2);
+      border-radius:20px 20px 0 0; padding:24px 20px;
+      width:100%; max-width:440px; position:relative;
+      animation:slideUp .25s ease; max-height:90vh; overflow-y:auto;
     }
-    @media(min-width:640px) { .feedback-modal { border-radius: 20px; padding: 28px; } }
-
+    @media(min-width:640px) { .feedback-modal { border-radius:20px; padding:28px; } }
     .feedback-close {
-      position: absolute; top: 14px; right: 14px;
-      width: 32px; height: 32px; border-radius: 8px;
-      border: none; background: none; color: var(--text-3);
-      font-size: .9rem; cursor: pointer; display: flex;
-      align-items: center; justify-content: center; transition: all .15s;
+      position:absolute; top:14px; right:14px; width:32px; height:32px;
+      border-radius:8px; border:none; background:none; color:var(--text-3);
+      font-size:.9rem; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all .15s;
     }
-    .feedback-close:hover { background: var(--surface-2); color: var(--text); }
-
-    .feedback-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
-    .feedback-icon-wrap {
-      width: 40px; height: 40px; border-radius: 10px;
-      background: var(--signal-dim); border: 1px solid rgba(0,212,200,.2);
-      display: flex; align-items: center; justify-content: center;
-      color: var(--signal); font-size: 1.1rem; flex-shrink: 0;
-    }
-    .feedback-title { font-size: .95rem; font-weight: 700; margin-bottom: 2px; }
-    .feedback-sub { font-size: .74rem; color: var(--text-3); }
-
-    /* NPS */
-    .feedback-nps-label { font-size: .74rem; font-weight: 600; color: var(--text-2); margin-bottom: 8px; }
-    .feedback-nps-row { display: flex; gap: 4px; margin-bottom: 4px; }
+    .feedback-close:hover { background:var(--surface-2); color:var(--text); }
+    .feedback-header { display:flex; align-items:center; gap:12px; margin-bottom:20px; }
+    .feedback-title { font-size:.95rem; font-weight:700; margin-bottom:2px; }
+    .feedback-sub { font-size:.74rem; color:var(--text-3); }
+    .feedback-nps-label { font-size:.74rem; font-weight:600; color:var(--text-2); margin-bottom:8px; }
+    .feedback-nps-row { display:flex; gap:4px; margin-bottom:4px; }
     .nps-btn {
-      flex: 1; min-height: 36px; border: 1.5px solid var(--border);
-      border-radius: 6px; background: var(--surface-2); color: var(--text-3);
-      font-size: .78rem; font-weight: 600; cursor: pointer;
-      font-family: var(--sans); transition: all .15s;
+      flex:1; min-height:36px; border:1.5px solid var(--border);
+      border-radius:6px; background:var(--surface-2); color:var(--text-3);
+      font-size:.78rem; font-weight:600; cursor:pointer; font-family:var(--sans); transition:all .15s;
     }
-    .nps-btn:hover { border-color: var(--signal); color: var(--signal); }
-    .nps-btn.selected { color: #0a0b0e; font-weight: 700; }
-    .feedback-nps-captions {
-      display: flex; justify-content: space-between;
-      font-size: .64rem; color: var(--text-3); margin-bottom: 14px;
-    }
-
-    /* Categories */
-    .feedback-category-row {
-      display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px;
-    }
+    .nps-btn:hover { border-color:var(--signal); color:var(--signal); }
+    .nps-btn.selected { color:#0a0b0e; font-weight:700; }
+    .feedback-nps-captions { display:flex; justify-content:space-between; font-size:.64rem; color:var(--text-3); margin-bottom:14px; }
+    .feedback-category-row { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:14px; }
     .cat-btn {
-      padding: 6px 12px; border: 1.5px solid var(--border);
-      border-radius: 20px; background: var(--surface-2);
-      color: var(--text-2); font-size: .74rem; font-weight: 500;
-      cursor: pointer; font-family: var(--sans); transition: all .15s;
-      min-height: 32px;
+      padding:6px 12px; border:1.5px solid var(--border); border-radius:20px;
+      background:var(--surface-2); color:var(--text-2); font-size:.74rem; font-weight:500;
+      cursor:pointer; font-family:var(--sans); transition:all .15s; min-height:32px;
     }
-    .cat-btn:hover { border-color: var(--signal); color: var(--signal); }
-    .cat-btn.selected { background: var(--signal-dim); border-color: var(--signal); color: var(--signal); }
-
+    .cat-btn:hover, .cat-btn.selected { border-color:var(--signal); color:var(--signal); background:var(--signal-dim); }
     .feedback-textarea {
-      width: 100%; padding: 10px 12px; border: 1.5px solid var(--border);
-      border-radius: 10px; background: var(--surface-2); color: var(--text);
-      font-size: .85rem; font-family: var(--sans); resize: none;
-      outline: none; transition: border-color .2s; margin-bottom: 10px;
-      min-height: 80px;
+      width:100%; padding:10px 12px; border:1.5px solid var(--border);
+      border-radius:10px; background:var(--surface-2); color:var(--text);
+      font-size:.85rem; font-family:var(--sans); resize:none; outline:none;
+      transition:border-color .2s; margin-bottom:10px; min-height:80px;
     }
-    .feedback-textarea:focus { border-color: var(--signal); }
-    .feedback-textarea::placeholder { color: var(--text-3); }
-
-    .feedback-footer { display: flex; align-items: center; justify-content: space-between; }
-    .feedback-char-count { font-size: .68rem; color: var(--text-3); }
+    .feedback-textarea:focus { border-color:var(--signal); }
+    .feedback-textarea::placeholder { color:var(--text-3); }
+    .feedback-footer { display:flex; align-items:center; justify-content:space-between; }
+    .feedback-char-count { font-size:.68rem; color:var(--text-3); }
     .feedback-submit {
-      padding: 9px 20px; background: var(--signal); color: #0a0b0e;
-      border: none; border-radius: 8px; font-size: .84rem; font-weight: 700;
-      cursor: pointer; font-family: var(--sans); display: flex;
-      align-items: center; gap: 6px; transition: all .15s; min-height: 38px;
+      padding:9px 20px; background:var(--signal); color:#0a0b0e;
+      border:none; border-radius:8px; font-size:.84rem; font-weight:700;
+      cursor:pointer; font-family:var(--sans); display:flex;
+      align-items:center; gap:6px; transition:all .15s; min-height:38px;
     }
-    .feedback-submit:hover { background: var(--signal-2); }
-    .feedback-submit:disabled { opacity: .6; cursor: not-allowed; }
-
-    .feedback-success {
-      display: none; flex-direction: column; align-items: center;
-      text-align: center; padding: 20px 0; animation: fadeUp .3s ease;
-    }
-    .feedback-success-icon { font-size: 2.5rem; margin-bottom: 12px; }
-    .feedback-success strong { font-size: 1rem; margin-bottom: 6px; display: block; }
-    .feedback-success p { font-size: .82rem; color: var(--text-2); }
+    .feedback-submit:hover { background:var(--signal-2); }
+    .feedback-submit:disabled { opacity:.6; cursor:not-allowed; }
+    .feedback-success { display:none; flex-direction:column; align-items:center; text-align:center; padding:20px 0; animation:fadeUp .3s ease; }
+    .feedback-success-icon { font-size:2.5rem; margin-bottom:12px; }
+    .feedback-success strong { font-size:1rem; margin-bottom:6px; display:block; }
+    .feedback-success p { font-size:.82rem; color:var(--text-2); }
   `;
   document.head.appendChild(style);
 
-  // Modal HTML
   const modal = document.createElement("div");
   modal.id = "feedbackModal";
   modal.className = "feedback-modal-overlay";
   modal.setAttribute("aria-hidden", "true");
   modal.innerHTML = `
     <div class="feedback-modal" role="dialog" aria-label="Send Feedback">
-      <button class="feedback-close" id="feedbackClose" aria-label="Close">
-        <i class="fa-solid fa-xmark"></i>
-      </button>
+      <button class="feedback-close" id="feedbackClose" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
       <div class="feedback-header">
-        <div class="feedback-icon-wrap"><i class="fa-regular fa-comment-dots"></i></div>
-        <div>
-          <h3 class="feedback-title">How's Curabook working for you?</h3>
-          <p class="feedback-sub">Your feedback shapes what we build next.</p>
-        </div>
+        <div style="width:40px;height:40px;border-radius:10px;background:var(--signal-dim);border:1px solid rgba(0,212,200,.2);display:flex;align-items:center;justify-content:center;color:var(--signal);font-size:1.1rem;flex-shrink:0;"><i class="fa-regular fa-comment-dots"></i></div>
+        <div><h3 class="feedback-title">How's Curabook working for you?</h3><p class="feedback-sub">Your feedback shapes what we build next.</p></div>
       </div>
-
       <div class="feedback-nps-label">How likely are you to recommend Curabook? (1 = not at all, 10 = absolutely)</div>
       <div class="feedback-nps-row" id="feedbackNpsRow">
         ${[...Array(10)].map((_, i) => `<button class="nps-btn" data-val="${i+1}">${i+1}</button>`).join("")}
       </div>
       <div class="feedback-nps-captions"><span>Not likely</span><span>Very likely</span></div>
-
       <div class="feedback-category-row" id="feedbackCategories">
         <button class="cat-btn" data-cat="chat">💬 Chat</button>
         <button class="cat-btn" data-cat="reports">📋 Reports</button>
@@ -1742,18 +1625,13 @@ function initFeedback() {
         <button class="cat-btn" data-cat="idea">💡 Idea</button>
         <button class="cat-btn" data-cat="payment">💳 Pricing</button>
       </div>
-
       <textarea id="feedbackText" class="feedback-textarea"
         placeholder="What do you love? What's confusing? What's missing? Be brutally honest."
         rows="3" maxlength="1000"></textarea>
-
       <div class="feedback-footer">
         <span class="feedback-char-count" id="feedbackCharCount">0 / 1000</span>
-        <button class="feedback-submit" id="feedbackSubmit">
-          <i class="fa-solid fa-paper-plane"></i> Send
-        </button>
+        <button class="feedback-submit" id="feedbackSubmit"><i class="fa-solid fa-paper-plane"></i> Send</button>
       </div>
-
       <div id="feedbackSuccess" class="feedback-success">
         <div class="feedback-success-icon">🎉</div>
         <strong>Thank you!</strong>
@@ -1762,40 +1640,29 @@ function initFeedback() {
     </div>`;
   document.body.appendChild(modal);
 
-  // State
   let selectedNps = 0, selectedCategory = "";
 
-  // UI-FIX: sidebar nav item triggers openFeedback() — no FAB listener needed
   el("feedbackClose")?.addEventListener("click", () => closeFeedback());
   modal.addEventListener("click", e => { if (e.target === modal) closeFeedback(); });
   document.addEventListener("keydown", e => { if (e.key === "Escape") closeFeedback(); });
 
-  // NPS scoring
   modal.querySelectorAll(".nps-btn").forEach(b => b.addEventListener("click", () => {
     selectedNps = parseInt(b.dataset.val);
-    modal.querySelectorAll(".nps-btn").forEach(rb => {
-      rb.classList.remove("selected");
-      rb.style.background = "";
-      rb.style.borderColor = "";
-    });
+    modal.querySelectorAll(".nps-btn").forEach(rb => { rb.classList.remove("selected"); rb.style.background = ""; rb.style.borderColor = ""; });
     b.classList.add("selected");
     const color = selectedNps <= 6 ? "var(--danger)" : selectedNps <= 8 ? "var(--amber)" : "var(--ok)";
-    b.style.background = color;
-    b.style.borderColor = color;
+    b.style.background = color; b.style.borderColor = color;
   }));
 
-  // Category selection
   modal.querySelectorAll(".cat-btn").forEach(b => b.addEventListener("click", () => {
     selectedCategory = b.dataset.cat;
     modal.querySelectorAll(".cat-btn").forEach(cb => cb.classList.remove("selected"));
     b.classList.add("selected");
   }));
 
-  // Char count
   const ta = el("feedbackText"); const cc = el("feedbackCharCount");
   ta?.addEventListener("input", () => { if (cc) cc.textContent = `${ta.value.length} / 1000`; });
 
-  // Submit
   el("feedbackSubmit")?.addEventListener("click", () => _submitFeedback(selectedNps, selectedCategory));
 }
 
@@ -1803,22 +1670,15 @@ function openFeedback() {
   const modal = el("feedbackModal"); if (!modal) return;
   modal.setAttribute("aria-hidden", "false"); modal.classList.add("open");
   document.body.style.overflow = "hidden";
-  // Reset state
   el("feedbackSuccess").style.display = "none";
   el("feedbackText").value = "";
   if (el("feedbackCharCount")) el("feedbackCharCount").textContent = "0 / 1000";
-  el("feedbackNpsRow")?.style && (el("feedbackNpsRow").style.display = "");
-  el("feedbackCategories")?.style && (el("feedbackCategories").style.display = "");
-  el("feedbackText")?.style && (el("feedbackText").style.display = "");
+  ["feedbackNpsRow","feedbackCategories","feedbackText"].forEach(id => { const e = el(id); if (e) e.style.display = ""; });
   const footer = document.querySelector(".feedback-footer"); if (footer) footer.style.display = "";
-  const label = document.querySelector(".feedback-nps-label"); if (label) label.style.display = "";
-  const caps = document.querySelector(".feedback-nps-captions"); if (caps) caps.style.display = "";
+  document.querySelector(".feedback-nps-label")?.style && (document.querySelector(".feedback-nps-label").style.display = "");
+  document.querySelector(".feedback-nps-captions")?.style && (document.querySelector(".feedback-nps-captions").style.display = "");
   document.querySelector(".feedback-header")?.style && (document.querySelector(".feedback-header").style.display = "");
-  modal.querySelectorAll(".nps-btn,.cat-btn").forEach(b => {
-    b.classList.remove("selected");
-    b.style.background = "";
-    b.style.borderColor = "";
-  });
+  modal.querySelectorAll(".nps-btn,.cat-btn").forEach(b => { b.classList.remove("selected"); b.style.background = ""; b.style.borderColor = ""; });
   const submitBtn = el("feedbackSubmit");
   if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Send'; }
 }
@@ -1839,35 +1699,20 @@ async function _submitFeedback(nps, category) {
     const h = await headers();
     if (h) {
       await fetch(API + "/api/feedback", {
-        method: "POST",
-        headers: h,
-        body: JSON.stringify({
-          rating:     nps,
-          nps_score:  nps,
-          category,
-          text,
-          url:        window.location.href,
-          user_email: _user?.email || "anonymous",
-          timestamp:  new Date().toISOString()
-        }),
+        method: "POST", headers: h,
+        body: JSON.stringify({ rating: nps, nps_score: nps, category, text, url: window.location.href, user_email: _user?.email || "anonymous", timestamp: new Date().toISOString() }),
         signal: AbortSignal.timeout(8000)
       });
     }
   } catch (e) {}
 
-  // Show success state
   const successEl = el("feedbackSuccess");
   if (successEl) successEl.style.display = "flex";
-
-  // Hide inputs
-  ["feedbackNpsRow", "feedbackCategories", "feedbackText"].forEach(id => {
-    const e = el(id); if (e) e.style.display = "none";
-  });
+  ["feedbackNpsRow","feedbackCategories","feedbackText"].forEach(id => { const e = el(id); if (e) e.style.display = "none"; });
   const footer = document.querySelector(".feedback-footer"); if (footer) footer.style.display = "none";
   document.querySelector(".feedback-nps-label")?.style && (document.querySelector(".feedback-nps-label").style.display = "none");
   document.querySelector(".feedback-nps-captions")?.style && (document.querySelector(".feedback-nps-captions").style.display = "none");
   document.querySelector(".feedback-header")?.style && (document.querySelector(".feedback-header").style.display = "none");
-
   setTimeout(() => closeFeedback(), 2800);
 }
 
@@ -1963,7 +1808,6 @@ function wireEvents() {
   const fi = el("fileInput");
   fi?.addEventListener("change", handleFileSelect);
 
-  // FIX-4: All upload buttons go through payment gate
   ["attachTopBtn", "attachInputBtn", "uploadNudgeBtn", "reportsUploadBtn"].forEach(id => {
     el(id)?.addEventListener("click", () => handleUploadClick());
   });
@@ -1998,9 +1842,6 @@ document.addEventListener("DOMContentLoaded", () => {
   initSyncWearable();
   boot();
 
-  // Expose on window so inline onclick handlers and other scripts can call these
-  // Bug-10-FIX: food_noise_emergency.js calls window.sendMessage — must be on window
-  // UI-FIX: sidebar feedback button uses onclick="openFeedback()"
   window.sendMessage   = sendMessage;
   window.openFeedback  = openFeedback;
   window.closeFeedback = closeFeedback;
