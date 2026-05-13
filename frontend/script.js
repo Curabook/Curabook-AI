@@ -690,7 +690,10 @@ async function loadHealthView() {
 function buildHealthViewHTML(markers, dashboard) {
   const abnormal = markers.filter(m => m.status === "HIGH" || m.status === "LOW");
   const trending = dashboard?.trends || [];
-  const cliffalerts = dashboard?.cliff_alerts || [];
+  // Use dashboard cliff_alerts if available; fall back to client-side detection from markers
+  const _dashAlerts = dashboard?.cliff_alerts || [];
+  const _clientAlerts = _computeCliffAlerts(markers);
+  const cliffalerts = _dashAlerts.length > 0 ? _dashAlerts : _clientAlerts;
   const riskLevel = cliffalerts.length > 0 ? "high" : abnormal.length > 2 ? "warn" : "none";
   const riskScore = cliffalerts.length || abnormal.length;
   const riskLabel = riskLevel === "high" ? "Active Rebound Signals" : riskLevel === "warn" ? "Needs Attention" : "No Cliff Signals";
@@ -1106,6 +1109,10 @@ async function _postChatActions(reply, userText, responseData) {
       await loadMarkersData();
       await _refreshMemoryCache();
       setTimeout(() => refreshShieldFromBehavioral(), 2000);
+      // Re-render health view so cliff signals reflect new markers
+      if (el("viewHealth")?.classList.contains("active")) {
+        setTimeout(() => loadHealthView(), 2500);
+      }
     }, 1000);
   }
 
@@ -1190,6 +1197,10 @@ async function processUpload(file) {
       await loadMarkersData();
       await _refreshMemoryCache();
       setTimeout(() => refreshShieldFromBehavioral(), 2000);
+      // If user is on My Health view, refresh it so cliff signals update immediately
+      if (el("viewHealth")?.classList.contains("active")) {
+        setTimeout(() => loadHealthView(), 2500);
+      }
     }, 2000);
     return result;
   } catch (err) {
@@ -1444,6 +1455,36 @@ function renderMarkers(markers) {
     const badge = s && s !== "unknown" ? `<span class="marker-status st-${s}">${s.toUpperCase()}</span>` : "";
     return `<div class="marker-card"><div class="marker-card-name" title="${esc(m.marker_name)}">${esc(m.marker_name)}</div><div class="marker-card-val ${cls}">${m.value}<span class="marker-card-unit"> ${esc(m.unit || "")}</span></div>${badge}</div>`;
   }).join("");
+}
+
+// Returns cliff alert objects (same logic as runCliffDetection but pure/no DOM writes)
+function _computeCliffAlerts(markers) {
+  const alerts = [], grouped = {};
+  markers.forEach(m => {
+    const k = (m.marker_name || "").toLowerCase();
+    if (!grouped[k]) grouped[k] = [];
+    grouped[k].push({ ...m, _v: parseFloat(m.value) });
+  });
+  const gk = Object.keys(grouped).find(k => /fasting.*glucose|blood.*glucose|^glucose/.test(k));
+  if (gk) {
+    const r = grouped[gk].sort((a, b) => a.date < b.date ? -1 : 1);
+    if (r.length >= 2) {
+      const pct = ((r[r.length - 1]._v - r[0]._v) / r[0]._v) * 100;
+      if (pct >= 15) alerts.push({ headline: `Glucose rebound +${pct.toFixed(0)}%`, detail: `${r[0]._v} → ${r[r.length - 1]._v} mg/dL`, severity: "high" });
+      else if (pct >= 10) alerts.push({ headline: `Glucose rising +${pct.toFixed(0)}%`, detail: "Approaching 15% threshold.", severity: "warn" });
+    }
+  }
+  const hk = Object.keys(grouped).find(k => /hba1c/.test(k));
+  if (hk) {
+    const r = grouped[hk].sort((a, b) => a.date < b.date ? -1 : 1);
+    for (let i = 1; i < r.length; i++) {
+      const d = r[i]._v - r[i - 1]._v;
+      if (d >= 0.25) { alerts.push({ headline: `HbA1c rebound +${d.toFixed(2)}%`, detail: `${r[i - 1]._v}% → ${r[i]._v}%`, severity: "high" }); break; }
+    }
+  }
+  markers.filter(m => m.status === "HIGH" && !/glucose/i.test(m.marker_name)).slice(0, 2)
+    .forEach(m => alerts.push({ headline: `${m.marker_name} HIGH`, detail: `${m.value} ${m.unit || ""}`, severity: "warn" }));
+  return alerts;
 }
 
 function runCliffDetection(markers) {
