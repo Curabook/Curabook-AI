@@ -459,6 +459,27 @@ function showUpgradeModal(reason = "manual") {
           <span style="font-family:var(--mono);font-size:1rem;color:var(--text);">$379<span style="font-size:.72rem;font-weight:500;color:var(--text-2);">/yr</span></span>
         </button>
 
+        <button id="ppClinicalBtn" onclick="initiatePayPalCheckout('clinical')" style="
+          width:100%;padding:13px 16px;
+          background:var(--surface-3);color:var(--text);
+          border:2px solid rgba(139,92,246,.35);border-radius:12px;
+          font-size:.9rem;font-weight:600;
+          cursor:pointer;font-family:var(--sans);
+          transition:all .15s;
+          display:flex;align-items:center;justify-content:space-between;
+          position:relative;overflow:hidden;">
+          <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,#8b5cf6,#6d28d9);"></div>
+          <span style="display:flex;align-items:center;gap:8px;">
+            Shield Clinical
+            <span style="font-size:.58rem;font-weight:700;background:rgba(139,92,246,.2);color:#a78bfa;border:1px solid rgba(139,92,246,.3);padding:2px 7px;border-radius:20px;letter-spacing:.04em;">PA ARCHITECT</span>
+          </span>
+          <span style="font-family:var(--mono);font-size:1rem;color:#a78bfa;">$99<span style="font-size:.72rem;font-weight:500;color:var(--text-2);">/mo</span></span>
+        </button>
+
+      </div>
+
+      <div style="font-size:.68rem;color:var(--text-3);text-align:center;line-height:1.6;margin-bottom:10px;padding:8px 10px;background:rgba(139,92,246,.05);border:1px solid rgba(139,92,246,.12);border-radius:8px;">
+        <strong style="color:#a78bfa;">Clinical Promise:</strong> If your appeal is denied after using our packet, email us. We'll generate a revised packet for your next submission — free.
       </div>
 
       <div id="upgradeStatus" style="text-align:center;font-size:.78rem;color:var(--text-3);min-height:18px;margin-bottom:6px;"></div>
@@ -481,7 +502,7 @@ function closeUpgradeModal() {
 // ── FIX-4: PayPal checkout ─────────────────────────────────────────────────
 async function initiatePayPalCheckout(plan = "monthly") {
   const PLAN_LABELS = { monthly: "Monthly — $49/mo", annual: "Annual — $379/yr", clinical: "Clinical — $99/mo" };
-  const btnId    = plan === "annual" ? "ppAnnualBtn" : "ppMonthlyBtn";
+  const btnId    = plan === "clinical" ? "ppClinicalBtn" : plan === "annual" ? "ppAnnualBtn" : "ppMonthlyBtn";
   const btn      = el(btnId);
   const statusEl = el("upgradeStatus");
   const origLabel = PLAN_LABELS[plan] || "Upgrade";

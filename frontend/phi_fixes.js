@@ -144,7 +144,9 @@ window.showUpgradeModal = function(reason) {
       <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px;">
         <button id="ppMonthlyBtn" onclick="initiatePayPalCheckout('monthly')" style="width:100%;padding:13px 16px;background:var(--signal,#00d4c8);color:#0a0b0e;border:none;border-radius:12px;font-size:.9rem;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 4px 20px rgba(0,212,200,.35);transition:all .15s;display:flex;align-items:center;justify-content:space-between;"><span>Shield Monthly</span><span style="font-family:monospace;font-size:1rem;">$49<span style="font-size:.72rem;font-weight:500;">/mo</span></span></button>
         <button id="ppAnnualBtn" onclick="initiatePayPalCheckout('annual')" style="width:100%;padding:13px 16px;background:var(--surface-3,#23272f);color:var(--text,#f0f2f5);border:2px solid var(--border-2,rgba(255,255,255,.13));border-radius:12px;font-size:.9rem;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s;display:flex;align-items:center;justify-content:space-between;"><span style="display:flex;align-items:center;gap:8px;">Shield Annual<span style="font-size:.58rem;font-weight:700;background:#10b981;color:#0a0b0e;padding:2px 7px;border-radius:20px;letter-spacing:.04em;">SAVE 20%</span></span><span style="font-family:monospace;font-size:.85rem;">$39<span style="font-size:.65rem;font-weight:500;color:var(--text-2);">/mo · $468/yr</span></span></button>
+        <button id="ppClinicalBtn" onclick="initiatePayPalCheckout('clinical')" style="width:100%;padding:13px 16px;background:var(--surface-3,#23272f);color:var(--text,#f0f2f5);border:2px solid rgba(139,92,246,.35);border-radius:12px;font-size:.9rem;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s;display:flex;align-items:center;justify-content:space-between;position:relative;overflow:hidden;"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,#8b5cf6,#6d28d9);"></div><span style="display:flex;align-items:center;gap:8px;">Shield Clinical<span style="font-size:.58rem;font-weight:700;background:rgba(139,92,246,.2);color:#a78bfa;border:1px solid rgba(139,92,246,.3);padding:2px 7px;border-radius:20px;letter-spacing:.04em;">PA ARCHITECT</span></span><span style="font-family:monospace;font-size:1rem;color:#a78bfa;">$99<span style="font-size:.72rem;font-weight:500;color:var(--text-2);">/mo</span></span></button>
       </div>
+      <div style="font-size:.68rem;color:var(--text-3,#566070);text-align:center;line-height:1.6;margin-bottom:10px;padding:8px 10px;background:rgba(139,92,246,.05);border:1px solid rgba(139,92,246,.12);border-radius:8px;"><strong style="color:#a78bfa;">Clinical Promise:</strong> If your appeal is denied after using our packet, email us. We'll generate a revised packet for your next submission — free.</div>
       <div id="upgradeStatus" style="text-align:center;font-size:.78rem;color:var(--text-3,#566070);min-height:18px;margin-bottom:6px;"></div>
       <p style="font-size:.67rem;color:var(--text-3,#9ca3af);text-align:center;">🔒 Secure via PayPal · Cancel anytime</p>
     </div>
@@ -156,7 +158,8 @@ window.showUpgradeModal = function(reason) {
 function closeUpgradeModal() { document.getElementById('upgradeModal')?.remove(); }
 
 async function initiatePayPalCheckout(plan) {
-  const btnId = plan === 'annual' ? 'ppAnnualBtn' : 'ppMonthlyBtn';
+  const PLAN_LABELS = { monthly: 'Shield Core', annual: 'Shield Core — Annual', clinical: 'Shield Clinical' };
+  const btnId = plan === 'clinical' ? 'ppClinicalBtn' : plan === 'annual' ? 'ppAnnualBtn' : 'ppMonthlyBtn';
   const btn = document.getElementById(btnId);
   const statusEl = document.getElementById('upgradeStatus');
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner" style="animation:spin .7s linear infinite"></i> Connecting…'; }
