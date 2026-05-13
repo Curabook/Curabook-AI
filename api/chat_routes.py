@@ -329,10 +329,18 @@ def _format_memory_block(memories: list[str], markers: dict, shield: dict = None
         lines.append("")
 
     if markers:
-        abnormal = {n: m for n, m in markers.items()
-                    if m.get("status") in ("HIGH", "LOW")}
-        normal   = {n: m for n, m in markers.items()
-                    if m.get("status") == "NORMAL"}
+        abnormal = {}
+        normal   = {}
+        unknown  = {}
+
+        for n, m in markers.items():
+            status = str(m.get("status", "")).upper()
+            if status in ("HIGH", "LOW"):
+                abnormal[n] = m
+            elif status == "NORMAL":
+                normal[n] = m
+            else:
+                unknown[n] = m  # UNKNOWN, None, or any other value
 
         if abnormal:
             lines.append("🚨 LAB MARKERS NEEDING ATTENTION:")
@@ -344,12 +352,13 @@ def _format_memory_block(memories: list[str], markers: dict, shield: dict = None
                 )
             lines.append("")
 
-        if normal:
-            normal_summary = ", ".join(
-                f"{n}: {m.get('value')}{m.get('unit','')}"
-                for n, m in list(normal.items())[:6]
-            )
-            lines.append(f"✅ NORMAL MARKERS: {normal_summary}")
+        if normal or unknown:
+            combined = list(normal.items()) + list(unknown.items())
+            summary_parts = []
+            for n, m in combined[:10]:
+                ref_str = f" (ref: {m.get('reference_range')})" if m.get('reference_range') else ""
+                summary_parts.append(f"{n}: {m.get('value')}{m.get('unit','')}{ref_str}")
+            lines.append(f"✅ OTHER STORED MARKERS: {', '.join(summary_parts)}")
             lines.append("")
 
     cliff_signals = _detect_cliff_signals(markers)
@@ -376,26 +385,27 @@ def _detect_cliff_signals(markers: dict) -> list[str]:
             hba1c_readings.append(m)
 
     for m in glucose_readings:
-        if m.get("status") == "HIGH":
-            try:
-                val = float(m.get("value", 0))
-                if val > 100:
-                    signals.append(
-                        f"Glucose {val} mg/dL is HIGH — "
-                        f"post-GLP-1 rebound threshold is >15% from personal baseline"
-                    )
-            except (TypeError, ValueError):
-                pass
+        try:
+            val = float(m.get("value", 0))
+            status = str(m.get("status", "")).upper()
+            # Trigger on value >100 regardless of status string (catches UNKNOWN)
+            if val > 100:
+                signals.append(
+                    f"Glucose {val} mg/dL is elevated — "
+                    f"post-GLP-1 rebound threshold is >15% from personal baseline"
+                )
+        except (TypeError, ValueError):
+            pass
 
     for m in hba1c_readings:
-        if m.get("status") == "HIGH":
-            try:
-                val = float(m.get("value", 0))
-                if val >= 5.7:
-                    label = "Diabetes range" if val >= 6.5 else "Pre-diabetes range"
-                    signals.append(f"HbA1c {val}% — {label} — monitor for rebound")
-            except (TypeError, ValueError):
-                pass
+        try:
+            val = float(m.get("value", 0))
+            # Trigger on value >=5.7 regardless of status string (catches UNKNOWN)
+            if val >= 5.7:
+                label = "Diabetes range" if val >= 6.5 else "Pre-diabetes range"
+                signals.append(f"HbA1c {val}% — {label} — monitor for rebound")
+        except (TypeError, ValueError):
+            pass
 
     return signals[:3]
 
