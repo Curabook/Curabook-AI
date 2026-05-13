@@ -1161,6 +1161,7 @@ body::before {
     flex-shrink: 0; padding-top: 0; padding-right: 0; padding-bottom: 0; overflow-y: auto;
   }
   #cockpitCloseBtn { display: none !important; }
+  #sidebarCloseBtn { display: none !important; }
   #bottomNav { display: none !important; }
   .sidebar-overlay, .cockpit-overlay { display: none !important; }
   #welcomeScreen { align-items: center; padding: 32px 24px; }
