@@ -1150,8 +1150,13 @@ body::before {
 
   #sidebar {
     position: static; width: var(--sidebar-w); min-width: var(--sidebar-w); max-width: var(--sidebar-w);
-    height: 100%; transform: none !important; box-shadow: none; border-right: 1px solid var(--border);
+    height: 100%; transform: none; box-shadow: none; border-right: 1px solid var(--border);
     flex-shrink: 0; padding-left: 0; padding-top: 0;
+    transition: width .25s ease, min-width .25s ease, opacity .25s ease;
+  }
+  /* Collapsed state on desktop */
+  #sidebar.desktop-collapsed {
+    width: 0; min-width: 0; max-width: 0; overflow: hidden; opacity: 0; border-right: none;
   }
 
   #main { flex: 1; min-width: 0; padding-bottom: 0; }
@@ -1162,7 +1167,7 @@ body::before {
     flex-shrink: 0; padding-top: 0; padding-right: 0; padding-bottom: 0; overflow-y: auto;
   }
   #cockpitCloseBtn { display: none !important; }
-  #sidebarCloseBtn { display: none !important; }
+  #sidebarCloseBtn { display: flex !important; }
   #bottomNav { display: none !important; }
   .sidebar-overlay, .cockpit-overlay { display: none !important; }
   #welcomeScreen { align-items: center; padding: 32px 24px; }

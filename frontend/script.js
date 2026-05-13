@@ -638,8 +638,16 @@ async function saveConsents() {
 }
 
 // ── Sidebar & Cockpit ──────────────────────────────────────────────────────
-const openSidebar  = () => { el("sidebar")?.classList.add("open"); el("sidebarOverlay")?.classList.add("show"); closeCockpit(); };
-const closeSidebar = () => { el("sidebar")?.classList.remove("open"); el("sidebarOverlay")?.classList.remove("show"); };
+const isDesktop    = () => window.innerWidth >= 1024;
+const openSidebar  = () => {
+  if (isDesktop()) { el("sidebar")?.classList.remove("desktop-collapsed"); }
+  else { el("sidebar")?.classList.add("open"); el("sidebarOverlay")?.classList.add("show"); }
+  closeCockpit();
+};
+const closeSidebar = () => {
+  if (isDesktop()) { el("sidebar")?.classList.add("desktop-collapsed"); }
+  else { el("sidebar")?.classList.remove("open"); el("sidebarOverlay")?.classList.remove("show"); }
+};
 const openCockpit  = () => { el("cockpit")?.classList.add("open"); el("cockpitOverlay")?.classList.add("show"); closeSidebar(); };
 const closeCockpit = () => { el("cockpit")?.classList.remove("open"); el("cockpitOverlay")?.classList.remove("show"); };
 const toggleCockpit = () => el("cockpit")?.classList.contains("open") ? closeCockpit() : openCockpit();
