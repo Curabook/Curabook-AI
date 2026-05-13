@@ -1202,14 +1202,6 @@ def chat():
             except Exception as e:
                 print(f"[PHI] Doc extraction error: {e}")
 
-        if current_markers:
-            # Save markers to DB immediately so health view reflects them
-            try:
-                from health_memory.memory import store_health_markers
-                store_health_markers(supabase, user.id, current_markers)
-            except Exception as e:
-                print(f"[CHAT] Marker save error: {e}")
-
         if not is_pro and current_markers:
             _decrement_reports(supabase, user.id, reports_remaining)
             reports_remaining = max(0, reports_remaining - 1)
@@ -1259,7 +1251,7 @@ def chat():
     final_reply = reply + MANDATORY_DISCLAIMER
 
     # ── STEP 9: Background ops ────────────────────────────────────────────────
-    doc_for_bg = resolved_document_text if has_documents else None  # Always run bg save; in-memory extraction may have missed some markers
+    doc_for_bg = resolved_document_text if (has_documents and not current_markers) else None
     bg = threading.Thread(
         target=_run_background_ops,
         args=(supabase, user.id, conversation_id, message, final_reply, doc_for_bg),
