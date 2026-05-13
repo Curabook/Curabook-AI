@@ -210,6 +210,7 @@ body::before {
   padding: 18px 16px 12px;
   flex-shrink: 0;
   border-bottom: 1px solid var(--border);
+  justify-content: space-between;
 }
 .sb-logo-link { display: flex; align-items: center; gap: 9px; }
 .sb-logo-mark {
