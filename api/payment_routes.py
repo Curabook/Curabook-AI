@@ -292,6 +292,41 @@ def payment_config():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# FEATURE ACCESS CHECK  ← NEW
+# ══════════════════════════════════════════════════════════════════════════════
+
+@payment_bp.route("/api/payment/feature-access", methods=["GET"])
+def check_feature_access():
+    """
+    Check if the authenticated user has access to a specific feature.
+    Used by frontend to show/hide gated features like PA Architect.
+
+    Query param: ?feature=pa_architect
+    Response: { allowed: bool, reason: str, required_plan: str|null }
+    """
+    supabase, get_user, _ = _deps()
+    user = get_user(supabase)
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    feature = request.args.get("feature", "").strip()
+    if not feature:
+        return jsonify({"error": "feature parameter required"}), 400
+
+    from services.payment_feature_access import check_user_feature_access, get_required_plan
+    allowed, reason = check_user_feature_access(supabase, user.id, feature)
+
+    return jsonify({
+        "feature":          feature,
+        "allowed":          allowed,
+        "reason":           reason if not allowed else "",
+        "required_plan":    get_required_plan(feature) if not allowed else None,
+        "upgrade_required": not allowed,
+        "upgrade_url":      f"/app?upgrade={get_required_plan(feature)}" if not allowed else None,
+    })
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # PAYMENT STATUS
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -832,10 +867,32 @@ def setup_missing_tables():
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS cancel_at_period_end boolean default false",
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS had_trial boolean default false",
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS goal_weight_lbs numeric",
+        "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS current_weight_lbs numeric",
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS glp1_status text",
+        "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS is_admin_granted boolean default false",
     ]
 
     missing_tables_sql = [
+        """CREATE TABLE IF NOT EXISTS app_config (
+            key        text PRIMARY KEY,
+            value      text NOT NULL DEFAULT '',
+            updated_at timestamptz DEFAULT now(),
+            updated_by text
+        )""",
+        """CREATE TABLE IF NOT EXISTS audit_logs (
+            id         bigserial PRIMARY KEY,
+            user_id    text,
+            action     text,
+            detail     text,
+            category   text,
+            created_at timestamptz DEFAULT now()
+        )""",
+        """CREATE TABLE IF NOT EXISTS appeal_packets (
+            id           uuid primary key default gen_random_uuid(),
+            user_id      uuid not null references auth.users(id) on delete cascade,
+            medication   text, denial_reason text, score integer, packet text,
+            created_at   timestamptz default now()
+        )""",
         """CREATE TABLE IF NOT EXISTS weekly_briefs (
             id           uuid primary key default gen_random_uuid(),
             user_id      uuid not null references auth.users(id) on delete cascade,
@@ -847,11 +904,6 @@ def setup_missing_tables():
             user_id          uuid not null references auth.users(id) on delete cascade,
             appointment_date date, specialist_type text default 'primary care',
             brief_text text, brief_json text, created_at timestamptz default now()
-        )""",
-        """CREATE TABLE IF NOT EXISTS user_feedback (
-            id uuid primary key default gen_random_uuid(),
-            user_id uuid, rating integer, category text,
-            message text, page_url text, created_at timestamptz default now()
         )""",
         """CREATE TABLE IF NOT EXISTS glp1_onboarding (
             id uuid primary key default gen_random_uuid(),
@@ -868,10 +920,15 @@ def setup_missing_tables():
             created_at timestamptz default now(), updated_at timestamptz default now(),
             unique(user_id, medication_name, start_date)
         )""",
+        # Default config seeds
+        "INSERT INTO app_config (key,value,updated_by) VALUES ('free_all_enabled','false','migration') ON CONFLICT (key) DO NOTHING",
+        "INSERT INTO app_config (key,value,updated_by) VALUES ('maintenance_mode','false','migration') ON CONFLICT (key) DO NOTHING",
+        # RLS
         "ALTER TABLE weekly_briefs     ENABLE ROW LEVEL SECURITY",
         "ALTER TABLE appointment_preps ENABLE ROW LEVEL SECURITY",
         "ALTER TABLE glp1_onboarding   ENABLE ROW LEVEL SECURITY",
         "ALTER TABLE glp1_medications  ENABLE ROW LEVEL SECURITY",
+        "ALTER TABLE appeal_packets    ENABLE ROW LEVEL SECURITY",
         """DO $$ BEGIN CREATE POLICY own_briefs ON weekly_briefs FOR ALL USING (auth.uid()=user_id);
         EXCEPTION WHEN duplicate_object THEN NULL; END $$""",
         """DO $$ BEGIN CREATE POLICY own_appt ON appointment_preps FOR ALL USING (auth.uid()=user_id);
@@ -880,11 +937,17 @@ def setup_missing_tables():
         EXCEPTION WHEN duplicate_object THEN NULL; END $$""",
         """DO $$ BEGIN CREATE POLICY own_meds ON glp1_medications FOR ALL USING (auth.uid()=user_id);
         EXCEPTION WHEN duplicate_object THEN NULL; END $$""",
+        """DO $$ BEGIN CREATE POLICY own_appeal ON appeal_packets FOR ALL USING (auth.uid()=user_id);
+        EXCEPTION WHEN duplicate_object THEN NULL; END $$""",
+        # Indexes
         "CREATE INDEX IF NOT EXISTS idx_briefs_user    ON weekly_briefs(user_id, generated_at desc)",
         "CREATE INDEX IF NOT EXISTS idx_appt_user      ON appointment_preps(user_id, appointment_date desc)",
         "CREATE INDEX IF NOT EXISTS idx_onboard_user   ON glp1_onboarding(user_id)",
         "CREATE INDEX IF NOT EXISTS idx_meds_user      ON glp1_medications(user_id)",
         "CREATE INDEX IF NOT EXISTS idx_paypal_sub     ON user_profiles(paypal_subscription_id)",
+        "CREATE INDEX IF NOT EXISTS idx_appeal_user    ON appeal_packets(user_id, created_at desc)",
+        "CREATE INDEX IF NOT EXISTS idx_audit_user     ON audit_logs(user_id, created_at desc)",
+        "CREATE INDEX IF NOT EXISTS idx_audit_category ON audit_logs(category, created_at desc)",
     ]
 
     results = {"columns": [], "tables": [], "errors": []}

@@ -261,20 +261,45 @@
                 </div>
             </div>
 
-            <!-- Panel B: Goal weight -->
+            <!-- Panel B: Current + Goal Weight -->
             <div id="panelB" style="display:none">
                 <div class="onboarding-header">
-                    <h2>Your goal weight?</h2>
-                    <p>PHI calculates your Muscle Defense protein target immediately.</p>
+                    <h2>Your weight journey</h2>
+                    <p>PHI calculates your Muscle Defense protein target and tracks progress to your goal.</p>
                 </div>
-                <div class="form-group">
-                    <label class="form-label">Goal weight (lbs) <span class="optional">— or your current weight if unsure</span></label>
-                    <input type="number" id="goalWeight" class="form-input" placeholder="e.g. 165" min="80" max="400"
-                        style="font-size:1.3rem;font-weight:600;text-align:center;">
+
+                <!-- Two inputs side by side -->
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:6px;">
+                    <div class="form-group">
+                        <label class="form-label" for="currentWeight">Current Weight (lbs)</label>
+                        <input type="number" id="currentWeight" class="form-input"
+                            placeholder="e.g. 215" min="80" max="600"
+                            style="font-size:1.2rem;font-weight:600;text-align:center;">
+                        <p style="font-size:11.5px;color:var(--muted);margin-top:4px;">Where you are now</p>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="goalWeight">Goal Weight (lbs)</label>
+                        <input type="number" id="goalWeight" class="form-input"
+                            placeholder="e.g. 165" min="80" max="400"
+                            style="font-size:1.2rem;font-weight:600;text-align:center;">
+                        <p style="font-size:11.5px;color:var(--muted);margin-top:4px;">Where you want to be</p>
+                    </div>
                 </div>
-                <div id="proteinPreview" style="display:none;background:#f0fffe;border:1px solid rgba(0,188,213,.25);border-radius:10px;padding:12px 14px;font-size:13px;color:#0097a7;margin-top:-8px;margin-bottom:8px;">
-                    <strong id="proteinCalc"></strong> — your daily Muscle Defense target
+
+                <!-- Protein target preview -->
+                <div id="proteinPreview" style="display:none;background:#f0fffe;border:1px solid rgba(0,188,213,.25);border-radius:10px;padding:12px 14px;font-size:13px;color:#0097a7;margin-bottom:8px;">
+                    💪 <strong id="proteinCalc"></strong>
                 </div>
+
+                <!-- Lbs to lose preview -->
+                <div id="lbsToLosePreview" style="display:none;background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.25);border-radius:10px;padding:12px 14px;font-size:13px;color:#b45309;margin-bottom:8px;">
+                    📉 <strong id="lbsToLoseCalc"></strong>
+                </div>
+
+                <p style="font-size:11.5px;color:var(--muted);font-style:italic;">
+                    If unsure of your current weight, enter your best estimate — PHI will update as you log.
+                </p>
+
                 <div class="onboarding-nav">
                     <button class="btn-back" onclick="goToPanel('A')">← Back</button>
                     <button class="btn-next" id="nextB" onclick="goToPanel('C')" disabled>Continue →</button>
@@ -408,7 +433,7 @@ let supabaseClient = null;
 let _userId        = null;
 let _accessToken   = null;
 
-const ob = { glp1Status: null, goalWeight: null, concern: null, plan: 'monthly' };
+const ob = { glp1Status: null, goalWeight: null, currentWeight: null, concern: null, plan: 'monthly' };
 
 function initSupabase() {
     supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
@@ -492,18 +517,44 @@ async function saveOnboardingData() {
         }, { onConflict: 'user_id' });
 
         const profilePayload = { user_id: _userId, glp1_status: ob.glp1Status };
-        if (ob.goalWeight) profilePayload.goal_weight_lbs = ob.goalWeight;
+        if (ob.goalWeight)    profilePayload.goal_weight_lbs    = ob.goalWeight;
+        if (ob.currentWeight) profilePayload.current_weight_lbs = ob.currentWeight;
         const fn = localStorage.getItem('phi_pending_firstname');
         if (fn) profilePayload.first_name = fn;
         await supabaseClient.from('user_profiles').upsert(profilePayload, { onConflict: 'user_id' });
+
+        // Also call backend onboarding endpoint for memory injection
+        try {
+            const { data: { session } } = await supabaseClient.auth.getSession();
+            if (session?.access_token) {
+                await fetch(`${API_BASE}/api/onboarding`, {
+                    method:  'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + session.access_token },
+                    body:    JSON.stringify({
+                        glp1_status:        ob.glp1Status,
+                        goal_weight_lbs:    ob.goalWeight    || null,
+                        current_weight_lbs: ob.currentWeight || null,
+                        primary_concern:    ob.concern       || '',
+                        first_name:         fn               || '',
+                    }),
+                });
+            }
+        } catch (e) { console.warn('[ONBOARDING] Backend save (non-fatal):', e); }
 
         const facts = [];
         if (ob.glp1Status && ob.glp1Status !== 'never') {
             facts.push(`User's GLP-1 status: ${ob.glp1Status} (from onboarding)`);
         }
+        if (ob.currentWeight) {
+            facts.push(`User's current weight is ${ob.currentWeight} lbs (self-reported at signup)`);
+        }
         if (ob.goalWeight) {
             const protein = Math.round(ob.goalWeight * 0.545 * 10) / 10;
             facts.push(`User's goal weight is ${ob.goalWeight} lbs — Muscle Defense protein target: ${protein}g/day`);
+        }
+        if (ob.currentWeight && ob.goalWeight) {
+            const lbs = Math.round((ob.currentWeight - ob.goalWeight) * 10) / 10;
+            if (lbs > 0) facts.push(`User needs to lose ${lbs} lbs to reach goal weight of ${ob.goalWeight} lbs`);
         }
         const concernLabels = {
             'food_noise':    'User reports food noise/ghrelin surge as primary concern',
@@ -514,7 +565,6 @@ async function saveOnboardingData() {
         };
         if (ob.concern && concernLabels[ob.concern]) facts.push(concernLabels[ob.concern]);
 
-        // Add last dose date as memory fact
         if (ob.lastDoseDate) {
             const d = new Date(ob.lastDoseDate);
             const daysAgo = Math.floor((new Date() - d) / 86400000);
@@ -585,7 +635,8 @@ async function finishOnboarding() {
             await saveOnboardingData();
             localStorage.setItem('phi_onboarded_' + _userId, 'true');
         }
-        if (ob.goalWeight) localStorage.setItem('phi_goal_wt', String(ob.goalWeight));
+        if (ob.goalWeight)    localStorage.setItem('phi_goal_wt', String(ob.goalWeight));
+        if (ob.currentWeight) localStorage.setItem('phi_current_wt', String(ob.currentWeight));
         if (_userId) { try { localStorage.setItem(`phi_terms_${_userId}`, Date.now().toString()); } catch(e) {} }
 
         if (ob.plan === 'free') {
@@ -600,28 +651,54 @@ async function finishOnboarding() {
     }
 }
 
-// ── Goal weight input handler ──────────────────────────────────────────────
+// ── Panel B: current weight + goal weight inputs ───────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-    const gwInput = document.getElementById('goalWeight');
-    if (gwInput) {
-        gwInput.addEventListener('input', () => {
-            const gw      = parseFloat(gwInput.value);
-            const preview = document.getElementById('proteinPreview');
-            const calc    = document.getElementById('proteinCalc');
-            const nextB   = document.getElementById('nextB');
-            if (gw >= 80 && gw <= 400) {
-                const target  = Math.round(gw * 0.545 * 10) / 10;
-                const perMeal = Math.round(target / 3 * 10) / 10;
-                calc.textContent     = `${target}g protein/day (${perMeal}g per meal)`;
-                preview.style.display = 'block';
-                nextB.disabled        = false;
-                ob.goalWeight         = gw;
-            } else {
-                preview.style.display = 'none';
-                nextB.disabled        = true;
+    function updatePanelBPreview() {
+        const cw    = parseFloat(document.getElementById('currentWeight')?.value);
+        const gw    = parseFloat(document.getElementById('goalWeight')?.value);
+        const nextB    = document.getElementById('nextB');
+        const proteinP = document.getElementById('proteinPreview');
+        const proteinC = document.getElementById('proteinCalc');
+        const lbsP     = document.getElementById('lbsToLosePreview');
+        const lbsC     = document.getElementById('lbsToLoseCalc');
+
+        const hasGoal    = gw >= 80 && gw <= 400;
+        const hasCurrent = cw >= 80 && cw <= 600;
+
+        // Protein target (needs goal weight)
+        if (hasGoal) {
+            const target  = Math.round(gw * 0.545 * 10) / 10;
+            const perMeal = Math.round(target / 3 * 10) / 10;
+            if (proteinC) proteinC.textContent = `Muscle Defense target: ${target}g protein/day (${perMeal}g per meal)`;
+            if (proteinP) proteinP.style.display = 'block';
+            ob.goalWeight = gw;
+        } else {
+            if (proteinP) proteinP.style.display = 'none';
+        }
+
+        // Lbs to lose (needs both)
+        if (hasCurrent && hasGoal) {
+            const lbs = Math.round((cw - gw) * 10) / 10;
+            if (lbsC) {
+                lbsC.textContent = lbs > 0
+                    ? `${lbs} lbs to your goal — PHI will track your progress`
+                    : `You're at or below goal weight — PHI will focus on maintenance`;
             }
-        });
+            if (lbsP) lbsP.style.display = 'block';
+            ob.currentWeight = cw;
+        } else {
+            if (lbsP) lbsP.style.display = 'none';
+            if (hasCurrent) ob.currentWeight = cw;
+        }
+
+        // Enable Continue when goal weight is valid
+        if (nextB) nextB.disabled = !hasGoal;
     }
+
+    const cwEl = document.getElementById('currentWeight');
+    const gwEl = document.getElementById('goalWeight');
+    if (cwEl) cwEl.addEventListener('input', updatePanelBPreview);
+    if (gwEl) gwEl.addEventListener('input', updatePanelBPreview);
 
     // Set max date for last dose = today
     const lastDoseEl = document.getElementById('lastDoseDate');

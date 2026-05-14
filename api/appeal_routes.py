@@ -1,51 +1,22 @@
 """
 api/appeal_routes.py
 ═══════════════════════════════════════════════════════════════════════════
-PA Appeal Generator — Public Endpoint (No Auth Required)
+PA Appeal Generator — Two modes:
 
-This is the viral distribution engine. Users can build PA appeal packets
-without creating an account. The intent: they share the link on Reddit,
-Facebook GLP-1 groups, etc.
+1. PUBLIC endpoint (no auth) — /api/appeal/generate
+   The viral distribution engine. No account required.
+   Rate-limited to 5/hour per IP. No PHI stored.
 
-The endpoint is rate-limited (5 per IP per hour) to prevent abuse.
+2. AUTHENTICATED endpoint — /api/appeal/generate-authenticated
+   For logged-in users, pulls their actual lab data from DB,
+   injects into the prompt, and saves the packet.
+   GATED: Clinical plan only via check_user_feature_access().
 
 Endpoints:
-  GET  /appeal          — serve the appeal HTML page
-  POST /api/appeal/generate — generate a PA packet (no auth, rate-limited)
-
-The generate endpoint accepts:
-  {
-    "med":              str,   # medication name
-    "reason":           str,   # treatment reason
-    "denial_reason":    str,   # what the denial letter said
-    "denial_text":      str,   # exact language from denial letter
-    "insurance_plan":   str,
-    "duration":         str,
-    "bmi":              float | None,
-    "weight":           float | None,
-    "hba1c":            float | None,
-    "glucose":          float | None,
-    "ldl":              float | None,
-    "bp":               str | None,
-    "prior_meds":       list[str],
-    "comorbidities":    list[str],
-    "additional_context": str | None,
-  }
-
-Returns:
-  {
-    "score":         int,       # 0-100 evidence strength
-    "facts":         list,      # clinical facts with type/icon/text
-    "missing":       list,      # what would strengthen the case
-    "next_steps":    list,
-    "packet":        str,       # physician-ready documentation text
-  }
-
-SAFETY:
-  - Never stores any user data (no DB writes)
-  - Never processes lab files (file upload goes to demo/analyze)
-  - All AI calls are generic — no PHI involved
-  - Rate limited per IP: 5 requests per hour
+  GET  /appeal                          — serve the appeal HTML page
+  POST /api/appeal/generate             — public, rate-limited
+  POST /api/appeal/generate-authenticated — Clinical plan only
+═══════════════════════════════════════════════════════════════════════════
 """
 
 import os
@@ -56,14 +27,14 @@ from flask import Blueprint, request, jsonify, send_from_directory
 
 appeal_bp = Blueprint("appeal", __name__)
 
-# Simple in-memory rate limiter for this endpoint
+# Simple in-memory rate limiter for public endpoint
 _rate_map: dict[str, list[float]] = {}
-_RATE_LIMIT = 5  # per hour
+_RATE_LIMIT  = 5
 _RATE_WINDOW = 3600
 
 
 def _rate_check(ip: str) -> bool:
-    now = time.time()
+    now    = time.time()
     cutoff = now - _RATE_WINDOW
     _rate_map[ip] = [t for t in _rate_map.get(ip, []) if t > cutoff]
     if len(_rate_map[ip]) >= _RATE_LIMIT:
@@ -72,62 +43,199 @@ def _rate_check(ip: str) -> bool:
     return True
 
 
+def _deps():
+    from app import supabase
+    from services.auth import get_authenticated_user
+    return supabase, get_authenticated_user
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SERVE APPEAL PAGE
+# ══════════════════════════════════════════════════════════════════════════════
+
 @appeal_bp.route("/appeal")
 def appeal_page():
-    """Serve the appeal HTML page."""
-    import os
     frontend_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")
     return send_from_directory(frontend_dir, "appeal.html")
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# PUBLIC ENDPOINT — no auth, rate-limited
+# ══════════════════════════════════════════════════════════════════════════════
+
 @appeal_bp.route("/api/appeal/generate", methods=["POST"])
 def generate_appeal():
-    """Generate a PA appeal packet. Public endpoint, rate-limited."""
+    """Public PA packet generator. Rate-limited, no PHI stored."""
     ip = request.headers.get("X-Forwarded-For", request.remote_addr or "unknown").split(",")[0].strip()
-    
+
     if not _rate_check(ip):
         return jsonify({"error": "Rate limit reached — please wait an hour before generating another packet."}), 429
 
     body = request.json or {}
-    med = str(body.get("med", "")).strip()[:100]
-    reason = str(body.get("reason", "")).strip()[:200]
-    denial_reason = str(body.get("denial_reason", "")).strip()[:300]
-    denial_text = str(body.get("denial_text", "")).strip()[:500]
-    insurance_plan = str(body.get("insurance_plan", "")).strip()[:100]
-    duration = str(body.get("duration", "")).strip()[:100]
-    additional_context = str(body.get("additional_context", "")).strip()[:600]
-    prior_meds = [str(m)[:100] for m in (body.get("prior_meds") or [])[:8]]
-    comorbidities = [str(c)[:100] for c in (body.get("comorbidities") or [])[:12]]
+    params = _extract_body(body)
 
-    bmi = _safe_float(body.get("bmi"))
-    weight = _safe_float(body.get("weight"))
-    hba1c = _safe_float(body.get("hba1c"))
-    glucose = _safe_float(body.get("glucose"))
-    ldl = _safe_float(body.get("ldl"))
-    bp = str(body.get("bp") or "").strip()[:20]
-
-    if not med and not denial_reason:
+    if not params["med"] and not params["denial_reason"]:
         return jsonify({"error": "Please provide at least the medication name and denial reason."}), 400
 
-    # Try AI generation, fall back to rule-based
+    result = _run_generation(params)
+    return jsonify(result)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# AUTHENTICATED ENDPOINT — Clinical plan only
+# ══════════════════════════════════════════════════════════════════════════════
+
+@appeal_bp.route("/api/appeal/generate-authenticated", methods=["POST"])
+def generate_appeal_authenticated():
+    """
+    Authenticated PA packet generator. Pulls user's lab data from DB.
+    Requires Clinical plan — gated via check_user_feature_access().
+    """
+    supabase, get_user = _deps()
+    user = get_user(supabase)
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    # ── Feature gate: Clinical plan only ──────────────────────────────────────
+    from services.payment_feature_access import check_user_feature_access
+    allowed, reason = check_user_feature_access(supabase, user.id, "pa_architect")
+    if not allowed:
+        return jsonify({
+            "error":            reason,
+            "upgrade_required": True,
+            "required_plan":    "clinical",
+            "upgrade_url":      "/app?upgrade=clinical",
+        }), 403
+    # ─────────────────────────────────────────────────────────────────────────
+
+    body   = request.json or {}
+    params = _extract_body(body)
+
+    # Enrich with user's actual lab markers from DB
+    params = _enrich_with_user_labs(supabase, user.id, params)
+
+    if not params["med"] and not params["denial_reason"]:
+        return jsonify({"error": "Please provide at least the medication name and denial reason."}), 400
+
+    result = _run_generation(params)
+
+    # Save packet to DB for Clinical users
+    _save_packet(supabase, user.id, params, result)
+
+    return jsonify({**result, "saved": True, "user_labs_injected": True})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# HELPERS
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _extract_body(body: dict) -> dict:
+    return {
+        "med":                str(body.get("med",                "") or "")[:100],
+        "reason":             str(body.get("reason",             "") or "")[:200],
+        "denial_reason":      str(body.get("denial_reason",      "") or "")[:300],
+        "denial_text":        str(body.get("denial_text",        "") or "")[:500],
+        "insurance_plan":     str(body.get("insurance_plan",     "") or "")[:100],
+        "duration":           str(body.get("duration",           "") or "")[:100],
+        "additional_context": str(body.get("additional_context", "") or "")[:600],
+        "prior_meds":         [str(m)[:100] for m in (body.get("prior_meds")    or [])[:8]],
+        "comorbidities":      [str(c)[:100] for c in (body.get("comorbidities") or [])[:12]],
+        "bmi":     _safe_float(body.get("bmi")),
+        "weight":  _safe_float(body.get("weight")),
+        "hba1c":   _safe_float(body.get("hba1c")),
+        "glucose": _safe_float(body.get("glucose")),
+        "ldl":     _safe_float(body.get("ldl")),
+        "bp":      str(body.get("bp") or "")[:20],
+    }
+
+
+def _enrich_with_user_labs(supabase, user_id: str, params: dict) -> dict:
+    """Pull the user's most recent lab markers and fill in any missing values."""
     try:
-        result = _generate_with_ai(
-            med, reason, denial_reason, denial_text, insurance_plan, duration,
-            bmi, weight, hba1c, glucose, ldl, bp,
-            prior_meds, comorbidities, additional_context
-        )
+        markers = (supabase.table("health_markers")
+                   .select("marker_name,value,unit,date")
+                   .eq("user_id", user_id)
+                   .order("date", desc=True)
+                   .limit(100)
+                   .execute().data or [])
+
+        # Build a dict: normalized marker name → latest value
+        _MARKER_MAP = {
+            "bmi":            ["bmi"],
+            "weight":         ["weight", "body weight"],
+            "hba1c":          ["hba1c", "hemoglobin a1c", "glycated hemoglobin", "a1c"],
+            "glucose":        ["glucose", "fasting glucose", "blood glucose"],
+            "ldl":            ["ldl", "ldl cholesterol", "ldl-c"],
+        }
+        seen = {}
+        for m in markers:
+            name_lower = (m.get("marker_name") or "").lower()
+            for field, aliases in _MARKER_MAP.items():
+                if field not in seen and any(alias in name_lower for alias in aliases):
+                    val = _safe_float(m.get("value"))
+                    if val:
+                        seen[field] = val
+
+        # Fill in missing values from DB (don't overwrite user-provided ones)
+        for field in ("bmi", "weight", "hba1c", "glucose", "ldl"):
+            if not params.get(field) and field in seen:
+                params[field] = seen[field]
+
+        # Also pull comorbidities from memories if not provided
+        if not params["comorbidities"]:
+            mems = (supabase.table("conversation_memories")
+                    .select("fact")
+                    .eq("user_id", user_id)
+                    .eq("is_active", True)
+                    .limit(20)
+                    .execute().data or [])
+            _COMORBIDITY_KEYWORDS = [
+                "diabetes", "hypertension", "hyperlipidemia", "sleep apnea",
+                "fatty liver", "nafld", "nash", "prediabetes", "osteoarthritis",
+                "cardiovascular", "pcos", "hypothyroid",
+            ]
+            auto_comorbidities = []
+            for m in mems:
+                fact = (m.get("fact") or "").lower()
+                for kw in _COMORBIDITY_KEYWORDS:
+                    if kw in fact and kw not in [c.lower() for c in auto_comorbidities]:
+                        auto_comorbidities.append(kw.title())
+            if auto_comorbidities:
+                params["comorbidities"] = auto_comorbidities[:6]
+
+    except Exception as e:
+        print(f"[APPEAL] Lab enrichment error (non-fatal): {e}")
+
+    return params
+
+
+def _save_packet(supabase, user_id: str, params: dict, result: dict) -> None:
+    """Save the generated PA packet to appeal_packets table."""
+    try:
+        supabase.table("appeal_packets").upsert({
+            "user_id":    user_id,
+            "medication": params["med"],
+            "denial_reason": params["denial_reason"],
+            "score":      result.get("score", 0),
+            "packet":     result.get("packet", "")[:5000],
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }).execute()
+    except Exception as e:
+        print(f"[APPEAL] Packet save error (non-fatal): {e}")
+
+
+def _run_generation(params: dict) -> dict:
+    """Try AI generation, fall back to rule-based."""
+    try:
+        result = _generate_with_ai(**params)
     except Exception as e:
         print(f"[APPEAL] AI generation failed: {e}")
         result = None
 
     if not result:
-        result = _generate_rule_based(
-            med, reason, denial_reason, insurance_plan, duration,
-            bmi, weight, hba1c, glucose, ldl, bp,
-            prior_meds, comorbidities, additional_context
-        )
+        result = _generate_rule_based(**params)
 
-    return jsonify(result)
+    return result
 
 
 def _safe_float(val) -> float | None:
@@ -139,6 +247,10 @@ def _safe_float(val) -> float | None:
     except (ValueError, TypeError):
         return None
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+# AI GENERATION
+# ══════════════════════════════════════════════════════════════════════════════
 
 def _generate_with_ai(
     med, reason, denial_reason, denial_text, insurance_plan, duration,
@@ -152,12 +264,12 @@ def _generate_with_ai(
     from openai import OpenAI
 
     lab_data = []
-    if bmi:       lab_data.append(f"BMI: {bmi}")
-    if weight:    lab_data.append(f"Weight: {weight} lbs")
-    if hba1c:     lab_data.append(f"HbA1c: {hba1c}%")
-    if glucose:   lab_data.append(f"Fasting glucose: {glucose} mg/dL")
-    if ldl:       lab_data.append(f"LDL: {ldl} mg/dL")
-    if bp:        lab_data.append(f"Blood pressure: {bp} mmHg")
+    if bmi:     lab_data.append(f"BMI: {bmi}")
+    if weight:  lab_data.append(f"Weight: {weight} lbs")
+    if hba1c:   lab_data.append(f"HbA1c: {hba1c}%")
+    if glucose: lab_data.append(f"Fasting glucose: {glucose} mg/dL")
+    if ldl:     lab_data.append(f"LDL: {ldl} mg/dL")
+    if bp:      lab_data.append(f"Blood pressure: {bp} mmHg")
 
     prompt = f"""You are building a prior authorization appeal support packet for a patient.
 
@@ -204,20 +316,24 @@ Respond ONLY with valid JSON. No markdown, no extra text."""
     return None
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# RULE-BASED FALLBACK
+# ══════════════════════════════════════════════════════════════════════════════
+
 def _generate_rule_based(
     med, reason, denial_reason, insurance_plan, duration,
     bmi, weight, hba1c, glucose, ldl, bp,
     prior_meds, comorbidities, additional_context,
+    **kwargs,  # absorb extra kwargs from dict expansion
 ) -> dict:
     """Rule-based PA packet generation — works without LLM."""
-    facts = []
+    facts   = []
     missing = []
-    score = 0
+    score   = 0
 
-    # BMI
     if bmi:
         if bmi >= 30:
-            facts.append({"type": "strong", "icon": "✓", "text": f"BMI {bmi} — meets obesity criterion (BMI ≥30) independently. No additional comorbidity required."})
+            facts.append({"type": "strong", "icon": "✓", "text": f"BMI {bmi} — meets obesity criterion (BMI ≥30) independently."})
             score += 25
         elif bmi >= 27 and comorbidities:
             facts.append({"type": "strong", "icon": "✓", "text": f"BMI {bmi} + {len(comorbidities)} documented comorbidities — meets BMI ≥27 + comorbidity criterion."})
@@ -226,61 +342,70 @@ def _generate_rule_based(
             facts.append({"type": "warning", "icon": "⚠", "text": f"BMI {bmi} — document at least one comorbidity to meet the BMI ≥27 + comorbidity criterion."})
             score += 10
     else:
-        missing.append("BMI not provided — required for most payer PA criteria. Have your provider document BMI from a clinical visit.")
+        missing.append("BMI not provided — required for most payer PA criteria.")
 
-    # HbA1c
     if hba1c:
         if hba1c >= 6.5:
-            facts.append({"type": "strong", "icon": "✓", "text": f"HbA1c {hba1c}% — diabetes range. GLP-1 agonists are guideline-recommended first-line therapy for T2DM with cardiovascular risk."})
+            facts.append({"type": "strong", "icon": "✓", "text": f"HbA1c {hba1c}% — diabetes range. GLP-1 agonists are guideline-recommended first-line therapy."})
             score += 25
         elif hba1c >= 5.7:
-            facts.append({"type": "strong", "icon": "✓", "text": f"HbA1c {hba1c}% — pre-diabetes. Documented metabolic dysregulation meets the comorbidity criterion and establishes medical necessity."})
+            facts.append({"type": "strong", "icon": "✓", "text": f"HbA1c {hba1c}% — pre-diabetes. Documented metabolic dysregulation meets the comorbidity criterion."})
             score += 20
     else:
-        missing.append("HbA1c not provided. This is the most common PA criterion — request a test if not recent.")
+        missing.append("HbA1c not provided. This is the most common PA criterion.")
 
-    # Comorbidities
     if len(comorbidities) >= 2:
-        facts.append({"type": "strong", "icon": "✓", "text": f"{len(comorbidities)} comorbidities documented: {', '.join(comorbidities[:3])}{'...' if len(comorbidities) > 3 else ''}. Multiple comorbidities strengthen medical necessity significantly."})
+        facts.append({"type": "strong", "icon": "✓", "text": f"{len(comorbidities)} comorbidities documented: {', '.join(comorbidities[:3])}{'...' if len(comorbidities) > 3 else ''}."})
         score += 18
     elif len(comorbidities) == 1:
-        facts.append({"type": "strong", "icon": "✓", "text": f"Comorbidity documented: {comorbidities[0]}. Satisfies the BMI ≥27 + comorbidity criterion."})
+        facts.append({"type": "strong", "icon": "✓", "text": f"Comorbidity documented: {comorbidities[0]}."})
         score += 12
 
-    # Prior meds (step therapy)
     if prior_meds:
-        facts.append({"type": "strong", "icon": "✓", "text": f"Step therapy documented: {', '.join(prior_meds)}. Prior treatment attempts satisfy step therapy requirements for most commercial plans."})
+        facts.append({"type": "strong", "icon": "✓", "text": f"Step therapy documented: {', '.join(prior_meds)}. Prior treatment attempts satisfy step therapy requirements."})
         score += 15
     else:
-        missing.append("No prior medication history documented. If you've tried Metformin, Qsymia, diet programs, or any other weight or diabetes medications, document these with your provider.")
+        missing.append("No prior medication history documented. Document any prior weight or diabetes medications.")
 
-    # LDL
     if ldl and ldl > 100:
-        facts.append({"type": "warning", "icon": "↑", "text": f"LDL {ldl} mg/dL — elevated cardiovascular risk factor. Supports medical necessity for metabolic intervention."})
+        facts.append({"type": "warning", "icon": "↑", "text": f"LDL {ldl} mg/dL — elevated cardiovascular risk factor."})
         score += 5
 
-    # BP
     if bp:
-        nums = [int(n) for n in __import__('re').findall(r'\d+', bp)]
+        import re
+        nums = [int(n) for n in re.findall(r'\d+', bp)]
         if nums and nums[0] >= 130:
-            facts.append({"type": "strong", "icon": "✓", "text": f"Blood pressure {bp} — hypertension is a documented comorbidity for GLP-1 coverage under most payer criteria."})
+            facts.append({"type": "strong", "icon": "✓", "text": f"Blood pressure {bp} — hypertension is a documented comorbidity for GLP-1 coverage."})
             score += 8
 
-    # Additional context
     if additional_context:
         facts.append({"type": "strong", "icon": "📝", "text": f"Clinical context: \"{additional_context[:200]}{'...' if len(additional_context) > 200 else ''}\""})
         score += 8
 
     score = min(score, 100)
 
-    # Build denial-specific note
     denial_note = ""
-    if "step therapy" in (denial_reason or "").lower() or "prior treatment" in (denial_reason or "").lower():
-        denial_note = f"\nSPECIFIC TO YOUR DENIAL ({denial_reason}):\nStep therapy documentation enclosed. Prior treatment attempts with {', '.join(prior_meds) if prior_meds else '[document treatments]'} are documented. Clinical guidelines support {med or 'GLP-1 therapy'} when prior treatments are inadequate.\n"
-    elif "medically necessary" in (denial_reason or "").lower():
-        denial_note = f"\nSPECIFIC TO YOUR DENIAL ({denial_reason}):\nMedical necessity is established by: documented BMI {'of '+str(bmi) if bmi else '(see attached)'}, {'HbA1c '+str(hba1c)+'%' if hba1c else 'documented metabolic markers'}, and {len(comorbidities)} comorbid condition(s). Clinical guidelines from ADA (2024) and AACE (2024) support this medication for this indication.\n"
-    elif "formulary" in (denial_reason or "").lower():
-        denial_note = f"\nSPECIFIC TO YOUR DENIAL ({denial_reason}):\nRequesting exception to formulary exclusion based on medical necessity. No therapeutically equivalent formulary alternative exists for this patient's specific clinical profile.\n"
+    denial_lower = (denial_reason or "").lower()
+    if "step therapy" in denial_lower or "prior treatment" in denial_lower:
+        denial_note = (
+            f"\nSPECIFIC TO YOUR DENIAL ({denial_reason}):\n"
+            f"Step therapy documentation enclosed. Prior treatment attempts with "
+            f"{', '.join(prior_meds) if prior_meds else '[document treatments]'} are documented.\n"
+        )
+    elif "medically necessary" in denial_lower:
+        denial_note = (
+            f"\nSPECIFIC TO YOUR DENIAL ({denial_reason}):\n"
+            f"Medical necessity is established by: documented BMI {'of '+str(bmi) if bmi else '(see attached)'}, "
+            f"{'HbA1c '+str(hba1c)+'%' if hba1c else 'documented metabolic markers'}, "
+            f"and {len(comorbidities)} comorbid condition(s). "
+            f"Clinical guidelines from ADA (2024) and AACE (2024) support this medication.\n"
+        )
+    elif "formulary" in denial_lower:
+        denial_note = (
+            f"\nSPECIFIC TO YOUR DENIAL ({denial_reason}):\n"
+            "Requesting exception to formulary exclusion based on medical necessity. "
+            "No therapeutically equivalent formulary alternative exists for this patient's clinical profile.\n"
+        )
 
     lab_lines = []
     if bmi:     lab_lines.append(f"• BMI: {bmi} kg/m²")
@@ -289,6 +414,19 @@ def _generate_rule_based(
     if glucose: lab_lines.append(f"• Fasting glucose: {glucose} mg/dL")
     if ldl:     lab_lines.append(f"• LDL cholesterol: {ldl} mg/dL")
     if bp:      lab_lines.append(f"• Blood pressure: {bp} mmHg")
+
+    lf = "\n"
+    criteria_lines = ""
+    if bmi and bmi >= 30:
+        criteria_lines += "✓ BMI ≥30 (obesity criterion met independently)\n"
+    if bmi and 27 <= bmi < 30 and comorbidities:
+        criteria_lines += "✓ BMI ≥27 + documented comorbidity (alternative criterion met)\n"
+    if hba1c and hba1c >= 5.7:
+        criteria_lines += "✓ HbA1c in pre-diabetes/diabetes range — metabolic dysregulation documented\n"
+    if len(comorbidities) >= 2:
+        criteria_lines += "✓ Multiple comorbidities documented — medical necessity established\n"
+    if prior_meds:
+        criteria_lines += "✓ Step therapy requirements fulfilled — prior treatments documented and inadequate\n"
 
     packet = f"""PRIOR AUTHORIZATION APPEAL — CLINICAL DOCUMENTATION PACKET
 Generated: {datetime.now(timezone.utc).strftime('%B %d, %Y')}
@@ -300,16 +438,16 @@ INSURANCE PLAN TYPE: {insurance_plan or 'commercial insurance'}
 DENIAL BASIS: {denial_reason or 'per denial letter'}
 {denial_note}
 CLINICAL DATA IN SUPPORT OF MEDICAL NECESSITY:
-{chr(10).join(lab_lines) if lab_lines else '[Provider: attach most recent lab values]'}
+{lf.join(lab_lines) if lab_lines else '[Provider: attach most recent lab values]'}
 
 COMORBIDITIES DOCUMENTED:
-{chr(10).join('• ' + c for c in comorbidities) if comorbidities else '[Provider: document all relevant comorbidities]'}
+{lf.join('• ' + c for c in comorbidities) if comorbidities else '[Provider: document all relevant comorbidities]'}
 
 PRIOR TREATMENT HISTORY (Step Therapy):
-{chr(10).join('• ' + m for m in prior_meds) if prior_meds else '[Provider: document all prior weight/diabetes medications and outcomes]'}
+{lf.join('• ' + m for m in prior_meds) if prior_meds else '[Provider: document all prior weight/diabetes medications and outcomes]'}
 
 PA CRITERIA SATISFIED (per 2024 payer guidelines):
-{'✓ BMI ≥30 (obesity criterion met independently)' + chr(10) if bmi and bmi >= 30 else ''}{'✓ BMI ≥27 + documented comorbidity (alternative criterion met)' + chr(10) if bmi and 27 <= bmi < 30 and comorbidities else ''}{'✓ HbA1c in pre-diabetes/diabetes range — metabolic dysregulation documented' + chr(10) if hba1c and hba1c >= 5.7 else ''}{'✓ Multiple comorbidities documented — medical necessity established' + chr(10) if len(comorbidities) >= 2 else ''}{'✓ Step therapy requirements fulfilled — prior treatments documented and inadequate' + chr(10) if prior_meds else ''}
+{criteria_lines if criteria_lines else '[Provider: confirm applicable criteria]'}
 SUPPORTING CLINICAL RATIONALE:
 {additional_context if additional_context else '[Provider: add specific clinical rationale — prior outcomes, symptom burden, cardiovascular risk trajectory]'}
 
@@ -320,7 +458,7 @@ PROVIDER CERTIFICATION:
 I certify that this medication is medically necessary for this patient. Denial of this medication poses a measurable risk to metabolic stability and long-term cardiovascular outcomes. The evidence above establishes medical necessity per applicable clinical guidelines.
 
 Prescribing Provider: ____________________________   NPI: ________________
-Practice / Facility: ____________________________   Date: ________________  
+Practice / Facility: ____________________________   Date: ________________
 Signature: ____________________________   Specialty: ________________
 
 ─────────────────────────────────────────────────────────────
@@ -338,9 +476,9 @@ and does not communicate directly with insurance companies.
     ]
 
     return {
-        "score": score,
-        "facts": facts,
-        "missing": missing,
+        "score":      score,
+        "facts":      facts,
+        "missing":    missing,
         "next_steps": next_steps,
-        "packet": packet,
+        "packet":     packet,
     }
