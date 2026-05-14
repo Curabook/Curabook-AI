@@ -30,7 +30,7 @@ body{font-family:var(--body);background:var(--bg);color:var(--text);min-height:1
   background:linear-gradient(90deg,#f59e0b,#d97706);
   color:#0a0b0e;padding:10px 20px;text-align:center;
   font-size:.82rem;font-weight:700;letter-spacing:.03em;
-  display:flex;align-items:center;justify-content:center;gap:12px;
+  align-items:center;justify-content:center;gap:12px;
 }
 #freeAllBanner.visible{display:flex;}
 .freeall-blink{width:8px;height:8px;border-radius:50%;background:#0a0b0e;opacity:.8;
@@ -332,7 +332,7 @@ tr:hover td{background:rgba(0,0,0,.02);}
       <div><h2>Dashboard Overview</h2><p>Real-time metrics from Supabase.</p></div>
       <button class="refresh-btn" onclick="loadAll()">↻ Refresh</button>
     </div>
-    <div id="freeAllOverviewBanner" style="display:none;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:14px 18px;margin-bottom:18px;display:none;">
+    <div id="freeAllOverviewBanner" style="display:none;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:14px 18px;margin-bottom:18px;">
       <strong style="color:var(--amber);">⚠ FREE-ALL MODE ACTIVE</strong>
       <span style="font-size:.8rem;color:var(--text2);margin-left:10px;">All features are unlocked for all users. Go to Global Config to disable.</span>
     </div>

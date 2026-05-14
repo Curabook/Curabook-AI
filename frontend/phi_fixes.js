@@ -574,6 +574,40 @@ window.openAppointmentPrepModal = openAppointmentPrepModal;
 // 7. PA ARCHITECT — auto-fetches stored markers + manual additions
 // ══════════════════════════════════════════════════════════════════════════════
 async function openPAArchitectModal() {
+  // ── PLAN GATE: Clinical only ──────────────────────────────────────────────
+  const currentPlan = window._userPlan || window.__startupCache?.plan || 'free';
+  const isClinical  = currentPlan === 'clinical';
+  // Also check free-all override
+  let freeAllActive = false;
+  try {
+    const cfg = window.__startupCache?.free_all_access || false;
+    freeAllActive = cfg === true || cfg === 'true';
+  } catch(e) {}
+
+  if (!isClinical && !freeAllActive) {
+    // Show upgrade prompt instead of PA modal
+    if (typeof window.showUpgradeModal === 'function') {
+      window.showUpgradeModal('pa_architect');
+    } else {
+      const modal = document.createElement('div');
+      modal.id = 'paGateModal';
+      modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;animation:fadeIn .2s ease';
+      modal.innerHTML = `
+        <div style="background:var(--surface,#111318);border:2px solid rgba(139,92,246,.4);border-radius:20px;padding:28px 24px;max-width:400px;width:100%;box-shadow:0 32px 80px rgba(0,0,0,.6);text-align:center;position:relative;">
+          <button onclick="document.getElementById('paGateModal').remove()" style="position:absolute;top:12px;right:12px;width:28px;height:28px;border-radius:7px;border:none;background:var(--surface-3,#23272f);color:var(--text-2);cursor:pointer;">✕</button>
+          <div style="font-size:2rem;margin-bottom:14px;">🛡</div>
+          <h3 style="font-size:1.05rem;font-weight:700;color:var(--text,#f0f2f5);margin-bottom:8px;">Shield Clinical Required</h3>
+          <p style="font-size:.82rem;color:var(--text-3,#566070);line-height:1.6;margin-bottom:20px;">PA Architect generates a physician-ready prior authorization packet from your actual lab data. This feature is exclusive to <strong style="color:#a78bfa;">Shield Clinical ($99/mo)</strong>.</p>
+          <button onclick="if(typeof initiatePayPalCheckout==='function')initiatePayPalCheckout('clinical');document.getElementById('paGateModal').remove();" style="width:100%;padding:12px;background:linear-gradient(135deg,#8b5cf6,#6d28d9);color:white;border:none;border-radius:10px;font-size:.9rem;font-weight:700;cursor:pointer;font-family:inherit;">Upgrade to Clinical →</button>
+          <p style="font-size:.72rem;color:var(--text-3,#566070);margin-top:12px;">The public PA tool is available free at <a href="/appeal" style="color:var(--signal,#00d4c8);">curabook.com/appeal</a> — no login required.</p>
+        </div>`;
+      document.body.appendChild(modal);
+      modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+    }
+    return;
+  }
+  // ── End plan gate ─────────────────────────────────────────────────────────
+
   const existing = document.getElementById('paModal');
   if (existing) existing.remove();
   const modal = document.createElement('div');
@@ -827,7 +861,7 @@ function injectQuickActionsIntoDropdown() {
       <i class="fa-solid fa-calendar-check"></i><span>Appointment Prep</span>
     </button>
     <button class="qa-dd-item" onclick="openPAArchitectModal();closeUserMenu()">
-      <i class="fa-solid fa-shield-halved"></i><span>Insurance PA Architect</span>
+      <i class="fa-solid fa-shield-halved"></i><span>Insurance PA Architect</span>${(()=>{const p=window._userPlan||window.__startupCache?.plan||'free';return p==='clinical'?'':' <span style="font-size:.6rem;background:rgba(139,92,246,.2);color:#a78bfa;border:1px solid rgba(139,92,246,.3);padding:1px 6px;border-radius:20px;letter-spacing:.04em;font-weight:700;">CLINICAL</span>'})()}
     </button>
     <div class="qa-dd-divider"></div>
   `;

@@ -128,7 +128,7 @@ def _fetch_memories_now(supabase, user_id: str) -> list[str]:
     # 2. ALWAYS fetch profile data — prepend to memories
     try:
         res = (supabase.table("user_profiles")
-               .select("first_name,goal_weight_lbs,glp1_status")
+               .select("first_name,goal_weight_lbs,current_weight_lbs,glp1_status")
                .eq("user_id", user_id)
                .limit(1)
                .execute())
@@ -137,6 +137,9 @@ def _fetch_memories_now(supabase, user_id: str) -> list[str]:
             profile_facts = []
             if row.get("first_name"):
                 profile_facts.append(f"User's name is {row['first_name']}")
+            if row.get("current_weight_lbs"):
+                cw = float(row["current_weight_lbs"])
+                profile_facts.append(f"User's current weight is {cw} lbs (self-reported at signup)")
             if row.get("goal_weight_lbs"):
                 gw = float(row["goal_weight_lbs"])
                 protein_day = round(gw * 0.545, 1)
@@ -146,6 +149,14 @@ def _fetch_memories_now(supabase, user_id: str) -> list[str]:
                     f"(Muscle Defense: {protein_day}g protein/day, "
                     f"{protein_meal}g per meal minimum for leucine threshold)"
                 )
+                # Compute lbs-to-goal if we have current weight
+                if row.get("current_weight_lbs"):
+                    cw = float(row["current_weight_lbs"])
+                    diff = round(cw - gw, 1)
+                    if diff > 0:
+                        profile_facts.append(
+                            f"User needs to lose {diff} lbs to reach their goal weight of {gw} lbs"
+                        )
             if row.get("glp1_status"):
                 profile_facts.append(f"User's GLP-1 medication status: {row['glp1_status']}")
             # Prepend so they appear first
@@ -1054,6 +1065,42 @@ def _get_user_plan(supabase, user_id: str) -> tuple[str, int]:
 
 def _is_pro_user(plan: str) -> bool:
     return plan.lower() in _PRO_PLANS
+
+
+def _is_feature_allowed(supabase, user_id: str, feature: str) -> bool:
+    """
+    Unified feature gate. Checks free-all override first, then plan.
+    Used for gating Clinical-only features (PA, insurance advocacy).
+    """
+    # 1. Check global free-all toggle first
+    try:
+        cfg = supabase.table("app_config").select("value") \
+            .eq("key", "free_all_enabled").limit(1).execute()
+        if cfg.data and cfg.data[0].get("value") == "true":
+            return True
+    except Exception:
+        pass
+
+    # 2. Check plan
+    GATES = {
+        "pa_architect":       {"clinical"},
+        "insurance_advocacy": {"clinical"},
+        "unlimited_reports":  _PRO_PLANS,
+        "health_memory":      _PRO_PLANS,
+        "doctor_prep":        _PRO_PLANS,
+        "weekly_briefs":      _PRO_PLANS,
+    }
+    gates = GATES.get(feature, set())
+    if not gates:
+        return True  # Unknown feature — allow
+
+    try:
+        res = supabase.table("user_profiles").select("plan") \
+            .eq("user_id", user_id).limit(1).execute()
+        plan = (res.data[0].get("plan") or "free").lower() if res.data else "free"
+        return plan in gates
+    except Exception:
+        return False
 
 
 def _decrement_reports(supabase, user_id: str, current_remaining: int) -> bool:

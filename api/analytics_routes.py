@@ -295,6 +295,13 @@ def overview():
 
         docs_res = supabase.table("health_markers").select("source_document").execute()
         total_docs = len(set(r["source_document"] for r in (docs_res.data or []) if r.get("source_document")))
+        # Also count from medical_documents table if it exists
+        try:
+            med_docs_res = supabase.table("medical_documents").select("user_id", count="exact").execute()
+            if med_docs_res.count and med_docs_res.count > total_docs:
+                total_docs = med_docs_res.count
+        except Exception:
+            pass
 
         plans_res = supabase.table("user_profiles").select("plan,is_admin_granted").execute()
         plan_counts = defaultdict(int)
