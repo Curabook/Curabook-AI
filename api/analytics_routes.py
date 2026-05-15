@@ -159,11 +159,13 @@ def _fetch_auth_users_batch(supabase, user_ids: list) -> dict:
     Fetch email + provider for a batch of user_ids via supabase admin.
     Returns dict: user_id -> {email, provider, created_at}
     Falls back gracefully if admin API not available.
+    FIX: distinguish between 401/403 (wrong key — log clearly, stop retrying)
+    vs other errors (transient — still log, still return {}).
     """
     result = {}
+    if not user_ids:
+        return result
     try:
-        # Supabase admin list_users returns all users
-        # We filter to the ones we need
         page = supabase.auth.admin.list_users()
         users_list = page if isinstance(page, list) else getattr(page, 'users', [])
         uid_set = set(user_ids)
@@ -179,12 +181,16 @@ def _fetch_auth_users_batch(supabase, user_ids: list) -> dict:
                         provider = p
                         break
                 result[uid] = {
-                    'email':      email,
+                    'email':        email,
                     'email_masked': _mask_email(email),
-                    'provider':   provider,
+                    'provider':     provider,
                 }
     except Exception as e:
-        print(f"[ANALYTICS] auth users batch fetch error (non-fatal): {e}")
+        err_str = str(e).lower()
+        if any(x in err_str for x in ("401", "403", "unauthorized", "forbidden", "not allowed")):
+            print(f"[ANALYTICS] auth admin API access denied — SUPABASE_SERVICE_KEY may be missing or wrong: {e}")
+        else:
+            print(f"[ANALYTICS] auth users batch fetch error (non-fatal): {e}")
     return result
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -201,8 +207,12 @@ def get_global_config():
         # Also fetch raw rows for display
         rows_res = supabase.table("app_config").select("key,value,updated_at,updated_by").execute()
         return jsonify({
-            "config": config,
-            "raw_rows": rows_res.data or [],
+            # FIX: return at top level so JS can read data.free_all_enabled
+            # regardless of whether it came from /overview or /global-config
+            "free_all_enabled": config.get("free_all_enabled", False),
+            "maintenance_mode": config.get("maintenance_mode", False),
+            "config":    config,
+            "raw_rows":  rows_res.data or [],
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -293,9 +303,10 @@ def overview():
         msgs_7d_res = supabase.table("chats").select("id", count="exact").eq("role", "user").gte("created_at", d7).execute()
         msgs_7d = msgs_7d_res.count or 0
 
+        # FIX: use a dedicated variable for each query — no reuse of med_docs_res
         docs_res = supabase.table("health_markers").select("source_document").execute()
         total_docs = len(set(r["source_document"] for r in (docs_res.data or []) if r.get("source_document")))
-        # Also count from medical_documents table if it exists
+        # Also count from medical_documents table if it has more records
         try:
             med_docs_res = supabase.table("medical_documents").select("user_id", count="exact").execute()
             if med_docs_res.count and med_docs_res.count > total_docs:

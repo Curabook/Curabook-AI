@@ -5,6 +5,11 @@ FIX-HEALTH-MEMORY: /api/memory/facts now calls get_memories_fresh() which
   always hits the DB directly (no cache). This is the endpoint script.js
   calls at startup to pre-load memories into _cachedMemories[].
 
+FIX-LAB-REPORTS: /api/lab-reports now returns real uploaded report data
+  from health_markers (distinct source_document values) AND medical_documents
+  table. The previous /doctor-prep/history stub always returned [] — this
+  caused the "Lab Reports" view in app.html to always show empty.
+
 FIX B-04 (preserved): _compute_status imported and called correctly.
 FIX LOGS-1 (preserved): /api/behavioral-logs GET+POST stub for cockpit.
 
@@ -19,6 +24,8 @@ Endpoints:
   DELETE /api/memory/facts/<id> — soft-delete a memory fact
   GET  /api/behavioral-logs     — fetch behavioral logs
   POST /api/behavioral-logs     — store behavioral log entry
+  GET  /api/lab-reports         — FIXED: returns real uploaded report list
+  GET  /api/health/reports      — count of distinct reports uploaded
 """
 
 from flask import Blueprint, request, jsonify
@@ -201,6 +208,241 @@ Plain language. End: "⚕️ For informational purposes only. Always follow your
     return jsonify({"brief": brief})
 
 
+# ── FIX-LAB-REPORTS: Real lab reports endpoint ───────────────────────────────
+
+@health_bp.route("/api/lab-reports", methods=["GET"])
+def lab_reports():
+    """
+    FIX: This endpoint replaces the old /doctor-prep/history stub that always
+    returned []. script.js calls this for the Lab Reports view in app.html.
+
+    Returns a list of unique uploaded documents with their marker counts,
+    abnormal marker counts, upload date, and the markers associated with each.
+
+    Data sources:
+      1. health_markers (distinct source_document values) — always available
+      2. medical_documents table — richer metadata if it exists
+    """
+    from app import supabase
+    from services.auth       import get_authenticated_user
+    from services.compliance import audit_log
+
+    user = get_authenticated_user(supabase)
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    try:
+        # Fetch all markers with source_document
+        markers_res = (
+            supabase.table("health_markers")
+            .select("marker_name,value,unit,status,date,source_document,created_at")
+            .eq("user_id", user.id)
+            .order("created_at", desc=True)
+            .limit(1000)
+            .execute()
+        )
+        all_markers = markers_res.data or []
+
+        # Group markers by source_document
+        from collections import defaultdict
+        docs: dict = defaultdict(lambda: {
+            "markers": [],
+            "uploaded_at": None,
+            "date": None,
+        })
+
+        for m in all_markers:
+            src = m.get("source_document", "").strip()
+            if not src:
+                src = "Uploaded Report"
+            docs[src]["markers"].append(m)
+            # Track earliest created_at and latest date
+            cat = m.get("created_at", "")
+            dt  = m.get("date", "")
+            if cat and (docs[src]["uploaded_at"] is None or cat > docs[src]["uploaded_at"]):
+                docs[src]["uploaded_at"] = cat
+            if dt and (docs[src]["date"] is None or dt > docs[src]["date"]):
+                docs[src]["date"] = dt
+
+        # Try to enrich with medical_documents table (may not exist)
+        doc_meta = {}
+        try:
+            doc_res = (
+                supabase.table("medical_documents")
+                .select("filename,job_id,doctor_prep_text,created_at")
+                .eq("user_id", user.id)
+                .order("created_at", desc=True)
+                .limit(100)
+                .execute()
+            )
+            for d in (doc_res.data or []):
+                fname = d.get("filename", "")
+                if fname:
+                    doc_meta[fname] = d
+        except Exception:
+            pass  # Table may not exist — non-fatal
+
+        # Build result list
+        result = []
+        for filename, data in docs.items():
+            markers   = data["markers"]
+            abnormal  = [m for m in markers if m.get("status") in ("HIGH", "LOW")]
+            normal    = [m for m in markers if m.get("status") == "NORMAL"]
+            uploaded  = data["uploaded_at"] or ""
+            rep_date  = data["date"] or ""
+            meta      = doc_meta.get(filename, {})
+
+            # Build tags
+            tags = []
+            if abnormal:
+                tags.append({"label": f"{len(abnormal)} flagged", "type": "hi"})
+            if normal:
+                tags.append({"label": f"{len(normal)} normal", "type": "ok"})
+            tags.append({"label": "Lab", "type": "info"})
+
+            result.append({
+                "filename":          filename,
+                "report_date":       rep_date[:10] if rep_date else "",
+                "uploaded_at":       uploaded[:10] if uploaded else "",
+                "marker_count":      len(markers),
+                "abnormal_count":    len(abnormal),
+                "normal_count":      len(normal),
+                "tags":              tags,
+                "has_doctor_prep":   bool(meta.get("doctor_prep_text")),
+                "job_id":            meta.get("job_id", ""),
+                "abnormal_markers":  [
+                    {"name": m["marker_name"], "value": m["value"],
+                     "unit": m.get("unit",""), "status": m.get("status","")}
+                    for m in abnormal[:5]
+                ],
+            })
+
+        # Sort by upload date descending
+        result.sort(key=lambda r: r["uploaded_at"] or r["report_date"] or "", reverse=True)
+
+        audit_log(supabase, user.id, "LAB_REPORTS_ACCESSED",
+                  f"{len(result)} reports", "PHI")
+        return jsonify({"reports": result, "total": len(result)})
+
+    except Exception as e:
+        print(f"[LAB-REPORTS] Error: {e}")
+        return jsonify({"reports": [], "total": 0, "error": str(e)})
+
+
+# ── Doctor prep history (kept for backward compat, now returns real data) ────
+
+@health_bp.route("/api/doctor-prep/history", methods=["GET"])
+def doctor_prep_history():
+    """
+    FIX: Was a stub returning []. Now returns real doctor prep briefs
+    from medical_documents table, falling back to lab report list.
+    """
+    from app import supabase
+    from services.auth import get_authenticated_user
+
+    user = get_authenticated_user(supabase)
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    preps = []
+    try:
+        res = (
+            supabase.table("medical_documents")
+            .select("filename,job_id,doctor_prep_text,doctor_prep_generated_at,created_at")
+            .eq("user_id", user.id)
+            .order("created_at", desc=True)
+            .limit(20)
+            .execute()
+        )
+        preps = [
+            {
+                "filename":    r.get("filename", "Lab Report"),
+                "job_id":      r.get("job_id", ""),
+                "has_brief":   bool(r.get("doctor_prep_text")),
+                "generated_at": r.get("doctor_prep_generated_at") or r.get("created_at", ""),
+            }
+            for r in (res.data or [])
+        ]
+    except Exception:
+        pass  # Table may not exist
+
+    return jsonify({"preps": preps})
+
+
+@health_bp.route("/doctor-prep/<job_id>", methods=["GET"])
+def get_doctor_prep(job_id: str):
+    from app import supabase
+    from services.auth import get_authenticated_user
+
+    user = get_authenticated_user(supabase)
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    try:
+        res = (
+            supabase.table("medical_documents")
+            .select("doctor_prep_text,doctor_prep_generated_at,filename")
+            .eq("user_id", user.id)
+            .eq("job_id", job_id)
+            .limit(1)
+            .execute()
+        )
+        if res.data and res.data[0].get("doctor_prep_text"):
+            row = res.data[0]
+            return jsonify({
+                "ready":      True,
+                "brief":      row["doctor_prep_text"],
+                "generated":  row.get("doctor_prep_generated_at", ""),
+                "filename":   row.get("filename", ""),
+            })
+    except Exception:
+        pass
+
+    return jsonify({"ready": False})
+
+
+# ── Report count endpoint ─────────────────────────────────────────────────────
+
+@health_bp.route("/api/health/reports", methods=["GET"])
+def get_report_count():
+    """
+    Returns count of distinct lab reports uploaded.
+    Counted by distinct source_document values in health_markers.
+    """
+    from app import supabase
+    from services.auth import get_authenticated_user
+
+    user = get_authenticated_user(supabase)
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    try:
+        res = supabase.table("health_markers") \
+            .select("source_document") \
+            .eq("user_id", user.id) \
+            .execute()
+        docs = set(
+            r["source_document"] for r in (res.data or [])
+            if r.get("source_document")
+        )
+
+        # Also count medical_documents
+        try:
+            med_res = supabase.table("medical_documents") \
+                .select("filename") \
+                .eq("user_id", user.id) \
+                .execute()
+            for r in (med_res.data or []):
+                if r.get("filename"):
+                    docs.add(r["filename"])
+        except Exception:
+            pass
+
+        return jsonify({"count": len(docs), "documents": list(docs)})
+    except Exception as e:
+        return jsonify({"count": 0, "error": str(e)})
+
+
 # ── Structured memory context (JSON) ─────────────────────────────────────────
 
 @health_bp.route("/api/memory/context", methods=["GET"])
@@ -343,7 +585,6 @@ def memory_facts():
     """
     from app import supabase
     from services.auth        import get_authenticated_user
-    # FIX-HEALTH-MEMORY: use fresh fetch, not cached get_conversation_memories
     from health_memory.memory import get_memories_fresh
 
     user = get_authenticated_user(supabase)

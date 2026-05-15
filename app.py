@@ -1,6 +1,7 @@
 """
 app.py — Safety-hardened & Route-Synchronized
-CHANGES FROM PREVIOUS VERSION:
+FIXES IN THIS VERSION:
+  - Maintenance mode enforcement (was stored but never checked)
   - PayPal payment blueprint registered (replaces Razorpay)
   - payment_routes now always loaded (was optional try/except)
   - retention_bp registered (was missing, caused /api/appointment-prep 404)
@@ -86,9 +87,32 @@ def get_client_key(route: str) -> str:
 _stats = {"requests_total": 0, "rate_limited": 0, "errors_500": 0, "start_time": time.time()}
 _stats_lock = Lock()
 
+# Maintenance mode cache — checked at most once per 30s to avoid DB hammering
+_maintenance_cache = {"enabled": False, "last_check": 0.0}
+_MAINTENANCE_CACHE_TTL = 30  # seconds
+
+
 def track(key: str, inc: int = 1):
     with _stats_lock:
         _stats[key] = _stats.get(key, 0) + inc
+
+
+def _is_maintenance_mode() -> bool:
+    """Check maintenance mode with 30s cache to avoid hitting DB on every request."""
+    global _maintenance_cache
+    now = time.time()
+    if now - _maintenance_cache["last_check"] < _MAINTENANCE_CACHE_TTL:
+        return _maintenance_cache["enabled"]
+    try:
+        cfg = supabase.table("app_config").select("value").eq("key", "maintenance_mode").limit(1).execute()
+        enabled = bool(cfg.data and cfg.data[0].get("value") == "true")
+        _maintenance_cache = {"enabled": enabled, "last_check": now}
+        return enabled
+    except Exception:
+        # DB error — don't enforce maintenance (fail open)
+        _maintenance_cache["last_check"] = now  # Still update timestamp to avoid hammering
+        return False
+
 
 # ── Flask app ─────────────────────────────────────────────────────────────────
 app = Flask(__name__)
@@ -129,6 +153,45 @@ def add_security_headers(response):
     response.headers["X-Frame-Options"]        = "DENY"
     response.headers["X-XSS-Protection"]       = "1; mode=block"
     return response
+
+@app.before_request
+def check_maintenance_mode():
+    """
+    FIX: Maintenance mode was stored in DB but NEVER enforced on requests.
+    Now checked on every non-exempt request with a 30s cache.
+    """
+    # Skip CORS preflight
+    if request.method == "OPTIONS":
+        return None
+
+    path = request.path
+
+    # Exempt paths: health check, stats, founder endpoints
+    _EXEMPT_PATHS = {"/health", "/api/stats", "/"}
+    _EXEMPT_PREFIXES = ("/api/founder/",)
+
+    if path in _EXEMPT_PATHS:
+        return None
+    if any(path.startswith(p) for p in _EXEMPT_PREFIXES):
+        return None
+
+    if not _is_maintenance_mode():
+        return None
+
+    # Maintenance is ON — allow founders through
+    founder_secret = os.getenv("FOUNDER_SECRET", "")
+    if founder_secret and request.headers.get("X-Founder-Secret") == founder_secret:
+        return None
+
+    # Block everyone else with a clear maintenance message
+    resp = jsonify({
+        "error":       "maintenance",
+        "message":     "Curabook PHI is currently undergoing maintenance. Please check back shortly.",
+        "maintenance": True,
+    })
+    resp.status_code = 503
+    return _apply_cors(resp)
+
 
 @app.before_request
 def check_rate_limit():
@@ -177,8 +240,6 @@ from api.payment_routes import payment_bp
 app.register_blueprint(payment_bp)
 print("✅ PayPal payment routes registered")
 
-# Demo mode removed — demo_routes.py deleted, DEMO_MODE env var no longer used
-
 # ── Error handlers ────────────────────────────────────────────────────────────
 @app.errorhandler(429)
 def too_many_requests(e):
@@ -216,11 +277,12 @@ def debug_routes():
 @app.route("/health", methods=["GET"])
 def health_check():
     return jsonify({
-        "status":  "healthy",
-        "openai":  bool(_openai_key),
-        "groq":    bool(_groq_key),
-        "paypal":  bool(_paypal_client_id),
-        "workers": _worker_count,
+        "status":      "healthy",
+        "openai":      bool(_openai_key),
+        "groq":        bool(_groq_key),
+        "paypal":      bool(_paypal_client_id),
+        "workers":     _worker_count,
+        "maintenance": _maintenance_cache.get("enabled", False),
     })
 
 @app.route("/api/stats", methods=["GET"])
@@ -229,7 +291,8 @@ def api_stats():
     return jsonify({
         **_stats,
         "uptime_seconds": int(time.time() - _stats["start_time"]),
-        "queue": queue_stats(),
+        "queue":          queue_stats(),
+        "maintenance":    _maintenance_cache.get("enabled", False),
     })
 
 @app.route("/")

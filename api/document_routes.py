@@ -480,8 +480,99 @@ def _generate_and_store_doctor_prep_safe(supabase, anonymized, filename, user_id
 
 @document_bp.route("/doctor-prep/<job_id>", methods=["GET"])
 def get_doctor_prep(job_id: str):
-    return jsonify({"ready": False})
+    """
+    FIX: was a stub returning {ready: False} always.
+    Now reads real doctor_prep_text from medical_documents table.
+    """
+    from app import supabase
+    from services.auth import get_authenticated_user
+    user = get_authenticated_user(supabase)
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+    try:
+        res = supabase.table("medical_documents") \
+            .select("job_id,filename,doctor_prep_text,doctor_prep_generated_at,created_at") \
+            .eq("user_id", user.id) \
+            .eq("job_id", job_id) \
+            .limit(1).execute()
+        if not res.data:
+            return jsonify({"ready": False})
+        row = res.data[0]
+        prep_text = row.get("doctor_prep_text")
+        if not prep_text:
+            return jsonify({"ready": False})
+        return jsonify({
+            "ready":        True,
+            "job_id":       job_id,
+            "filename":     row.get("filename", ""),
+            "prep_text":    prep_text,
+            "generated_at": row.get("doctor_prep_generated_at") or row.get("created_at"),
+        })
+    except Exception as e:
+        print(f"[DOC] get_doctor_prep error: {e}")
+        return jsonify({"ready": False})
 
 @document_bp.route("/doctor-prep/history", methods=["GET"])
 def doctor_prep_history():
-    return jsonify({"preps": []})
+    """
+    FIX: was a stub returning {preps: []} always.
+    Now reads real records from medical_documents + health_markers.
+    """
+    from app import supabase
+    from services.auth import get_authenticated_user
+    user = get_authenticated_user(supabase)
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+    try:
+        # Get lab reports from health_markers (grouped by source_document)
+        markers_res = supabase.table("health_markers") \
+            .select("source_document,status,date,created_at") \
+            .eq("user_id", user.id) \
+            .not_.is_("source_document", "null") \
+            .order("created_at", desc=True) \
+            .execute()
+
+        # Group by source_document
+        from collections import defaultdict
+        doc_markers = defaultdict(list)
+        for m in (markers_res.data or []):
+            src = m.get("source_document", "")
+            if src:
+                doc_markers[src].append(m)
+
+        # Enrich with doctor_prep_text from medical_documents where available
+        prep_map = {}
+        try:
+            prep_res = supabase.table("medical_documents") \
+                .select("filename,job_id,doctor_prep_text,doctor_prep_generated_at,created_at") \
+                .eq("user_id", user.id) \
+                .execute()
+            for row in (prep_res.data or []):
+                fname = row.get("filename", "")
+                if fname:
+                    prep_map[fname] = row
+        except Exception:
+            pass
+
+        preps = []
+        for filename, markers in doc_markers.items():
+            abnormal = sum(1 for m in markers if m.get("status") in ("HIGH", "LOW"))
+            prep_info = prep_map.get(filename, {})
+            report_date = markers[0].get("date") or markers[0].get("created_at", "")[:10]
+            preps.append({
+                "filename":      filename,
+                "job_id":        prep_info.get("job_id", ""),
+                "marker_count":  len(markers),
+                "abnormal_count": abnormal,
+                "report_date":   report_date,
+                "generated_at":  prep_info.get("doctor_prep_generated_at") or prep_info.get("created_at", ""),
+                "has_prep":      bool(prep_info.get("doctor_prep_text")),
+            })
+
+        # Sort newest first
+        preps.sort(key=lambda x: x.get("report_date", ""), reverse=True)
+        return jsonify({"preps": preps})
+
+    except Exception as e:
+        print(f"[DOC] doctor_prep_history error: {e}")
+        return jsonify({"preps": [], "error": str(e)})
