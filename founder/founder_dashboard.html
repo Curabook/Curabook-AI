@@ -652,12 +652,17 @@ async function quickGrant() {
   statusEl.style.color = 'var(--text3)'; statusEl.textContent = 'Granting…';
 
   try {
-    await apiPost(`/api/founder/user/${handle}/set-plan`, { plan, days, reason: 'Quick grant from founder dashboard' });
+    const res = await apiPost(`/api/founder/user/${handle}/set-plan`, { plan, days, reason: 'Quick grant from founder dashboard' });
+    if (res && res.error) {
+      statusEl.style.color = 'var(--red)';
+      statusEl.textContent = 'DB error: ' + res.error;
+      return;
+    }
     statusEl.style.color = 'var(--green)';
-    statusEl.textContent = `✓ ${handle} granted ${plan} for ${days} days`;
-    // Refresh user list if visible
+    statusEl.textContent = `✓ ${handle} — ${plan} for ${days} days`;
+    _loaded.delete('users');
     if (document.getElementById('page-users').classList.contains('active')) {
-      setTimeout(() => { _loaded.delete('users'); loadPage('users'); }, 800);
+      setTimeout(() => { loadPage('users'); }, 800);
     }
   } catch (e) { statusEl.style.color = 'var(--red)'; statusEl.textContent = 'Error: ' + e.message; }
 }
@@ -669,8 +674,6 @@ async function loadConfig() {
 
   try {
     const data = await api('/api/founder/global-config');
-    // FIX: merge into existing _globalConfig instead of replacing it,
-    // so loadConfig() and loadOverview() don't stomp each other.
     const cfg = data.config || {};
     _globalConfig = {
       ..._globalConfig,
@@ -749,8 +752,6 @@ async function loadOverview() {
   ]);
 
   const { users, engagement, retention, revenue, global_config } = overview;
-  // FIX: read free_all_enabled from top-level (backend returns both shapes);
-  // prevents _globalConfig being wiped to {} when global_config key is missing.
   _globalConfig = {
     ...(global_config || {}),
     free_all_enabled: overview.free_all_enabled ?? global_config?.free_all_enabled ?? false,
@@ -1035,15 +1036,22 @@ async function openDetail(handle) {
 
 async function grantPlanFromDetail(handle) {
   const plan = document.getElementById('detailPlanSelect').value;
+  const days = parseInt(document.getElementById('detailGrantDays')?.value) || 31;
   const statusEl = document.getElementById('detailPlanStatus');
   statusEl.style.color = 'var(--text3)';
   statusEl.textContent = 'Granting…';
   try {
-    await apiPost(`/api/founder/user/${handle}/set-plan`, { plan, days: 31, reason: 'Founder dashboard grant' });
+    const res = await apiPost(`/api/founder/user/${handle}/set-plan`, { plan, days, reason: 'Founder dashboard grant' });
+    if (res && res.error) {
+      statusEl.style.color = 'var(--red)';
+      statusEl.textContent = 'DB error: ' + res.error;
+      return;
+    }
     statusEl.style.color = 'var(--green)';
-    statusEl.textContent = `✓ Plan set to ${plan}`;
-    // Refresh user list
+    statusEl.textContent = `✓ ${plan} granted for ${days} days`;
     _loaded.delete('users');
+    // Reload detail panel so plan badge updates immediately
+    setTimeout(() => loadUserDetail(handle), 800);
   } catch(e) { statusEl.style.color='var(--red)'; statusEl.textContent='Error: '+e.message; }
 }
 
@@ -1052,9 +1060,15 @@ async function revokePlanFromDetail(handle) {
   const statusEl = document.getElementById('detailPlanStatus');
   statusEl.style.color = 'var(--text3)'; statusEl.textContent = 'Revoking…';
   try {
-    await apiPost(`/api/founder/user/${handle}/set-plan`, { plan:'free', days:0, reason:'Founder revoke' });
+    const res = await apiPost(`/api/founder/user/${handle}/set-plan`, { plan:'free', days:0, reason:'Founder revoke' });
+    if (res && res.error) {
+      statusEl.style.color = 'var(--red)';
+      statusEl.textContent = 'DB error: ' + res.error;
+      return;
+    }
     statusEl.style.color='var(--green)'; statusEl.textContent='✓ Moved to Free';
     _loaded.delete('users');
+    setTimeout(() => loadUserDetail(handle), 800);
   } catch(e) { statusEl.style.color='var(--red)'; statusEl.textContent='Error: '+e.message; }
 }
 

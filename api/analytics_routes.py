@@ -554,48 +554,61 @@ def set_user_plan(handle: str):
 
     now = datetime.now(timezone.utc)
 
-    if plan == "free":
-        # Revoke: write only columns that definitely exist; skip paypal_subscription_id
-        # to avoid upsert failure on profiles that never had a PayPal sub
+    def _write_profile(data: dict) -> bool:
+        """
+        Write plan data to user_profiles.
+        Uses UPDATE first — works regardless of UNIQUE constraint setup and RLS on insert.
+        Falls back to INSERT only if UPDATE returned 0 rows (brand-new user with no profile).
+        Returns True only when we can confirm a row was actually written.
+        Supabase upsert is avoided because it silently no-ops when the unique
+        constraint is missing or RLS blocks the insert half — giving a false 200.
+        """
         try:
-            base_revoke = {
-                "user_id":               target_uid,
-                "plan":                  "free",
-                "reports_remaining":     1,
-                "subscription_end_date": None,
-                "cancel_at_period_end":  False,
-                "is_admin_granted":      False,
-                "updated_at":            now.isoformat(),
-            }
-            # Try with paypal_subscription_id first; fall back without it
-            try:
-                supabase.table("user_profiles").upsert(
-                    {**base_revoke, "paypal_subscription_id": None},
-                    on_conflict="user_id"
-                ).execute()
-            except Exception:
-                supabase.table("user_profiles").upsert(
-                    base_revoke, on_conflict="user_id"
-                ).execute()
+            res = supabase.table("user_profiles").update(data).eq("user_id", target_uid).execute()
+            if res.data:  # UPDATE hit at least one row
+                return True
         except Exception as e:
-            return jsonify({"error": str(e)}), 500
+            print(f"[SET-PLAN] UPDATE failed: {e}")
+        # Fallback INSERT for users who have no row yet
+        try:
+            supabase.table("user_profiles").insert({**data, "user_id": target_uid}).execute()
+            return True
+        except Exception as e:
+            print(f"[SET-PLAN] INSERT also failed: {e}")
+            return False
+
+    if plan == "free":
+        ok = _write_profile({
+            "plan":                  "free",
+            "reports_remaining":     1,
+            "subscription_end_date": None,
+            "cancel_at_period_end":  False,
+            "is_admin_granted":      False,
+            "updated_at":            now.isoformat(),
+        })
+        # Clear PayPal sub ID separately (non-fatal if column missing)
+        try:
+            supabase.table("user_profiles").update(
+                {"paypal_subscription_id": None}
+            ).eq("user_id", target_uid).execute()
+        except Exception:
+            pass
+        if not ok:
+            return jsonify({"error": "Failed to revoke plan — check DB permissions or RLS"}), 500
     else:
-        # Grant: use interval_days from PLAN_PRICING if available, else fall back to `days`
         PLAN_INTERVALS = {"monthly": 31, "annual": 365, "clinical": 31, "pro": 31, "trial": days}
         interval = PLAN_INTERVALS.get(plan, days)
         end_date = (now + timedelta(days=interval)).isoformat()
-        try:
-            supabase.table("user_profiles").upsert({
-                "user_id":               target_uid,
-                "plan":                  plan,
-                "reports_remaining":     9999,
-                "subscription_end_date": end_date,
-                "cancel_at_period_end":  False,
-                "is_admin_granted":      True,
-                "updated_at":            now.isoformat(),
-            }, on_conflict="user_id").execute()
-        except Exception as e:
-            return jsonify({"error": str(e)}), 500
+        ok = _write_profile({
+            "plan":                  plan,
+            "reports_remaining":     9999,
+            "subscription_end_date": end_date,
+            "cancel_at_period_end":  False,
+            "is_admin_granted":      True,
+            "updated_at":            now.isoformat(),
+        })
+        if not ok:
+            return jsonify({"error": f"Failed to grant {plan} — check DB permissions or RLS"}), 500
 
     # Audit log
     try:
