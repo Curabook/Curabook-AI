@@ -669,7 +669,15 @@ async function loadConfig() {
 
   try {
     const data = await api('/api/founder/global-config');
-    _globalConfig = data.config || {};
+    // FIX: merge into existing _globalConfig instead of replacing it,
+    // so loadConfig() and loadOverview() don't stomp each other.
+    const cfg = data.config || {};
+    _globalConfig = {
+      ..._globalConfig,
+      ...cfg,
+      free_all_enabled: data.free_all_enabled ?? cfg.free_all_enabled ?? _globalConfig.free_all_enabled ?? false,
+      maintenance_mode: data.maintenance_mode ?? cfg.maintenance_mode ?? _globalConfig.maintenance_mode ?? false,
+    };
     applyFreeAllState(_globalConfig.free_all_enabled);
     applyMaintenanceState(_globalConfig.maintenance_mode);
 
@@ -741,7 +749,13 @@ async function loadOverview() {
   ]);
 
   const { users, engagement, retention, revenue, global_config } = overview;
-  _globalConfig = global_config || {};
+  // FIX: read free_all_enabled from top-level (backend returns both shapes);
+  // prevents _globalConfig being wiped to {} when global_config key is missing.
+  _globalConfig = {
+    ...(global_config || {}),
+    free_all_enabled: overview.free_all_enabled ?? global_config?.free_all_enabled ?? false,
+    maintenance_mode: overview.maintenance_mode ?? global_config?.maintenance_mode ?? false,
+  };
   applyFreeAllState(_globalConfig.free_all_enabled);
   applyMaintenanceState(_globalConfig.maintenance_mode);
 

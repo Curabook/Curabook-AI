@@ -759,14 +759,20 @@ async function loadReportsView() {
   list.innerHTML = `<div class="hv-empty"><i class="fa-solid fa-spinner fa-spin"></i> Loading reports…</div>`;
   const h = await headers(); if (!h) return;
   try {
-    const { ok, data } = await apiJson("/api/doctor-prep/history", { headers: h });
-    if (!ok || !data?.preps?.length) {
+    // FIX: /api/doctor-prep/history was a stub that always returned [].
+    // /api/lab-reports reads real data from health_markers + medical_documents.
+    const { ok, data } = await apiJson("/api/lab-reports", { headers: h });
+    if (!ok || !data?.reports?.length) {
       list.innerHTML = `<div class="hv-empty"><i class="fa-solid fa-file-medical"></i>No lab reports yet.<br><button class="hv-cta-btn" onclick="handleUploadClick()"><i class="fa-solid fa-upload"></i> Upload First Report</button></div>`;
       return;
     }
-    list.innerHTML = data.preps.map(p => {
-      const date = p.generated_at ? new Date(p.generated_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "";
-      return `<div class="report-card"><div class="report-icon"><i class="fa-solid fa-file-medical-alt"></i></div><div class="report-meta"><div class="report-name">${esc(p.filename || "Lab Report")}</div><div class="report-date">${date}</div><div class="report-tags"><span class="report-tag info">Lab</span></div></div><button class="report-ask-btn" onclick="askAboutReport('${esc(p.filename || "report")}')">Ask Curabook →</button></div>`;
+    list.innerHTML = data.reports.map(r => {
+      const date = r.report_date ? new Date(r.report_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "";
+      const abnormalBadge = r.abnormal_count > 0
+        ? `<span class="report-tag danger">${r.abnormal_count} abnormal</span>`
+        : `<span class="report-tag ok">All normal</span>`;
+      const extraTags = (r.tags || []).slice(0, 3).map(t => `<span class="report-tag info">${esc(t)}</span>`).join("");
+      return `<div class="report-card"><div class="report-icon"><i class="fa-solid fa-file-medical-alt"></i></div><div class="report-meta"><div class="report-name">${esc(r.filename || "Lab Report")}</div><div class="report-date">${date}</div><div class="report-tags">${abnormalBadge}${extraTags}</div></div><button class="report-ask-btn" onclick="askAboutReport('${esc(r.filename || "report")}')">Ask Curabook →</button></div>`;
     }).join("");
   } catch { list.innerHTML = `<div class="hv-empty">Could not load reports.</div>`; }
 }
