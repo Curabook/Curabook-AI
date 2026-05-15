@@ -330,6 +330,20 @@ def check_feature_access():
 # PAYMENT STATUS
 # ══════════════════════════════════════════════════════════════════════════════
 
+def _is_free_all_enabled(supabase) -> bool:
+    """Returns True if founder has toggled free-all on in app_config."""
+    try:
+        res = (supabase.table("app_config")
+               .select("value")
+               .eq("key", "free_all_enabled")
+               .limit(1)
+               .execute())
+        return bool(res.data and res.data[0].get("value") == "true")
+    except Exception as e:
+        logger.warning(f"[PAY] free_all check error (defaulting False): {e}")
+        return False
+
+
 @payment_bp.route("/api/payment/status", methods=["GET"])
 def payment_status():
     supabase, get_user, _ = _deps()
@@ -338,6 +352,21 @@ def payment_status():
         return jsonify({"error": "Unauthorized"}), 401
 
     try:
+        # FIX: check free-all FIRST
+        if _is_free_all_enabled(supabase):
+            return jsonify({
+                "plan":                 "pro",
+                "plan_display":         "PHI Free (All Access)",
+                "is_pro":               True,
+                "is_free_all":          True,
+                "reports_remaining":    9999,
+                "subscription_end":     None,
+                "cancel_at_period_end": False,
+                "has_billing":          False,
+                "had_trial":            False,
+                "paypal_configured":    bool(PAYPAL_CLIENT_ID),
+            })
+
         res = (supabase.table("user_profiles")
                .select("plan,reports_remaining,paypal_subscription_id,"
                        "subscription_end_date,cancel_at_period_end,had_trial")

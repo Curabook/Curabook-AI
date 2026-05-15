@@ -62,6 +62,7 @@ let _redirecting   = false;
 // Payment state
 let _userPlan         = "free";
 let _reportsRemaining = 1;
+let _freeAll          = false;  // set by /api/payment/status when founder enables free-all
 
 // FIX-2: Health memory cache — refreshed after every message
 let _cachedMemories = [];
@@ -311,8 +312,9 @@ async function loadPaymentStatus() {
   try {
     const { ok, data } = await apiJson("/api/payment/status", { headers: h });
     if (ok && data) {
-      _userPlan = data.plan || "free";
-      _reportsRemaining = data.reports_remaining ?? 1;
+      _freeAll          = data.is_free_all === true;
+      _userPlan         = _freeAll ? "pro" : (data.plan || "free");
+      _reportsRemaining = _freeAll ? 9999 : (data.reports_remaining ?? 1);
       _renderPlanBadge();
     }
   } catch (e) {
@@ -331,7 +333,7 @@ function _renderPlanBadge() {
 
 // ── Upload click gate ──────────────────────────────────────────────────────
 function handleUploadClick() {
-  const isPro = _userPlan === "pro" || _userPlan === "annual" || _userPlan === "monthly" || _userPlan === "clinical";
+  const isPro = _freeAll || _userPlan === "pro" || _userPlan === "annual" || _userPlan === "monthly" || _userPlan === "clinical";
   if (!isPro && _reportsRemaining <= 0) {
     showUpgradeModal("upload");
     return;
@@ -1008,7 +1010,7 @@ async function sendMessage(text) {
     }
 
     if (_uploads.length) {
-      const isPro = _userPlan === "pro" || _userPlan === "annual" || _userPlan === "monthly" || _userPlan === "clinical";
+      const isPro = _freeAll || _userPlan === "pro" || _userPlan === "annual" || _userPlan === "monthly" || _userPlan === "clinical";
       if (!isPro && _reportsRemaining <= 0) {
         _isSending = false;
         setSendingState(false);
@@ -1022,7 +1024,7 @@ async function sendMessage(text) {
         _uploads = []; clearFilePreview();
         _docCtx = { text: result.document_text, hasDoc: true, filename: result.filename || "" };
         toast(`${result.filename || "File"} analyzed ✓`);
-        if (!isPro) {
+        if (!isPro && !_freeAll) {
           _reportsRemaining = Math.max(0, _reportsRemaining - 1);
           _renderPlanBadge();
         }
