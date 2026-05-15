@@ -555,23 +555,35 @@ def set_user_plan(handle: str):
     now = datetime.now(timezone.utc)
 
     if plan == "free":
-        # Revoke — downgrade to free
+        # Revoke: write only columns that definitely exist; skip paypal_subscription_id
+        # to avoid upsert failure on profiles that never had a PayPal sub
         try:
-            supabase.table("user_profiles").upsert({
+            base_revoke = {
                 "user_id":               target_uid,
                 "plan":                  "free",
                 "reports_remaining":     1,
-                "paypal_subscription_id": None,
                 "subscription_end_date": None,
                 "cancel_at_period_end":  False,
                 "is_admin_granted":      False,
                 "updated_at":            now.isoformat(),
-            }, on_conflict="user_id").execute()
+            }
+            # Try with paypal_subscription_id first; fall back without it
+            try:
+                supabase.table("user_profiles").upsert(
+                    {**base_revoke, "paypal_subscription_id": None},
+                    on_conflict="user_id"
+                ).execute()
+            except Exception:
+                supabase.table("user_profiles").upsert(
+                    base_revoke, on_conflict="user_id"
+                ).execute()
         except Exception as e:
             return jsonify({"error": str(e)}), 500
     else:
-        # Grant plan
-        end_date = (now + timedelta(days=days)).isoformat()
+        # Grant: use interval_days from PLAN_PRICING if available, else fall back to `days`
+        PLAN_INTERVALS = {"monthly": 31, "annual": 365, "clinical": 31, "pro": 31, "trial": days}
+        interval = PLAN_INTERVALS.get(plan, days)
+        end_date = (now + timedelta(days=interval)).isoformat()
         try:
             supabase.table("user_profiles").upsert({
                 "user_id":               target_uid,
@@ -666,7 +678,7 @@ def user_deep_dive(handle: str):
         activity = [{"date": d, "messages": c} for d, c in sorted(msg_by_day.items())]
 
         # Markers
-        markers = supabase.table("health_markers").select("marker_name,value,unit,status,date").eq("user_id", target_uid).order("date", desc=True).limit(50).execute().data or []
+        markers = supabase.table("health_markers").select("marker_name,value,unit,status,date,source_document").eq("user_id", target_uid).order("date", desc=True).limit(50).execute().data or []
         abnormal_markers = [m for m in markers if m.get("status") in ("HIGH", "LOW")]
 
         # Shield data

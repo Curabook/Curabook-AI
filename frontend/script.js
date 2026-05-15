@@ -63,6 +63,41 @@ let _redirecting   = false;
 let _userPlan         = "free";
 let _reportsRemaining = 1;
 let _freeAll          = false;  // set by /api/payment/status when founder enables free-all
+let _planPollInterval = null;   // polls /api/payment/status every 60s to catch founder revoke
+
+function _showMaintenanceScreen(msg) {
+  if (document.getElementById('_maintenanceOverlay')) return;
+  const overlay = document.createElement('div');
+  overlay.id = '_maintenanceOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#0c0d0f;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:32px;text-align:center;';
+  overlay.innerHTML = `
+    <div style="font-size:2.4rem">&#128737;</div>
+    <div style="font-size:1.3rem;font-weight:700;color:#f5f5f3">Curabook PHI is under maintenance</div>
+    <div style="font-size:.95rem;color:#888;max-width:380px;line-height:1.6">${msg || 'We are making improvements. Please check back shortly.'}</div>
+    <button onclick="location.reload()" style="margin-top:8px;padding:10px 28px;background:#00e5a0;color:#0c0d0f;border:none;border-radius:8px;font-size:.9rem;font-weight:700;cursor:pointer;">Try again</button>`;
+  document.body.appendChild(overlay);
+}
+
+function _startPlanPoll() {
+  // Poll every 60s so a founder revoke propagates without requiring user to refresh
+  if (_planPollInterval) return;
+  _planPollInterval = setInterval(async () => {
+    try {
+      const h = await headers();
+      if (!h) return;
+      const { ok, data } = await apiJson('/api/payment/status', { headers: h });
+      if (!ok || !data) return;
+      const wasPro = _freeAll || ['pro','monthly','annual','clinical','trial'].includes(_userPlan);
+      _freeAll = data.is_free_all === true;
+      _userPlan = _freeAll ? 'pro' : (data.plan || 'free');
+      _reportsRemaining = _freeAll ? 9999 : (data.reports_remaining ?? 1);
+      const nowPro = _freeAll || ['pro','monthly','annual','clinical','trial'].includes(_userPlan);
+      _renderPlanBadge();
+      if (wasPro && !nowPro) { showUpgradeModal('revoked'); }
+    } catch(e) { /* non-fatal */ }
+  }, 60000);
+}
+
 
 // FIX-2: Health memory cache — refreshed after every message
 let _cachedMemories = [];
@@ -265,6 +300,8 @@ async function onSignIn(user, session) {
     loadPaymentStatus(),
     _refreshMemoryCache(),
   ]);
+
+  _startPlanPoll(); // poll every 60s so founder revoke takes effect without page refresh
 
   await autoLoadShield();
 
@@ -588,6 +625,10 @@ async function apiFetch(path, opts = {}) {
 
   try {
     const res = await doFetch();
+    if (res.status === 503) {
+      const d = await res.clone().json().catch(() => ({}));
+      if (d.maintenance) { _showMaintenanceScreen(d.message); return res; }
+    }
     if (res.status >= 500) {
       console.warn(`[API] ${path} returned ${res.status}, retrying in 2s…`);
       await new Promise(r => setTimeout(r, 2000));
