@@ -660,9 +660,14 @@ def _build_smart_messages(
         messages.append({
             "role": "system",
             "content": (
-                "A medical document was just uploaded. "
-                "Prioritize values from this document. "
-                "Note any cliff signals (glucose >15% from baseline, HbA1c rise ≥0.25%)."
+                "A medical document was just uploaded and markers have been extracted.\n"
+                "YOUR RESPONSE MUST:\n"
+                "1. Open with a 1-2 sentence plain-English summary of what this report shows overall\n"
+                "2. List ALL extracted markers — abnormal ones (HIGH/LOW) first, with their value, unit, and reference range\n"
+                "3. Explain in plain English what each ABNORMAL value means for the user's GLP-1 journey\n"
+                "4. Flag any cliff signals: glucose >15% above personal baseline, HbA1c rise ≥0.25%\n"
+                "5. End with 2-3 specific, actionable next steps based on these exact results\n"
+                "Use EXACT values from the [DOCUMENT UPLOADED] block — never guess, never round."
             )
         })
 
