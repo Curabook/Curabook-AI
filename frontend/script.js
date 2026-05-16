@@ -62,36 +62,6 @@ let _redirecting   = false;
 // Payment state
 let _userPlan         = "free";
 let _reportsRemaining = 1;
-let _freeAll          = false;
-let _planPollInterval = null;
-
-function _showMaintenanceScreen(msg) {
-  if (document.getElementById("_maintenanceOverlay")) return;
-  const o = document.createElement("div");
-  o.id = "_maintenanceOverlay";
-  o.style.cssText = "position:fixed;inset:0;z-index:99999;background:#0c0d0f;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:32px;text-align:center;";
-  o.innerHTML = `<div style="font-size:2.4rem">&#128737;</div><div style="font-size:1.3rem;font-weight:700;color:#f5f5f3">Under maintenance</div><div style="font-size:.9rem;color:#888;max-width:360px;line-height:1.6">${msg || "We are making improvements. Check back shortly."}</div><button onclick="location.reload()" style="margin-top:8px;padding:10px 28px;background:#00e5a0;color:#0c0d0f;border:none;border-radius:8px;font-size:.9rem;font-weight:700;cursor:pointer;">Try again</button>`;
-  document.body.appendChild(o);
-}
-
-function _startPlanPoll() {
-  if (_planPollInterval) return;
-  _planPollInterval = setInterval(async () => {
-    try {
-      const h = await headers(); if (!h) return;
-      const { ok, data } = await apiJson("/api/payment/status", { headers: h });
-      if (!ok || !data) return;
-      const wasPro = _freeAll || ["pro","monthly","annual","clinical","trial"].includes(_userPlan);
-      _freeAll = data.is_free_all === true;
-      _userPlan = _freeAll ? "pro" : (data.plan || "free");
-      _reportsRemaining = _freeAll ? 9999 : (data.reports_remaining ?? 1);
-      const nowPro = _freeAll || ["pro","monthly","annual","clinical","trial"].includes(_userPlan);
-      _renderPlanBadge();
-      if (wasPro && !nowPro) { showUpgradeModal("revoked"); }
-    } catch(e) {}
-  }, 60000);
-}
-
 
 // FIX-2: Health memory cache — refreshed after every message
 let _cachedMemories = [];
@@ -295,8 +265,7 @@ async function onSignIn(user, session) {
     _refreshMemoryCache(),
   ]);
 
-  _startPlanPoll();
-
+  _startPlanPoll(); // start polling for plan changes (revoke detection)
   await autoLoadShield();
 
   const gw = localStorage.getItem("phi_goal_wt");
@@ -343,9 +312,13 @@ async function loadPaymentStatus() {
   try {
     const { ok, data } = await apiJson("/api/payment/status", { headers: h });
     if (ok && data) {
-      _freeAll          = data.is_free_all === true;
-      _userPlan         = _freeAll ? "pro" : (data.plan || "free");
-      _reportsRemaining = _freeAll ? 9999 : (data.reports_remaining ?? 1);
+      _userPlan         = data.plan || "free";
+      _reportsRemaining = data.reports_remaining ?? 1;
+      // Apply free-all override (founder toggle)
+      if (data.is_free_all) {
+        _userPlan         = "pro";
+        _reportsRemaining = 9999;
+      }
       _renderPlanBadge();
     }
   } catch (e) {
@@ -362,9 +335,46 @@ function _renderPlanBadge() {
   }
 }
 
+// ── Plan poll — detects founder revoke within 60s without page refresh ──────
+let _planPollTimer = null;
+
+function _startPlanPoll() {
+  if (_planPollTimer) return; // already running
+  _planPollTimer = setInterval(async () => {
+    const h = await headers();
+    if (!h) return;
+    try {
+      const { ok, data } = await apiJson("/api/payment/status", { headers: h });
+      if (!ok || !data) return;
+
+      const prevPlan = _userPlan;
+      const newPlan  = data.plan || "free";
+      const wasPro   = prevPlan === "pro" || prevPlan === "annual" || prevPlan === "monthly" || prevPlan === "clinical";
+      const nowPro   = newPlan  === "pro" || newPlan  === "annual" || newPlan  === "monthly" || newPlan  === "clinical";
+
+      // Update globals
+      _userPlan         = newPlan;
+      _reportsRemaining = data.reports_remaining ?? 0;
+      if (data.is_free_all) {
+        _userPlan         = "pro";
+        _reportsRemaining = 9999;
+      }
+      _renderPlanBadge();
+
+      // Plan was revoked — show upgrade modal immediately
+      if (wasPro && !nowPro && !data.is_free_all) {
+        console.log("[PLAN POLL] Plan revoked by founder — showing upgrade modal");
+        showUpgradeModal("revoked");
+      }
+    } catch (e) {
+      console.warn("[PLAN POLL] error:", e);
+    }
+  }, 60000); // poll every 60 seconds
+}
+
 // ── Upload click gate ──────────────────────────────────────────────────────
 function handleUploadClick() {
-  const isPro = _freeAll || _userPlan === "pro" || _userPlan === "annual" || _userPlan === "monthly" || _userPlan === "clinical";
+  const isPro = _userPlan === "pro" || _userPlan === "annual" || _userPlan === "monthly" || _userPlan === "clinical";
   if (!isPro && _reportsRemaining <= 0) {
     showUpgradeModal("upload");
     return;
@@ -619,10 +629,6 @@ async function apiFetch(path, opts = {}) {
 
   try {
     const res = await doFetch();
-    if (res.status === 503) {
-      const d = await res.clone().json().catch(() => ({}));
-      if (d.maintenance) { _showMaintenanceScreen(d.message); return res; }
-    }
     if (res.status >= 500) {
       console.warn(`[API] ${path} returned ${res.status}, retrying in 2s…`);
       await new Promise(r => setTimeout(r, 2000));
@@ -796,14 +802,28 @@ async function loadReportsView() {
   list.innerHTML = `<div class="hv-empty"><i class="fa-solid fa-spinner fa-spin"></i> Loading reports…</div>`;
   const h = await headers(); if (!h) return;
   try {
-    const { ok, data } = await apiJson("/api/doctor-prep/history", { headers: h });
-    if (!ok || !data?.preps?.length) {
+    const { ok, data } = await apiJson("/api/lab-reports", { headers: h });
+    if (!ok || !data?.reports?.length) {
       list.innerHTML = `<div class="hv-empty"><i class="fa-solid fa-file-medical"></i>No lab reports yet.<br><button class="hv-cta-btn" onclick="handleUploadClick()"><i class="fa-solid fa-upload"></i> Upload First Report</button></div>`;
       return;
     }
-    list.innerHTML = data.preps.map(p => {
-      const date = p.generated_at ? new Date(p.generated_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "";
-      return `<div class="report-card"><div class="report-icon"><i class="fa-solid fa-file-medical-alt"></i></div><div class="report-meta"><div class="report-name">${esc(p.filename || "Lab Report")}</div><div class="report-date">${date}</div><div class="report-tags"><span class="report-tag info">Lab</span></div></div><button class="report-ask-btn" onclick="askAboutReport('${esc(p.filename || "report")}')">Ask Curabook →</button></div>`;
+    list.innerHTML = data.reports.map(r => {
+      const date = r.report_date ? new Date(r.report_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "";
+      const markerBadge = r.marker_count > 0
+        ? `<span class="report-tag info">${r.marker_count} marker${r.marker_count !== 1 ? 's' : ''}</span>`
+        : `<span class="report-tag info">Lab</span>`;
+      const abnormalBadge = r.abnormal_count > 0
+        ? `<span class="report-tag warn">${r.abnormal_count} abnormal</span>`
+        : '';
+      return `<div class="report-card">
+        <div class="report-icon"><i class="fa-solid fa-file-medical-alt"></i></div>
+        <div class="report-meta">
+          <div class="report-name">${esc(r.filename || "Lab Report")}</div>
+          <div class="report-date">${date}</div>
+          <div class="report-tags">${markerBadge}${abnormalBadge}</div>
+        </div>
+        <button class="report-ask-btn" onclick="askAboutReport('${esc(r.filename || "report")}')">Ask Curabook →</button>
+      </div>`;
     }).join("");
   } catch { list.innerHTML = `<div class="hv-empty">Could not load reports.</div>`; }
 }
@@ -1039,7 +1059,7 @@ async function sendMessage(text) {
     }
 
     if (_uploads.length) {
-      const isPro = _freeAll || _userPlan === "pro" || _userPlan === "annual" || _userPlan === "monthly" || _userPlan === "clinical";
+      const isPro = _userPlan === "pro" || _userPlan === "annual" || _userPlan === "monthly" || _userPlan === "clinical";
       if (!isPro && _reportsRemaining <= 0) {
         _isSending = false;
         setSendingState(false);
@@ -1053,7 +1073,7 @@ async function sendMessage(text) {
         _uploads = []; clearFilePreview();
         _docCtx = { text: result.document_text, hasDoc: true, filename: result.filename || "" };
         toast(`${result.filename || "File"} analyzed ✓`);
-        if (!isPro && !_freeAll) {
+        if (!isPro) {
           _reportsRemaining = Math.max(0, _reportsRemaining - 1);
           _renderPlanBadge();
         }
