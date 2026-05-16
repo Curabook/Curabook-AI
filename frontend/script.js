@@ -804,61 +804,101 @@ function _taperHungerBar(forecast) {
 }
 
 function buildTaperHTML(plan) {
-  // No plan — show subtle setup prompt only
+  // No plan — show a prominent call-to-action card, not just a tiny link
   if (!plan) {
     return `<div class="hv-section">
-      <div class="hv-heading"><i class="fa-solid fa-syringe"></i>Taper Tracker
+      <div style="background:linear-gradient(135deg,var(--surface-2) 0%,var(--surface-3,var(--surface-2)) 100%);
+        border:1px solid var(--border);border-radius:14px;padding:18px 20px;">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+          <div style="width:40px;height:40px;border-radius:10px;background:var(--signal-dim,rgba(99,179,237,.15));
+            display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <i class="fa-solid fa-syringe" style="color:var(--signal);font-size:18px"></i>
+          </div>
+          <div>
+            <div style="font-size:15px;font-weight:600;color:var(--text)">GLP-1 Taper Tracker</div>
+            <div style="font-size:12px;color:var(--text-3);margin-top:1px">Know exactly when hunger will spike — before it does</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
+          <div style="background:var(--surface);border-radius:8px;padding:10px;text-align:center">
+            <div style="font-size:18px;font-weight:700;color:var(--text)">7-day</div>
+            <div style="font-size:10px;color:var(--text-3);margin-top:2px">hunger forecast</div>
+          </div>
+          <div style="background:var(--surface);border-radius:8px;padding:10px;text-align:center">
+            <div style="font-size:18px;font-weight:700;color:var(--text)">Live %</div>
+            <div style="font-size:10px;color:var(--text-3);margin-top:2px">drug level</div>
+          </div>
+          <div style="background:var(--surface);border-radius:8px;padding:10px;text-align:center">
+            <div style="font-size:18px;font-weight:700;color:var(--text)">Auto</div>
+            <div style="font-size:10px;color:var(--text-3);margin-top:2px">next dose alert</div>
+          </div>
+        </div>
         <button onclick="document.getElementById('taperSetupForm').style.display='block';this.style.display='none'"
-          style="margin-left:auto;font-size:11px;background:none;border:1px solid var(--border);
-          border-radius:6px;padding:3px 8px;color:var(--text-3);cursor:pointer">Set up →</button>
+          class="cp-primary-btn" style="width:100%;justify-content:center">
+          <i class="fa-solid fa-plus"></i> Set Up Taper Tracker
+        </button>
+        ${_taperSetupForm()}
       </div>
-      ${_taperSetupForm()}
     </div>`;
   }
 
   const med        = plan.medication === 'tirzepatide' ? 'Tirzepatide' : 'Semaglutide';
-  const brand      = plan.medication === 'tirzepatide' ? 'Zepbound/Mounjaro' : 'Wegovy/Ozempic';
+  const brand      = plan.medication === 'tirzepatide' ? 'Zepbound / Mounjaro' : 'Wegovy / Ozempic';
   const pct        = plan.pct_active != null ? Math.round(plan.pct_active) : null;
   const days       = plan.days_since_dose;
-  const nextDose   = plan.next_dose_date ? new Date(plan.next_dose_date + 'T12:00:00')
-    .toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—';
+  const nextDose   = plan.next_dose_date
+    ? new Date(plan.next_dose_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    : '—';
   const freq       = plan.frequency_days || 7;
-  const taperLabel = plan.taper_type === 'stepdown' ? 'Step-down' : 'Stretch-out';
+  const taperLabel = plan.taper_type === 'stepdown' ? 'Step-down protocol' : 'Stretch-out protocol';
 
-  // Color the % active
-  const pctColor   = pct == null ? 'var(--text-3)'
+  const pctColor = pct == null ? 'var(--text-3)'
     : pct > 70 ? 'var(--ok)' : pct > 40 ? 'var(--amber)' : 'var(--signal)';
-
-  const hungerBar  = _taperHungerBar(plan.hunger_forecast);
+  const hungerLabel = pct == null ? '' : pct > 70 ? 'Well suppressed' : pct > 40 ? 'Food noise rising' : 'Ghrelin surge zone';
+  const hungerBar = _taperHungerBar(plan.hunger_forecast);
 
   return `<div class="hv-section">
-    <div class="hv-heading"><i class="fa-solid fa-syringe"></i>Taper Tracker
-      <span style="margin-left:auto;font-size:11px;color:var(--text-3);font-weight:400">${taperLabel}</span>
-    </div>
-    <div style="background:var(--surface-2);border-radius:12px;padding:14px 16px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:10px">
-      <div>
-        <div style="font-size:11px;color:var(--text-3);margin-bottom:2px">Medication</div>
-        <div style="font-size:13px;font-weight:500;color:var(--text)">${med}</div>
-        <div style="font-size:11px;color:var(--text-3)">${brand}</div>
+    <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:14px;overflow:hidden">
+
+      <!-- Header bar -->
+      <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px">
+        <i class="fa-solid fa-syringe" style="color:var(--signal);font-size:15px"></i>
+        <span style="font-weight:600;font-size:14px;color:var(--text)">Taper Tracker</span>
+        <span style="font-size:11px;color:var(--text-3);margin-left:4px">— ${taperLabel}</span>
+        <button onclick="stopTaperPlan()" title="Stop tracking"
+          style="margin-left:auto;background:none;border:none;color:var(--text-3);cursor:pointer;font-size:12px;padding:2px 6px">
+          ✕ Stop
+        </button>
       </div>
-      <div>
-        <div style="font-size:11px;color:var(--text-3);margin-bottom:2px">Drug level today</div>
-        <div style="font-size:20px;font-weight:600;color:${pctColor}">${pct != null ? pct + '%' : '—'}</div>
-        <div style="font-size:11px;color:var(--text-3)">${days != null ? 'Day ' + days + ' of cycle' : ''}</div>
+
+      <!-- Stats row -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;padding:16px 18px;gap:12px">
+        <div>
+          <div style="font-size:11px;color:var(--text-3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em">Medication</div>
+          <div style="font-size:14px;font-weight:600;color:var(--text)">${med}</div>
+          <div style="font-size:11px;color:var(--text-3);margin-top:1px">${brand}</div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--text-3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em">Drug level</div>
+          <div style="font-size:26px;font-weight:700;color:${pctColor};line-height:1">${pct != null ? pct + '%' : '—'}</div>
+          <div style="font-size:11px;color:var(--text-3);margin-top:2px">${days != null ? 'Day ' + days + ' of ' + freq : ''} · ${hungerLabel}</div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--text-3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em">Next dose</div>
+          <div style="font-size:18px;font-weight:600;color:var(--text)">${nextDose}</div>
+          <div style="font-size:11px;color:var(--text-3);margin-top:2px">Every ${freq} days</div>
+        </div>
       </div>
-      <div>
-        <div style="font-size:11px;color:var(--text-3);margin-bottom:2px">Next dose</div>
-        <div style="font-size:15px;font-weight:500;color:var(--text)">${nextDose}</div>
-        <div style="font-size:11px;color:var(--text-3)">Every ${freq} days</div>
+
+      <!-- Hunger forecast bar -->
+      ${hungerBar ? `<div style="padding:0 18px 14px">${hungerBar}</div>` : ''}
+
+      <!-- Action button -->
+      <div style="padding:12px 18px;border-top:1px solid var(--border)">
+        <button class="cp-primary-btn" style="width:100%;justify-content:center" onclick="logTaperDose()">
+          <i class="fa-solid fa-syringe"></i> Took dose today — update tracker
+        </button>
       </div>
-    </div>
-    ${hungerBar}
-    <div style="display:flex;gap:8px;margin-top:12px">
-      <button class="cp-primary-btn" style="flex:1;font-size:13px" onclick="logTaperDose()">
-        <i class="fa-solid fa-syringe"></i> Took dose today
-      </button>
-      <button class="cp-secondary-btn" style="font-size:12px" onclick="stopTaperPlan()"
-        title="Stop tracking">Stop taper</button>
     </div>
   </div>`;
 }

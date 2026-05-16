@@ -756,10 +756,10 @@ def _compute_drug_level(last_dose_date: str, half_life_days: float) -> dict:
         level = pct(d)
         # Hunger spikes when drug drops below 60% and is falling
         hunger = "low" if level > 70 else "moderate" if level > 45 else "high"
+        from datetime import timedelta as _td
         forecast.append({
             "day_offset": offset,
-            "date": (today.replace(day=today.day + offset)).isoformat() if offset == 0
-                    else None,
+            "date": (today + _td(days=offset)).isoformat(),
             "pct": level,
             "hunger": hunger,
         })
@@ -811,10 +811,10 @@ def get_taper():
         return jsonify({"plan": {**plan, **drug_data}})
     except Exception as e:
         err = str(e)
-        if "does not exist" in err.lower():
-            return jsonify({"plan": None, "setup_required": True})
-        print(f"[TAPER] GET error: {e}")
-        return jsonify({"plan": None})
+        # Table not yet created or any other error — return gracefully, never 500
+        if "does not exist" not in err.lower():
+            print(f"[TAPER] GET error: {e}")
+        return jsonify({"plan": None, "setup_required": True})
 
 
 @health_bp.route("/api/taper", methods=["POST"])
