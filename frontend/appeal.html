@@ -403,7 +403,9 @@ footer{border-top:1px solid var(--border);padding:36px max(16px,5vw);display:fle
       </div>
       <div class="btn-row">
         <button class="btn-secondary" onclick="goToStep(3)"><i class="fa-solid fa-arrow-left"></i> Back</button>
-        <button class="btn-primary" id="generateBtn" onclick="generatePacket()"><i class="fa-solid fa-file-medical"></i> Build My Appeal Packet</button>
+        <div id="generateBtnWrap">
+          <button class="btn-primary" id="generateBtn" onclick="handleGenerateClick()"><i class="fa-solid fa-file-medical"></i> Build My Appeal Packet</button>
+        </div>
       </div>
     </div>
 
@@ -485,11 +487,11 @@ footer{border-top:1px solid var(--border);padding:36px max(16px,5vw);display:fle
             <div class="upsell-price-compare">Your GLP-1 cost ~$45/day. Your shield is less than a coffee.</div>
           </div>
           <div class="upsell-actions">
-            <a href="/signup?source=appeal&plan=annual" class="upsell-cta">
-              <i class="fa-solid fa-shield-halved"></i>Create Your PHI Account — Free 7 Days
+            <a href="/signup?source=appeal&plan=clinical" class="upsell-cta">
+              <i class="fa-solid fa-shield-halved"></i>Upgrade to Clinical — $99/mo
             </a>
-            <a href="/signup?source=appeal&plan=monthly" class="upsell-cta-ghost">
-              Start monthly ($49/mo) — cancel anytime
+            <a href="/signup?source=appeal&plan=annual" class="upsell-cta-ghost">
+              Start with Shield plan ($39/mo) — PA Architect included
             </a>
           </div>
           <p class="upsell-reassurance">The letter you just generated is yours — we'll email it to you regardless. Creating an account means your data is waiting the next time you need it.</p>
@@ -513,9 +515,14 @@ const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 
 let _sb = null;
 let _session = null;
+let _userPlan = 'free';   // 'free' | 'pro' | 'clinical' | 'annual' | 'monthly'
 let _storedMarkers = [];
 let _storedMemories = [];
 let generatedPacket = '';
+
+function _isClinical() {
+  return _userPlan === 'clinical';
+}
 
 // ── Supabase init ─────────────────────────────────────────────────────────────
 (async () => {
@@ -525,11 +532,25 @@ let generatedPacket = '';
     _session = data?.session;
     if (_session?.user) {
       document.getElementById('appLink').style.display = 'flex';
+      // Fetch plan before rendering so generate button shows correct state
+      try {
+        const pr = await fetch(API + '/api/payment/status', {
+          headers: { 'Authorization': 'Bearer ' + _session.access_token }
+        });
+        if (pr.ok) {
+          const pd = await pr.json();
+          _userPlan = pd.plan || 'free';
+          // free-all override
+          if (pd.is_free_all) _userPlan = 'pro';
+        }
+      } catch(e) { /* non-fatal */ }
       renderAuthBanner(true, _session.user.email);
       await loadStoredData();
     } else {
       renderAuthBanner(false);
     }
+    // Render generate button state after plan is known
+    renderGenerateBtn();
   } catch (e) {
     console.warn('[APPEAL] Supabase init error:', e);
     renderAuthBanner(false);
@@ -734,6 +755,81 @@ function collectFormData() {
     priorMeds: Array.from(document.querySelectorAll('.prior-med:checked')).map(c => c.value),
     comorbidities: Array.from(document.querySelectorAll('.comorbidity:checked')).map(c => c.value),
   };
+}
+
+// ── Generate button state ─────────────────────────────────────────────────────
+function renderGenerateBtn() {
+  const wrap = document.getElementById('generateBtnWrap');
+  if (!wrap) return;
+
+  if (!_session?.user) {
+    // Not logged in — show button but clicking prompts sign in
+    wrap.innerHTML = `
+      <button class="btn-primary" onclick="handleGenerateClick()">
+        <i class="fa-solid fa-file-medical"></i> Build My Appeal Packet
+      </button>
+      <div style="font-size:.74rem;color:var(--text-3);margin-top:8px;display:flex;align-items:center;gap:5px;">
+        <i class="fa-solid fa-lock" style="font-size:.65rem"></i>
+        Clinical plan required. <a href="/signup?plan=clinical&source=appeal" style="color:var(--signal);text-decoration:underline;">Sign in or upgrade →</a>
+      </div>`;
+    return;
+  }
+
+  if (_isClinical()) {
+    // Clinical plan — full access
+    wrap.innerHTML = `
+      <button class="btn-primary" id="generateBtn" onclick="generatePacket()">
+        <i class="fa-solid fa-file-medical"></i> Build My Appeal Packet
+      </button>
+      <div style="font-size:.74rem;color:var(--ok);margin-top:8px;display:flex;align-items:center;gap:5px;">
+        <i class="fa-solid fa-shield-halved"></i> Clinical plan — full PA Architect access
+      </div>`;
+  } else {
+    // Free or Pro — can see everything but generate is locked
+    wrap.innerHTML = `
+      <div style="background:var(--surface-2);border:1.5px solid var(--border);border-radius:var(--r-lg);padding:20px 22px;margin-top:4px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+          <div style="width:36px;height:36px;border-radius:9px;background:var(--amber-dim);border:1px solid rgba(245,158,11,.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <i class="fa-solid fa-lock" style="color:var(--amber);font-size:14px;"></i>
+          </div>
+          <div>
+            <div style="font-size:.9rem;font-weight:600;color:var(--text);">Clinical Plan Required</div>
+            <div style="font-size:.76rem;color:var(--text-3);margin-top:1px;">You can review every section — generation requires the Clinical plan</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:10px 12px;font-size:.76rem;color:var(--text-2);">
+            <div style="color:var(--ok);font-weight:600;font-size:.8rem;margin-bottom:3px;">✓ What you can see</div>
+            All 4 steps, form fields, auto-populated lab data, comorbidity detection
+          </div>
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:10px 12px;font-size:.76rem;color:var(--text-2);">
+            <div style="color:var(--amber);font-weight:600;font-size:.8rem;margin-bottom:3px;">⚡ Clinical unlocks</div>
+            AI-generated PA packet, evidence scoring, missing data analysis, next steps
+          </div>
+        </div>
+        <div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap;">
+          <a href="/signup?plan=clinical&source=appeal" class="btn-primary" style="text-decoration:none;padding:11px 20px;font-size:.86rem;">
+            <i class="fa-solid fa-shield-halved"></i> Upgrade to Clinical — $99/mo
+          </a>
+          <div style="font-size:.72rem;color:var(--text-3);">Your GLP-1 cost ~$45/day. This is ~$3.30/day.</div>
+        </div>
+      </div>`;
+  }
+}
+
+function handleGenerateClick() {
+  if (!_session?.user) {
+    // Not signed in — redirect to signup
+    window.location.href = '/signup?plan=clinical&source=appeal';
+    return;
+  }
+  if (!_isClinical()) {
+    // Show upgrade toast and scroll to locked button
+    toast('Clinical plan required to generate packets. Upgrade below ↓');
+    document.getElementById('generateBtnWrap')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
+  generatePacket();
 }
 
 async function generatePacket() {
