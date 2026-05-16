@@ -221,10 +221,36 @@
 
         <div id="onboardingStep">
             <div class="onboarding-progress">
-                <div class="op-dot active" id="dot1"></div>
+                <div class="op-dot" id="dot0"></div>
+                <div class="op-dot" id="dot1"></div>
                 <div class="op-dot" id="dot2"></div>
                 <div class="op-dot" id="dot3"></div>
                 <div class="op-dot" id="dot4"></div>
+            </div>
+
+            <!-- Panel 0: Consent (Google OAuth users only — email users accepted on signup form) -->
+            <div id="panel0" style="display:none">
+                <div class="onboarding-header">
+                    <h2>Before we get started</h2>
+                    <p>PHI processes your health data to power personalized GLP-1 cliff prevention. Here's exactly what that means.</p>
+                </div>
+                <div style="background:var(--card-bg,rgba(255,255,255,0.04));border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:20px;font-size:13px;line-height:1.7;color:var(--muted)">
+                    <div style="margin-bottom:12px"><strong style="color:var(--text);font-size:13.5px">🔒 Your data is anonymized before AI processing</strong><br>
+                    Lab values and health facts are stripped of your name, date of birth, and contact details before being sent to any AI model.</div>
+                    <div style="margin-bottom:12px"><strong style="color:var(--text);font-size:13.5px">🚫 Your data is never sold</strong><br>
+                    Curabook does not sell, share, or rent your health information to any third party for advertising purposes.</div>
+                    <div style="margin-bottom:12px"><strong style="color:var(--text);font-size:13.5px">📋 What we store</strong><br>
+                    Lab markers, behavioral logs (protein, steps, sleep), and conversation memories you share with PHI — to give you continuity across sessions.</div>
+                    <div><strong style="color:var(--text);font-size:13.5px">🗑 You can delete everything</strong><br>
+                    Sign out → contact support to permanently delete all your data at any time.</div>
+                </div>
+                <div class="terms-row" style="margin-bottom:20px;font-size:13px">
+                    <input type="checkbox" id="consentCheck" onchange="document.getElementById('next0').disabled = !this.checked">
+                    <span>I agree to the <a href="/terms" target="_blank">Terms of Service</a> and <a href="/privacy" target="_blank">Privacy Policy</a>. I consent to Curabook PHI processing my health data as described above.</span>
+                </div>
+                <div class="onboarding-nav">
+                    <button class="btn-next" id="next0" onclick="goToPanel('A')" disabled>I agree — Continue →</button>
+                </div>
             </div>
 
             <!-- Panel A: GLP-1 status -->
@@ -447,11 +473,11 @@ function setStatus(msg, type = '') {
 }
 
 function goToPanel(panel) {
-    ['A','B','C','D'].forEach(p => {
+    ['0','A','B','C','D'].forEach(p => {
         const el = document.getElementById('panel' + p);
         if (el) el.style.display = p === panel ? 'block' : 'none';
     });
-    const idx = {'A':0,'B':1,'C':2,'D':3}[panel];
+    const idx = {'0':0,'A':1,'B':2,'C':3,'D':4}[panel];
     document.querySelectorAll('.op-dot').forEach((dot, i) => dot.classList.toggle('active', i <= idx));
 }
 
@@ -739,7 +765,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (window.location.hash === '#onboarding') {
         document.getElementById('signupStep').style.display = 'none';
         document.getElementById('onboardingStep').style.display = 'block';
-        goToPanel('A');
+        goToPanel('0');  // Start at consent panel
     }
 });
 
@@ -823,57 +849,25 @@ document.addEventListener('keydown', e => {
 try {
     initSupabase();
 
-    let _oauthHandled = false; // prevent double-fire from INITIAL_SESSION + SIGNED_IN
-
     supabaseClient.auth.onAuthStateChange(async (event, session) => {
-        // Handle both INITIAL_SESSION (OAuth return) and SIGNED_IN
-        const isOAuthReturn = event === 'SIGNED_IN' || event === 'INITIAL_SESSION';
-        if (!isOAuthReturn || !session?.user || _oauthHandled) return;
+        if (event === 'SIGNED_IN' && session?.user && !_accessToken) {
+            _userId      = session.user.id;
+            _accessToken = session.access_token;
 
-        const isGoogle = session.user.app_metadata?.provider === 'google';
-        if (!isGoogle) return; // email signups are handled separately
-
-        _oauthHandled = true; // mark handled before any async work
-        _userId       = session.user.id;
-        _accessToken  = session.access_token;
-
-        // Check localStorage first (fast path — returning user on same device)
-        const localDone = localStorage.getItem('phi_onboarded_' + _userId);
-        if (localDone) {
-            window.location.replace('/app');
-            return;
-        }
-
-        // Check backend profile — if first_name exists, they've already onboarded
-        // (handles new device / cleared localStorage scenario)
-        try {
-            const profileRes = await fetch(`${API_BASE}/api/profile`, {
-                headers: { 'Authorization': 'Bearer ' + _accessToken }
-            });
-            if (profileRes.ok) {
-                const profile = await profileRes.json();
-                if (profile && profile.first_name) {
-                    // Already onboarded on another device — mark locally and go to app
-                    try { localStorage.setItem('phi_onboarded_' + _userId, 'true'); } catch(e) {}
+            const isGoogle = session.user.app_metadata?.provider === 'google';
+            if (isGoogle) {
+                const done = localStorage.getItem('phi_onboarded_' + _userId);
+                if (done) {
                     window.location.replace('/app');
-                    return;
+                } else {
+                    await saveConsentToBackend(session.access_token);
+                    try { localStorage.setItem(`phi_terms_${session.user.id}`, Date.now().toString()); } catch(e) {}
+                    document.getElementById('signupStep').style.display     = 'none';
+                    document.getElementById('onboardingStep').style.display = 'block';
+                    goToPanel('0');  // Google users see consent panel first
                 }
             }
-        } catch(e) {
-            console.warn('[ONBOARDING] Profile check failed (non-fatal):', e);
         }
-
-        // New Google user — save consent and show onboarding
-        try {
-            await saveConsentToBackend(_accessToken);
-            try { localStorage.setItem(`phi_terms_${session.user.id}`, Date.now().toString()); } catch(e) {}
-        } catch(e) {
-            console.warn('[ONBOARDING] Consent save failed (non-fatal):', e);
-        }
-
-        document.getElementById('signupStep').style.display     = 'none';
-        document.getElementById('onboardingStep').style.display = 'block';
-        goToPanel('A');
     });
 } catch (err) {
     setStatus('App failed to load. Please refresh.', 'error');
