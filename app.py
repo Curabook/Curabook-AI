@@ -68,7 +68,7 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 print("✅ Supabase ready")
 
 # ── Rate limiter ──────────────────────────────────────────────────────────────
-_worker_count = min(int(os.getenv("WORKER_COUNT", "1")), 4)  # cap at 4
+_worker_count = min(int(os.getenv("WORKER_COUNT", "1")), 2)  # cap at 2 — Render free tier is 512MB; 4 workers OOM-kills the process causing CORS-less 502s on /chat
 from services.rate_limiter import get_rate_limiter
 _limiter = get_rate_limiter()
 
@@ -298,6 +298,54 @@ def api_stats():
 @app.route("/")
 def home():
     return {"status": "Curabook PHI backend running 🚀"}
+
+@app.route("/api/payment/config", methods=["GET"])
+def payment_config_fallback():
+    """
+    Fallback for /api/payment/config in case payment_routes blueprint fails to load.
+    Also handles the case where PAYPAL_CLIENT_ID is missing — returns paypal_configured:false
+    so the frontend skips SDK load gracefully instead of crashing with JSON parse error.
+    """
+    client_id = os.getenv("PAYPAL_CLIENT_ID", "")
+    return jsonify({
+        "paypal_configured": bool(client_id),
+        "paypal_client_id":  client_id,
+        "paypal_env":        os.getenv("PAYPAL_ENV", "sandbox"),
+        "plans": {
+            "monthly":  {"amount": 49,  "currency": "USD", "label": "Shield — $49/mo",                   "interval": "monthly"},
+            "annual":   {"amount": 468, "currency": "USD", "label": "Shield — $39/mo (billed annually)", "interval": "annual"},
+            "clinical": {"amount": 99,  "currency": "USD", "label": "Shield Clinical — $99/mo",          "interval": "monthly"},
+        },
+        "trial_days": int(os.getenv("TRIAL_DAYS", "7")),
+    })
+
+class _CORSMiddleware:
+    """
+    WSGI middleware that stamps Access-Control-Allow-Origin on EVERY response,
+    including gunicorn 502/503/timeout error pages that bypass Flask entirely.
+    This is what makes CORS work even when a worker crashes mid-request.
+    """
+    def __init__(self, wsgi_app):
+        self.app = wsgi_app
+
+    def __call__(self, environ, start_response):
+        origin = environ.get("HTTP_ORIGIN", "*")
+
+        def _start(status, headers, exc_info=None):
+            headers = [(k, v) for k, v in headers
+                       if k.lower() != "access-control-allow-origin"]
+            headers += [
+                ("Access-Control-Allow-Origin",      origin),
+                ("Access-Control-Allow-Credentials", "true"),
+                ("Access-Control-Allow-Methods",     "GET, POST, PUT, DELETE, OPTIONS"),
+                ("Access-Control-Allow-Headers",
+                 "Content-Type, Authorization, X-Demo-Session, X-Founder-Secret"),
+            ]
+            return start_response(status, headers, exc_info)
+
+        return self.app(environ, _start)
+
+app.wsgi_app = _CORSMiddleware(app.wsgi_app)
 
 if __name__ == "__main__":
     print("🚀 Curabook PHI starting…")
