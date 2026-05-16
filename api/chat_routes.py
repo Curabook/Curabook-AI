@@ -164,6 +164,62 @@ def _fetch_memories_now(supabase, user_id: str) -> list[str]:
     except Exception as e:
         print(f"[MEMORY-FRESH] user_profiles error: {e}")
 
+    # 3. Active taper plan — gives PHI exact medication, dose, drug level, next dose
+    try:
+        tp = (supabase.table("glp1_taper_plans")
+              .select("medication,current_dose,dose_unit,frequency_days,taper_type,last_dose_date,next_dose_date,target_weeks")
+              .eq("user_id", user_id)
+              .eq("is_active", True)
+              .limit(1)
+              .execute())
+        if tp.data:
+            t    = tp.data[0]
+            med  = t.get("medication", "semaglutide").title()
+            dose = t.get("current_dose")
+            unit = t.get("dose_unit", "mg")
+            freq = t.get("frequency_days", 7)
+            ttype = ("stretch-out (extending interval between doses)"
+                     if t.get("taper_type") == "stretch"
+                     else "step-down (reducing dose each cycle)")
+            nxt  = t.get("next_dose_date", "")
+            last = t.get("last_dose_date", "")
+
+            # Compute live drug level from half-life
+            _HL = {"semaglutide": 7.0, "tirzepatide": 5.0}
+            hl  = _HL.get(t.get("medication", "").lower(), 7.0)
+            drug_note = ""
+            if last:
+                from datetime import date as _d
+                import math
+                try:
+                    delta = (_d.today() - _d.fromisoformat(last)).days
+                    pct   = round(100 * (0.5 ** (delta / hl)), 1)
+                    if pct > 70:
+                        hunger = "appetite well suppressed"
+                    elif pct > 40:
+                        hunger = "moderate hunger/food noise expected"
+                    else:
+                        hunger = "significant hunger and food noise likely — ghrelin elevated"
+                    drug_note = (f", day {delta} of cycle, ~{pct}% drug still active "
+                                 f"({hunger})")
+                except Exception:
+                    pass
+
+            dose_str = f" {dose}{unit}" if dose else ""
+            taper_facts = [
+                f"ACTIVE TAPER PLAN: {med}{dose_str}, every {freq} days — {ttype}{drug_note}",
+            ]
+            if nxt:
+                taper_facts.append(f"User's next {med} dose is due: {nxt}")
+            if t.get("target_weeks"):
+                taper_facts.append(f"Taper target: complete in {t['target_weeks']} weeks")
+
+            # Prepend taper facts so PHI sees them immediately
+            memories = taper_facts + memories
+    except Exception as e:
+        if "does not exist" not in str(e).lower():
+            print(f"[MEMORY-FRESH] taper plan error: {e}")
+
     return memories
 
 

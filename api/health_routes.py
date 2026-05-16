@@ -718,3 +718,200 @@ def behavioral_logs_post():
             return jsonify({"success": False, "reason": "behavioral_logs table not created yet"}), 200
         print(f"[BEHAVIORAL-LOGS] Insert error: {e}")
         return jsonify({"error": f"Could not save log: {type(e).__name__}"}), 500
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TAPER TRACKER
+# ══════════════════════════════════════════════════════════════════════════════
+
+_HALF_LIVES = {
+    "semaglutide": 7.0,   # Wegovy, Ozempic — 7-day half-life
+    "tirzepatide": 5.0,   # Zepbound, Mounjaro — 5-day half-life
+}
+
+def _compute_drug_level(last_dose_date: str, half_life_days: float) -> dict:
+    """
+    Compute % drug still active and a 7-day hunger forecast.
+    Returns dict with pct_active, hunger_forecast list, peak_hunger_day.
+    """
+    from datetime import date as _date
+    import math
+
+    try:
+        last = _date.fromisoformat(last_dose_date)
+    except Exception:
+        return {"pct_active": 0, "hunger_forecast": [], "days_since_dose": 0}
+
+    today = _date.today()
+    days_since = (today - last).days
+
+    def pct(days):
+        return round(100 * (0.5 ** (days / half_life_days)), 1)
+
+    pct_active = pct(days_since)
+
+    # 7-day forecast from today
+    forecast = []
+    for offset in range(7):
+        d = days_since + offset
+        level = pct(d)
+        # Hunger spikes when drug drops below 60% and is falling
+        hunger = "low" if level > 70 else "moderate" if level > 45 else "high"
+        forecast.append({
+            "day_offset": offset,
+            "date": (today.replace(day=today.day + offset)).isoformat() if offset == 0
+                    else None,
+            "pct": level,
+            "hunger": hunger,
+        })
+
+    # Which day in forecast has peak hunger (lowest drug level)
+    peak_day = max(range(7), key=lambda i: -forecast[i]["pct"])
+
+    return {
+        "pct_active":    pct_active,
+        "days_since_dose": days_since,
+        "hunger_forecast": forecast,
+        "peak_hunger_day": peak_day,
+    }
+
+
+@health_bp.route("/api/taper", methods=["GET"])
+def get_taper():
+    """Fetch the user's active taper plan."""
+    from app import supabase
+    from services.auth import get_authenticated_user
+
+    user = get_authenticated_user(supabase)
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    try:
+        res = (
+            supabase.table("glp1_taper_plans")
+            .select("*")
+            .eq("user_id", user.id)
+            .eq("is_active", True)
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        if not res.data:
+            return jsonify({"plan": None})
+
+        plan = res.data[0]
+        med  = plan.get("medication", "semaglutide").lower()
+        hl   = _HALF_LIVES.get(med, 7.0)
+        last = plan.get("last_dose_date", "")
+
+        if last:
+            drug_data = _compute_drug_level(last, hl)
+        else:
+            drug_data = {"pct_active": None, "hunger_forecast": [], "days_since_dose": None}
+
+        return jsonify({"plan": {**plan, **drug_data}})
+    except Exception as e:
+        err = str(e)
+        if "does not exist" in err.lower():
+            return jsonify({"plan": None, "setup_required": True})
+        print(f"[TAPER] GET error: {e}")
+        return jsonify({"plan": None})
+
+
+@health_bp.route("/api/taper", methods=["POST"])
+def save_taper():
+    """Create or update a taper plan. Also handles 'log_dose' action."""
+    from app import supabase
+    from services.auth import get_authenticated_user
+    from datetime import date, timedelta
+
+    user = get_authenticated_user(supabase)
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    body   = request.json or {}
+    action = body.get("action", "save")  # "save" | "log_dose" | "stop"
+
+    today = date.today().isoformat()
+
+    if action == "log_dose":
+        # Just update last_dose_date to today and recalculate next
+        try:
+            res = (
+                supabase.table("glp1_taper_plans")
+                .select("id,medication,frequency_days")
+                .eq("user_id", user.id)
+                .eq("is_active", True)
+                .limit(1)
+                .execute()
+            )
+            if not res.data:
+                return jsonify({"error": "No active plan"}), 404
+
+            plan = res.data[0]
+            freq = plan.get("frequency_days", 7)
+            next_dose = (date.today() + timedelta(days=freq)).isoformat()
+
+            supabase.table("glp1_taper_plans").update({
+                "last_dose_date": today,
+                "next_dose_date": next_dose,
+                "updated_at":     datetime.now(timezone.utc).isoformat(),
+            }).eq("id", plan["id"]).execute()
+
+            med  = plan.get("medication", "semaglutide").lower()
+            hl   = _HALF_LIVES.get(med, 7.0)
+            drug = _compute_drug_level(today, hl)
+            return jsonify({"success": True, "next_dose_date": next_dose, **drug})
+        except Exception as e:
+            print(f"[TAPER] log_dose error: {e}")
+            return jsonify({"error": str(e)}), 500
+
+    if action == "stop":
+        try:
+            supabase.table("glp1_taper_plans").update({
+                "is_active":  False,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }).eq("user_id", user.id).eq("is_active", True).execute()
+            return jsonify({"success": True})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    # action == "save" — create or update plan
+    medication    = str(body.get("medication", "semaglutide")).lower().strip()
+    current_dose  = body.get("current_dose")
+    dose_unit     = str(body.get("dose_unit", "mg")).strip()
+    frequency     = int(body.get("frequency_days", 7))
+    taper_type    = str(body.get("taper_type", "stretch")).strip()  # stretch | stepdown
+    last_dose     = str(body.get("last_dose_date", today))[:10]
+    target_weeks  = int(body.get("target_weeks", 9))
+
+    from datetime import timedelta
+    next_dose     = (date.fromisoformat(last_dose) + timedelta(days=frequency)).isoformat()
+
+    row = {
+        "user_id":       user.id,
+        "medication":    medication,
+        "current_dose":  float(current_dose) if current_dose else None,
+        "dose_unit":     dose_unit,
+        "frequency_days": frequency,
+        "taper_type":    taper_type,
+        "last_dose_date": last_dose,
+        "next_dose_date": next_dose,
+        "target_weeks":  target_weeks,
+        "is_active":     True,
+        "updated_at":    datetime.now(timezone.utc).isoformat(),
+    }
+
+    try:
+        # Deactivate any existing plan first
+        supabase.table("glp1_taper_plans").update({"is_active": False}) \
+            .eq("user_id", user.id).eq("is_active", True).execute()
+
+        row["created_at"] = datetime.now(timezone.utc).isoformat()
+        supabase.table("glp1_taper_plans").insert(row).execute()
+
+        hl   = _HALF_LIVES.get(medication, 7.0)
+        drug = _compute_drug_level(last_dose, hl)
+        return jsonify({"success": True, "next_dose_date": next_dose, **drug})
+    except Exception as e:
+        print(f"[TAPER] save error: {e}")
+        return jsonify({"error": str(e)}), 500

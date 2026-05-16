@@ -55,6 +55,7 @@ let _proteinTarget = Math.round(_goalWt * 0.545 * 10) / 10;
 let _docCtx        = { text: null, hasDoc: false, filename: "" };
 let _shieldLoaded  = false;
 let _shieldRetries = 0;
+let _taperPlan     = null;  // cached taper plan from API
 let _consentsSaved = false;
 let _consentsPromise = null;
 let _redirecting   = false;
@@ -717,13 +718,15 @@ async function loadHealthView() {
   content.innerHTML = `<div class="hv-empty"><i class="fa-solid fa-spinner fa-spin"></i> Loading your health picture…</div>`;
   const h = await headers(); if (!h) return;
   try {
-    const [mR, dR] = await Promise.allSettled([
+    const [mR, dR, tR] = await Promise.allSettled([
       apiJson("/api/health-markers", { headers: h }),
-      apiJson("/api/dashboard", { headers: h }),
+      apiJson("/api/dashboard",      { headers: h }),
+      apiJson("/api/taper",          { headers: h }),
     ]);
-    const markers = mR.status === "fulfilled" && mR.value.ok && Array.isArray(mR.value.data) ? mR.value.data : [];
+    const markers  = mR.status === "fulfilled" && mR.value.ok && Array.isArray(mR.value.data) ? mR.value.data : [];
     const dashData = dR.status === "fulfilled" && dR.value.ok && dR.value.data ? dR.value.data : null;
-    if (!markers.length) {
+    _taperPlan = tR.status === "fulfilled" && tR.value.ok && tR.value.data?.plan ? tR.value.data.plan : null;
+    if (!markers.length && !_taperPlan) {
       content.innerHTML = `<div class="hv-empty"><i class="fa-solid fa-chart-line"></i>
         No health data yet. Upload a lab report to see your cliff risk picture.
         <br><button class="hv-cta-btn" onclick="handleUploadClick()"><i class="fa-solid fa-upload"></i> Upload First Report</button></div>`;
@@ -736,6 +739,166 @@ async function loadHealthView() {
   } catch (e) {
     content.innerHTML = `<div class="hv-empty">Could not load health data.</div>`;
   }
+}
+
+
+// ── Taper Tracker ────────────────────────────────────────────────────────────
+
+function _taperSetupForm() {
+  return `<div id="taperSetupForm" style="margin-top:12px;display:none">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div>
+        <label class="sl-label">Medication</label>
+        <select id="taperMed" class="sl-input" style="width:100%;padding:8px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text)">
+          <option value="semaglutide">Wegovy / Ozempic (semaglutide)</option>
+          <option value="tirzepatide">Zepbound / Mounjaro (tirzepatide)</option>
+        </select>
+      </div>
+      <div>
+        <label class="sl-label">Taper type</label>
+        <select id="taperType" class="sl-input" style="width:100%;padding:8px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);color:var(--text)">
+          <option value="stretch">Stretch out (extend interval)</option>
+          <option value="stepdown">Step down (reduce dose)</option>
+        </select>
+      </div>
+      <div>
+        <label class="sl-label">Current dose (mg)</label>
+        <input type="number" id="taperDose" class="sl-input" placeholder="e.g. 1.7" step="0.1" min="0.1" max="5" style="width:100%">
+      </div>
+      <div>
+        <label class="sl-label">Days between doses</label>
+        <input type="number" id="taperFreq" class="sl-input" placeholder="7" min="7" max="30" value="7" style="width:100%">
+      </div>
+      <div>
+        <label class="sl-label">Last dose taken</label>
+        <input type="date" id="taperLastDose" class="sl-input" style="width:100%">
+      </div>
+      <div>
+        <label class="sl-label">Target weeks to taper</label>
+        <input type="number" id="taperWeeks" class="sl-input" placeholder="9" min="4" max="26" value="9" style="width:100%">
+      </div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="cp-primary-btn" style="flex:1" onclick="saveTaperPlan()">Start Tracking →</button>
+      <button class="cp-secondary-btn" onclick="document.getElementById('taperSetupForm').style.display='none'">Cancel</button>
+    </div>
+  </div>`;
+}
+
+function _taperHungerBar(forecast) {
+  if (!forecast || !forecast.length) return '';
+  const days = ['T','T+1','T+2','T+3','T+4','T+5','T+6'];
+  const colors = { low: 'var(--ok)', moderate: 'var(--amber)', high: 'var(--signal)' };
+  const bars = forecast.map((f, i) => {
+    const h = Math.round(100 - f.pct);
+    const col = colors[f.hunger] || 'var(--ok)';
+    return `<div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1">
+      <div style="width:100%;height:${Math.max(4, h * 0.5)}px;background:${col};border-radius:3px;min-height:4px"></div>
+      <span style="font-size:10px;color:var(--text-3)">${days[i]}</span>
+    </div>`;
+  }).join('');
+  return `<div style="margin-top:10px">
+    <div style="font-size:11px;color:var(--text-3);margin-bottom:4px">Hunger forecast (higher bar = more intense)</div>
+    <div style="display:flex;gap:4px;align-items:flex-end;height:32px">${bars}</div>
+  </div>`;
+}
+
+function buildTaperHTML(plan) {
+  // No plan — show subtle setup prompt only
+  if (!plan) {
+    return `<div class="hv-section">
+      <div class="hv-heading"><i class="fa-solid fa-syringe"></i>Taper Tracker
+        <button onclick="document.getElementById('taperSetupForm').style.display='block';this.style.display='none'"
+          style="margin-left:auto;font-size:11px;background:none;border:1px solid var(--border);
+          border-radius:6px;padding:3px 8px;color:var(--text-3);cursor:pointer">Set up →</button>
+      </div>
+      ${_taperSetupForm()}
+    </div>`;
+  }
+
+  const med        = plan.medication === 'tirzepatide' ? 'Tirzepatide' : 'Semaglutide';
+  const brand      = plan.medication === 'tirzepatide' ? 'Zepbound/Mounjaro' : 'Wegovy/Ozempic';
+  const pct        = plan.pct_active != null ? Math.round(plan.pct_active) : null;
+  const days       = plan.days_since_dose;
+  const nextDose   = plan.next_dose_date ? new Date(plan.next_dose_date + 'T12:00:00')
+    .toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—';
+  const freq       = plan.frequency_days || 7;
+  const taperLabel = plan.taper_type === 'stepdown' ? 'Step-down' : 'Stretch-out';
+
+  // Color the % active
+  const pctColor   = pct == null ? 'var(--text-3)'
+    : pct > 70 ? 'var(--ok)' : pct > 40 ? 'var(--amber)' : 'var(--signal)';
+
+  const hungerBar  = _taperHungerBar(plan.hunger_forecast);
+
+  return `<div class="hv-section">
+    <div class="hv-heading"><i class="fa-solid fa-syringe"></i>Taper Tracker
+      <span style="margin-left:auto;font-size:11px;color:var(--text-3);font-weight:400">${taperLabel}</span>
+    </div>
+    <div style="background:var(--surface-2);border-radius:12px;padding:14px 16px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:10px">
+      <div>
+        <div style="font-size:11px;color:var(--text-3);margin-bottom:2px">Medication</div>
+        <div style="font-size:13px;font-weight:500;color:var(--text)">${med}</div>
+        <div style="font-size:11px;color:var(--text-3)">${brand}</div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--text-3);margin-bottom:2px">Drug level today</div>
+        <div style="font-size:20px;font-weight:600;color:${pctColor}">${pct != null ? pct + '%' : '—'}</div>
+        <div style="font-size:11px;color:var(--text-3)">${days != null ? 'Day ' + days + ' of cycle' : ''}</div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--text-3);margin-bottom:2px">Next dose</div>
+        <div style="font-size:15px;font-weight:500;color:var(--text)">${nextDose}</div>
+        <div style="font-size:11px;color:var(--text-3)">Every ${freq} days</div>
+      </div>
+    </div>
+    ${hungerBar}
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="cp-primary-btn" style="flex:1;font-size:13px" onclick="logTaperDose()">
+        <i class="fa-solid fa-syringe"></i> Took dose today
+      </button>
+      <button class="cp-secondary-btn" style="font-size:12px" onclick="stopTaperPlan()"
+        title="Stop tracking">Stop taper</button>
+    </div>
+  </div>`;
+}
+
+async function saveTaperPlan() {
+  const h = await headers(); if (!h) return;
+  const body = {
+    action:          'save',
+    medication:      document.getElementById('taperMed')?.value || 'semaglutide',
+    taper_type:      document.getElementById('taperType')?.value || 'stretch',
+    current_dose:    parseFloat(document.getElementById('taperDose')?.value) || null,
+    frequency_days:  parseInt(document.getElementById('taperFreq')?.value) || 7,
+    last_dose_date:  document.getElementById('taperLastDose')?.value || new Date().toISOString().slice(0,10),
+    target_weeks:    parseInt(document.getElementById('taperWeeks')?.value) || 9,
+  };
+  try {
+    const { ok, data } = await apiJson('/api/taper', { method: 'POST', headers: h, body: JSON.stringify(body) });
+    if (ok) { toast('Taper plan started ✓'); loadHealthView(); }
+    else     toast('Could not save plan. Try again.', 'err');
+  } catch { toast('Error saving plan.', 'err'); }
+}
+
+async function logTaperDose() {
+  const h = await headers(); if (!h) return;
+  try {
+    const { ok } = await apiJson('/api/taper', { method: 'POST', headers: h,
+      body: JSON.stringify({ action: 'log_dose' }) });
+    if (ok) { toast('Dose logged ✓ — next dose date updated'); loadHealthView(); }
+    else     toast('Could not log dose.', 'err');
+  } catch { toast('Error logging dose.', 'err'); }
+}
+
+async function stopTaperPlan() {
+  if (!confirm('Stop tracking this taper plan?')) return;
+  const h = await headers(); if (!h) return;
+  try {
+    const { ok } = await apiJson('/api/taper', { method: 'POST', headers: h,
+      body: JSON.stringify({ action: 'stop' }) });
+    if (ok) { toast('Taper plan stopped'); _taperPlan = null; loadHealthView(); }
+  } catch { toast('Error.', 'err'); }
 }
 
 function buildHealthViewHTML(markers, dashboard) {
@@ -752,7 +915,8 @@ function buildHealthViewHTML(markers, dashboard) {
     : riskLevel === "warn" ? `${abnormal.length} markers outside normal range.`
     : "All monitored markers within normal range.";
 
-  let html = `<div class="hv-section"><div class="hv-heading"><i class="fa-solid fa-triangle-exclamation"></i>Cliff Risk</div>
+  let html = buildTaperHTML(_taperPlan);
+  html += `<div class="hv-section"><div class="hv-heading"><i class="fa-solid fa-triangle-exclamation"></i>Cliff Risk</div>
     <div class="cliff-card risk-${riskLevel}">
       <div><div class="cliff-num risk-${riskLevel}">${riskLevel === "none" ? "✓" : riskScore}</div></div>
       <div class="cliff-detail"><h3>${riskLabel}</h3><p>${riskDesc}</p>
