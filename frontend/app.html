@@ -20,7 +20,7 @@
   // Load PayPal SDK dynamically using client ID from backend config
   (async () => {
     try {
-      const res  = await fetch('/api/payment/config');
+      const res  = await fetch('https://api.curabook.com/api/payment/config');
       const cfg  = await res.json();
       if (!cfg.paypal_client_id) return;
       const s    = document.createElement('script');
