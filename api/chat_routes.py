@@ -685,7 +685,7 @@ def _build_smart_messages(
 
     messages = [{"role": "system", "content": _PHI_BASE_SYSTEM}]
 
-    has_health_data = bool(memories or markers or shield or current_markers)
+    has_health_data = bool(memories or markers or shield)
     if has_health_data:
         memory_block = _format_memory_block(memories, markers, shield)
         if memory_block:
@@ -1369,7 +1369,10 @@ def chat():
     final_reply = reply + MANDATORY_DISCLAIMER
 
     # ── STEP 9: Background ops ────────────────────────────────────────────────
-    doc_for_bg = resolved_document_text if has_documents else None
+    # Skip background LLM doc analysis when markers already extracted —
+    # main LLM call handled the explanation and running two OpenAI calls
+    # simultaneously in the same worker causes OOM on Render free tier (512MB).
+    doc_for_bg = resolved_document_text if (has_documents and not current_markers) else None
     bg = threading.Thread(
         target=_run_background_ops,
         args=(supabase, user.id, conversation_id, message, final_reply, doc_for_bg),
