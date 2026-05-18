@@ -685,7 +685,7 @@ def _build_smart_messages(
 
     messages = [{"role": "system", "content": _PHI_BASE_SYSTEM}]
 
-    has_health_data = bool(memories or markers or shield)
+    has_health_data = bool(memories or markers or shield or current_markers)
     if has_health_data:
         memory_block = _format_memory_block(memories, markers, shield)
         if memory_block:
@@ -1342,7 +1342,7 @@ def chat():
         markers=markers,
         shield=shield,                   # ← NEW: shield data passed through
         has_documents=has_documents,
-        document_text=resolved_document_text if current_markers else "",
+        document_text=resolved_document_text if (has_documents and resolved_document_text) else "",
         health_context_overlay=overlay,
     )
 
@@ -1350,7 +1350,7 @@ def chat():
     reply = _call_llm_safe(messages_for_llm)
 
     # ── STEP 8: Safety validation ─────────────────────────────────────────────
-    has_health_data = bool(memories or markers or shield)
+    has_health_data = bool(memories or markers or shield or current_markers)
     try:
         from ai.system_prompt_v2 import validate_response, detect_hallucination_risk
         if detect_hallucination_risk(reply, has_health_data):
@@ -1369,7 +1369,7 @@ def chat():
     final_reply = reply + MANDATORY_DISCLAIMER
 
     # ── STEP 9: Background ops ────────────────────────────────────────────────
-    doc_for_bg = resolved_document_text if (has_documents and not current_markers) else None
+    doc_for_bg = resolved_document_text if has_documents else None
     bg = threading.Thread(
         target=_run_background_ops,
         args=(supabase, user.id, conversation_id, message, final_reply, doc_for_bg),
