@@ -10,7 +10,7 @@
     <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
     :root {
-        --brand: #00C8E0; --brand-dark: #009db5; --text: #111111;
+        --brand: #00BCD5; --brand-dark: #0097a7; --text: #111111;
         --muted: #6b7280; --border: #e5e7eb; --bg: #fafafa; --white: #ffffff;
         --font: 'Plus Jakarta Sans','Segoe UI',sans-serif;
         --serif: 'Instrument Serif',Georgia,serif;
@@ -185,6 +185,12 @@ async function handleSuccessfulLogin(session) {
         console.warn("[LOGIN] Routing check failed:", e);
     }
     
+    // Respect ?redirect= param — send user back where they came from
+    const _rp = new URLSearchParams(window.location.search).get('redirect');
+    if (_rp && _rp.startsWith('/') && !_rp.startsWith('//')) {
+        window.location.replace(_rp);
+        return;
+    }
     window.location.replace('/app');
 }
 
@@ -304,7 +310,7 @@ document.getElementById("googleBtn").addEventListener("click", async () => {
     try {
         await _supabase.auth.signInWithOAuth({
             provider: "google",
-            options: { redirectTo: `${window.location.origin}/login` },
+            options: { redirectTo: `${window.location.origin}/signup` },
         });
     } catch { setStatus("Google sign-in unavailable. Try email instead.", "error"); }
 });
@@ -321,16 +327,35 @@ document.getElementById("googleBtn").addEventListener("click", async () => {
             },
         });
 
-        _supabase.auth.onAuthStateChange(async (event, session) => {
-            if ((event === "SIGNED_IN" || event === "TOKEN_REFRESHED") && session?.user && !_redirecting) {
-                const user      = session.user;
-                const isGoogle  = user.app_metadata?.provider === "google";
-                const termsKey  = `phi_terms_${user.id}`;
+        let _oauthHandled = false;
 
-                if (isGoogle && !localStorage.getItem(termsKey)) {
-                    showGoogleTermsModal(user, session);
+        _supabase.auth.onAuthStateChange(async (event, session) => {
+            if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && session?.user && !_redirecting) {
+                const user     = session.user;
+                const isGoogle = user.app_metadata?.provider === "google";
+                const termsKey = `phi_terms_${user.id}`;
+
+                if (isGoogle) {
+                    // Prevent double-fire from INITIAL_SESSION + SIGNED_IN
+                    if (_oauthHandled) return;
+                    _oauthHandled = true;
+
+                    // Returning Google user — already accepted terms
+                    if (localStorage.getItem(termsKey)) {
+                        await handleSuccessfulLogin(session);
+                        return;
+                    }
+
+                    // New Google user — redirect to /signup which has the
+                    // full consent panel + onboarding questions already working
+                    if (!_redirecting) {
+                        _redirecting = true;
+                        window.location.replace('/signup');
+                    }
                     return;
                 }
+
+                // Email login — go straight through
                 await handleSuccessfulLogin(session);
             }
         });
@@ -343,7 +368,11 @@ document.getElementById("googleBtn").addEventListener("click", async () => {
                     const termsKey = `phi_terms_${user.id}`;
                     
                     if (isGoogle && !localStorage.getItem(termsKey)) {
-                        showGoogleTermsModal(user, session);
+                        // New Google user on login page — send to /signup for full onboarding
+                        if (!_redirecting) {
+                            _redirecting = true;
+                            window.location.replace('/signup');
+                        }
                         return;
                     }
                     handleSuccessfulLogin(session);

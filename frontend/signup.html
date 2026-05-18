@@ -675,7 +675,13 @@ async function finishOnboarding() {
         if (_userId) { try { localStorage.setItem(`phi_terms_${_userId}`, Date.now().toString()); } catch(e) {} }
 
         if (ob.plan === 'free') {
-            window.location.href = '/app?welcome=1';
+            // Check for ?redirect= param — send user back where they came from
+            const _rp = new URLSearchParams(window.location.search).get('redirect');
+            if (_rp && _rp.startsWith('/') && !_rp.startsWith('//')) {
+                window.location.href = _rp;
+            } else {
+                window.location.href = '/app?welcome=1';
+            }
         } else {
             await startPayPalCheckout();
         }
@@ -873,10 +879,15 @@ try {
         _userId      = session.user.id;
         _accessToken = session.access_token;
 
-        // Already onboarded on this device → go straight to app
+        // Already onboarded on this device → go to redirect target or app
         const localDone = localStorage.getItem('phi_onboarded_' + _userId);
         if (localDone) {
-            window.location.replace('/app');
+            const _rp = new URLSearchParams(window.location.search).get('redirect');
+            if (_rp && _rp.startsWith('/') && !_rp.startsWith('//')) {
+                window.location.replace(_rp);
+            } else {
+                window.location.replace('/app');
+            }
             return;
         }
 
@@ -889,7 +900,12 @@ try {
                 const profile = await profileRes.json();
                 if (profile && profile.first_name) {
                     try { localStorage.setItem('phi_onboarded_' + _userId, 'true'); } catch(e) {}
-                    window.location.replace('/app');
+                    const _rp2 = new URLSearchParams(window.location.search).get('redirect');
+                    if (_rp2 && _rp2.startsWith('/') && !_rp2.startsWith('//')) {
+                        window.location.replace(_rp2);
+                    } else {
+                        window.location.replace('/app');
+                    }
                     return;
                 }
             }
