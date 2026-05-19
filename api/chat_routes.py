@@ -49,7 +49,7 @@ from flask import Blueprint, request, jsonify
 chat_bp = Blueprint("chat", __name__)
 
 MAX_MESSAGE_LEN  = 2000
-MAX_DOC_TEXT_LEN = 20_000
+MAX_DOC_TEXT_LEN = 6_000  # Reduced from 20k — Render free tier is 512MB
 
 MANDATORY_DISCLAIMER = (
     "\n\n---\n"
@@ -750,7 +750,7 @@ def _build_smart_messages(
     final_message = anonymize_for_llm(user_message or "", user_id)
     if document_text and has_documents:
         final_message = (
-            f"[DOCUMENT UPLOADED]\n{document_text[:8000]}\n[/DOCUMENT]\n\n"
+            f"[DOCUMENT UPLOADED]\n{document_text[:4000]}\n[/DOCUMENT]\n\n"
             f"User: {user_message}\n\n"
             f"Analyze the document and answer the user's question."
         )
@@ -1333,6 +1333,10 @@ def chat():
         overlay = cliff_ctx + "\n\n" + overlay if overlay else cliff_ctx
 
     # ── STEP 6: Build LLM messages (FIX-SHIELD-3: pass shield) ───────────────
+    # Trim document text before LLM call to free memory on Render 512MB worker
+    doc_for_llm = (resolved_document_text[:4000] if (has_documents and resolved_document_text) else "")
+    resolved_document_text = None  # free the full text from memory before LLM call
+
     messages_for_llm = _build_smart_messages(
         supabase=supabase,
         user_id=user.id,
@@ -1340,9 +1344,9 @@ def chat():
         user_message=message,
         memories=memories,
         markers=markers,
-        shield=shield,                   # ← NEW: shield data passed through
+        shield=shield,
         has_documents=has_documents,
-        document_text=resolved_document_text if (has_documents and resolved_document_text) else "",
+        document_text=doc_for_llm,
         health_context_overlay=overlay,
     )
 
