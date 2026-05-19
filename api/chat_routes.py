@@ -1335,6 +1335,8 @@ def chat():
     # ── STEP 6: Build LLM messages (FIX-SHIELD-3: pass shield) ───────────────
     # Trim document text before LLM call to free memory on Render 512MB worker
     doc_for_llm = (resolved_document_text[:4000] if (has_documents and resolved_document_text) else "")
+    # Save bg reference BEFORE freeing — bg only runs when no markers extracted
+    doc_for_bg_text = (resolved_document_text if (has_documents and not current_markers) else None)
     resolved_document_text = None  # free the full text from memory before LLM call
 
     messages_for_llm = _build_smart_messages(
@@ -1376,7 +1378,7 @@ def chat():
     # Skip background LLM doc analysis when markers already extracted —
     # main LLM call handled the explanation and running two OpenAI calls
     # simultaneously in the same worker causes OOM on Render free tier (512MB).
-    doc_for_bg = resolved_document_text if (has_documents and not current_markers) else None
+    doc_for_bg = doc_for_bg_text  # already computed above before resolved_document_text was freed
     bg = threading.Thread(
         target=_run_background_ops,
         args=(supabase, user.id, conversation_id, message, final_reply, doc_for_bg),
