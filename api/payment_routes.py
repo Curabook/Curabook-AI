@@ -4,9 +4,9 @@ api/payment_routes.py — PayPal Subscriptions Payment System
 Migrated from Razorpay → PayPal Subscriptions API.
 
 PRICING:
-  Shield Monthly  — $49/mo            (plan key: "monthly")
-  Shield Annual   — $468/yr ($39/mo)  (plan key: "annual")
-  Shield Clinical — $99/mo            (plan key: "clinical")
+  Shield Monthly  — $24.99/mo         (plan key: "monthly")
+  Shield Annual   — $179/yr ($14.92/mo — save $120, 5 months free) (plan key: "annual")
+  PA Appeal Pack  — $49 one-time      (plan key: "pa_appeal")
   Trial           — $0                (plan key: "trial")
 
 HOW PAYPAL SUBSCRIPTIONS WORK:
@@ -26,9 +26,9 @@ REQUIRED ENV VARS:
   PAYPAL_CLIENT_ID          — from PayPal Developer dashboard
   PAYPAL_CLIENT_SECRET      — from PayPal Developer dashboard
   PAYPAL_WEBHOOK_ID         — from PayPal Developer dashboard
-  PAYPAL_PLAN_MONTHLY_ID    — Billing Plan ID P-xxx for $49/mo
-  PAYPAL_PLAN_ANNUAL_ID     — Billing Plan ID P-xxx for $468/yr
-  PAYPAL_PLAN_CLINICAL_ID   — Billing Plan ID P-xxx for $99/mo
+  PAYPAL_PLAN_MONTHLY_ID    — Billing Plan ID P-xxx for $24.99/mo
+  PAYPAL_PLAN_ANNUAL_ID     — Billing Plan ID P-xxx for $179/yr
+  PAYPAL_PLAN_PA_ID         — Billing Plan ID P-xxx for $49 one-time PA Appeal
   PAYPAL_ENV                — "sandbox" (default) or "live"
   FRONTEND_URL              — e.g. https://curabook.com
   ADMIN_SECRET              — for admin endpoints
@@ -56,7 +56,7 @@ PAYPAL_CLIENT_SECRET    = os.getenv("PAYPAL_CLIENT_SECRET", "")
 PAYPAL_WEBHOOK_ID       = os.getenv("PAYPAL_WEBHOOK_ID", "")
 PAYPAL_PLAN_MONTHLY_ID  = os.getenv("PAYPAL_PLAN_MONTHLY_ID", "")
 PAYPAL_PLAN_ANNUAL_ID   = os.getenv("PAYPAL_PLAN_ANNUAL_ID", "")
-PAYPAL_PLAN_CLINICAL_ID = os.getenv("PAYPAL_PLAN_CLINICAL_ID", "")
+PAYPAL_PLAN_PA_ID       = os.getenv("PAYPAL_PLAN_PA_ID", "")
 PAYPAL_ENV              = os.getenv("PAYPAL_ENV", "sandbox")   # "sandbox" | "live"
 FRONTEND_URL            = os.getenv("FRONTEND_URL", "https://curabook.com")
 ADMIN_SECRET            = os.getenv("ADMIN_SECRET", "")
@@ -72,25 +72,25 @@ _PAYPAL_BASE = (
 # ── Plan config ───────────────────────────────────────────────────────────────
 PLAN_PRICING = {
     "monthly":  {
-        "amount":        49.00,
+        "amount":        24.99,
         "currency":      "USD",
-        "description":   "Curabook PHI Shield — $49/mo",
+        "description":   "Curabook PHI Shield — $24.99/mo",
         "interval_days": 31,
         "paypal_plan":   PAYPAL_PLAN_MONTHLY_ID,
     },
     "annual":   {
-        "amount":        468.00,
+        "amount":        179.00,
         "currency":      "USD",
-        "description":   "Curabook PHI Shield — $39/mo billed annually ($468/yr)",
+        "description":   "Curabook PHI Shield — $179/yr (save $120 — 5 months free)",
         "interval_days": 365,
         "paypal_plan":   PAYPAL_PLAN_ANNUAL_ID,
     },
-    "clinical": {
-        "amount":        99.00,
+    "pa_appeal": {
+        "amount":        49.00,
         "currency":      "USD",
-        "description":   "Curabook PHI Shield Clinical — $99/mo",
-        "interval_days": 31,
-        "paypal_plan":   PAYPAL_PLAN_CLINICAL_ID,
+        "description":   "Curabook PHI PA Appeal Pack — one-time",
+        "interval_days": 0,
+        "paypal_plan":   PAYPAL_PLAN_PA_ID,
     },
     "trial":    {
         "amount":        0,
@@ -102,15 +102,15 @@ PLAN_PRICING = {
 }
 
 PLAN_DISPLAY = {
-    "free":     "PHI Free",
-    "trial":    "PHI Trial",
-    "monthly":  "Shield Core",
-    "annual":   "Shield Core Annual",
-    "clinical": "Shield Clinical",
-    "pro":      "Shield Core",
+    "free":      "PHI Free",
+    "trial":     "PHI Trial",
+    "monthly":   "Shield Monthly",
+    "annual":    "Shield Annual",
+    "pa_appeal": "PA Appeal Pack",
+    "pro":       "Shield",
 }
 
-_PRO_PLANS = {"monthly", "annual", "clinical", "pro", "trial"}
+_PRO_PLANS = {"monthly", "annual", "pa_appeal", "pro", "trial"}
 
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
@@ -283,9 +283,9 @@ def payment_config():
         "paypal_client_id":  PAYPAL_CLIENT_ID,
         "paypal_env":        PAYPAL_ENV,
         "plans": {
-            "monthly":  {"amount": 49,  "currency": "USD", "label": "Shield — $49/mo",                    "interval": "monthly"},
-            "annual":   {"amount": 468, "currency": "USD", "label": "Shield — $39/mo (billed annually)",  "interval": "annual", "saves": "Save 20%"},
-            "clinical": {"amount": 99,  "currency": "USD", "label": "Shield Clinical — $99/mo",           "interval": "monthly"},
+            "monthly":   {"amount": 24.99, "currency": "USD", "label": "Shield — $24.99/mo",           "interval": "monthly"},
+            "annual":    {"amount": 179,   "currency": "USD", "label": "Shield — $179/yr",             "interval": "annual",  "saves": "Save $120 — 5 months free"},
+            "pa_appeal": {"amount": 49,    "currency": "USD", "label": "PA Appeal Pack — $49 one-time","interval": "one-time"},
         },
         "trial_days": TRIAL_DAYS,
     })

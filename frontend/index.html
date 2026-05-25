@@ -696,68 +696,78 @@ footer {
     <div class="pricing-header">
       <div class="section-tag">Simple pricing</div>
       <h2 class="section-h2">Start free.<br><em>Upgrade when you're ready.</em></h2>
-      <p class="pricing-sub">No credit card to begin. Cancel from your phone in 30 seconds.</p>
+      <p class="pricing-sub">14-day free trial on Shield. Cancel anytime from your phone.</p>
     </div>
 
     <div class="plan-duo">
 
       <!-- Free -->
       <div class="plan">
-        <div class="plan-name">Shield Free</div>
+        <div class="plan-name">Free</div>
         <div class="plan-price"><sup>$</sup>0</div>
         <div class="plan-period">forever free · no card needed</div>
         <div class="plan-hr"></div>
         <ul class="plan-perks">
-          <li><span class="pf-check">✓</span>AI health chat — unlimited questions</li>
-          <li><span class="pf-check">✓</span>Upload &amp; read your lab reports</li>
-          <li><span class="pf-check">✓</span>Track 5 key metabolic markers</li>
-          <li><span class="pf-check">✓</span>Basic rebound risk signals</li>
+          <li><span class="pf-check">✓</span>Drug level tracker — see today's % active</li>
+          <li><span class="pf-check">✓</span>7-day hunger forecast</li>
+          <li><span class="pf-check">✓</span>Food noise slider</li>
+          <li><span class="pf-check">✓</span>Basic AI chat (30-day memory)</li>
         </ul>
         <button class="plan-btn plan-btn--outline" onclick="location.href='/signup?plan=free'">Start free — no card needed</button>
       </div>
 
-      <!-- Core -->
+      <!-- Shield Annual — FEATURED -->
       <div class="plan plan--featured">
-        <div class="plan-badge">Most chosen</div>
-        <div class="plan-name">Shield Core</div>
-        <div class="plan-price"><sup>$</sup>49</div>
-        <div class="plan-period">per month · cancel anytime</div>
+        <div class="plan-badge">Best value — 5 months free</div>
+        <div class="plan-name">Shield Annual</div>
+        <div class="plan-price"><sup>$</sup>179</div>
+        <div class="plan-period">per year · <s style="color:var(--text-3);font-weight:300">$299</s> — save $120</div>
         <div class="plan-hr"></div>
         <ul class="plan-perks">
-          <li><span class="pf-check">✓</span>AI health chat — unlimited questions</li>
-          <li><span class="pf-check">✓</span>Upload &amp; read your lab reports</li>
-          <li><span class="pf-check">✓</span>Full Metabolic Shield — all markers tracked</li>
-          <li><span class="pf-check">✓</span>Weekly trend alerts before symptoms show</li>
-          <li><span class="pf-check">✓</span>Behavioral pattern detection across sleep, food &amp; activity</li>
-          <li><span class="pf-check">✓</span>Doctor visit prep — AI summary you can hand to your physician</li>
+          <li><span class="pf-check">✓</span>Live drug level % with hunger forecast</li>
+          <li><span class="pf-check">✓</span>Lab marker upload — cliff signal detection</li>
+          <li><span class="pf-check">✓</span>Full AI chat with persistent health memory</li>
+          <li><span class="pf-check">✓</span>Taper protocol tracker (stretch-out &amp; step-down)</li>
+          <li><span class="pf-check">✓</span>Metabolic Shield — protein, steps, sleep</li>
+          <li><span class="pf-check">✓</span>Doctor visit prep packets — unlimited</li>
+          <li><span class="pf-check">✓</span>PA Appeal letters — unlimited included</li>
         </ul>
-        <button class="plan-btn plan-btn--solid" onclick="location.href='/signup?plan=core'">Start Shield Core</button>
+        <button class="plan-btn plan-btn--solid" onclick="location.href='/signup?plan=annual'">Start 14-day free trial</button>
+        <p style="text-align:center;font-size:.72rem;color:var(--text-3);margin-top:10px;">Less than half the price of one Wegovy copay · HSA/FSA eligible</p>
       </div>
 
-      <!-- Clinical -->
+      <!-- Shield Monthly -->
       <div class="plan">
-        <div class="plan-name">Shield Clinical</div>
-        <div class="plan-price"><sup>$</sup>99</div>
+        <div class="plan-name">Shield Monthly</div>
+        <div class="plan-price"><sup>$</sup>24<span style="font-size:1.2rem">.99</span></div>
         <div class="plan-period">per month · cancel anytime</div>
         <div class="plan-hr"></div>
         <ul class="plan-perks">
-          <li><span class="pf-check">✓</span>Everything in Shield Core</li>
-          <li><span class="pf-check">✓</span>PA Architect — full prior authorisation packet for your insurer</li>
-          <li><span class="pf-check">✓</span>Appeal letter — clinical-grade draft your doctor can co-sign</li>
-          <li><span class="pf-check">✓</span>Cross-marker correlation report — monthly PDF you can share</li>
-          <li><span class="pf-check">✓</span>Body composition trend graph — visual progress over time</li>
-          <li><span class="pf-check">✓</span>Priority support — personal response within 24 hours</li>
+          <li><span class="pf-check">✓</span>Everything in Shield Annual</li>
+          <li><span class="pf-check">✓</span>No annual commitment</li>
+          <li><span class="pf-check">✓</span>Switch to annual anytime</li>
         </ul>
-        <button class="plan-btn plan-btn--solid" onclick="location.href='/signup?plan=clinical'">Start Shield Clinical</button>
-        <p style="margin-top:14px; font-size:.74rem; line-height:1.6; color:var(--text-3); text-align:center;">
-          <strong style="color:var(--text-2);">The Clinical Promise —</strong>
-          If your appeal is denied after using our packet, email us the denial letter. We'll personally review what failed and generate a revised packet for your next submission, free.
-        </p>
+        <button class="plan-btn plan-btn--outline" onclick="location.href='/signup?plan=monthly'">Start 14-day free trial</button>
+        <p style="text-align:center;font-size:.72rem;color:var(--text-3);margin-top:10px;">$299.88/yr vs $179/yr annual — save $120 by going annual</p>
       </div>
 
     </div>
 
-    <div class="pricing-notes">
+    <!-- PA Appeal one-time -->
+    <div style="max-width:520px;margin:28px auto 0;background:var(--surface-2);border:1.5px solid var(--border);border-radius:16px;padding:22px 26px;display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;">
+      <div>
+        <div style="font-size:.7rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--signal);margin-bottom:4px;">One-time · no subscription</div>
+        <div style="font-size:1rem;font-weight:600;color:var(--text);margin-bottom:4px;">PA Appeal Pack</div>
+        <div style="font-size:.8rem;color:var(--text-3);line-height:1.5;">Physician-ready appeal letter generated from your own lab data. For when you need to fight a denial — not a monthly commitment.</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0;">
+        <div style="font-size:1.6rem;font-weight:700;color:var(--text);">$49</div>
+        <div style="font-size:.7rem;color:var(--text-3);margin-bottom:10px;">one time</div>
+        <button class="plan-btn plan-btn--outline" style="padding:9px 18px;font-size:.82rem;" onclick="location.href='/appeal'">Generate my packet →</button>
+      </div>
+    </div>
+
+    <div class="pricing-notes" style="margin-top:28px;">
       <span><i class="fa-solid fa-lock"></i> AES-256 encrypted</span>
       <span><i class="fa-solid fa-user-secret"></i> AI never sees your name</span>
       <span><i class="fa-solid fa-circle-info"></i> Educational tool only</span>

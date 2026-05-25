@@ -376,38 +376,38 @@
                 <p id="planStatusMsg" class="status-msg"></p>
 
                 <div class="plan-cards">
-                    <div class="plan-card selected" id="planMonthly" onclick="selectPlan('monthly')">
-                        <div class="plan-popular-badge">Most Popular</div>
+                    <div class="plan-card" id="planAnnual" onclick="selectPlan('annual')" style="border-color:var(--brand);background:rgba(0,188,213,.04);">
+                        <div class="plan-popular-badge">Best Value — 5 months free</div>
                         <div class="plan-card-info">
-                            <div class="plan-card-name">Shield Core — Monthly</div>
-                            <div class="plan-card-desc">Unlimited reports · Weekly email briefs · Persistent Memory</div>
+                            <div class="plan-card-name">Shield Annual</div>
+                            <div class="plan-card-desc">Save $120 vs monthly · Full access · HSA/FSA eligible</div>
                         </div>
                         <div>
-                            <div class="plan-price-num">$49</div>
+                            <div class="plan-price-num">$24.99</div>
                             <div class="plan-price-period">/month</div>
                         </div>
                     </div>
-                    <div class="plan-card" id="planAnnual" onclick="selectPlan('annual')">
+                    <div class="plan-card selected" id="planMonthly" onclick="selectPlan('monthly')">
                         <div class="plan-card-info">
-                            <div class="plan-card-name">Shield Core — Annual</div>
-                            <div class="plan-card-desc">2 months free vs monthly — $39/mo</div>
+                            <div class="plan-card-name">Shield Monthly</div>
+                            <div class="plan-card-desc">Month-to-month · cancel anytime · same full access</div>
                         </div>
                         <div>
-                            <div class="plan-price-num" style="color:var(--brand-dark)">$468</div>
-                            <div class="plan-price-period">billed annually</div>
+                            <div class="plan-price-num">$24.99</div>
+                            <div class="plan-price-period">/month</div>
                         </div>
                     </div>
-                    <div class="plan-card" id="planClinical" onclick="selectPlan('clinical')" style="border-color:rgba(139,92,246,.3);position:relative;overflow:hidden;">
+                    <div class="plan-card" id="planPaAppeal" onclick="selectPlan('pa_appeal')" style="border-color:rgba(0,188,213,.25);position:relative;overflow:hidden;">
                         <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,#8b5cf6,#6d28d9);"></div>
                         <div class="plan-card-info">
                             <div class="plan-card-name" style="display:flex;align-items:center;gap:8px;">
-                                Shield Clinical
-                                <span style="font-size:10px;font-weight:700;background:rgba(139,92,246,.15);color:#8b5cf6;border:1px solid rgba(139,92,246,.3);padding:2px 7px;border-radius:20px;letter-spacing:.04em;">PA ARCHITECT</span>
+                                PA Appeal Pack
+                                <span style="font-size:10px;font-weight:700;background:rgba(0,188,213,.12);color:var(--brand);border:1px solid rgba(0,188,213,.3);padding:2px 7px;border-radius:20px;letter-spacing:.04em;">ONE-TIME</span>
                             </div>
-                            <div class="plan-card-desc">Full PA packet · Appeal letter · Correlation reports</div>
+                            <div class="plan-card-desc">Physician-ready appeal letter · No subscription needed</div>
                         </div>
                         <div>
-                            <div class="plan-price-num" style="color:#8b5cf6;">$99</div>
+                            <div class="plan-price-num" style="color:var(--brand);">$49</div>
                             <div class="plan-price-period">/month</div>
                         </div>
                     </div>
