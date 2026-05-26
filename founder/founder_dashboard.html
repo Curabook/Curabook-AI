@@ -410,7 +410,7 @@ tr:hover td{background:rgba(0,0,0,.02);}
       <button class="filter-btn active" onclick="setUserFilter(this,'')">All</button>
       <button class="filter-btn" onclick="setUserFilter(this,'monthly')">Monthly</button>
       <button class="filter-btn" onclick="setUserFilter(this,'annual')">Annual</button>
-      <button class="filter-btn" onclick="setUserFilter(this,'clinical')">Clinical</button>
+      <button class="filter-btn" onclick="setUserFilter(this,'pa_appeal')">PA Appeal</button>
       <button class="filter-btn" onclick="setUserFilter(this,'trial')">Trial</button>
       <button class="filter-btn" onclick="setUserFilter(this,'free')">Free</button>
     </div>
@@ -463,9 +463,9 @@ tr:hover td{background:rgba(0,0,0,.02);}
         <div>
           <label style="font-size:.7rem;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px;">Plan</label>
           <select id="quickGrantPlan" class="quick-input" style="margin-bottom:0;cursor:pointer;">
-            <option value="monthly">Monthly ($49)</option>
-            <option value="annual">Annual ($39/mo)</option>
-            <option value="clinical">Clinical ($99)</option>
+            <option value="monthly">Monthly ($24.99)</option>
+            <option value="annual">Annual ($179/yr)</option>
+            <option value="pa_appeal">PA Appeal ($49 one-time)</option>
             <option value="trial">Trial</option>
             <option value="free">Free (Revoke)</option>
           </select>
@@ -779,7 +779,7 @@ async function loadOverview() {
   const mrr = revenue.mrr_by_plan || {};
   document.getElementById('mrrPanel').innerHTML = `
     <div style="display:flex;flex-direction:column;gap:10px">
-      ${['monthly','annual','clinical'].map(p => `
+      ${['monthly','annual','pa_appeal'].map(p => `
         <div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border)">
           <span style="font-size:.76rem;color:var(--text2)">${p.charAt(0).toUpperCase()+p.slice(1)}</span>
           <span style="font-family:var(--mono);color:var(--text)">$${Number(mrr[p]||0).toFixed(0)}/mo</span>
@@ -990,9 +990,9 @@ async function openDetail(handle) {
       <div class="plan-control-box">
         <h4>Plan Control</h4>
         <select id="detailPlanSelect" class="plan-select">
-          <option value="monthly" ${d.plan==='monthly'?'selected':''}>Monthly ($49/mo)</option>
-          <option value="annual" ${d.plan==='annual'?'selected':''}>Annual ($39/mo)</option>
-          <option value="clinical" ${d.plan==='clinical'?'selected':''}>Clinical ($99/mo)</option>
+          <option value="monthly" ${d.plan==='monthly'?'selected':''}>Monthly ($24.99/mo)</option>
+          <option value="annual" ${d.plan==='annual'?'selected':''}>Annual ($179/yr)</option>
+          <option value="pa_appeal" ${d.plan==='pa_appeal'?'selected':''}>PA Appeal ($49 one-time)</option>
           <option value="trial" ${d.plan==='trial'?'selected':''}>Trial</option>
           <option value="free" ${d.plan==='free'?'selected':''}>Free</option>
         </select>
@@ -1111,7 +1111,7 @@ function deepMerge(a,b) {
 
 // ── UTILS ─────────────────────────────────────────────────────────────────────
 function planBadge(plan) {
-  const m={monthly:'badge-pro',annual:'badge-annual',clinical:'badge-clinical',pro:'badge-pro',trial:'badge-trial',free:'badge-free'};
+  const m={monthly:'badge-pro',annual:'badge-annual',pa_appeal:'badge-pro',pro:'badge-pro',trial:'badge-trial',free:'badge-free'};
   return m[plan]||'badge-free';
 }
 function timeSince(iso) {
