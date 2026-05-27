@@ -23,7 +23,7 @@
  *   category selection, and smooth success animation.
  *
  * FIX-4: PAYPAL PAYMENT TIERS (replaces Razorpay)
- *   Free tier: 14-day trial, then Shield plan required.
+ *   Free tier: 1 report upload, unlimited chat.
  *   Pro tier: unlimited reports, full marker memory, advocacy briefs.
  *   PayPal subscription flow — redirects to PayPal hosted checkout.
  *   No Razorpay SDK needed.
@@ -61,8 +61,8 @@ let _consentsPromise = null;
 let _redirecting   = false;
 
 // Payment state
-let _userPlan = "free";
-// No free report limit — 14-day trial model. isPro check controls access.
+let _userPlan         = "free";
+let _reportsRemaining = 1;
 
 // FIX-2: Health memory cache — refreshed after every message
 let _cachedMemories = [];
@@ -314,11 +314,11 @@ async function loadPaymentStatus() {
     const { ok, data } = await apiJson("/api/payment/status", { headers: h });
     if (ok && data) {
       _userPlan         = data.plan || "free";
-      // trial model — no per-report limits
+      _reportsRemaining = data.reports_remaining ?? 1;
       // Apply free-all override (founder toggle)
       if (data.is_free_all) {
         _userPlan         = "pro";
-        // pro user — full access
+        _reportsRemaining = 9999;
       }
       _renderPlanBadge();
     }
@@ -330,7 +330,7 @@ async function loadPaymentStatus() {
 function _renderPlanBadge() {
   const planEl = el("userPlan");
   if (planEl) {
-    const isPro = _userPlan === "pro" || _userPlan === "annual" || _userPlan === "monthly" || _userPlan === "trial";
+    const isPro = _userPlan === "pro" || _userPlan === "annual" || _userPlan === "monthly" || _userPlan === "clinical";
     planEl.textContent = isPro ? "Curabook Pro ✦" : "Curabook Free";
     planEl.style.color = isPro ? "var(--signal)" : "var(--text-3)";
   }
@@ -350,15 +350,15 @@ function _startPlanPoll() {
 
       const prevPlan = _userPlan;
       const newPlan  = data.plan || "free";
-      const wasPro   = prevPlan === "pro" || prevPlan === "annual" || prevPlan === "monthly" || prevPlan === "trial";
-      const nowPro   = newPlan  === "pro" || newPlan  === "annual" || newPlan  === "monthly" || newPlan  === "trial";
+      const wasPro   = prevPlan === "pro" || prevPlan === "annual" || prevPlan === "monthly" || prevPlan === "clinical";
+      const nowPro   = newPlan  === "pro" || newPlan  === "annual" || newPlan  === "monthly" || newPlan  === "clinical";
 
       // Update globals
       _userPlan         = newPlan;
-      // trial model — access controlled by plan only
+      _reportsRemaining = data.reports_remaining ?? 0;
       if (data.is_free_all) {
         _userPlan         = "pro";
-        // pro user — full access
+        _reportsRemaining = 9999;
       }
       _renderPlanBadge();
 
@@ -375,8 +375,8 @@ function _startPlanPoll() {
 
 // ── Upload click gate ──────────────────────────────────────────────────────
 function handleUploadClick() {
-  const isPro = _userPlan === "pro" || _userPlan === "annual" || _userPlan === "monthly" || _userPlan === "trial";
-  if (!isPro) {
+  const isPro = _userPlan === "pro" || _userPlan === "annual" || _userPlan === "monthly" || _userPlan === "clinical";
+  if (!isPro && _reportsRemaining <= 0) {
     showUpgradeModal("upload");
     return;
   }
@@ -431,9 +431,9 @@ function showUpgradeModal(reason = "manual") {
           box-shadow:0 4px 16px var(--signal-glow);">φ</div>
         <div>
           <h2 style="font-family:var(--serif);font-size:1.2rem;font-weight:400;
-            color:var(--text);margin-bottom:2px;line-height:1.2;">Start your 14-day free trial</h2>
+            color:var(--text);margin-bottom:2px;line-height:1.2;">Upgrade to Curabook Pro</h2>
           <p style="font-size:.73rem;color:var(--text-3);line-height:1.4;">
-            Full access · Cancel anytime · Less than half a Wegovy copay
+            Unlimited reports · Health memory · Insurance PA support
           </p>
         </div>
       </div>
@@ -445,21 +445,21 @@ function showUpgradeModal(reason = "manual") {
           font-size:.8rem;color:var(--amber);
           display:flex;align-items:center;gap:8px;">
           <i class="fa-solid fa-triangle-exclamation" style="flex-shrink:0;"></i>
-          <span><strong>Shield plan required</strong> — Start your 14-day free trial to unlock lab uploads and cliff detection.</span>
+          <span><strong>Free limit reached</strong> — You've used your 1 free report upload.</span>
         </div>` : ""}
 
       <div style="
         background:var(--surface-2);border:1px solid var(--border);
         border-radius:12px;padding:14px 16px;margin-bottom:18px;">
         <div style="font-size:.62rem;font-weight:700;color:var(--text-3);
-          text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px;">Everything in Shield</div>
+          text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px;">What you unlock</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px 12px;">
           ${[
-            ["fa-syringe","Live drug level tracker"],
-            ["fa-file-medical","Lab marker monitoring"],
-            ["fa-brain","Full AI health memory"],
-            ["fa-shield-halved","PA appeal generator"],
-            ["fa-chart-line","Cliff signal detection"],
+            ["fa-file-medical","Unlimited lab reports"],
+            ["fa-brain","Full health memory"],
+            ["fa-shield-halved","Insurance PA support"],
+            ["fa-bell","Weekly health briefs"],
+            ["fa-chart-line","Trend tracking"],
             ["fa-stethoscope","Doctor visit prep"],
           ].map(([icon, label]) => `
             <div style="display:flex;align-items:center;gap:7px;font-size:.78rem;color:var(--text-2);">
@@ -471,7 +471,7 @@ function showUpgradeModal(reason = "manual") {
 
       <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px;">
 
-        <button id="ppAnnualBtn" onclick="initiatePayPalCheckout('annual')" style="
+        <button id="ppMonthlyBtn" onclick="initiatePayPalCheckout('monthly')" style="
           width:100%;padding:13px 16px;
           background:var(--signal);color:#0a0b0e;
           border:none;border-radius:12px;
@@ -479,31 +479,51 @@ function showUpgradeModal(reason = "manual") {
           cursor:pointer;font-family:var(--sans);
           box-shadow:0 4px 20px var(--signal-glow);
           transition:all .15s;
-          display:flex;align-items:center;justify-content:space-between;
-          position:relative;">
-          <span style="display:flex;align-items:center;gap:8px;">
-            Shield Annual
-            <span style="font-size:.58rem;font-weight:700;background:rgba(0,0,0,.2);color:#0a0b0e;padding:2px 7px;border-radius:20px;letter-spacing:.04em;">BEST VALUE</span>
-          </span>
-          <span style="font-family:var(--mono);font-size:1rem;">$179<span style="font-size:.72rem;font-weight:500;">/yr</span></span>
+          display:flex;align-items:center;justify-content:space-between;">
+          <span>Monthly</span>
+          <span style="font-family:var(--mono);font-size:1rem;">$49<span style="font-size:.72rem;font-weight:500;">/mo</span></span>
         </button>
 
-        <button id="ppMonthlyBtn" onclick="initiatePayPalCheckout('monthly')" style="
+        <button id="ppAnnualBtn" onclick="initiatePayPalCheckout('annual')" style="
           width:100%;padding:13px 16px;
           background:var(--surface-3);color:var(--text);
           border:2px solid var(--border-2);border-radius:12px;
           font-size:.9rem;font-weight:600;
           cursor:pointer;font-family:var(--sans);
           transition:all .15s;
-          display:flex;align-items:center;justify-content:space-between;">
-          <span>Shield Monthly</span>
-          <span style="font-family:var(--mono);font-size:1rem;color:var(--text);">$24.99<span style="font-size:.72rem;font-weight:500;color:var(--text-2);">/mo</span></span>
+          display:flex;align-items:center;justify-content:space-between;
+          position:relative;">
+          <span style="display:flex;align-items:center;gap:8px;">
+            Annual
+            <span style="
+              font-size:.58rem;font-weight:700;
+              background:var(--ok);color:#0a0b0e;
+              padding:2px 7px;border-radius:20px;letter-spacing:.04em;">SAVE 20%</span>
+          </span>
+          <span style="font-family:var(--mono);font-size:1rem;color:var(--text);">$379<span style="font-size:.72rem;font-weight:500;color:var(--text-2);">/yr</span></span>
+        </button>
+
+        <button id="ppClinicalBtn" onclick="initiatePayPalCheckout('clinical')" style="
+          width:100%;padding:13px 16px;
+          background:var(--surface-3);color:var(--text);
+          border:2px solid rgba(139,92,246,.35);border-radius:12px;
+          font-size:.9rem;font-weight:600;
+          cursor:pointer;font-family:var(--sans);
+          transition:all .15s;
+          display:flex;align-items:center;justify-content:space-between;
+          position:relative;overflow:hidden;">
+          <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,#8b5cf6,#6d28d9);"></div>
+          <span style="display:flex;align-items:center;gap:8px;">
+            Shield Clinical
+            <span style="font-size:.58rem;font-weight:700;background:rgba(139,92,246,.2);color:#a78bfa;border:1px solid rgba(139,92,246,.3);padding:2px 7px;border-radius:20px;letter-spacing:.04em;">PA ARCHITECT</span>
+          </span>
+          <span style="font-family:var(--mono);font-size:1rem;color:#a78bfa;">$99<span style="font-size:.72rem;font-weight:500;color:var(--text-2);">/mo</span></span>
         </button>
 
       </div>
 
-      <div style="font-size:.68rem;color:var(--text-3);text-align:center;line-height:1.6;margin-bottom:10px;padding:8px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;">
-        14-day free trial on both plans · HSA/FSA eligible · Save $120 on annual vs monthly
+      <div style="font-size:.68rem;color:var(--text-3);text-align:center;line-height:1.6;margin-bottom:10px;padding:8px 10px;background:rgba(139,92,246,.05);border:1px solid rgba(139,92,246,.12);border-radius:8px;">
+        <strong style="color:#a78bfa;">Clinical Promise:</strong> If your appeal is denied after using our packet, email us. We'll generate a revised packet for your next submission — free.
       </div>
 
       <div id="upgradeStatus" style="text-align:center;font-size:.78rem;color:var(--text-3);min-height:18px;margin-bottom:6px;"></div>
@@ -525,8 +545,8 @@ function closeUpgradeModal() {
 
 // ── FIX-4: PayPal checkout ─────────────────────────────────────────────────
 async function initiatePayPalCheckout(plan = "monthly") {
-  const PLAN_LABELS = { monthly: "Shield Monthly — $24.99/mo", annual: "Shield Annual — $179/yr" };
-  const btnId    = plan === "annual" ? "ppAnnualBtn" : "ppMonthlyBtn";
+  const PLAN_LABELS = { monthly: "Monthly — $49/mo", annual: "Annual — $379/yr", clinical: "Clinical — $99/mo" };
+  const btnId    = plan === "clinical" ? "ppClinicalBtn" : plan === "annual" ? "ppAnnualBtn" : "ppMonthlyBtn";
   const btn      = el(btnId);
   const statusEl = el("upgradeStatus");
   const origLabel = PLAN_LABELS[plan] || "Upgrade";
@@ -1243,8 +1263,8 @@ async function sendMessage(text) {
     }
 
     if (_uploads.length) {
-      const isPro = _userPlan === "pro" || _userPlan === "annual" || _userPlan === "monthly" || _userPlan === "trial";
-      if (!isPro) {
+      const isPro = _userPlan === "pro" || _userPlan === "annual" || _userPlan === "monthly" || _userPlan === "clinical";
+      if (!isPro && _reportsRemaining <= 0) {
         _isSending = false;
         setSendingState(false);
         showUpgradeModal("upload");
@@ -1258,7 +1278,7 @@ async function sendMessage(text) {
         _docCtx = { text: result.document_text, hasDoc: true, filename: result.filename || "" };
         toast(`${result.filename || "File"} analyzed ✓`);
         if (!isPro) {
-          // trial model — no per-report counter
+          _reportsRemaining = Math.max(0, _reportsRemaining - 1);
           _renderPlanBadge();
         }
         setTimeout(() => _refreshMemoryCache(), 2000);
@@ -1376,7 +1396,7 @@ async function _postChatActions(reply, userText, responseData) {
   if (responseData?.plan) {
     _userPlan = responseData.plan;
     if (responseData.reports_remaining !== undefined) {
-      // trial model — ignore per-report counter from backend
+      _reportsRemaining = responseData.reports_remaining;
     }
     _renderPlanBadge();
   }
