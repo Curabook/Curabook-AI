@@ -250,7 +250,7 @@ footer{border-top:1px solid var(--border);padding:36px max(16px,5vw);display:fle
 <section class="hero">
   <div class="hero-badge"><span class="hero-badge-dot"></span>Insurance denied your GLP-1?</div>
   <h1>Your denial letter has<br><em>a specific weakness.</em></h1>
-  <p class="hero-sub">PHI reads your stored lab data and builds a physician-ready prior authorization appeal packet using the same clinical criteria insurers use to deny you. 2 minutes. Free. If you're logged in, your data auto-populates.</p>
+  <p class="hero-sub">PHI reads your stored lab data and builds a physician-ready prior authorization appeal packet using the same clinical criteria insurers use to deny you. 2 minutes. Shield plan required. If you're logged in, your data auto-populates.</p>
 </section>
 
 <section class="tool-section">
@@ -474,7 +474,7 @@ footer{border-top:1px solid var(--border);padding:36px max(16px,5vw);display:fle
               <li><span class="diff-no">✗</span><span>Guest: No tracking if insurance denies again</span></li>
               <li><span class="diff-yes">✓</span><span>PHI member: Full denial history, appeal timeline, follow-up alerts</span></li>
               <li><span class="diff-no">✗</span><span>Guest: Letter only — no metabolic monitoring</span></li>
-              <li><span class="diff-yes">✓</span><span>PHI member: Shield dashboard, Critical Zone alerts, lab trend analysis</span></li>
+              <li><span class="diff-yes">✓</span><span>Shield member: live drug level tracker, cliff signal alerts, lab trend analysis</span></li>
             </ul>
           </div>
         </div>
@@ -487,11 +487,11 @@ footer{border-top:1px solid var(--border);padding:36px max(16px,5vw);display:fle
             <div class="upsell-price-compare">Your GLP-1 cost ~$45/day. Your shield is less than a coffee.</div>
           </div>
           <div class="upsell-actions">
-            <a href="/signup?source=appeal&plan=clinical" class="upsell-cta">
-              <i class="fa-solid fa-shield-halved"></i>Upgrade to Clinical — $99/mo
+            <a href="/signup?source=appeal&plan=annual" class="upsell-cta">
+              <i class="fa-solid fa-shield-halved"></i>Start 14-day free trial — Shield Annual $179/yr
             </a>
-            <a href="/signup?source=appeal&plan=annual" class="upsell-cta-ghost">
-              Start with Shield plan ($39/mo) — PA Architect included
+            <a href="/signup?source=appeal&plan=monthly" class="upsell-cta-ghost">
+              Shield Monthly — $24.99/mo · cancel anytime
             </a>
           </div>
           <p class="upsell-reassurance">The letter you just generated is yours — we'll email it to you regardless. Creating an account means your data is waiting the next time you need it.</p>
@@ -515,13 +515,13 @@ const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 
 let _sb = null;
 let _session = null;
-let _userPlan = 'free';   // 'free' | 'pro' | 'clinical' | 'annual' | 'monthly'
+let _userPlan = 'free';   // 'free' | 'pro' | 'trial' | 'annual' | 'monthly'
 let _storedMarkers = [];
 let _storedMemories = [];
 let generatedPacket = '';
 
-function _isClinical() {
-  return _userPlan === 'clinical';
+function _isShield() {
+  return _userPlan === 'pro' || _userPlan === 'annual' || _userPlan === 'monthly' || _userPlan === 'trial';
 }
 
 // ── Supabase init ─────────────────────────────────────────────────────────────
@@ -770,19 +770,19 @@ function renderGenerateBtn() {
       </button>
       <div style="font-size:.74rem;color:var(--text-3);margin-top:8px;display:flex;align-items:center;gap:5px;">
         <i class="fa-solid fa-lock" style="font-size:.65rem"></i>
-        Clinical plan required. <a href="/signup?plan=clinical&source=appeal" style="color:var(--signal);text-decoration:underline;">Sign in or upgrade →</a>
+        Shield plan required. <a href="/signup?plan=annual&source=appeal" style="color:var(--signal);text-decoration:underline;">Start 14-day free trial →</a>
       </div>`;
     return;
   }
 
-  if (_isClinical()) {
-    // Clinical plan — full access
+  if (_isShield()) {
+    // Shield plan — full access
     wrap.innerHTML = `
       <button class="btn-primary" id="generateBtn" onclick="generatePacket()">
         <i class="fa-solid fa-file-medical"></i> Build My Appeal Packet
       </button>
       <div style="font-size:.74rem;color:var(--ok);margin-top:8px;display:flex;align-items:center;gap:5px;">
-        <i class="fa-solid fa-shield-halved"></i> Clinical plan — full PA Architect access
+        <i class="fa-solid fa-shield-halved"></i> Shield plan — full PA Architect access
       </div>`;
   } else {
     // Free or Pro — can see everything but generate is locked
@@ -793,8 +793,8 @@ function renderGenerateBtn() {
             <i class="fa-solid fa-lock" style="color:var(--amber);font-size:14px;"></i>
           </div>
           <div>
-            <div style="font-size:.9rem;font-weight:600;color:var(--text);">Clinical Plan Required</div>
-            <div style="font-size:.76rem;color:var(--text-3);margin-top:1px;">You can review every section — generation requires the Clinical plan</div>
+            <div style="font-size:.9rem;font-weight:600;color:var(--text);">Shield Plan Required</div>
+            <div style="font-size:.76rem;color:var(--text-3);margin-top:1px;">Start your 14-day free trial to generate your appeal packet</div>
           </div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">
@@ -803,13 +803,13 @@ function renderGenerateBtn() {
             All 4 steps, form fields, auto-populated lab data, comorbidity detection
           </div>
           <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:10px 12px;font-size:.76rem;color:var(--text-2);">
-            <div style="color:var(--amber);font-weight:600;font-size:.8rem;margin-bottom:3px;">⚡ Clinical unlocks</div>
+            <div style="color:var(--signal);font-weight:600;font-size:.8rem;margin-bottom:3px;">⚡ Shield unlocks</div>
             AI-generated PA packet, evidence scoring, missing data analysis, next steps
           </div>
         </div>
         <div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap;">
-          <a href="/signup?plan=clinical&source=appeal" class="btn-primary" style="text-decoration:none;padding:11px 20px;font-size:.86rem;">
-            <i class="fa-solid fa-shield-halved"></i> Upgrade to Clinical — $99/mo
+          <a href="/signup?plan=annual&source=appeal" class="btn-primary" style="text-decoration:none;padding:11px 20px;font-size:.86rem;">
+            <i class="fa-solid fa-shield-halved"></i> Start 14-day free trial — $179/yr
           </a>
           <div style="font-size:.72rem;color:var(--text-3);">Your GLP-1 cost ~$45/day. This is ~$3.30/day.</div>
         </div>
@@ -820,12 +820,12 @@ function renderGenerateBtn() {
 function handleGenerateClick() {
   if (!_session?.user) {
     // Not signed in — redirect to signup
-    window.location.href = '/signup?plan=clinical&source=appeal';
+    window.location.href = '/signup?plan=annual&source=appeal';
     return;
   }
-  if (!_isClinical()) {
+  if (!_isShield()) {
     // Show upgrade toast and scroll to locked button
-    toast('Clinical plan required to generate packets. Upgrade below ↓');
+    toast('Shield plan required to generate packets. Start your 14-day free trial below ↓');
     document.getElementById('generateBtnWrap')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     return;
   }
