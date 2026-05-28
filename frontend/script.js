@@ -710,12 +710,9 @@ async function loadHealthView() {
     const markers  = mR.status === "fulfilled" && mR.value.ok && Array.isArray(mR.value.data) ? mR.value.data : [];
     const dashData = dR.status === "fulfilled" && dR.value.ok && dR.value.data ? dR.value.data : null;
     _taperPlan = tR.status === "fulfilled" && tR.value.ok && tR.value.data?.plan ? tR.value.data.plan : null;
-    if (!markers.length && !_taperPlan) {
-      content.innerHTML = `<div class="hv-empty"><i class="fa-solid fa-chart-line"></i>
-        No health data yet. Upload a lab report to see your cliff risk picture.
-        <br><button class="hv-cta-btn" onclick="handleUploadClick()"><i class="fa-solid fa-upload"></i> Upload First Report</button></div>`;
-      return;
-    }
+    // Always render health view — taper tracker is always available
+    // If no markers yet, buildHealthViewHTML shows an upload prompt inside the view
+    // instead of replacing the entire view and hiding the taper tracker
     content.innerHTML = buildHealthViewHTML(markers, dashData);
     content.querySelectorAll("[data-ask]").forEach(btn =>
       btn.addEventListener("click", () => { switchView("chat"); setTimeout(() => sendMessage(btn.dataset.ask), 100); })
