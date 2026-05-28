@@ -314,10 +314,12 @@ async function loadPaymentStatus() {
     const { ok, data } = await apiJson("/api/payment/status", { headers: h });
     if (ok && data) {
       _userPlan         = data.plan || "free";
+      window._userPlan  = _userPlan; // expose for phi_fixes.js
       // trial model — no per-report limits
       // Apply free-all override (founder toggle)
       if (data.is_free_all) {
         _userPlan         = "pro";
+        window._userPlan  = "pro";
         // pro user — full access
       }
       _renderPlanBadge();
@@ -355,9 +357,11 @@ function _startPlanPoll() {
 
       // Update globals
       _userPlan         = newPlan;
+        window._userPlan  = newPlan;
       // trial model — access controlled by plan only
       if (data.is_free_all) {
         _userPlan         = "pro";
+        window._userPlan  = "pro";
         // pro user — full access
       }
       _renderPlanBadge();

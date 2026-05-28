@@ -6,7 +6,6 @@ Migrated from Razorpay → PayPal Subscriptions API.
 PRICING:
   Shield Monthly  — $24.99/mo         (plan key: "monthly")
   Shield Annual   — $179/yr ($14.92/mo — save $120, 5 months free) (plan key: "annual")
-  PA Appeal Pack  — $49 one-time      (plan key: "pa_appeal")
   Trial           — $0                (plan key: "trial")
 
 HOW PAYPAL SUBSCRIPTIONS WORK:
@@ -28,7 +27,6 @@ REQUIRED ENV VARS:
   PAYPAL_WEBHOOK_ID         — from PayPal Developer dashboard
   PAYPAL_PLAN_MONTHLY_ID    — Billing Plan ID P-xxx for $24.99/mo
   PAYPAL_PLAN_ANNUAL_ID     — Billing Plan ID P-xxx for $179/yr
-  PAYPAL_PLAN_PA_ID         — Billing Plan ID P-xxx for $49 one-time PA Appeal
   PAYPAL_ENV                — "sandbox" (default) or "live"
   FRONTEND_URL              — e.g. https://curabook.com
   ADMIN_SECRET              — for admin endpoints
@@ -85,13 +83,6 @@ PLAN_PRICING = {
         "interval_days": 365,
         "paypal_plan":   PAYPAL_PLAN_ANNUAL_ID,
     },
-    "pa_appeal": {
-        "amount":        49.00,
-        "currency":      "USD",
-        "description":   "Curabook PHI PA Appeal Pack — one-time",
-        "interval_days": 0,
-        "paypal_plan":   PAYPAL_PLAN_PA_ID,
-    },
     "trial":    {
         "amount":        0,
         "currency":      "USD",
@@ -106,11 +97,10 @@ PLAN_DISPLAY = {
     "trial":     "PHI Trial",
     "monthly":   "Shield Monthly",
     "annual":    "Shield Annual",
-    "pa_appeal": "PA Appeal Pack",
     "pro":       "Shield",
 }
 
-_PRO_PLANS = {"monthly", "annual", "pa_appeal", "pro", "trial"}
+_PRO_PLANS = {"monthly", "annual", "pro", "trial"}
 
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
@@ -285,7 +275,6 @@ def payment_config():
         "plans": {
             "monthly":   {"amount": 24.99, "currency": "USD", "label": "Shield — $24.99/mo",           "interval": "monthly"},
             "annual":    {"amount": 179,   "currency": "USD", "label": "Shield — $179/yr",             "interval": "annual",  "saves": "Save $120 — 5 months free"},
-            "pa_appeal": {"amount": 49,    "currency": "USD", "label": "PA Appeal Pack — $49 one-time","interval": "one-time"},
         },
         "trial_days": TRIAL_DAYS,
     })
