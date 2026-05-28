@@ -527,7 +527,7 @@ function _isShield() {
 // ── Supabase init ─────────────────────────────────────────────────────────────
 (async () => {
   try {
-    _sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: true } });
+    _sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: true, detectSessionInUrl: true } });
     const { data } = await _sb.auth.getSession();
     _session = data?.session;
     if (_session?.user) {
@@ -546,6 +546,20 @@ function _isShield() {
       } catch(e) { /* non-fatal */ }
       renderAuthBanner(true, _session.user.email);
       await loadStoredData();
+
+      // Returning from auth — restore form state and auto-generate
+      const savedState = sessionStorage.getItem('phi_appeal_state');
+      const redirectIntent = sessionStorage.getItem('phi_redirect_after_auth');
+      if (savedState && redirectIntent === '/appeal') {
+        sessionStorage.removeItem('phi_redirect_after_auth');
+        const restored = restoreFormState();
+        if (restored) {
+          setTimeout(() => {
+            toast('Generating your packet now…');
+            setTimeout(() => generatePacket(), 800);
+          }, 600);
+        }
+      }
     } else {
       renderAuthBanner(false);
     }
@@ -763,14 +777,14 @@ function renderGenerateBtn() {
   if (!wrap) return;
 
   if (!_session?.user) {
-    // Not logged in — show button but clicking prompts sign in
+    // Not logged in — show auth gate (free signup, then come back and generate)
     wrap.innerHTML = `
       <button class="btn-primary" onclick="handleGenerateClick()">
         <i class="fa-solid fa-file-medical"></i> Build My Appeal Packet
       </button>
       <div style="font-size:.74rem;color:var(--text-3);margin-top:8px;display:flex;align-items:center;gap:5px;">
         <i class="fa-solid fa-lock" style="font-size:.65rem"></i>
-        Shield plan required. <a href="/signup?plan=annual&source=appeal" style="color:var(--signal);text-decoration:underline;">Start 14-day free trial →</a>
+        Free account required — your data is saved and you'll come straight back.
       </div>`;
     return;
   }
@@ -785,50 +799,28 @@ function renderGenerateBtn() {
         <i class="fa-solid fa-shield-halved"></i> Shield plan — full PA Architect access
       </div>`;
   } else {
-    // Free or Pro — can see everything but generate is locked
+    // Free user — can generate one appeal packet
+    // Shield users get stored data auto-populated; free users fill manually
     wrap.innerHTML = `
-      <div style="background:var(--surface-2);border:1.5px solid var(--border);border-radius:var(--r-lg);padding:20px 22px;margin-top:4px;">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
-          <div style="width:36px;height:36px;border-radius:9px;background:var(--amber-dim);border:1px solid rgba(245,158,11,.2);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-            <i class="fa-solid fa-lock" style="color:var(--amber);font-size:14px;"></i>
-          </div>
-          <div>
-            <div style="font-size:.9rem;font-weight:600;color:var(--text);">Shield Plan Required</div>
-            <div style="font-size:.76rem;color:var(--text-3);margin-top:1px;">Start your 14-day free trial to generate your appeal packet</div>
-          </div>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">
-          <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:10px 12px;font-size:.76rem;color:var(--text-2);">
-            <div style="color:var(--ok);font-weight:600;font-size:.8rem;margin-bottom:3px;">✓ What you can see</div>
-            All 4 steps, form fields, auto-populated lab data, comorbidity detection
-          </div>
-          <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:10px 12px;font-size:.76rem;color:var(--text-2);">
-            <div style="color:var(--signal);font-weight:600;font-size:.8rem;margin-bottom:3px;">⚡ Shield unlocks</div>
-            AI-generated PA packet, evidence scoring, missing data analysis, next steps
-          </div>
-        </div>
-        <div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap;">
-          <a href="/signup?plan=annual&source=appeal" class="btn-primary" style="text-decoration:none;padding:11px 20px;font-size:.86rem;">
-            <i class="fa-solid fa-shield-halved"></i> Start 14-day free trial — $179/yr
-          </a>
-          <div style="font-size:.72rem;color:var(--text-3);">Your GLP-1 cost ~$45/day. This is ~$3.30/day.</div>
-        </div>
+      <button class="btn-primary" id="generateBtn" onclick="generatePacket()">
+        <i class="fa-solid fa-file-medical"></i> Build My Appeal Packet
+      </button>
+      <div style="font-size:.74rem;color:var(--text-3);margin-top:8px;display:flex;align-items:center;gap:5px;">
+        <i class="fa-solid fa-circle-info" style="font-size:.65rem"></i>
+        Free account — generate your packet. Shield members get lab data auto-populated.
       </div>`;
   }
 }
 
 function handleGenerateClick() {
   if (!_session?.user) {
-    // Not signed in — redirect to signup
-    window.location.href = '/signup?plan=annual&source=appeal';
+    // Not signed in — save form state and redirect to free signup
+    saveFormState();
+    sessionStorage.setItem('phi_redirect_after_auth', '/appeal');
+    showAuthGate();
     return;
   }
-  if (!_isShield()) {
-    // Show upgrade toast and scroll to locked button
-    toast('Shield plan required to generate packets. Start your 14-day free trial below ↓');
-    document.getElementById('generateBtnWrap')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    return;
-  }
+  // Both free and Shield users can generate
   generatePacket();
 }
 
@@ -1002,6 +994,85 @@ function startOver() {
 
 function shareReddit() { const u = encodeURIComponent(location.href), t = encodeURIComponent('Free tool to build your GLP-1 insurance PA appeal packet in 2 minutes — no account required'); window.open(`https://www.reddit.com/submit?url=${u}&title=${t}`, '_blank'); }
 function copyLink() { navigator.clipboard.writeText(location.href); toast('Link copied ✓'); }
+// ── Form state persistence (survives login redirect) ──────────────────────────
+function saveFormState() {
+  try {
+    const state = {
+      med: document.querySelector('input[name="med"]:checked')?.value || '',
+      reason: document.querySelector('input[name="reason"]:checked')?.value || '',
+      duration: document.getElementById('duration')?.value || '',
+      denialReason: document.getElementById('denialReason')?.value || '',
+      denialText: document.getElementById('denialText')?.value || '',
+      insurancePlan: document.getElementById('insurancePlan')?.value || '',
+      bmi: document.getElementById('bmi')?.value || '',
+      weight: document.getElementById('weight')?.value || '',
+      hba1c: document.getElementById('hba1c')?.value || '',
+      glucose: document.getElementById('glucose')?.value || '',
+      ldl: document.getElementById('ldl')?.value || '',
+      bp: document.getElementById('bp')?.value || '',
+      additionalContext: document.getElementById('additionalContext')?.value || '',
+      priorMeds: Array.from(document.querySelectorAll('.prior-med:checked')).map(c => c.value),
+      comorbidities: Array.from(document.querySelectorAll('.comorbidity:checked')).map(c => c.value),
+      currentStep: document.querySelector('.step-tab.active')?.id?.replace('tab','') || '1',
+    };
+    sessionStorage.setItem('phi_appeal_state', JSON.stringify(state));
+  } catch(e) {}
+}
+
+function restoreFormState() {
+  try {
+    const raw = sessionStorage.getItem('phi_appeal_state');
+    if (!raw) return false;
+    const s = JSON.parse(raw);
+    sessionStorage.removeItem('phi_appeal_state');
+    if (s.med) { const r = document.querySelector(`input[name="med"][value="${s.med}"]`); if (r) r.checked = true; }
+    if (s.reason) { const r = document.querySelector(`input[name="reason"][value="${s.reason}"]`); if (r) r.checked = true; }
+    ['duration','denialReason','denialText','insurancePlan','bmi','weight','hba1c','glucose','ldl','bp','additionalContext'].forEach(f => { const el = document.getElementById(f); if (el && s[f]) el.value = s[f]; });
+    (s.priorMeds || []).forEach(v => { const cb = document.querySelector(`.prior-med[value="${v}"]`); if (cb) cb.checked = true; });
+    (s.comorbidities || []).forEach(v => { const cb = document.querySelector(`.comorbidity[value="${v}"]`); if (cb) cb.checked = true; });
+    const step = parseInt(s.currentStep) || 1;
+    goToStep(step);
+    toast('Welcome back — your appeal data has been restored ✓');
+    return true;
+  } catch(e) { return false; }
+}
+
+function showAuthGate() {
+  const generateBtnWrap = document.getElementById('generateBtnWrap');
+  const existing = document.getElementById('authGatePanel');
+  if (existing) existing.remove();
+  const gate = document.createElement('div');
+  gate.id = 'authGatePanel';
+  gate.style.cssText = 'margin-top:20px;background:var(--surface-2);border:1.5px solid var(--border);border-radius:var(--r-lg);padding:28px;text-align:center;';
+  gate.innerHTML = `
+    <div style="width:52px;height:52px;border-radius:14px;background:var(--signal-dim);border:1px solid rgba(0,188,213,.2);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;color:var(--signal);font-size:1.4rem;">
+      <i class="fa-solid fa-file-medical"></i>
+    </div>
+    <div style="font-family:var(--serif);font-size:1.3rem;font-weight:400;color:var(--text);margin-bottom:8px;">Almost there — create your free account</div>
+    <p style="font-size:.84rem;color:var(--text-2);max-width:420px;margin:0 auto 20px;line-height:1.65;">
+      Your appeal data is saved. Create a free account — you'll come straight back here and your packet will generate automatically. No payment required.
+    </p>
+    <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+      <a href="/signup?plan=free&redirect=/appeal" onclick="saveFormState()"
+        style="display:inline-flex;align-items:center;gap:7px;padding:12px 24px;background:var(--signal);color:#0a0b0e;border-radius:var(--r);font-size:.88rem;font-weight:700;text-decoration:none;box-shadow:0 2px 10px var(--signal-glow);">
+        <i class="fa-solid fa-user-plus"></i> Create Free Account
+      </a>
+      <a href="/login?redirect=/appeal" onclick="saveFormState()"
+        style="display:inline-flex;align-items:center;gap:7px;padding:12px 24px;background:var(--surface-3);color:var(--text);border:1.5px solid var(--border-2);border-radius:var(--r);font-size:.88rem;font-weight:600;text-decoration:none;">
+        <i class="fa-solid fa-sign-in-alt"></i> Sign In
+      </a>
+    </div>
+    <div style="font-size:.72rem;color:var(--text-3);margin-top:16px;">
+      Free account · No credit card · Your form data is saved and will be here when you return.
+    </div>`;
+  if (generateBtnWrap) {
+    generateBtnWrap.after(gate);
+    gate.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  } else {
+    document.body.appendChild(gate);
+  }
+}
+
 function toast(msg) { const t = document.getElementById('toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(window._tt); window._tt = setTimeout(() => t.style.display = 'none', 3200); }
 function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 function escHtml(str) { return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }

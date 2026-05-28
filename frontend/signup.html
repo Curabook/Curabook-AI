@@ -383,8 +383,8 @@
                             <div class="plan-card-desc">Save $120 vs monthly · Full access · HSA/FSA eligible</div>
                         </div>
                         <div>
-                            <div class="plan-price-num">$24.99</div>
-                            <div class="plan-price-period">/month</div>
+                            <div class="plan-price-num">$179</div>
+                            <div class="plan-price-period">/year · <s style="opacity:.4;font-weight:300">$299</s></div>
                         </div>
                     </div>
                     <div class="plan-card selected" id="planMonthly" onclick="selectPlan('monthly')">
@@ -398,7 +398,7 @@
                         </div>
                     </div>
                     <div class="plan-card" id="planPaAppeal" onclick="selectPlan('pa_appeal')" style="border-color:rgba(0,188,213,.25);position:relative;overflow:hidden;">
-                        <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,#8b5cf6,#6d28d9);"></div>
+                        <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--brand),#00a89e);"></div>
                         <div class="plan-card-info">
                             <div class="plan-card-name" style="display:flex;align-items:center;gap:8px;">
                                 PA Appeal Pack
@@ -408,13 +408,13 @@
                         </div>
                         <div>
                             <div class="plan-price-num" style="color:var(--brand);">$49</div>
-                            <div class="plan-price-period">/month</div>
+                            <div class="plan-price-period">one-time</div>
                         </div>
                     </div>
                     <div class="plan-card" id="planFree" onclick="selectPlan('free')">
                         <div class="plan-card-info">
                             <div class="plan-card-name">Free Plan</div>
-                            <div class="plan-card-desc">1 report upload · Unlimited chat</div>
+                            <div class="plan-card-desc">Drug level tracker · Hunger forecast · Basic chat</div>
                         </div>
                         <div>
                             <div class="plan-price-num" style="color:var(--muted)">$0</div>
@@ -425,8 +425,8 @@
                 <div class="free-plan-info" id="freePlanNote" style="display:none">
                     You can upgrade anytime from inside the app. All your data is saved regardless of plan.
                 </div>
-                <div id="clinicalNote" style="display:none;margin-top:8px;padding:10px 14px;background:rgba(139,92,246,.06);border:1px solid rgba(139,92,246,.2);border-radius:10px;font-size:12px;color:#8b5cf6;line-height:1.6;">
-                    <strong>Clinical Promise:</strong> If your appeal is denied after using our packet, email us. We'll generate a revised packet for your next submission — free.
+                <div id="paAppealNote" style="display:none;margin-top:8px;padding:10px 14px;background:rgba(0,188,213,.06);border:1px solid rgba(0,188,213,.2);border-radius:10px;font-size:12px;color:var(--brand);line-height:1.6;">
+                    <strong>One-time purchase:</strong> You'll be redirected to generate your physician-ready appeal packet. No subscription required — pay once per appeal.
                 </div>
                 <div class="onboarding-nav">
                     <button class="btn-back" onclick="goToPanel('C')">← Back</button>
@@ -517,9 +517,9 @@ function selectPlan(plan) {
     const card = document.getElementById('plan' + plan.charAt(0).toUpperCase() + plan.slice(1));
     if (card) card.classList.add('selected');
     document.getElementById('freePlanNote').style.display = plan === 'free' ? 'block' : 'none';
-    const clinicalNote = document.getElementById('clinicalNote');
-    if (clinicalNote) clinicalNote.style.display = plan === 'clinical' ? 'block' : 'none';
-    document.getElementById('finishBtn').textContent = plan === 'free' ? 'Start Free →' : 'Continue to PayPal →';
+    const paAppealNote = document.getElementById('paAppealNote');
+    if (paAppealNote) paAppealNote.style.display = plan === 'pa_appeal' ? 'block' : 'none';
+    document.getElementById('finishBtn').textContent = plan === 'free' ? 'Start Free →' : plan === 'pa_appeal' ? 'Generate My Appeal →' : 'Start 14-day Trial →';
 }
 
 async function saveConsentToBackend(token) {
@@ -652,7 +652,7 @@ async function startPayPalCheckout() {
 
     } catch (e) {
         if (msgEl) { msgEl.textContent = e.message; msgEl.className = 'status-msg error'; }
-        if (btn)   { btn.disabled = false; btn.textContent = ob.plan === 'free' ? 'Start Free →' : 'Continue to PayPal →'; }
+        if (btn)   { btn.disabled = false; btn.textContent = ob.plan === 'free' ? 'Start Free →' : ob.plan === 'pa_appeal' ? 'Generate My Appeal →' : 'Start 14-day Trial →'; }
     }
 }
 
@@ -682,13 +682,16 @@ async function finishOnboarding() {
             } else {
                 window.location.href = '/app?welcome=1';
             }
+        } else if (ob.plan === 'pa_appeal') {
+            // PA Appeal is a one-time purchase — redirect to appeal page
+            window.location.href = '/appeal?source=signup&plan=pa_appeal';
         } else {
             await startPayPalCheckout();
         }
     } catch (e) {
         const msgEl = document.getElementById('planStatusMsg');
         if (msgEl) { msgEl.textContent = e.message || 'Something went wrong. Please try again.'; msgEl.className = 'status-msg error'; }
-        if (btn) { btn.disabled = false; btn.textContent = ob.plan === 'free' ? 'Start Free →' : 'Continue to PayPal →'; }
+        if (btn) { btn.disabled = false; btn.textContent = ob.plan === 'free' ? 'Start Free →' : ob.plan === 'pa_appeal' ? 'Generate My Appeal →' : 'Start 14-day Trial →'; }
     }
 }
 
