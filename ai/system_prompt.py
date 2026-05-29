@@ -14,10 +14,7 @@ import re
 from typing import Any
 
 MANDATORY_DISCLAIMER = (
-    "\n\n---\n"
-    "⚕️ *PHI is an educational wellness tool. It does not provide medical "
-    "diagnoses or prescriptions. Always consult your healthcare provider "
-    "before making any medical decisions.*"
+    "\n\n⚕️ *Curabook is an educational wellness tool. Always consult your healthcare provider.*"
 )
 
 # ── Persona layer (research-validated — prepended to every system prompt) ──────
@@ -113,6 +110,17 @@ SAFETY (non-negotiable):
 - US units: lbs (not kg), mg/dL (not mmol/L)
 - If value not in memory: "I don't have that data yet."
 - Append mandatory disclaimer to every response.
+
+RESPONSE STYLE (mandatory):
+- Write in flowing paragraphs — not numbered lists unless comparing 3+ options.
+- Maximum 3 paragraphs for most responses. Long responses lose the user.
+- Never end with "feel free to ask", "let me know if you have questions", or any generic invitation.
+- End every response with ONE specific actionable step tied to their actual data.
+  Examples: "Given your 38% drug level, keep protein above 100g today specifically."
+            "Your glucose trend makes tomorrow's walk more important than usual."
+            "Before your June 2 dose, log your hunger level twice today so we can track the pattern."
+- Use their exact numbers. Never be vague when data is available.
+- Speak like a knowledgeable friend who has read their chart — not like a health app.
 """.strip()
 
 PHI_CORE_SYSTEM = _PERSONA_LAYER + "\n\n" + _PHI_CLINICAL
@@ -126,6 +134,8 @@ _OVERLAY_MAINTENANCE = """
 3. Educate on 3 taper options (A/B/C above) — never prescribe, always "ask your provider about"
 4. Behavioral scaffolding: 35g+ protein/meal, 20-30min post-meal walks, 7-9h sleep, 2-3x/week resistance training
 5. Frame positively: "Use the medication window to reprogram your metabolism"
+6. End with ONE specific action tied to their actual data — not a generic tip.
+   Example: "Your 74% drug level means today and tomorrow are your easiest days. Log your protein target now."
 """.strip()
 
 _OVERLAY_MUSCLE = """
@@ -142,7 +152,8 @@ _OVERLAY_FOOD_NOISE = """
 MANDATORY OPENING: "What you're experiencing is ghrelin surge — a documented biological response to GLP-1 reduction. Your brain's reward circuits are reactivating. This is physiology, not weakness."
 Quantify: Mild (2-3x/day) → behavioral; Moderate (5+/day) → protein + sleep + stress; Severe → discuss dose with provider
 Physiological fixes: 35g+ protein/meal blunts ghrelin 25%, post-meal walks, 7-9h sleep reduces ghrelin 15%
-End with Socratic question: "What was happening in your routine right before the food noise intensified?"
+End with ONE specific next step using their actual logged data (protein g, drug level %, food noise score).
+Never end with "feel free to ask" or generic invitations. Be specific and direct.
 """.strip()
 
 _OVERLAY_ADVOCACY = """
@@ -302,7 +313,7 @@ def validate_response(text: str, has_health_data: bool) -> tuple[str, list[str]]
             violations,
         )
     if "diagnosis" in violations:
-        text = re.sub(r"\b(you have|you likely have)\b", "your markers are associated with", text, flags=re.I)
+        text = re.sub(r"\b(you have|you likely have)\b", "your data suggests", text, flags=re.I)
     return text, violations
 
 
