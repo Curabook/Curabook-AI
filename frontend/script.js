@@ -1313,7 +1313,7 @@ async function sendMessage(text) {
         const txt2 = await res2.text();
         let data2 = null; try { data2 = JSON.parse(txt2); } catch {}
         if (res2.ok && data2?.reply) {
-          const cleanReply2 = interceptPHIActions(data2.reply);
+          const cleanReply2 = interceptPHIActions(data2.reply, text);
           updateMsg(botRow, cleanReply2);
           await _postChatActions(cleanReply2, text, data2);
           return;
@@ -1326,7 +1326,7 @@ async function sendMessage(text) {
     let data = null; try { data = JSON.parse(txt); } catch (e) {}
 
     if (res.ok && data?.reply) {
-      const cleanReply = interceptPHIActions(data.reply);
+      const cleanReply = interceptPHIActions(data.reply, text);
       updateMsg(botRow, cleanReply);
       await _postChatActions(cleanReply, text, data);
     } else {
@@ -1678,16 +1678,60 @@ function setRing(id, circ, pct) {
 function setBarPct(id, pct) { const b = el(id); if (b) b.style.width = Math.max(0, pct) + "%"; }
 
 // ── PHI action command interceptor ───────────────────────────────────────
-function interceptPHIActions(text) {
+function interceptPHIActions(text, userMessage) {
   if (!text) return text;
-  const actionMatch = text.match(/\{"action"\s*:\s*"([^"]+)"\s*,\s*"value"\s*:\s*([\d.]+)\s*\}/);
-  if (!actionMatch) return text;
-  const action = actionMatch[1];
-  const value  = parseFloat(actionMatch[2]);
-  if (action === 'log_protein' && value > 0) {
-    setTimeout(() => logProteinFromChat(value), 300);
+  let proteinValue = null;
+
+  // ── Method 1: Explicit JSON action from backend ───────────────────────
+  const actionMatch = text.match(/\{"action"\s*:\s*"log_protein"\s*,\s*"value"\s*:\s*([\d.]+)\s*\}/);
+  if (actionMatch) {
+    proteinValue = parseFloat(actionMatch[1]);
+    text = text.replace(actionMatch[0], '').trim();
   }
-  return text.replace(actionMatch[0], '').trim();
+
+  // ── Method 2: Fallback — scan PHI reply for protein logging statements ─
+  if (!proteinValue && userMessage) {
+    const msgLower = (userMessage || '').toLowerCase();
+    const replyLower = text.toLowerCase();
+
+    // User specified grams
+    const gramMsg = msgLower.match(/(\d+(?:\.\d+)?)\s*(?:g|gram|grams|gm)/);
+    if (gramMsg) proteinValue = parseFloat(gramMsg[1]);
+
+    // User said yes/log it and PHI mentioned a number
+    const affirmatives = ['yes','log it','sure','ok','okay','add it','add','yep','yup','log','correct','log protein','add protein','add to shield','log to shield'];
+    const isAffirmative = affirmatives.some(a => msgLower === a || msgLower.startsWith(a + ' ') || msgLower.includes(a));
+
+    if (!proteinValue && isAffirmative) {
+      // Extract from PHI reply — look for "70 grams", "logged 70", "adding 70g" etc
+      const patterns = [
+        /logged\s+protein[:\s]+([\d.]+)/,
+        /log(?:ged|ging)?\s+([\d.]+)\s*g/,
+        /add(?:ed|ing)?\s+([\d.]+)\s*g/,
+        /([\d.]+)\s*g(?:ram)?s?\s+(?:of\s+)?protein/,
+        /protein[:\s]+([\d.]+)\s*g/,
+        /approximately\s+([\d.]+)\s*g/,
+        /around\s+([\d.]+)\s*g/,
+        /about\s+([\d.]+)\s*g/,
+        /estimate[d]?\s+([\d.]+)\s*g/,
+      ];
+      for (const p of patterns) {
+        const m = replyLower.match(p);
+        if (m) { proteinValue = parseFloat(m[1]); break; }
+      }
+    }
+
+    // PHI says "logged protein: 70" in its own message — always log
+    const loggedMatch = replyLower.match(/logged\s+protein[:\s]+([\d.]+)/);
+    if (loggedMatch) proteinValue = parseFloat(loggedMatch[1]);
+  }
+
+  // ── Execute if we found a value ───────────────────────────────────────
+  if (proteinValue && proteinValue > 1 && proteinValue < 500) {
+    setTimeout(() => logProteinFromChat(proteinValue), 300);
+  }
+
+  return text.trim();
 }
 
 // ── Log protein directly from chat confirmation ──────────────────────────
