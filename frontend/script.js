@@ -1313,8 +1313,9 @@ async function sendMessage(text) {
         const txt2 = await res2.text();
         let data2 = null; try { data2 = JSON.parse(txt2); } catch {}
         if (res2.ok && data2?.reply) {
-          updateMsg(botRow, data2.reply);
-          await _postChatActions(data2.reply, text, data2);
+          const cleanReply2 = interceptPHIActions(data2.reply);
+          updateMsg(botRow, cleanReply2);
+          await _postChatActions(cleanReply2, text, data2);
           return;
         }
       }
@@ -1325,8 +1326,9 @@ async function sendMessage(text) {
     let data = null; try { data = JSON.parse(txt); } catch (e) {}
 
     if (res.ok && data?.reply) {
-      updateMsg(botRow, data.reply);
-      await _postChatActions(data.reply, text, data);
+      const cleanReply = interceptPHIActions(data.reply);
+      updateMsg(botRow, cleanReply);
+      await _postChatActions(cleanReply, text, data);
     } else {
       throw new Error(`Server Error (${res.status}): ${txt.slice(0, 150)}`);
     }
@@ -1674,6 +1676,33 @@ function setRing(id, circ, pct) {
   if (r) { r.style.strokeDasharray = circ; r.style.strokeDashoffset = circ - (circ * Math.max(0, Math.min(100, pct)) / 100); }
 }
 function setBarPct(id, pct) { const b = el(id); if (b) b.style.width = Math.max(0, pct) + "%"; }
+
+// ── PHI action command interceptor ───────────────────────────────────────
+function interceptPHIActions(text) {
+  if (!text) return text;
+  const actionMatch = text.match(/\{"action"\s*:\s*"([^"]+)"\s*,\s*"value"\s*:\s*([\d.]+)\s*\}/);
+  if (!actionMatch) return text;
+  const action = actionMatch[1];
+  const value  = parseFloat(actionMatch[2]);
+  if (action === 'log_protein' && value > 0) {
+    setTimeout(() => logProteinFromChat(value), 300);
+  }
+  return text.replace(actionMatch[0], '').trim();
+}
+
+// ── Log protein directly from chat confirmation ──────────────────────────
+async function logProteinFromChat(grams) {
+  const inp = el('inputProtein');
+  if (inp) inp.value = grams;
+  await updateShield();
+  // Flash the shield section to show update
+  const section = document.querySelector('.cp-section');
+  if (section) {
+    section.style.transition = 'background .3s';
+    section.style.background = 'rgba(0,212,200,.08)';
+    setTimeout(() => section.style.background = '', 800);
+  }
+}
 
 async function logShieldData(p, s, sl) {
   const h = await headers(); if (!h) return;
