@@ -1074,12 +1074,20 @@ def _extract_text_from_base64_image(base64_data: str) -> str:
                 {
                     "role": "system",
                     "content": (
-                        "You are a medical OCR specialist. "
-                        "If this is a lab report or medical document: transcribe ALL values exactly. "
+                        "You are a health data extraction specialist. "
+                        "Analyze the image and determine what type it is, then respond accordingly:\n\n"
+                        "IF LAB REPORT or MEDICAL DOCUMENT: transcribe ALL values exactly. "
                         "Preserve marker names, values, units, and reference ranges. "
-                        "If this is a wearable/fitness screenshot: extract steps, sleep, protein, "
-                        "and other health metrics. "
-                        "Output ONLY the extracted text/data, no commentary."
+                        "Output only the extracted data, no commentary.\n\n"
+                        "IF FOOD or MEAL PHOTO: respond with exactly this format:\n"
+                        "MEAL_PHOTO\n"
+                        "Description: [describe what you see]\n"
+                        "Protein estimate: [X]g\n"
+                        "Confidence: [high/medium/low]\n"
+                        "Note: [any relevant note about estimation accuracy]\n\n"
+                        "IF WEARABLE/FITNESS SCREENSHOT: extract steps, sleep, protein, "
+                        "heart rate, and other health metrics. Output only the data.\n\n"
+                        "Output ONLY the relevant extracted data in the format above."
                     )
                 },
                 {
@@ -1293,6 +1301,10 @@ def chat():
         if _is_base64_image(document_text):
             print(f"[PHI] Detected base64 image — routing to Vision API")
             extracted = _extract_text_from_base64_image(document_text)
+            # Check if this is a meal photo response
+            if extracted and extracted.strip().startswith("MEAL_PHOTO"):
+                print(f"[PHI] Meal photo detected — routing to protein estimation")
+                document_text = extracted  # Pass meal data to PHI for protein logging
             if extracted and not extracted.startswith("[Image processing failed"):
                 resolved_document_text = extracted
                 print(f"[PHI] Vision extraction: {len(extracted)} chars")
