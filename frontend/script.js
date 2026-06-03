@@ -1245,7 +1245,9 @@ async function sendMessage(text) {
 
     if (_uploads.length) {
       const isPro = _userPlan === "pro" || _userPlan === "annual" || _userPlan === "monthly" || _userPlan === "trial";
-      if (!isPro) {
+      // Meal photos are allowed for all users — no paywall
+      const isMealPhoto = _uploads[0]?._isMealPhoto === true;
+      if (!isPro && !isMealPhoto) {
         _isSending = false;
         setSendingState(false);
         showUpgradeModal("upload");
@@ -1402,6 +1404,27 @@ function addFile(file) {
   renderFilePreview();
   toast(`${file.name} ready — press Send to analyze`);
 }
+
+// ── Meal photo queue — called from app.html handleMealPhoto ──────────────
+window._queueMealUpload = function(file) {
+  // Mark as meal photo so system_prompt knows context
+  file._isMealPhoto = true;
+  // Add to upload queue
+  _uploads = [file];
+  renderFilePreview();
+  // Pre-fill chat with meal context message
+  const inp = el('msgInput') || el('chatInput');
+  if (inp) {
+    inp.value = 'I just ate this — estimate the protein and log it to my Shield total.';
+    inp.dispatchEvent(new Event('input'));
+  }
+  // Show chat panel
+  const panel = document.querySelector('.chat-panel');
+  if (panel) panel.classList.add('active');
+  // Auto-focus input
+  if (inp) inp.focus();
+  toast('Meal photo ready — tap Send to log protein');
+};
 
 function removeFile(i) { _uploads.splice(i, 1); renderFilePreview(); }
 

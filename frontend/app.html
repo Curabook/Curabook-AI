@@ -391,36 +391,15 @@
 function handleMealPhoto(input) {
   if (!input.files || !input.files[0]) return;
   const file = input.files[0];
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    const base64 = e.target.result;
-    // Store as pending meal photo and trigger chat
-    window._pendingMealPhoto = base64;
-    // Open chat if not already open
-    const chatPanel = document.querySelector('.chat-panel') || document.getElementById('chatPanel');
-    if (chatPanel) chatPanel.classList.add('active');
-    // Send to chat as meal photo
-    const chatInput = document.getElementById('chatInput') || document.getElementById('msgInput');
-    if (chatInput) {
-      chatInput.value = 'I just ate this meal — can you estimate the protein content and log it?';
-    }
-    // Trigger file upload with meal context
-    if (typeof window._queueMealUpload === 'function') {
-      window._queueMealUpload(file, base64);
-    } else {
-      // Fallback — add to uploads queue same as lab report
-      if (typeof window._uploads !== 'undefined') {
-        window._uploads = [{ file, base64, isMeal: true }];
-      }
-      // Set meal context flag
-      window._isMealPhoto = true;
-      // Trigger send
-      const sendBtn = document.getElementById('sendBtn');
-      if (sendBtn) setTimeout(() => sendBtn.click(), 100);
-    }
-    input.value = '';
-  };
-  reader.readAsDataURL(file);
+  if (typeof window._queueMealUpload === 'function') {
+    window._queueMealUpload(file);
+  } else {
+    // Fallback if script.js not loaded yet — retry after 500ms
+    setTimeout(() => {
+      if (typeof window._queueMealUpload === 'function') window._queueMealUpload(file);
+    }, 500);
+  }
+  input.value = '';
 }
 </script>
 <script src="script.js?v=21"></script>
