@@ -865,6 +865,77 @@ def _detect_intent(message: str) -> str:
 
 # ── LLM caller ────────────────────────────────────────────────────────────────
 
+
+def _inject_protein_action(user_message: str, reply: str, is_meal_photo: bool = False) -> str:
+    """
+    Post-processing: force-inject JSON action to log protein to Shield.
+
+    Three triggers:
+    1. MEAL PHOTO — auto-log immediately from PHI estimate (no confirmation needed)
+    2. USER SPECIFIES GRAMS — "100 gram", "31g" etc
+    3. USER CONFIRMS — "yes", "log it", "sure", "ok" etc
+    """
+    import re as _re
+
+    # Already has action — do not double-inject
+    if '"action":"log_protein"' in reply or '"action": "log_protein"' in reply:
+        return reply
+
+    msg_lower = user_message.lower().strip()
+    protein_value = None
+
+    # ── Trigger 1: MEAL PHOTO — auto-log from PHI's estimate ─────────────────
+    # PHI reply contains "Protein estimate: Xg" from MEAL_PHOTO structured data
+    # OR contains "estimating around Xg" — auto-log without asking user
+    meal_patterns = [
+        r'protein estimate:\s*([\d.]+)',
+        r'estimating around\s*([\d.]+)g',
+        r'estimate[sd]?\s+([\d.]+)\s*g(?:rams?)?\s+of\s+protein',
+        r'approximately\s+([\d.]+)\s*g(?:rams?)?\s+of\s+protein',
+        r'about\s+([\d.]+)\s*g(?:rams?)?\s+protein',
+        r'roughly\s+([\d.]+)g',
+        r'around\s+([\d.]+)g\s+of\s+protein',
+    ]
+    if is_meal_photo:
+        for pattern in meal_patterns:
+            m = _re.search(pattern, reply.lower())
+            if m:
+                protein_value = float(m.group(1))
+                break
+
+    # ── Trigger 2: USER SPECIFIES GRAMS ──────────────────────────────────────
+    if not protein_value:
+        gram_match = _re.search(r'(\d+(?:\.\d+)?)\s*(?:g|gram|grams|gm)(?:\s|$)', msg_lower)
+        if gram_match:
+            protein_value = float(gram_match.group(1))
+
+    # ── Trigger 3: USER CONFIRMS AFFIRMATIVELY ────────────────────────────────
+    if not protein_value:
+        affirmatives = ['yes', 'log it', 'sure', 'ok', 'okay', 'add it',
+                        'yes please', 'go ahead', 'do it', 'yep', 'yup',
+                        'correct', 'right', 'confirmed', 'log that', 'add that']
+        is_affirmative = any(msg_lower == a or msg_lower.startswith(a + ' ') or msg_lower.startswith(a + ',') for a in affirmatives)
+        if is_affirmative:
+            # Extract protein value from PHI reply
+            for pattern in [
+                r'(\d+(?:\.\d+)?)\s*g(?:rams?)?\s+(?:of\s+)?protein',
+                r'protein[^\d]+(\d+(?:\.\d+)?)\s*g',
+                r'log(?:ged)?\s+(\d+(?:\.\d+)?)g',
+                r'add(?:ing)?\s+(\d+(?:\.\d+)?)g',
+                r'(\d+(?:\.\d+)?)\s*g(?:rams?)? to your',
+            ]:
+                m = _re.search(pattern, reply.lower())
+                if m:
+                    protein_value = float(m.group(1))
+                    break
+
+    if protein_value and 1 < protein_value < 500:
+        action_json = f'{{"action":"log_protein","value":{protein_value}}}'
+        return reply.rstrip() + f'\n{action_json}'
+
+    return reply
+
+
 def _call_llm_safe(messages: list) -> str:
     if not messages:
         return "I couldn't process that request. Please try again."
@@ -1384,7 +1455,16 @@ def chat():
     except Exception:
         pass
 
-    final_reply = reply + MANDATORY_DISCLAIMER
+    # ── STEP 8b: Force protein logging JSON action ───────────────────────────
+    # If user is confirming a protein amount, inject the JSON action into reply
+    # regardless of whether the model included it — ensures Shield always updates
+    # Check if this was a meal photo upload
+    _is_meal_photo_upload = (
+        document_text and
+        isinstance(document_text, str) and
+        document_text.strip().startswith("MEAL_PHOTO")
+    )
+    final_reply = _inject_protein_action(message, reply, is_meal_photo=_is_meal_photo_upload) + MANDATORY_DISCLAIMER
 
     # ── STEP 9: Background ops ────────────────────────────────────────────────
     # Skip background LLM doc analysis when markers already extracted —
