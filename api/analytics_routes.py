@@ -159,13 +159,11 @@ def _fetch_auth_users_batch(supabase, user_ids: list) -> dict:
     Fetch email + provider for a batch of user_ids via supabase admin.
     Returns dict: user_id -> {email, provider, created_at}
     Falls back gracefully if admin API not available.
-    FIX: distinguish between 401/403 (wrong key — log clearly, stop retrying)
-    vs other errors (transient — still log, still return {}).
     """
     result = {}
-    if not user_ids:
-        return result
     try:
+        # Supabase admin list_users returns all users
+        # We filter to the ones we need
         page = supabase.auth.admin.list_users()
         users_list = page if isinstance(page, list) else getattr(page, 'users', [])
         uid_set = set(user_ids)
@@ -181,16 +179,12 @@ def _fetch_auth_users_batch(supabase, user_ids: list) -> dict:
                         provider = p
                         break
                 result[uid] = {
-                    'email':        email,
+                    'email':      email,
                     'email_masked': _mask_email(email),
-                    'provider':     provider,
+                    'provider':   provider,
                 }
     except Exception as e:
-        err_str = str(e).lower()
-        if any(x in err_str for x in ("401", "403", "unauthorized", "forbidden", "not allowed")):
-            print(f"[ANALYTICS] auth admin API access denied — SUPABASE_SERVICE_KEY may be missing or wrong: {e}")
-        else:
-            print(f"[ANALYTICS] auth users batch fetch error (non-fatal): {e}")
+        print(f"[ANALYTICS] auth users batch fetch error (non-fatal): {e}")
     return result
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -207,12 +201,8 @@ def get_global_config():
         # Also fetch raw rows for display
         rows_res = supabase.table("app_config").select("key,value,updated_at,updated_by").execute()
         return jsonify({
-            # FIX: return at top level so JS can read data.free_all_enabled
-            # regardless of whether it came from /overview or /global-config
-            "free_all_enabled": config.get("free_all_enabled", False),
-            "maintenance_mode": config.get("maintenance_mode", False),
-            "config":    config,
-            "raw_rows":  rows_res.data or [],
+            "config": config,
+            "raw_rows": rows_res.data or [],
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -303,10 +293,9 @@ def overview():
         msgs_7d_res = supabase.table("chats").select("id", count="exact").eq("role", "user").gte("created_at", d7).execute()
         msgs_7d = msgs_7d_res.count or 0
 
-        # FIX: use a dedicated variable for each query — no reuse of med_docs_res
         docs_res = supabase.table("health_markers").select("source_document").execute()
         total_docs = len(set(r["source_document"] for r in (docs_res.data or []) if r.get("source_document")))
-        # Also count from medical_documents table if it has more records
+        # Also count from medical_documents table if it exists
         try:
             med_docs_res = supabase.table("medical_documents").select("user_id", count="exact").execute()
             if med_docs_res.count and med_docs_res.count > total_docs:
@@ -554,61 +543,36 @@ def set_user_plan(handle: str):
 
     now = datetime.now(timezone.utc)
 
-    def _write_profile(data: dict) -> bool:
-        """
-        Write plan data to user_profiles.
-        Uses UPDATE first — works regardless of UNIQUE constraint setup and RLS on insert.
-        Falls back to INSERT only if UPDATE returned 0 rows (brand-new user with no profile).
-        Returns True only when we can confirm a row was actually written.
-        Supabase upsert is avoided because it silently no-ops when the unique
-        constraint is missing or RLS blocks the insert half — giving a false 200.
-        """
-        try:
-            res = supabase.table("user_profiles").update(data).eq("user_id", target_uid).execute()
-            if res.data:  # UPDATE hit at least one row
-                return True
-        except Exception as e:
-            print(f"[SET-PLAN] UPDATE failed: {e}")
-        # Fallback INSERT for users who have no row yet
-        try:
-            supabase.table("user_profiles").insert({**data, "user_id": target_uid}).execute()
-            return True
-        except Exception as e:
-            print(f"[SET-PLAN] INSERT also failed: {e}")
-            return False
-
     if plan == "free":
-        ok = _write_profile({
-            "plan":                  "free",
-            "reports_remaining":     1,
-            "subscription_end_date": None,
-            "cancel_at_period_end":  False,
-            "is_admin_granted":      False,
-            "updated_at":            now.isoformat(),
-        })
-        # Clear PayPal sub ID separately (non-fatal if column missing)
+        # Revoke — downgrade to free
         try:
-            supabase.table("user_profiles").update(
-                {"paypal_subscription_id": None}
-            ).eq("user_id", target_uid).execute()
-        except Exception:
-            pass
-        if not ok:
-            return jsonify({"error": "Failed to revoke plan — check DB permissions or RLS"}), 500
+            supabase.table("user_profiles").upsert({
+                "user_id":               target_uid,
+                "plan":                  "free",
+                "reports_remaining":     1,
+                "paypal_subscription_id": None,
+                "subscription_end_date": None,
+                "cancel_at_period_end":  False,
+                "is_admin_granted":      False,
+                "updated_at":            now.isoformat(),
+            }, on_conflict="user_id").execute()
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
     else:
-        PLAN_INTERVALS = {"monthly": 31, "annual": 365, "clinical": 31, "pro": 31, "trial": days}
-        interval = PLAN_INTERVALS.get(plan, days)
-        end_date = (now + timedelta(days=interval)).isoformat()
-        ok = _write_profile({
-            "plan":                  plan,
-            "reports_remaining":     9999,
-            "subscription_end_date": end_date,
-            "cancel_at_period_end":  False,
-            "is_admin_granted":      True,
-            "updated_at":            now.isoformat(),
-        })
-        if not ok:
-            return jsonify({"error": f"Failed to grant {plan} — check DB permissions or RLS"}), 500
+        # Grant plan
+        end_date = (now + timedelta(days=days)).isoformat()
+        try:
+            supabase.table("user_profiles").upsert({
+                "user_id":               target_uid,
+                "plan":                  plan,
+                "reports_remaining":     9999,
+                "subscription_end_date": end_date,
+                "cancel_at_period_end":  False,
+                "is_admin_granted":      True,
+                "updated_at":            now.isoformat(),
+            }, on_conflict="user_id").execute()
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
 
     # Audit log
     try:
@@ -691,7 +655,7 @@ def user_deep_dive(handle: str):
         activity = [{"date": d, "messages": c} for d, c in sorted(msg_by_day.items())]
 
         # Markers
-        markers = supabase.table("health_markers").select("marker_name,value,unit,status,date,source_document").eq("user_id", target_uid).order("date", desc=True).limit(50).execute().data or []
+        markers = supabase.table("health_markers").select("marker_name,value,unit,status,date").eq("user_id", target_uid).order("date", desc=True).limit(50).execute().data or []
         abnormal_markers = [m for m in markers if m.get("status") in ("HIGH", "LOW")]
 
         # Shield data
@@ -1142,5 +1106,57 @@ def activity_timeline():
             "peak_hours":  peak_hours,
             "period_days": days,
         })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ── /api/founder/feedback ─────────────────────────────────────────────────
+@analytics_bp.route("/founder/feedback", methods=["GET"])
+def founder_feedback():
+    """Return all user feedback for founder dashboard."""
+    secret = request.headers.get("X-Founder-Secret", "")
+    if secret != FOUNDER_SECRET:
+        return jsonify({"error": "unauthorized"}), 403
+    try:
+        from app import supabase
+        # Try user_feedback table first
+        try:
+            rows = (
+                supabase.table("user_feedback")
+                .select("*")
+                .order("created_at", desc=True)
+                .limit(200)
+                .execute()
+                .data or []
+            )
+            if rows:
+                return jsonify({"feedback": rows})
+        except Exception:
+            pass
+
+        # Fallback — parse from audit_logs USER_FEEDBACK entries
+        import re
+        logs = (
+            supabase.table("audit_logs")
+            .select("user_id,detail,created_at")
+            .eq("action", "USER_FEEDBACK")
+            .order("created_at", desc=True)
+            .limit(200)
+            .execute()
+            .data or []
+        )
+        feedback = []
+        for log in logs:
+            detail = log.get("detail", "")
+            rating_m = re.search(r"rating:(\d+)", detail)
+            cat_m    = re.search(r"cat:(\w+)", detail)
+            msg_m    = re.search(r"msg:(.*?)(?:\s+\w+:|$)", detail)
+            feedback.append({
+                "user_id":    log.get("user_id", "anonymous"),
+                "rating":     int(rating_m.group(1)) if rating_m else None,
+                "category":   cat_m.group(1) if cat_m else "general",
+                "message":    msg_m.group(1).strip() if msg_m else "",
+                "created_at": log.get("created_at", ""),
+            })
+        return jsonify({"feedback": feedback})
     except Exception as e:
         return jsonify({"error": str(e)}), 500

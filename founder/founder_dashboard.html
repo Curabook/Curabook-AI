@@ -310,6 +310,7 @@ tr:hover td{background:rgba(0,0,0,.02);}
   <div class="nav-group">
     <span class="nav-label">Admin</span>
     <button class="nav-item" onclick="showPage('config')"><span class="nav-dot"></span> Global Config</button>
+    <button class="nav-item" onclick="showPage('feedback')"><span class="nav-dot"></span> User Feedback</button>
   </div>
 
   <div class="sidebar-footer">
@@ -418,6 +419,64 @@ tr:hover td{background:rgba(0,0,0,.02);}
   </div>
 
   <!-- GLOBAL CONFIG -->
+  <!-- ── FEEDBACK PAGE ────────────────────────────────────────────── -->
+  <div class="page" id="page-feedback">
+    <div class="page-header">
+      <div><h2>User Feedback</h2><p>Ratings and messages submitted through the app</p></div>
+      <button class="btn-sm" onclick="loadFeedback()">↻ Refresh</button>
+    </div>
+
+    <!-- Summary cards -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px;" id="feedbackSummary">
+      <div class="chart-panel" style="text-align:center;">
+        <div style="font-size:1.6rem;font-weight:700;color:var(--accent);" id="fbTotalCount">—</div>
+        <div style="font-size:.72rem;color:var(--text2);">Total Responses</div>
+      </div>
+      <div class="chart-panel" style="text-align:center;">
+        <div style="font-size:1.6rem;font-weight:700;color:var(--accent);" id="fbAvgRating">—</div>
+        <div style="font-size:.72rem;color:var(--text2);">Avg NPS Rating</div>
+      </div>
+      <div class="chart-panel" style="text-align:center;">
+        <div style="font-size:1.6rem;font-weight:700;color:var(--ok);" id="fbPromoters">—</div>
+        <div style="font-size:.72rem;color:var(--text2);">Promoters (9-10)</div>
+      </div>
+      <div class="chart-panel" style="text-align:center;">
+        <div style="font-size:1.6rem;font-weight:700;color:var(--warn);" id="fbDetractors">—</div>
+        <div style="font-size:.72rem;color:var(--text2);">Detractors (0-6)</div>
+      </div>
+    </div>
+
+    <!-- Feedback table -->
+    <div class="table-panel">
+      <div class="table-panel-header">
+        <div><h3>All Feedback</h3><p>Most recent first</p></div>
+        <div style="display:flex;gap:8px;">
+          <select id="fbCategoryFilter" onchange="filterFeedback()" style="font-size:.75rem;padding:4px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);">
+            <option value="">All categories</option>
+            <option value="general">General</option>
+            <option value="bug">Bug</option>
+            <option value="feature">Feature Request</option>
+            <option value="praise">Praise</option>
+          </select>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th style="width:80px">Rating</th>
+            <th style="width:100px">Category</th>
+            <th>Message</th>
+            <th style="width:160px">User</th>
+            <th style="width:120px">Date</th>
+          </tr>
+        </thead>
+        <tbody id="feedbackTableBody">
+          <tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text3);">Loading feedback...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
   <div class="page" id="page-config">
     <div class="page-header">
       <div><h2>Global Configuration</h2><p>Platform-wide settings. All changes are logged to audit_logs.</p></div>
@@ -710,11 +769,99 @@ async function loadConfig() {
 }
 
 // ── NAV ───────────────────────────────────────────────────────────────────────
+// ── Feedback functions ───────────────────────────────────────────────────
+let _allFeedback = [];
+
+async function loadFeedback() {
+  const tbody = document.getElementById('feedbackTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text3);">Loading...</td></tr>';
+  try {
+    const res = await fetch(_API + '/api/founder/feedback', {
+      headers: { 'X-Founder-Secret': _secret }
+    });
+    if (!res.ok) {
+      // Fallback — try audit_logs for USER_FEEDBACK entries
+      const res2 = await fetch(_API + '/api/founder/activity?limit=200', {
+        headers: { 'X-Founder-Secret': _secret }
+      });
+      const data2 = await res2.json();
+      const fbLogs = (data2.logs || []).filter(l => l.action === 'USER_FEEDBACK');
+      _allFeedback = fbLogs.map(l => {
+        const detail = l.detail || '';
+        const ratingMatch = detail.match(/rating:(\d+)/);
+        const catMatch = detail.match(/cat:(\w+)/);
+        const msgMatch = detail.match(/msg:(.*?)(?:$|\s+\w+:)/);
+        return {
+          rating: ratingMatch ? parseInt(ratingMatch[1]) : null,
+          category: catMatch ? catMatch[1] : 'general',
+          message: msgMatch ? msgMatch[1].trim() : '',
+          user_id: l.user_id,
+          created_at: l.created_at
+        };
+      });
+    } else {
+      const data = await res.json();
+      _allFeedback = data.feedback || [];
+    }
+    renderFeedback(_allFeedback);
+  } catch(e) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text3);">No feedback yet</td></tr>';
+  }
+}
+
+function filterFeedback() {
+  const cat = document.getElementById('fbCategoryFilter')?.value || '';
+  const filtered = cat ? _allFeedback.filter(f => f.category === cat) : _allFeedback;
+  renderFeedback(filtered);
+}
+
+function renderFeedback(items) {
+  const tbody = document.getElementById('feedbackTableBody');
+  if (!tbody) return;
+
+  // Update summary cards
+  const total = items.length;
+  const ratings = items.filter(f => f.rating != null).map(f => f.rating);
+  const avg = ratings.length ? (ratings.reduce((a,b) => a+b, 0) / ratings.length).toFixed(1) : '—';
+  const promoters = ratings.filter(r => r >= 9).length;
+  const detractors = ratings.filter(r => r <= 6).length;
+
+  const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  setEl('fbTotalCount', total);
+  setEl('fbAvgRating', avg);
+  setEl('fbPromoters', promoters);
+  setEl('fbDetractors', detractors);
+
+  if (!items.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text3);">No feedback yet — keep shipping!</td></tr>';
+    return;
+  }
+
+  const ratingColor = r => r >= 9 ? 'var(--ok)' : r >= 7 ? 'var(--warn)' : r != null ? 'var(--signal-red)' : 'var(--text3)';
+  const catBadge = c => {
+    const colors = { bug:'rgba(239,68,68,.15)', feature:'rgba(0,188,213,.12)', praise:'rgba(16,185,129,.12)', general:'var(--surface2)' };
+    return `<span style="font-size:.65rem;padding:2px 7px;border-radius:20px;background:${colors[c]||colors.general};color:var(--text2);">${c||'general'}</span>`;
+  };
+
+  tbody.innerHTML = [...items].reverse().map(f => `
+    <tr>
+      <td style="text-align:center;">
+        ${f.rating != null ? `<span style="font-size:1rem;font-weight:700;color:${ratingColor(f.rating)}">${f.rating}</span><span style="font-size:.65rem;color:var(--text3)">/10</span>` : '<span style="color:var(--text3)">—</span>'}
+      </td>
+      <td>${catBadge(f.category)}</td>
+      <td style="font-size:.78rem;color:var(--text);max-width:300px;word-break:break-word;">${f.message || '<span style="color:var(--text3)">No message</span>'}</td>
+      <td style="font-size:.68rem;color:var(--text3);font-family:var(--mono);">${(f.user_id||'anon').slice(0,12)}…</td>
+      <td style="font-size:.68rem;color:var(--text3);">${f.created_at ? new Date(f.created_at).toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '—'}</td>
+    </tr>`).join('');
+}
+
 function showPage(name) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById(`page-${name}`).classList.add('active');
   event?.target?.closest('.nav-item')?.classList.add('active');
+  if (name === 'feedback') loadFeedback();
   loadPage(name);
 }
 
