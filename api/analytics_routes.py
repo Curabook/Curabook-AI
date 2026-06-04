@@ -1109,32 +1109,30 @@ def activity_timeline():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# ── /api/founder/feedback ─────────────────────────────────────────────────
-@analytics_bp.route("/founder/feedback", methods=["GET"])
-def founder_feedback():
-    """Return all user feedback for founder dashboard."""
-    secret = request.headers.get("X-Founder-Secret", "")
-    if secret != FOUNDER_SECRET:
-        return jsonify({"error": "unauthorized"}), 403
+# ── /api/founder/feedback ─────────────────────────────────────────────────────
+@analytics_bp.route("/api/founder/feedback", methods=["GET"])
+def get_feedback():
+    err = _require_auth()
+    if err:
+        return err
+    supabase = _deps()
     try:
-        from app import supabase
         # Try user_feedback table first
         try:
             rows = (
                 supabase.table("user_feedback")
-                .select("*")
+                .select("user_id,rating,category,message,page_url,created_at")
                 .order("created_at", desc=True)
                 .limit(200)
                 .execute()
                 .data or []
             )
             if rows:
-                return jsonify({"feedback": rows})
+                return jsonify({"feedback": rows, "source": "user_feedback", "count": len(rows)})
         except Exception:
             pass
 
         # Fallback — parse from audit_logs USER_FEEDBACK entries
-        import re
         logs = (
             supabase.table("audit_logs")
             .select("user_id,detail,created_at")
@@ -1147,16 +1145,16 @@ def founder_feedback():
         feedback = []
         for log in logs:
             detail = log.get("detail", "")
-            rating_m = re.search(r"rating:(\d+)", detail)
-            cat_m    = re.search(r"cat:(\w+)", detail)
-            msg_m    = re.search(r"msg:(.*?)(?:\s+\w+:|$)", detail)
+            rm = re.search(r"rating:(\d+)", detail)
+            cm = re.search(r"cat:(\w+)", detail)
+            mm = re.search(r"msg:(.+?)(?:\s+\w+:|$)", detail)
             feedback.append({
-                "user_id":    log.get("user_id", "anonymous"),
-                "rating":     int(rating_m.group(1)) if rating_m else None,
-                "category":   cat_m.group(1) if cat_m else "general",
-                "message":    msg_m.group(1).strip() if msg_m else "",
+                "user_id":    _handle(log.get("user_id", "anonymous")),
+                "rating":     int(rm.group(1)) if rm else None,
+                "category":   cm.group(1) if cm else "general",
+                "message":    mm.group(1).strip() if mm else "",
                 "created_at": log.get("created_at", ""),
             })
-        return jsonify({"feedback": feedback})
+        return jsonify({"feedback": feedback, "source": "audit_logs", "count": len(feedback)})
     except Exception as e:
         return jsonify({"error": str(e)}), 500

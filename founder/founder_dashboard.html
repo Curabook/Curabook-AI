@@ -777,30 +777,16 @@ async function loadFeedback() {
   if (!tbody) return;
   tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text3);">Loading...</td></tr>';
   try {
-    // Use existing activity endpoint — filter for USER_FEEDBACK entries
-    const res = await fetch(API + '/api/founder/activity?limit=500', {
+    const res = await fetch(API + '/api/founder/feedback', {
       headers: { 'X-Founder-Secret': FOUNDER_SECRET }
     });
-    if (!res.ok) throw new Error('Failed to load activity logs');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
-    const fbLogs = (data.logs || []).filter(l => l.action === 'USER_FEEDBACK' || l.category === 'FEEDBACK');
-    _allFeedback = fbLogs.map(l => {
-      const detail = l.detail || '';
-      const ratingMatch = detail.match(/rating:(\d+)/);
-      const catMatch    = detail.match(/cat:(\w+)/);
-      const msgMatch    = detail.match(/msg:(.+?)(?:\s+\w+:|$)/);
-      return {
-        rating:     ratingMatch ? parseInt(ratingMatch[1]) : null,
-        category:   catMatch    ? catMatch[1]              : 'general',
-        message:    msgMatch    ? msgMatch[1].trim()       : '',
-        user_id:    l.user_id   || 'anonymous',
-        created_at: l.created_at || '',
-      };
-    });
+    _allFeedback = data.feedback || [];
     renderFeedback(_allFeedback);
   } catch(e) {
-    if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text3);">No feedback yet — share the app and come back!</td></tr>';
-    console.error('Feedback load error:', e);
+    if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text3);">No feedback yet — share the app and check back!</td></tr>';
+    console.error('Feedback error:', e);
   }
 }
 

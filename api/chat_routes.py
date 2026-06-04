@@ -58,7 +58,7 @@ MANDATORY_DISCLAIMER = (
     "before making any medical decisions.*"
 )
 
-_PRO_PLANS = {"pro", "monthly", "annual", "clinical"}
+_PRO_PLANS = {"pro", "monthly", "annual", "clinical", "trial"}
 
 _GENERAL_QUESTION_PATTERNS = [
     r"^(hi|hello|hey|good morning|good evening|thanks|thank you|okay|ok|sure)[\s!.?]*$",
@@ -1223,8 +1223,8 @@ def _is_feature_allowed(supabase, user_id: str, feature: str) -> bool:
 
     # 2. Check plan
     GATES = {
-        "pa_architect":       {"clinical"},
-        "insurance_advocacy": {"clinical"},
+        "pa_architect":       _PRO_PLANS,
+        "insurance_advocacy": _PRO_PLANS,
         "unlimited_reports":  _PRO_PLANS,
         "health_memory":      _PRO_PLANS,
         "doctor_prep":        _PRO_PLANS,
