@@ -1737,7 +1737,14 @@ function interceptPHIActions(text, userMessage) {
 // ── Log protein directly from chat confirmation ──────────────────────────
 async function logProteinFromChat(grams) {
   const inp = el('inputProtein');
-  if (inp) inp.value = grams;
+  if (inp) {
+    // ADD to existing value — do not overwrite
+    const current = parseFloat(inp.value) || 0;
+    const newTotal = Math.round((current + grams) * 10) / 10;
+    inp.value = newTotal;
+    // Show toast confirming the addition
+    toast(`+${grams}g protein logged — ${newTotal}g total today ✓`);
+  }
   await updateShield();
   // Flash the shield section to show update
   const section = document.querySelector('.cp-section');
