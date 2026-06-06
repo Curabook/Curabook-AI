@@ -91,12 +91,13 @@ def _fetch_markers(supabase, user_id: str) -> list:
 
 def _fetch_behavioral_today(supabase, user_id: str) -> list:
     try:
-        yesterday = (date.today() - timedelta(days=1)).isoformat()
+        # FIX-DATE: Only fetch TODAY's logs — yesterday included by mistake
+        today = date.today().isoformat()
         res = (
             supabase.table("behavioral_logs")
             .select("date,metric_name,value,unit,created_at")
             .eq("user_id", user_id)
-            .gte("date", yesterday)
+            .eq("date", today)
             .order("created_at", desc=True)
             .limit(50)
             .execute()

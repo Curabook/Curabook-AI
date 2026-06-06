@@ -1682,52 +1682,55 @@ function interceptPHIActions(text, userMessage) {
   if (!text) return text;
   let proteinValue = null;
 
-  // ── Method 1: Explicit JSON action from backend ───────────────────────
+  // ── Method 1: Explicit JSON action from backend (always trust this) ───
   const actionMatch = text.match(/\{"action"\s*:\s*"log_protein"\s*,\s*"value"\s*:\s*([\d.]+)\s*\}/);
   if (actionMatch) {
     proteinValue = parseFloat(actionMatch[1]);
     text = text.replace(actionMatch[0], '').trim();
   }
 
-  // ── Method 2: Fallback — scan PHI reply for protein logging statements ─
+  // ── Method 2: Strict user intent detection only ───────────────────────
+  // ONLY fire if user EXPLICITLY specifies grams or confirms a specific amount
+  // Do NOT fire on general advice responses about protein targets
   if (!proteinValue && userMessage) {
-    const msgLower = (userMessage || '').toLowerCase();
-    const replyLower = text.toLowerCase();
+    const msgLower = (userMessage || '').toLowerCase().trim();
 
-    // User specified grams
-    const gramMsg = msgLower.match(/(\d+(?:\.\d+)?)\s*(?:g|gram|grams|gm)/);
-    if (gramMsg) proteinValue = parseFloat(gramMsg[1]);
+    // User explicitly specifies grams in their message
+    // e.g. "70 gram", "add 50g", "log 80 grams"
+    const hasLogIntent = /(add|log|track|record|save)/.test(msgLower);
+    const gramMsg = msgLower.match(/(\d+(?:\.\d+)?)\s*(?:g|gram|grams|gm)/);
+    if (gramMsg && hasLogIntent) {
+      proteinValue = parseFloat(gramMsg[1]);
+    }
 
-    // User said yes/log it and PHI mentioned a number
-    const affirmatives = ['yes','log it','sure','ok','okay','add it','add','yep','yup','log','correct','log protein','add protein','add to shield','log to shield'];
-    const isAffirmative = affirmatives.some(a => msgLower === a || msgLower.startsWith(a + ' ') || msgLower.includes(a));
+    // User confirms WITH a specific number already discussed
+    // e.g. "yes log it", "ok add it" — only after meal photo flow
+    const strictAffirmatives = ['yes log it', 'log it', 'yes add it', 'add it',
+      'yes please log', 'log that', 'add that', 'yes log', 'ok log it',
+      'sure log it', 'go ahead log', 'yes add', 'log protein', 'add to shield',
+      'log to shield', 'add protein'];
+    const isStrictAffirmative = strictAffirmatives.some(a => msgLower === a || msgLower.startsWith(a));
 
-    if (!proteinValue && isAffirmative) {
-      // Extract from PHI reply — look for "70 grams", "logged 70", "adding 70g" etc
-      const patterns = [
-        /logged\s+protein[:\s]+([\d.]+)/,
-        /log(?:ged|ging)?\s+([\d.]+)\s*g/,
-        /add(?:ed|ing)?\s+([\d.]+)\s*g/,
-        /([\d.]+)\s*g(?:ram)?s?\s+(?:of\s+)?protein/,
-        /protein[:\s]+([\d.]+)\s*g/,
-        /approximately\s+([\d.]+)\s*g/,
-        /around\s+([\d.]+)\s*g/,
-        /about\s+([\d.]+)\s*g/,
-        /estimate[d]?\s+([\d.]+)\s*g/,
+    if (!proteinValue && isStrictAffirmative) {
+      // Only extract from explicit logging statements in PHI reply
+      // NOT from general advice like "aim for 92.7g" or "30g per meal"
+      const strictPatterns = [
+        /logged\s+([\d.]+)\s*g/i,
+        /added\s+([\d.]+)\s*g\s+(?:of\s+)?protein/i,
+        /protein estimate[:\s]+([\d.]+)/i,
+        /\+\s*([\d.]+)\s*g\s+protein/i,
       ];
-      for (const p of patterns) {
-        const m = replyLower.match(p);
+      for (const p of strictPatterns) {
+        const m = text.match(p);
         if (m) { proteinValue = parseFloat(m[1]); break; }
       }
     }
-
-    // PHI says "logged protein: 70" in its own message — always log
-    const loggedMatch = replyLower.match(/logged\s+protein[:\s]+([\d.]+)/);
-    if (loggedMatch) proteinValue = parseFloat(loggedMatch[1]);
   }
 
-  // ── Execute if we found a value ───────────────────────────────────────
-  if (proteinValue && proteinValue > 1 && proteinValue < 500) {
+  // ── Execute only with valid meal-sized protein values ─────────────────
+  // Reject values that look like targets (87g, 92g) or per-meal thresholds (30g)
+  // These appear in advice responses not logging confirmations
+  if (proteinValue && proteinValue > 5 && proteinValue < 300) {
     setTimeout(() => logProteinFromChat(proteinValue), 300);
   }
 
