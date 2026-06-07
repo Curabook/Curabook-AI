@@ -58,7 +58,7 @@ MANDATORY_DISCLAIMER = (
     "before making any medical decisions.*"
 )
 
-_PRO_PLANS = {"pro", "monthly", "annual", "clinical", "trial"}
+_PRO_PLANS = {"pro", "monthly", "annual", "clinical"}
 
 _GENERAL_QUESTION_PATTERNS = [
     r"^(hi|hello|hey|good morning|good evening|thanks|thank you|okay|ok|sure)[\s!.?]*$",
@@ -888,13 +888,17 @@ def _inject_protein_action(user_message: str, reply: str, is_meal_photo: bool = 
     # PHI reply contains "Protein estimate: Xg" from MEAL_PHOTO structured data
     # OR contains "estimating around Xg" — auto-log without asking user
     meal_patterns = [
-        r'protein estimate:\s*([\d.]+)',
-        r'estimating around\s*([\d.]+)g',
+        r'protein estimate[:\s]+([\d.]+)',
+        r'estimating around\s*([\d.]+)\s*g',
         r'estimate[sd]?\s+([\d.]+)\s*g(?:rams?)?\s+of\s+protein',
         r'approximately\s+([\d.]+)\s*g(?:rams?)?\s+of\s+protein',
         r'about\s+([\d.]+)\s*g(?:rams?)?\s+protein',
-        r'roughly\s+([\d.]+)g',
-        r'around\s+([\d.]+)g\s+of\s+protein',
+        r'roughly\s+([\d.]+)\s*g',
+        r'around\s+([\d.]+)\s*g\s+of\s+protein',
+        r'provides approximately\s+([\d.]+)\s*-?\s*[\d.]*\s*g',
+        r'contains about\s+([\d.]+)\s*-?\s*[\d.]*\s*g',
+        r'that would provide approximately\s+([\d.]+)',
+        r'([\d.]+)\s*-\s*[\d.]+g of protein',
     ]
     if is_meal_photo:
         for pattern in meal_patterns:
@@ -1165,7 +1169,7 @@ def _extract_text_from_base64_image(base64_data: str) -> str:
                     "role": "user",
                     "content": [
                         {"type": "image_url", "image_url": {"url": data, "detail": "high"}},
-                        {"type": "text", "text": "Extract all health/medical data from this image."}
+                        {"type": "text", "text": "Analyze this image. If it shows food or a meal, use the MEAL_PHOTO format. If it shows a lab report or medical document, extract all values. If it shows a fitness tracker, extract metrics."}
                     ]
                 }
             ],
@@ -1223,8 +1227,8 @@ def _is_feature_allowed(supabase, user_id: str, feature: str) -> bool:
 
     # 2. Check plan
     GATES = {
-        "pa_architect":       _PRO_PLANS,
-        "insurance_advocacy": _PRO_PLANS,
+        "pa_architect":       {"clinical"},
+        "insurance_advocacy": {"clinical"},
         "unlimited_reports":  _PRO_PLANS,
         "health_memory":      _PRO_PLANS,
         "doctor_prep":        _PRO_PLANS,
@@ -1459,10 +1463,15 @@ def chat():
     # If user is confirming a protein amount, inject the JSON action into reply
     # regardless of whether the model included it — ensures Shield always updates
     # Check if this was a meal photo upload
+    # Either the vision API returned MEAL_PHOTO format
+    # OR the original user message contained meal upload intent
+    _meal_keywords = ["estimate the protein", "log it to my shield", "meal photo",
+                      "i just ate", "what protein", "how much protein is in this"]
     _is_meal_photo_upload = (
-        document_text and
-        isinstance(document_text, str) and
-        document_text.strip().startswith("MEAL_PHOTO")
+        (document_text and isinstance(document_text, str) and
+         document_text.strip().startswith("MEAL_PHOTO"))
+        or
+        any(kw in message.lower() for kw in _meal_keywords)
     )
     final_reply = _inject_protein_action(message, reply, is_meal_photo=_is_meal_photo_upload) + MANDATORY_DISCLAIMER
 
