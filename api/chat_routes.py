@@ -888,17 +888,13 @@ def _inject_protein_action(user_message: str, reply: str, is_meal_photo: bool = 
     # PHI reply contains "Protein estimate: Xg" from MEAL_PHOTO structured data
     # OR contains "estimating around Xg" — auto-log without asking user
     meal_patterns = [
-        r'protein estimate[:\s]+([\d.]+)',
-        r'estimating around\s*([\d.]+)\s*g',
+        r'protein estimate:\s*([\d.]+)',
+        r'estimating around\s*([\d.]+)g',
         r'estimate[sd]?\s+([\d.]+)\s*g(?:rams?)?\s+of\s+protein',
         r'approximately\s+([\d.]+)\s*g(?:rams?)?\s+of\s+protein',
         r'about\s+([\d.]+)\s*g(?:rams?)?\s+protein',
-        r'roughly\s+([\d.]+)\s*g',
-        r'around\s+([\d.]+)\s*g\s+of\s+protein',
-        r'provides approximately\s+([\d.]+)\s*-?\s*[\d.]*\s*g',
-        r'contains about\s+([\d.]+)\s*-?\s*[\d.]*\s*g',
-        r'that would provide approximately\s+([\d.]+)',
-        r'([\d.]+)\s*-\s*[\d.]+g of protein',
+        r'roughly\s+([\d.]+)g',
+        r'around\s+([\d.]+)g\s+of\s+protein',
     ]
     if is_meal_photo:
         for pattern in meal_patterns:
@@ -950,9 +946,9 @@ def _call_llm_safe(messages: list) -> str:
             from openai import OpenAI
             client = OpenAI(api_key=openai_key, timeout=55.0)
             resp = client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="gpt-4o",
                 messages=messages,
-                temperature=0.35,
+                temperature=0.4,
                 max_tokens=1200
             )
             return resp.choices[0].message.content.strip()
@@ -1169,7 +1165,7 @@ def _extract_text_from_base64_image(base64_data: str) -> str:
                     "role": "user",
                     "content": [
                         {"type": "image_url", "image_url": {"url": data, "detail": "high"}},
-                        {"type": "text", "text": "Analyze this image. If it shows food or a meal, use the MEAL_PHOTO format. If it shows a lab report or medical document, extract all values. If it shows a fitness tracker, extract metrics."}
+                        {"type": "text", "text": "Extract all health/medical data from this image."}
                     ]
                 }
             ],
@@ -1446,6 +1442,7 @@ def chat():
     has_health_data = bool(memories or markers or shield or current_markers)
     try:
         from ai.system_prompt_v2 import validate_response, detect_hallucination_risk
+        from ai.system_prompt import is_clinical_response, CONVERSATIONAL_DISCLAIMER
         if detect_hallucination_risk(reply, has_health_data):
             reply = (
                 "I want to give you accurate information, but I don't have your personal "
@@ -1463,17 +1460,14 @@ def chat():
     # If user is confirming a protein amount, inject the JSON action into reply
     # regardless of whether the model included it — ensures Shield always updates
     # Check if this was a meal photo upload
-    # Either the vision API returned MEAL_PHOTO format
-    # OR the original user message contained meal upload intent
-    _meal_keywords = ["estimate the protein", "log it to my shield", "meal photo",
-                      "i just ate", "what protein", "how much protein is in this"]
     _is_meal_photo_upload = (
-        (document_text and isinstance(document_text, str) and
-         document_text.strip().startswith("MEAL_PHOTO"))
-        or
-        any(kw in message.lower() for kw in _meal_keywords)
+        document_text and
+        isinstance(document_text, str) and
+        document_text.strip().startswith("MEAL_PHOTO")
     )
-    final_reply = _inject_protein_action(message, reply, is_meal_photo=_is_meal_photo_upload) + MANDATORY_DISCLAIMER
+    # Only append disclaimer for clinical responses — not for simple conversational ones
+    _disclaimer = MANDATORY_DISCLAIMER if is_clinical_response(reply) else CONVERSATIONAL_DISCLAIMER
+    final_reply = _inject_protein_action(message, reply, is_meal_photo=_is_meal_photo_upload) + _disclaimer
 
     # ── STEP 9: Background ops ────────────────────────────────────────────────
     # Skip background LLM doc analysis when markers already extracted —

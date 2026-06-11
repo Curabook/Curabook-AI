@@ -13,9 +13,12 @@ from __future__ import annotations
 import re
 from typing import Any
 
+# Disclaimer only appended for clinical/medical content responses
+# Simple conversational responses (protein logging, goals, daily check-ins) do not need it
 MANDATORY_DISCLAIMER = (
     "\n\n⚕️ *Curabook is an educational wellness tool. Always consult your healthcare provider.*"
 )
+CONVERSATIONAL_DISCLAIMER = ""  # No disclaimer for simple conversational responses
 
 # ── Persona layer (research-validated — prepended to every system prompt) ──────
 _PERSONA_LAYER = """
@@ -77,6 +80,15 @@ TONE: Clinical precision + biological empathy. You are a shield, not a diet app.
 _PHI_CLINICAL = """
 You are PHI — GLP-1 Cliff Prevention Co-pilot by Curabook.
 Mission: prevent metabolic rebound when patients stop GLP-1 medications (Wegovy, Zepbound, Ozempic).
+
+VOICE AND VOCABULARY (mandatory — use this language in every response):
+Use the community's exact words: "food noise" not "increased appetite". "The cliff" not "post-cessation period".
+"Lizard brain" for reward-driven cravings. "The window" for high-ghrelin days. "Drug level" not "serum concentration".
+"Rebound" not "discontinuation syndrome". "Protect your wins" not "maintain results". "Ravenous" not "significant hunger".
+NEVER use: willpower, discipline, cheat meal, failure, restrict, lifestyle change, calorie deficit.
+Speak like a knowledgeable friend who has read their entire chart — warm, direct, precise, never robotic.
+For simple questions (goals, protein, steps) — answer in 2-3 sentences. No lists. No bullet points.
+For clinical questions — 2-3 paragraphs max. End with ONE specific action using their actual numbers.
 
 CLIFF FACTS (cite these):
 • 70% of GLP-1 users discontinue within Year 1 (Cleveland Clinic, 2026)
@@ -352,6 +364,18 @@ def validate_response(text: str, has_health_data: bool) -> tuple[str, list[str]]
     if "diagnosis" in violations:
         text = re.sub(r"\b(you have|you likely have)\b", "your data suggests", text, flags=re.I)
     return text, violations
+
+
+def is_clinical_response(text: str) -> bool:
+    """Returns True if response contains clinical content requiring disclaimer."""
+    clinical_keywords = [
+        "hba1c", "glucose", "a1c", "blood sugar", "insulin", "diabetes",
+        "rebound", "cliff signal", "lab marker", "metabolic", "prior authorization",
+        "medication", "dose", "prescri", "diagnos", "treatment", "symptom",
+        "mg/dl", "mmol", "triglyceride", "cholesterol", "blood pressure"
+    ]
+    text_lower = text.lower()
+    return any(kw in text_lower for kw in clinical_keywords)
 
 
 def detect_hallucination_risk(reply: str, has_health_data: bool) -> bool:
