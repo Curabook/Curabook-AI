@@ -1290,6 +1290,7 @@ async function sendMessage(text) {
 
     appendMsg(text, "user");
     // Clear meal photo from context immediately — only send once
+    const _wasMealPhoto = _docCtx?.isMealPhoto === true;
     if (_wasMealPhoto) {
       _docCtx = null;
     }
@@ -1302,9 +1303,6 @@ async function sendMessage(text) {
       const refreshed = await handleUnauthorized(); if (!refreshed) throw new Error("Session expired. Please sign in.");
       h = await headers(); if (!h) throw new Error("Session expired. Please sign in.");
     }
-
-    // Clear meal photo context after first send — do not keep sending image
-    const _wasMealPhoto = _docCtx?.isMealPhoto === true;
 
     const payload = {
       conversation_id: _convId,
