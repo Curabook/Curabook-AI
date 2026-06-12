@@ -1416,29 +1416,25 @@ function addFile(file) {
 
 // ── Meal photo queue — called from app.html handleMealPhoto ──────────────
 window._queueMealUpload = function(file) {
-  // Read base64 immediately and set _docCtx directly
-  // Cannot set custom properties on native File objects — this bypasses that issue
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    const base64 = e.target.result;
-    // Set docCtx directly — bypasses _uploads pipeline entirely
-    _docCtx = { text: base64, hasDoc: true, filename: 'meal_photo.jpg', isMealPhoto: true };
-    _uploads = []; // clear uploads so lab report pipeline not triggered
-    clearFilePreview();
-    // Pre-fill chat with meal context message
-    const inp = el('msgInput') || el('chatInput');
-    if (inp) {
-      inp.value = 'I just ate this — estimate the protein and log it to my Shield total.';
-      inp.dispatchEvent(new Event('input'));
-    }
-    // Show chat panel
-    const panel = document.querySelector('.chat-panel');
-    if (panel) panel.classList.add('active');
-    if (inp) inp.focus();
-    toast('Meal photo ready — tap Send to log protein');
-  };
-  reader.onerror = () => toast('Could not read photo', 'err');
-  reader.readAsDataURL(file);
+  // 1. Tag the file and put it directly into the standard upload pipeline
+  file._isMealPhoto = true;
+  _uploads = [file];
+  renderFilePreview();
+
+  // 2. Pre-fill the chat input with the precise logging prompt
+  const inp = el('msgInput') || el('chatInput');
+  if (inp) {
+    inp.value = 'I just ate this. Estimate the total calories and highly bioavailable protein in grams, and log the protein to my Shield.';
+    inp.dispatchEvent(new Event('input'));
+    if (typeof autoGrow === 'function') autoGrow(inp);
+  }
+
+  // 3. Show the chat panel and focus the input
+  const panel = document.querySelector('.chat-panel');
+  if (panel) panel.classList.add('active');
+  if (inp) inp.focus();
+
+  toast('Meal photo ready — tap Send to analyze and log');
 };
 
 function removeFile(i) { _uploads.splice(i, 1); renderFilePreview(); }
