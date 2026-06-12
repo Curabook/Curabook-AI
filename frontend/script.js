@@ -1247,44 +1247,26 @@ async function sendMessage(text) {
       const isPro = _userPlan === "pro" || _userPlan === "annual" || _userPlan === "monthly" || _userPlan === "trial";
       const isMealPhoto = _uploads[0]?._isMealPhoto === true;
 
-      if (isMealPhoto) {
-        // ── Meal photo: read as base64, send directly to /chat ────────────
-        // Bypasses /analyze entirely so vision API sees it as food not a lab report
-        try {
-          const base64 = await new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = e => resolve(e.target.result);
-            reader.onerror = reject;
-            reader.readAsDataURL(_uploads[0]);
-          });
-          _uploads = []; clearFilePreview();
-          _docCtx = { text: base64, hasDoc: true, filename: "meal_photo.jpg", isMealPhoto: true };
-          toast("Meal photo ready — analyzing...");
-        } catch(e) {
-          toast("Could not read meal photo", "err");
-          _isSending = false; setSendingState(false); return;
-        }
-      } else {
-        // ── Lab report / document: use /analyze pipeline ─────────────────
-        if (!isPro) {
-          _isSending = false;
-          setSendingState(false);
-          showUpgradeModal("upload");
-          return;
-        }
-        const lr = appendTyping(); updateTyping(lr, "📄 Processing file...");
-        const result = await processUpload(_uploads[0]);
-        lr?.remove();
-        if (result?.document_text) {
-          _uploads = []; clearFilePreview();
-          _docCtx = { text: result.document_text, hasDoc: true, filename: result.filename || "" };
-          toast(`${result.filename || "File"} analyzed ✓`);
-          if (!isPro) { _renderPlanBadge(); }
-          setTimeout(() => _refreshMemoryCache(), 2000);
-        } else if (result === null) {
-          const ta = el("chatInput"); if (ta) { ta.value = text; autoGrow(ta); }
-          throw new Error("File processing failed. Text restored.");
-        }
+      // ── Lab report / document: use /analyze pipeline ─────────────────
+      // (Meal photos are handled by _queueMealUpload which sets _docCtx directly)
+      if (!isPro) {
+        _isSending = false;
+        setSendingState(false);
+        showUpgradeModal("upload");
+        return;
+      }
+      const lr = appendTyping(); updateTyping(lr, "📄 Processing file...");
+      const result = await processUpload(_uploads[0]);
+      lr?.remove();
+      if (result?.document_text) {
+        _uploads = []; clearFilePreview();
+        _docCtx = { text: result.document_text, hasDoc: true, filename: result.filename || "" };
+        toast(`${result.filename || "File"} analyzed ✓`);
+        if (!isPro) { _renderPlanBadge(); }
+        setTimeout(() => _refreshMemoryCache(), 2000);
+      } else if (result === null) {
+        const ta = el("chatInput"); if (ta) { ta.value = text; autoGrow(ta); }
+        throw new Error("File processing failed. Text restored.");
       }
     }
 
@@ -1433,23 +1415,29 @@ function addFile(file) {
 
 // ── Meal photo queue — called from app.html handleMealPhoto ──────────────
 window._queueMealUpload = function(file) {
-  // Mark as meal photo so system_prompt knows context
-  file._isMealPhoto = true;
-  // Add to upload queue
-  _uploads = [file];
-  renderFilePreview();
-  // Pre-fill chat with meal context message
-  const inp = el('msgInput') || el('chatInput');
-  if (inp) {
-    inp.value = 'I just ate this — estimate the protein and log it to my Shield total.';
-    inp.dispatchEvent(new Event('input'));
-  }
-  // Show chat panel
-  const panel = document.querySelector('.chat-panel');
-  if (panel) panel.classList.add('active');
-  // Auto-focus input
-  if (inp) inp.focus();
-  toast('Meal photo ready — tap Send to log protein');
+  // Read base64 immediately and set _docCtx directly
+  // Cannot set custom properties on native File objects — this bypasses that issue
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const base64 = e.target.result;
+    // Set docCtx directly — bypasses _uploads pipeline entirely
+    _docCtx = { text: base64, hasDoc: true, filename: 'meal_photo.jpg', isMealPhoto: true };
+    _uploads = []; // clear uploads so lab report pipeline not triggered
+    clearFilePreview();
+    // Pre-fill chat with meal context message
+    const inp = el('msgInput') || el('chatInput');
+    if (inp) {
+      inp.value = 'I just ate this — estimate the protein and log it to my Shield total.';
+      inp.dispatchEvent(new Event('input'));
+    }
+    // Show chat panel
+    const panel = document.querySelector('.chat-panel');
+    if (panel) panel.classList.add('active');
+    if (inp) inp.focus();
+    toast('Meal photo ready — tap Send to log protein');
+  };
+  reader.onerror = () => toast('Could not read photo', 'err');
+  reader.readAsDataURL(file);
 };
 
 function removeFile(i) { _uploads.splice(i, 1); renderFilePreview(); }
@@ -1718,9 +1706,14 @@ function interceptPHIActions(text, userMessage) {
     const msgLower = (userMessage || '').toLowerCase();
     const replyLower = text.toLowerCase();
 
-    // User specified grams
+    // User specified grams — only if message has explicit log intent
+    const hasLogIntent = /\b(add|log|track|record|save)\b/.test(msgLower);
     const gramMsg = msgLower.match(/(\d+(?:\.\d+)?)\s*(?:g|gram|grams|gm)/);
-    if (gramMsg) proteinValue = parseFloat(gramMsg[1]);
+    if (gramMsg && hasLogIntent) proteinValue = parseFloat(gramMsg[1]);
+
+    // Never auto-log from PHI example lists (contains bullet points with ~Xg)
+    const isExampleResponse = /bullet|\*\s*\w.*~?\d+g|common estimate|for example|typically|on average/i.test(text);
+    if (isExampleResponse) proteinValue = null;
 
     // User said yes/log it and PHI mentioned a number
     const affirmatives = ['yes','log it','sure','ok','okay','add it','add','yep','yup','log','correct','log protein','add protein','add to shield','log to shield'];
