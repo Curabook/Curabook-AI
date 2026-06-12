@@ -1382,7 +1382,7 @@ async function _postChatActions(reply, userText, responseData) {
     }, 1500);
   }
 
-  if (_docCtx.hasDoc && _replyHasMarkerData(reply)) {
+  if (_docCtx?.hasDoc && _replyHasMarkerData(reply)) {
     setTimeout(async () => {
       await loadMarkersData();
       await _refreshMemoryCache();
