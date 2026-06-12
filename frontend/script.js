@@ -1272,12 +1272,6 @@ async function sendMessage(text) {
 
     appendMsg(text, "user");
 
-    // Declare before use — check meal photo and clear context after single send
-    const _wasMealPhoto = _docCtx?.isMealPhoto === true;
-    if (_wasMealPhoto) {
-      _docCtx = null;
-    }
-
     botRow = appendTyping();
     scrollBottom();
 
@@ -1287,12 +1281,19 @@ async function sendMessage(text) {
       h = await headers(); if (!h) throw new Error("Session expired. Please sign in.");
     }
 
+    // Build payload BEFORE clearing _docCtx
+    const _wasMealPhoto = _docCtx?.isMealPhoto === true;
     const payload = {
       conversation_id: _convId,
       message:         text,
       has_documents:   _docCtx?.hasDoc || false,
       document_text:   _docCtx?.hasDoc ? (_docCtx.text || "") : "",
     };
+
+    // Clear meal photo context AFTER payload is built — only send image once
+    if (_wasMealPhoto) {
+      _docCtx = { text: null, hasDoc: false, filename: "" };
+    }
 
     let dotCount = 0;
     const typingInterval = setInterval(() => {
