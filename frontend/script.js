@@ -1289,7 +1289,8 @@ async function sendMessage(text) {
     }
 
     appendMsg(text, "user");
-    // Clear meal photo from context immediately — only send once
+
+    // Declare before use — check meal photo and clear context after single send
     const _wasMealPhoto = _docCtx?.isMealPhoto === true;
     if (_wasMealPhoto) {
       _docCtx = null;
@@ -1307,8 +1308,8 @@ async function sendMessage(text) {
     const payload = {
       conversation_id: _convId,
       message:         text,
-      has_documents:   _docCtx.hasDoc,
-      document_text:   _docCtx.hasDoc ? (_docCtx.text || "") : "",
+      has_documents:   _docCtx?.hasDoc || false,
+      document_text:   _docCtx?.hasDoc ? (_docCtx.text || "") : "",
     };
 
     let dotCount = 0;
