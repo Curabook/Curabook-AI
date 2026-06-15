@@ -1085,7 +1085,7 @@ document.addEventListener('DOMContentLoaded', () => {
   updateDemo(true);
 });
 // =======================================================================
-// CURABOOK INTERNAL TELEMETRY TRACKER (PRIVACY-COMPLIANT)
+// CURABOOK INTERNAL TELEMETRY TRACKER (UPDATED FOR TAPER DEMO)
 // =======================================================================
 
 // 1. Generate an anonymous session ID for the visit
@@ -1107,33 +1107,40 @@ function trackEvent(eventName, metadata = {}) {
     }).catch(e => console.log("Analytics ping failed silently")); 
 }
 
-// 3. Set up the specific triggers on your page
+// 3. Set up the specific triggers on your actual index.html page
 document.addEventListener('DOMContentLoaded', () => {
+    
     // Log when they first open the landing page
     trackEvent('landing_page_viewed');
 
-    // Track if they interact with the Taper Calculator (adjust IDs as needed)
-    const calculateBtn = document.getElementById('calculate-btn'); 
-    if (calculateBtn) {
-        calculateBtn.addEventListener('click', () => {
-            trackEvent('clicked_calculate_forecast');
+    // Track if they interact with the Taper Demo inputs
+    const demoInputs = ['demoLastDose', 'demoDose', 'demoDay'];
+    demoInputs.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('change', () => {
+                trackEvent('adjusted_taper_slider');
+            });
+        }
+    });
+
+    // Track if they click the day dots in the timeline
+    const dotsContainer = document.getElementById('demoDots');
+    if (dotsContainer) {
+        dotsContainer.addEventListener('click', (e) => {
+            if (e.target.classList.contains('day-dot')) {
+                trackEvent('clicked_calculate_forecast'); 
+            }
         });
     }
 
-    const taperSlider = document.getElementById('medication-dose-slider'); 
-    if (taperSlider) {
-        taperSlider.addEventListener('change', () => {
-            trackEvent('adjusted_taper_slider');
+    // Track if they click ANY "Start free" or "Protect my progress" signup button
+    const signupButtons = document.querySelectorAll('.plan-btn, .nudge-btn, .btn-final-primary');
+    signupButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            trackEvent('started_typing_email'); // Maps to the "Intent to Signup" funnel stage
         });
-    }
-
-    // HIGH VALUE: Track if they focus on the email input but abandon it
-    const emailInput = document.getElementById('signup-email-input'); 
-    if (emailInput) {
-        emailInput.addEventListener('focus', () => {
-            trackEvent('started_typing_email');
-        });
-    }
+    });
 });
 </script>
 
