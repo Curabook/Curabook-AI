@@ -576,6 +576,118 @@ footer {
     transition-duration: .01ms !important;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   TAPER DEMO
+═══════════════════════════════════════════════════════════ */
+#taper-demo { background: var(--surface); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.taper-demo-inner { max-width: 720px; margin: 0 auto; text-align: center; }
+.taper-demo-inner .section-tag { justify-content: center; }
+.taper-demo-inner .section-tag::before { display: none; }
+.taper-demo-h { font-family: var(--serif); font-size: clamp(1.4rem,3.5vw,2.2rem); font-weight:400; line-height:1.15; letter-spacing:-.02em; color:var(--text); margin-bottom:8px; }
+.taper-demo-h em { font-style:italic; color:var(--signal); }
+.taper-demo-sub { font-size:.84rem; color:var(--text-3); margin-bottom:32px; font-weight:300; }
+
+.taper-widget {
+  background: var(--surface-2); border: 1.5px solid var(--border);
+  border-radius: var(--r-xl); padding: 28px 24px 24px;
+  margin-bottom: 20px; position: relative;
+}
+
+/* Med selector */
+.med-row { display:flex; gap:8px; justify-content:center; margin-bottom:24px; flex-wrap:wrap; }
+.med-pill {
+  padding:7px 16px; border-radius:99px; font-size:.75rem; font-weight:600;
+  border:1.5px solid var(--border-2); color:var(--text-2);
+  cursor:pointer; transition:all .15s; background:var(--surface);
+}
+.med-pill.active { background:var(--signal); color:#0a0b0e; border-color:var(--signal); }
+
+/* Inputs row */
+.taper-inputs { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:24px; }
+@media(min-width:480px) { .taper-inputs { grid-template-columns:1fr 1fr 1fr; } }
+.taper-input-group { text-align:left; }
+.taper-input-label { font-size:.6rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--text-3); margin-bottom:5px; display:block; }
+.taper-input {
+  width:100%; padding:9px 12px; border-radius:var(--r); border:1.5px solid var(--border-2);
+  font-size:.84rem; color:var(--text); background:var(--surface); font-family:var(--sans);
+  outline:none; transition:border-color .15s;
+}
+.taper-input:focus { border-color:var(--signal); }
+
+/* Drug level display */
+.drug-level-display {
+  display:flex; align-items:center; justify-content:center; gap:20px;
+  margin-bottom:20px; flex-wrap:wrap;
+}
+.drug-level-number {
+  font-family:var(--mono); font-size:3.2rem; font-weight:500;
+  line-height:1; color:var(--signal); transition:color .5s;
+}
+.drug-level-number.warning { color:var(--amber); }
+.drug-level-number.danger  { color:var(--danger); }
+.drug-level-label { font-size:.72rem; color:var(--text-3); text-align:left; line-height:1.6; }
+.drug-level-label strong { display:block; font-size:.82rem; color:var(--text-2); margin-bottom:2px; }
+
+/* Progress bar */
+.drug-bar-wrap { margin-bottom:20px; }
+.drug-bar-track { height:10px; border-radius:99px; background:var(--surface-3); overflow:hidden; }
+.drug-bar-fill { height:100%; border-radius:99px; transition:width .8s ease, background .5s; }
+
+/* Day timeline */
+.day-timeline { display:flex; gap:4px; margin-bottom:20px; overflow-x:auto; padding-bottom:4px; }
+.day-dot {
+  flex-shrink:0; width:32px; height:32px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  font-size:.6rem; font-weight:700; cursor:pointer;
+  border:1.5px solid var(--border); background:var(--surface);
+  color:var(--text-3); transition:all .15s;
+}
+.day-dot.active { border-color:var(--signal); color:var(--signal); background:var(--signal-dim); }
+.day-dot.selected { background:var(--signal); color:#0a0b0e; border-color:var(--signal); transform:scale(1.15); }
+
+/* Insight card */
+.taper-insight {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--r-lg); padding:14px 16px; text-align:left;
+  font-size:.82rem; line-height:1.7; color:var(--text-2);
+  transition:all .4s; min-height:60px;
+}
+.taper-insight strong { color:var(--text); }
+.taper-insight .insight-tag {
+  font-size:.58rem; font-weight:700; letter-spacing:.1em; text-transform:uppercase;
+  padding:2px 8px; border-radius:20px; margin-bottom:6px; display:inline-block;
+}
+.insight-ok   { background:var(--ok-dim); color:var(--ok); }
+.insight-warn { background:rgba(251,191,36,.12); color:#92650a; }
+.insight-danger { background:var(--danger-dim); color:var(--danger); }
+
+/* Signup nudge */
+.taper-signup-nudge {
+  display:none; margin-top:16px;
+  background:linear-gradient(135deg,rgba(0,212,200,.08),rgba(0,212,200,.03));
+  border:1.5px solid rgba(0,212,200,.25); border-radius:var(--r-lg);
+  padding:16px 18px; text-align:center;
+  animation: nudgePop .4s ease;
+}
+@keyframes nudgePop { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+.taper-signup-nudge.visible { display:block; }
+.nudge-headline {
+  font-size:.92rem; font-weight:700; color:var(--signal);
+  margin-bottom:5px;
+}
+.nudge-body { font-size:.78rem; color:var(--text-2); margin-bottom:12px; line-height:1.6; }
+.nudge-btn {
+  display:inline-flex; align-items:center; gap:7px;
+  padding:10px 22px; border-radius:99px;
+  background:var(--signal); color:#0a0b0e;
+  font-size:.82rem; font-weight:700; border:none;
+  cursor:pointer; font-family:var(--sans);
+  box-shadow:0 4px 16px var(--signal-glow);
+  transition:all .15s;
+}
+.nudge-btn:hover { transform:translateY(-1px); }
+.nudge-free-tag { font-size:.68rem; color:var(--text-3); margin-top:7px; }
 </style>
 </head>
 <body>
@@ -666,25 +778,97 @@ footer {
   </div>
 </section>
 
+<!-- ═══ TAPER DEMO ═══ -->
+<section id="taper-demo" class="section-pad fade-in">
+  <div class="taper-demo-inner">
+    <div class="section-tag">Try it now — no account needed</div>
+    <h2 class="taper-demo-h">See your drug level <em>right now</em></h2>
+    <p class="taper-demo-sub">Enter your medication and last dose. See exactly where you are — and what's coming.</p>
+
+    <div class="taper-widget">
+      <!-- Med selector -->
+      <div class="med-row">
+        <button class="med-pill active" onclick="selectMed('semaglutide',this)">Ozempic / Wegovy</button>
+        <button class="med-pill" onclick="selectMed('tirzepatide',this)">Mounjaro / Zepbound</button>
+        <button class="med-pill" onclick="selectMed('liraglutide',this)">Saxenda</button>
+      </div>
+
+      <!-- Inputs -->
+      <div class="taper-inputs">
+        <div class="taper-input-group">
+          <label class="taper-input-label">Last dose date</label>
+          <input type="date" class="taper-input" id="demoLastDose" onchange="updateDemo(true)" />
+        </div>
+        <div class="taper-input-group">
+          <label class="taper-input-label">Dose (mg)</label>
+          <input type="number" class="taper-input" id="demoDose" placeholder="e.g. 1.0" step="0.25" onchange="updateDemo(false)" />
+        </div>
+        <div class="taper-input-group">
+          <label class="taper-input-label">View day</label>
+          <input type="number" class="taper-input" id="demoDay" placeholder="Today = 0" min="0" max="28" value="0" onchange="updateDemo(false)" />
+        </div>
+      </div>
+
+      <!-- Drug level display -->
+      <div class="drug-level-display">
+        <div>
+          <div class="drug-level-number" id="demoPercent">—</div>
+          <div style="font-size:.62rem;color:var(--text-3);margin-top:2px;font-family:var(--mono)">% active</div>
+        </div>
+        <div class="drug-level-label">
+          <strong id="demoStatus">Enter your last dose date</strong>
+          <span id="demoSubStatus"></span>
+        </div>
+      </div>
+
+      <!-- Bar -->
+      <div class="drug-bar-wrap">
+        <div class="drug-bar-track">
+          <div class="drug-bar-fill" id="demoBar" style="width:0%;background:var(--signal)"></div>
+        </div>
+      </div>
+
+      <!-- Day dots -->
+      <div class="day-timeline" id="demoDots"></div>
+
+      <!-- Insight -->
+      <div class="taper-insight" id="demoInsight">
+        <span style="color:var(--text-3);font-size:.8rem;">Enter your medication details above to see your biological picture.</span>
+      </div>
+
+      <!-- Signup nudge — shown after interaction -->
+      <div class="taper-signup-nudge" id="demoNudge">
+        <div class="nudge-headline">⚡ Your full picture is ready</div>
+        <div class="nudge-body">Create your free account to save this, track your hunger forecast, monitor your labs, and get personalized AI insights — no card needed.</div>
+        <button class="nudge-btn" onclick="location.href='/signup?source=taper_demo'">
+          <i class="fa-solid fa-shield-halved"></i>
+          See my full health picture — free
+        </button>
+        <div class="nudge-free-tag">Free forever · No credit card · Takes 60 seconds</div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ═══ VOICES ═══ -->
 <section id="voices" class="section-pad fade-in">
   <div class="section-inner">
-    <h2 class="voice-heading">The fear is real.<br>So is the <em style="color:var(--signal)">science.</em></h2>
+    <h2 class="voice-heading">The fear is real.<br>So is the relief.</h2>
     <div class="voice-cards">
       <div class="voice-card">
-        <div class="voice-stars" style="font-size:.65rem;letter-spacing:.08em;color:var(--signal);font-weight:700;text-transform:uppercase;">JAMA Internal Medicine · Nov 2025</div>
-        <p class="voice-text">82% of patients regain significant weight within 1 year of stopping GLP-1 medication — even after months of successful results.</p>
-        <div class="voice-author" style="color:var(--text-3);font-size:.68rem;">The rebound is biological. It was always going to happen on this schedule.</div>
+        <div class="voice-stars">★★★★★</div>
+        <p class="voice-text">I lost 34 pounds over 14 months. When my insurance stopped covering it, I panicked. Curabook helped me build the packet that got my coverage reinstated.</p>
+        <div class="voice-author"><strong>Priya M.</strong> · Off semaglutide 4 months</div>
       </div>
       <div class="voice-card">
-        <div class="voice-stars" style="font-size:.65rem;letter-spacing:.08em;color:var(--signal);font-weight:700;text-transform:uppercase;">Lancet eClinicalMedicine · 2025</div>
-        <p class="voice-text">Ghrelin surges above pre-medication baseline after stopping. The hunger that returns is clinically stronger than before you started the medication.</p>
-        <div class="voice-author" style="color:var(--text-3);font-size:.68rem;">Food noise coming back is not failure. It is a documented hormonal event.</div>
+        <div class="voice-stars">★★★★★</div>
+        <p class="voice-text">I didn't realise how much I'd drifted until I looked at my Metabolic Shield. Three markers had shifted. My doctor and I caught it early because of those alerts.</p>
+        <div class="voice-author"><strong>James R.</strong> · 8 months post-GLP-1</div>
       </div>
       <div class="voice-card">
-        <div class="voice-stars" style="font-size:.65rem;letter-spacing:.08em;color:var(--signal);font-weight:700;text-transform:uppercase;">KFF Health Tracking Poll · 2025</div>
-        <p class="voice-text">50%+ of GLP-1 users stop within the first year. Cost and insurance denial are the top two reasons — not lack of results.</p>
-        <div class="voice-author" style="color:var(--text-3);font-size:.68rem;">The system failed you. The biology explains the rest.</div>
+        <div class="voice-stars">★★★★★</div>
+        <p class="voice-text">Knowing something is watching the numbers makes the anxiety manageable. I finally feel like I'm not doing this alone.</p>
+        <div class="voice-author"><strong>Saara K.</strong> · Tapering down</div>
       </div>
     </div>
   </div>
@@ -803,6 +987,103 @@ const io = new IntersectionObserver(
   { threshold: 0.06 }
 );
 document.querySelectorAll('.fade-in').forEach(el => io.observe(el));
+
+// ── Taper Demo ──────────────────────────────────────────────────────────────
+const HALF_LIVES = { semaglutide: 7, tirzepatide: 5, liraglutide: 1 };
+const MED_NAMES  = { semaglutide: 'Semaglutide', tirzepatide: 'Tirzepatide', liraglutide: 'Liraglutide' };
+let _demoMed = 'semaglutide';
+let _demoInteracted = false;
+
+function selectMed(med, btn) {
+  _demoMed = med;
+  document.querySelectorAll('.med-pill').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  updateDemo(false);
+}
+
+function calcLevel(daysSince) {
+  const hl = HALF_LIVES[_demoMed] || 7;
+  return Math.pow(0.5, daysSince / hl) * 100;
+}
+
+function getInsight(pct, daysSince) {
+  if (pct >= 75) return { tag:'insight-ok', tagText:'✓ Well suppressed', text:`Your ${MED_NAMES[_demoMed]} level is at <strong>${pct.toFixed(0)}%</strong>. Appetite suppression is strong. Food noise is minimal right now.` };
+  if (pct >= 50) return { tag:'insight-ok', tagText:'◎ Mild changes beginning', text:`At <strong>${pct.toFixed(0)}%</strong> you may start noticing subtle hunger increases. Protein intake matters more now — aim for 30g+ per meal to buffer the change.` };
+  if (pct >= 30) return { tag:'insight-warn', tagText:'⚠ Ghrelin window opening', text:`<strong>${pct.toFixed(0)}%</strong> active. This is the window where food noise returns for most people. The hunger you feel is biological — ghrelin is surging above your pre-medication baseline. This is not failure.` };
+  if (pct >= 15) return { tag:'insight-danger', tagText:'🔴 Peak rebound window', text:`At <strong>${pct.toFixed(0)}%</strong> the medication has largely cleared. Ghrelin is at its highest. The ravenous feeling that hits now is a documented hormonal event — not willpower. Days ${Math.round(daysSince)}-${Math.round(daysSince)+4} are typically the hardest.` };
+  return { tag:'insight-danger', tagText:'🔴 Minimal drug activity', text:`<strong>${pct.toFixed(0)}%</strong> — the medication has nearly fully cleared. Your body is now managing hunger without pharmaceutical support. This is the maintenance phase.` };
+}
+
+function updateDemo(fromDate) {
+  const lastDoseEl = document.getElementById('demoLastDose');
+  const dayEl      = document.getElementById('demoDay');
+  const pctEl      = document.getElementById('demoPercent');
+  const barEl      = document.getElementById('demoBar');
+  const statusEl   = document.getElementById('demoStatus');
+  const subEl      = document.getElementById('demoSubStatus');
+  const insightEl  = document.getElementById('demoInsight');
+  const dotsEl     = document.getElementById('demoDots');
+  const nudgeEl    = document.getElementById('demoNudge');
+
+  const lastDate = lastDoseEl.value;
+  if (!lastDate) return;
+
+  // Calculate days since last dose
+  const today = new Date();
+  const last  = new Date(lastDate);
+  const daysSinceLastDose = Math.max(0, (today - last) / 86400000);
+
+  // View day offset
+  const viewDay = parseInt(dayEl.value) || 0;
+  const totalDays = daysSinceLastDose + viewDay;
+
+  const pct = Math.min(100, Math.max(0, calcLevel(totalDays)));
+
+  // Update number
+  pctEl.textContent = pct.toFixed(1) + '%';
+  pctEl.className = 'drug-level-number' + (pct < 30 ? ' danger' : pct < 55 ? ' warning' : '');
+
+  // Update bar
+  const barColor = pct >= 55 ? 'var(--signal)' : pct >= 30 ? 'var(--amber)' : 'var(--danger)';
+  barEl.style.width = pct + '%';
+  barEl.style.background = barColor;
+
+  // Status
+  const dayLabel = viewDay === 0 ? 'Today' : `Day +${viewDay}`;
+  statusEl.textContent = `${dayLabel} — ${pct >= 70 ? 'Strong suppression' : pct >= 45 ? 'Moderate suppression' : pct >= 25 ? 'Low suppression' : 'Minimal drug activity'}`;
+  subEl.textContent = `${MED_NAMES[_demoMed]} · ${(HALF_LIVES[_demoMed] * Math.log2(100/pct)).toFixed(1)} days since dose`;
+
+  // Insight
+  const ins = getInsight(pct, totalDays);
+  insightEl.innerHTML = `<span class="insight-tag ${ins.tag}">${ins.tagText}</span><br>${ins.text}`;
+
+  // Day dots (next 14 days from today)
+  dotsEl.innerHTML = '';
+  for (let d = 0; d <= 14; d++) {
+    const dp = calcLevel(daysSinceLastDose + d);
+    const dot = document.createElement('div');
+    dot.className = 'day-dot' + (dp < 55 && dp >= 25 ? ' active' : '') + (d === viewDay ? ' selected' : '');
+    dot.textContent = d === 0 ? 'T' : '+' + d;
+    dot.title = `Day +${d}: ${dp.toFixed(0)}%`;
+    dot.onclick = () => { dayEl.value = d; updateDemo(false); };
+    dotsEl.appendChild(dot);
+  }
+
+  // Show nudge after first real interaction
+  if (!_demoInteracted) {
+    _demoInteracted = true;
+    setTimeout(() => nudgeEl.classList.add('visible'), 1800);
+  }
+}
+
+// Set today's date as default
+document.addEventListener('DOMContentLoaded', () => {
+  const today = new Date();
+  today.setDate(today.getDate() - 3); // default: 3 days ago
+  document.getElementById('demoLastDose').value = today.toISOString().split('T')[0];
+  document.getElementById('demoDose').value = '1.0';
+  updateDemo(true);
+});
 </script>
 
 </body>
