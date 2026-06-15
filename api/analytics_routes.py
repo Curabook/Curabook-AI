@@ -35,7 +35,6 @@ AUTH: All endpoints require X-Founder-Secret header.
 import os
 import re
 import json
-import sqlite3
 import hashlib
 from datetime import datetime, timezone, timedelta, date
 from collections import defaultdict
@@ -1159,5 +1158,3 @@ def get_feedback():
         return jsonify({"feedback": feedback, "source": "audit_logs", "count": len(feedback)})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-    
-FOUNDER_SECRET = os.getenv("FOUNDER_SECRET", "")

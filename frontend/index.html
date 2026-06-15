@@ -1084,64 +1084,6 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('demoDose').value = '1.0';
   updateDemo(true);
 });
-// =======================================================================
-// CURABOOK INTERNAL TELEMETRY TRACKER (UPDATED FOR TAPER DEMO)
-// =======================================================================
-
-// 1. Generate an anonymous session ID for the visit
-const sessionId = sessionStorage.getItem('cb_session') || 
-                  (sessionStorage.setItem('cb_session', crypto.randomUUID()), sessionStorage.getItem('cb_session'));
-
-// 2. The core tracking function
-function trackEvent(eventName, metadata = {}) {
-    fetch('/api/analytics/track', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            session_id: sessionId,
-            event_name: eventName,
-            url: window.location.pathname,
-            timestamp: new Date().toISOString(),
-            metadata: metadata
-        })
-    }).catch(e => console.log("Analytics ping failed silently")); 
-}
-
-// 3. Set up the specific triggers on your actual index.html page
-document.addEventListener('DOMContentLoaded', () => {
-    
-    // Log when they first open the landing page
-    trackEvent('landing_page_viewed');
-
-    // Track if they interact with the Taper Demo inputs
-    const demoInputs = ['demoLastDose', 'demoDose', 'demoDay'];
-    demoInputs.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) {
-            el.addEventListener('change', () => {
-                trackEvent('adjusted_taper_slider');
-            });
-        }
-    });
-
-    // Track if they click the day dots in the timeline
-    const dotsContainer = document.getElementById('demoDots');
-    if (dotsContainer) {
-        dotsContainer.addEventListener('click', (e) => {
-            if (e.target.classList.contains('day-dot')) {
-                trackEvent('clicked_calculate_forecast'); 
-            }
-        });
-    }
-
-    // Track if they click ANY "Start free" or "Protect my progress" signup button
-    const signupButtons = document.querySelectorAll('.plan-btn, .nudge-btn, .btn-final-primary');
-    signupButtons.forEach(btn => {
-        btn.addEventListener('click', () => {
-            trackEvent('started_typing_email'); // Maps to the "Intent to Signup" funnel stage
-        });
-    });
-});
 </script>
 
 </body>
