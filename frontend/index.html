@@ -1084,6 +1084,57 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('demoDose').value = '1.0';
   updateDemo(true);
 });
+// =======================================================================
+// CURABOOK INTERNAL TELEMETRY TRACKER (PRIVACY-COMPLIANT)
+// =======================================================================
+
+// 1. Generate an anonymous session ID for the visit
+const sessionId = sessionStorage.getItem('cb_session') || 
+                  (sessionStorage.setItem('cb_session', crypto.randomUUID()), sessionStorage.getItem('cb_session'));
+
+// 2. The core tracking function
+function trackEvent(eventName, metadata = {}) {
+    fetch('/api/analytics/track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            session_id: sessionId,
+            event_name: eventName,
+            url: window.location.pathname,
+            timestamp: new Date().toISOString(),
+            metadata: metadata
+        })
+    }).catch(e => console.log("Analytics ping failed silently")); 
+}
+
+// 3. Set up the specific triggers on your page
+document.addEventListener('DOMContentLoaded', () => {
+    // Log when they first open the landing page
+    trackEvent('landing_page_viewed');
+
+    // Track if they interact with the Taper Calculator (adjust IDs as needed)
+    const calculateBtn = document.getElementById('calculate-btn'); 
+    if (calculateBtn) {
+        calculateBtn.addEventListener('click', () => {
+            trackEvent('clicked_calculate_forecast');
+        });
+    }
+
+    const taperSlider = document.getElementById('medication-dose-slider'); 
+    if (taperSlider) {
+        taperSlider.addEventListener('change', () => {
+            trackEvent('adjusted_taper_slider');
+        });
+    }
+
+    // HIGH VALUE: Track if they focus on the email input but abandon it
+    const emailInput = document.getElementById('signup-email-input'); 
+    if (emailInput) {
+        emailInput.addEventListener('focus', () => {
+            trackEvent('started_typing_email');
+        });
+    }
+});
 </script>
 
 </body>

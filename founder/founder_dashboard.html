@@ -347,7 +347,18 @@ tr:hover td{background:rgba(0,0,0,.02);}
       <div class="chart-panel"><h3>Revenue (MRR)</h3><p>Monthly recurring revenue estimate</p><div id="mrrPanel" style="padding-top:10px"></div></div>
     </div>
   </div>
-
+<!-- LANDING PAGE FUNNEL (Add to Overview Page) -->
+<div class="table-panel" style="margin-top: 24px;">
+  <div class="table-panel-header">
+    <div>
+      <h3>Landing Page Funnel (Last 7 Days)</h3>
+      <p>Tracking ad traffic drop-off from index.html to sign-up.</p>
+    </div>
+  </div>
+  <div id="funnelContainer" style="padding: 20px; display: flex; flex-direction: column; gap: 12px;">
+    <div class="spinner"></div>
+  </div>
+</div>
   <!-- ACTIVITY -->
   <div class="page" id="page-activity">
     <div class="page-header">
@@ -923,7 +934,47 @@ function kpi(label, value, sub, color) {
   return `<div class="kpi-card" style="--accent-line:var(${color})"><div class="kpi-label">${label}</div><div class="kpi-value">${value}</div><div class="kpi-sub">${sub}</div></div>`;
 }
 function pct(a, b) { return b ? Math.round(a/b*100) : 0; }
-
+// Add this inside your existing loadOverview() function:
+api('/api/founder/landing-metrics')
+  .then(data => {
+    const f = data.funnel;
+    const views = f.landing_page_viewed || 1; // Prevent division by zero
+    
+    document.getElementById('funnelContainer').innerHTML = `
+      <div style="display:flex; align-items:center; gap: 15px;">
+        <div style="width: 150px; font-size: .8rem; font-weight: 700; color: var(--text2);">1. Page Views</div>
+        <div class="eng-bar" style="flex:1;">
+          <div class="eng-track" style="height: 12px;"><div class="eng-fill" style="width: 100%; background: var(--accent);"></div></div>
+          <span style="font-family: var(--mono); width: 40px; text-align: right;">${f.landing_page_viewed}</span>
+        </div>
+      </div>
+      
+      <div style="display:flex; align-items:center; gap: 15px;">
+        <div style="width: 150px; font-size: .8rem; font-weight: 700; color: var(--text2);">2. Touched Slider</div>
+        <div class="eng-bar" style="flex:1;">
+          <div class="eng-track" style="height: 12px;"><div class="eng-fill" style="width: ${Math.round((f.adjusted_taper_slider/views)*100)}%; background: var(--accent2);"></div></div>
+          <span style="font-family: var(--mono); width: 40px; text-align: right;">${f.adjusted_taper_slider}</span>
+        </div>
+      </div>
+      
+      <div style="display:flex; align-items:center; gap: 15px;">
+        <div style="width: 150px; font-size: .8rem; font-weight: 700; color: var(--text2);">3. Clicked Forecast</div>
+        <div class="eng-bar" style="flex:1;">
+          <div class="eng-track" style="height: 12px;"><div class="eng-fill" style="width: ${Math.round((f.clicked_calculate_forecast/views)*100)}%; background: var(--amber);"></div></div>
+          <span style="font-family: var(--mono); width: 40px; text-align: right;">${f.clicked_calculate_forecast}</span>
+        </div>
+      </div>
+      
+      <div style="display:flex; align-items:center; gap: 15px;">
+        <div style="width: 150px; font-size: .8rem; font-weight: 700; color: var(--text2);">4. Typed Email</div>
+        <div class="eng-bar" style="flex:1;">
+          <div class="eng-track" style="height: 12px;"><div class="eng-fill" style="width: ${Math.round((f.started_typing_email/views)*100)}%; background: var(--green);"></div></div>
+          <span style="font-family: var(--mono); width: 40px; text-align: right;">${f.started_typing_email}</span>
+        </div>
+      </div>
+    `;
+  })
+  .catch(e => console.log('Funnel fetch error:', e));
 // ── ACTIVITY ──────────────────────────────────────────────────────────────────
 async function loadActivity(days) {
   const data = await api(`/api/founder/activity-timeline?days=${days}`);
