@@ -701,7 +701,7 @@ footer {
   </div>
   <div class="nav-actions">
     <button class="btn-ghost-nav" onclick="location.href='/login'">Sign in</button>
-    <button class="btn-signal-nav" onclick="location.href='/signup'">Get started</button>
+    <button class="btn-signal-nav" onclick="location.href='/signup'">Try free — no card needed</button>
   </div>
 </nav>
 
@@ -709,46 +709,55 @@ footer {
 <section class="hero">
   <div class="hero-eyebrow">
     <div class="eyebrow-dot"></div>
-    Personal Health Intelligence
+    Post-GLP-1 Health Intelligence
   </div>
 
   <h1>
-    You didn't lose that weight<br>
-    just to <span class="cross">gain it back</span> quietly.
+    The food noise coming back<br>
+    is <em>not your fault.</em><br>
+    <span style="font-size:clamp(1.2rem,4vw,2.8rem);color:var(--text-2);font-weight:300;">It follows a mathematical schedule.</span>
   </h1>
 
   <p class="hero-sub">
-    Most people stop GLP-1 and don't notice the rebound until it's too late.
-    <strong>Curabook watches the signals.</strong> You focus on living.
+    Semaglutide has a 7-day half-life. By day 8 you are at 38%. 
+    <strong>That is when the hunger hits.</strong> Curabook shows you the curve — 
+    and watches your labs for the rebound signals that arrive weeks before the scale moves.
   </p>
 
-  <div class="choice">
-    <div class="choice-card choice-card--red">
-      <div class="choice-situation">Insurance denied you</div>
-      <p class="choice-voice">"My doctor says I need it. My insurer disagrees. I don't know how to fight this."</p>
-      <button class="choice-btn" onclick="location.href='/appeal'">
-        Build my appeal <i class="fa-solid fa-arrow-right" style="font-size:.65rem"></i>
-      </button>
-    </div>
-
-    <div class="choice-divider">
-      <span class="or-pill">or</span>
-    </div>
-
-    <div class="choice-card choice-card--teal">
-      <div class="choice-situation">You stopped the medication</div>
-      <p class="choice-voice">"I'm off it now. I'm scared the weight will creep back and I won't catch it in time."</p>
-      <button class="choice-btn" onclick="location.href='/signup'">
-        Protect my progress <i class="fa-solid fa-arrow-right" style="font-size:.65rem"></i>
-      </button>
+  <!-- Live number display -->
+  <div style="margin:0 auto 28px;opacity:0;animation:fadeUp .6s .35s ease forwards;">
+    <div style="display:inline-flex;align-items:center;gap:16px;background:var(--surface);border:1.5px solid rgba(0,212,200,.25);border-radius:var(--r-xl);padding:18px 28px;box-shadow:var(--shadow-md);">
+      <div>
+        <div style="font-family:var(--mono);font-size:2.8rem;font-weight:500;color:var(--signal);line-height:1;" id="heroPercent">74%</div>
+        <div style="font-size:.62rem;color:var(--text-3);font-family:var(--mono);margin-top:2px;">active right now</div>
+      </div>
+      <div style="width:1px;height:48px;background:var(--border);"></div>
+      <div style="text-align:left;">
+        <div style="font-size:.8rem;font-weight:600;color:var(--text);margin-bottom:3px;" id="heroStatusText">Day 3 — appetite still suppressed</div>
+        <div style="font-size:.72rem;color:var(--text-3);" id="heroWarnText">Food noise window opens in <span style="color:var(--amber);font-weight:600;">4 days</span></div>
+      </div>
     </div>
   </div>
 
+  <!-- Single primary CTA -->
+  <div style="display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:28px;opacity:0;animation:fadeUp .6s .42s ease forwards;">
+    <button onclick="location.href='/signup'" style="min-height:52px;padding:0 40px;border-radius:99px;font-size:1rem;font-weight:700;color:#0a0b0e;background:var(--signal);border:none;cursor:pointer;font-family:var(--sans);box-shadow:0 8px 28px var(--signal-glow);transition:all .2s;display:inline-flex;align-items:center;gap:10px;" onmouseover="this.style.transform='translateY(-2px)'" onmouseout="this.style.transform=''">
+      <i class="fa-solid fa-shield-halved"></i>
+      See my drug level — free
+    </button>
+    <div style="font-size:.72rem;color:var(--text-3);">Free forever · No credit card · 60 seconds to set up</div>
+  </div>
+
   <div class="proof-strip">
-    <div class="proof-item"><i class="fa-solid fa-circle-check"></i> Lab marker tracking</div>
-    <div class="proof-item"><i class="fa-solid fa-circle-check"></i> AI rebound signals</div>
-    <div class="proof-item"><i class="fa-solid fa-circle-check"></i> Insurance PA Architect</div>
-    <div class="proof-item"><i class="fa-solid fa-circle-check"></i> Free to start</div>
+    <div class="proof-item"><i class="fa-solid fa-circle-check"></i> Drug level tracker</div>
+    <div class="proof-item"><i class="fa-solid fa-circle-check"></i> Lab cliff signals</div>
+    <div class="proof-item"><i class="fa-solid fa-circle-check"></i> AI health memory</div>
+    <div class="proof-item"><i class="fa-solid fa-circle-check"></i> Insurance PA appeal</div>
+  </div>
+
+  <!-- Secondary path for insurance denial -->
+  <div style="margin-top:18px;font-size:.76rem;color:var(--text-3);opacity:0;animation:fadeUp .5s .54s ease forwards;">
+    Insurance denied you? <a href="/appeal" style="color:var(--signal);text-decoration:underline;font-weight:600;">Generate your appeal packet free →</a>
   </div>
 </section>
 
@@ -949,15 +958,18 @@ footer {
 
 <!-- ═══ FINAL CTA ═══ -->
 <section class="final fade-in">
-  <div class="final-tag">You already did the hard part</div>
-  <h2>Don't let it slip away <em>silently.</em></h2>
-  <p class="final-sub">The work was months of effort, side effects, and willpower. Curabook makes sure you notice if anything changes.</p>
+  <div class="final-tag">The rebound was always going to happen on this schedule</div>
+  <h2>Now you can <em>see it coming.</em></h2>
+  <p class="final-sub">Free to start. No card needed. See your drug level in 60 seconds.</p>
   <div class="final-actions">
     <button class="btn-final-primary" onclick="location.href='/signup'">
-      Protect my progress
-      <i class="fa-solid fa-arrow-right" style="font-size:.75rem"></i>
+      <i class="fa-solid fa-shield-halved"></i>
+      See my drug level — free
     </button>
-    <button class="btn-final-ghost" onclick="location.href='/appeal'">Just need help with insurance?</button>
+    <button class="btn-final-ghost" onclick="location.href='/appeal'">Insurance denied me — build my appeal</button>
+  </div>
+  <div style="margin-top:16px;font-size:.7rem;color:var(--text-3);">
+    Free forever · No credit card · Upgrade to Shield when you are ready
   </div>
 </section>
 
@@ -978,6 +990,38 @@ footer {
 </footer>
 
 <script>
+// Animate hero drug level number
+(function() {
+  const levels = [
+    {pct:100, status:"Injection day — fully suppressed", warn:""},
+    {pct:91,  status:"Day 1 — appetite quiet", warn:"Food noise window opens in 6 days"},
+    {pct:82,  status:"Day 2 — still well suppressed", warn:"Food noise window opens in 5 days"},
+    {pct:74,  status:"Day 3 — suppression holding", warn:"Food noise window opens in 4 days"},
+    {pct:67,  status:"Day 4 — mild changes beginning", warn:"Watch for subtle hunger increase"},
+    {pct:59,  status:"Day 5 — suppression fading", warn:"⚠ Food noise may return today"},
+    {pct:50,  status:"Day 6 — halfway cleared", warn:"⚠ Ghrelin surge window opening"},
+    {pct:42,  status:"Day 7 — The cliff approaching", warn:"🔴 Peak hunger window — prepare now"},
+    {pct:35,  status:"Day 8 — Peak ghrelin window", warn:"🔴 This is why day 8 always feels impossible"},
+    {pct:29,  status:"Day 9 — Ravenous window", warn:"🔴 Biology — not willpower. This was predictable."},
+  ];
+  let idx = 3; // start at day 3
+  let dir = 1;
+  function tick() {
+    const l = levels[idx];
+    const el = document.getElementById('heroPercent');
+    const st = document.getElementById('heroStatusText');
+    const wn = document.getElementById('heroWarnText');
+    if (!el) return;
+    el.textContent = l.pct + '%';
+    el.style.color = l.pct < 40 ? 'var(--danger)' : l.pct < 60 ? 'var(--amber)' : 'var(--signal)';
+    if (st) st.textContent = l.status;
+    if (wn) wn.innerHTML = l.warn ? l.warn.replace('⚠','⚠').replace('🔴','🔴') : '';
+    idx += dir;
+    if (idx >= levels.length - 1 || idx <= 0) dir = -dir;
+  }
+  setInterval(tick, 1800);
+})();
+
 window.addEventListener('scroll', () => {
   document.getElementById('mainNav').classList.toggle('scrolled', window.scrollY > 10);
 }, { passive: true });
