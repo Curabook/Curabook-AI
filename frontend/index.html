@@ -578,6 +578,190 @@ footer {
 }
 
 /* ═══════════════════════════════════════════════════════════
+   HERO IMAGE SECTION
+═══════════════════════════════════════════════════════════ */
+.hero-image-section {
+  position: relative; background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+}
+.hero-image-inner {
+  max-width: 1060px; margin: 0 auto;
+  display: grid; grid-template-columns: 1fr;
+  gap: 0; align-items: center;
+}
+@media(min-width:768px) { .hero-image-inner { grid-template-columns: 1fr 1fr; } }
+
+.hero-image-text {
+  padding: 56px 32px 56px max(24px,5vw);
+  display: flex; flex-direction: column; gap: 16px;
+}
+.hero-image-frame {
+  position: relative; min-height: 400px;
+  background: linear-gradient(135deg,#f0f7f6,#e8f4f3);
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+}
+.hero-img-placeholder {
+  width: 100%; height: 100%; min-height: 400px;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 16px;
+  background: linear-gradient(160deg,rgba(0,188,213,.06) 0%,rgba(0,188,213,.02) 100%);
+}
+.hero-stat-float {
+  position: absolute; background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--r-lg);
+  padding: 12px 16px; box-shadow: var(--shadow-md);
+  display: flex; align-items: center; gap: 10px;
+}
+.hero-stat-float--tl { top: 20px; left: 20px; }
+.hero-stat-float--br { bottom: 20px; right: 20px; }
+.hero-stat-float--tm { top: 20px; right: 20px; }
+
+/* ═══════════════════════════════════════════════════════════
+   FEATURE SCROLL SECTIONS
+═══════════════════════════════════════════════════════════ */
+.feature-section {
+  padding: 72px max(20px,5vw);
+  position: relative; z-index: 1;
+}
+.feature-section:nth-child(even) { background: var(--surface); }
+.feature-inner {
+  max-width: 1060px; margin: 0 auto;
+  display: grid; grid-template-columns: 1fr;
+  gap: 40px; align-items: center;
+}
+@media(min-width:768px) {
+  .feature-inner { grid-template-columns: 1fr 1fr; gap: 60px; }
+  .feature-inner.reverse { direction: rtl; }
+  .feature-inner.reverse > * { direction: ltr; }
+}
+.feature-text-block { display: flex; flex-direction: column; gap: 16px; }
+.feature-number {
+  font-family: var(--mono); font-size: .6rem; font-weight: 500;
+  color: var(--signal); letter-spacing: .08em; opacity: .7;
+}
+.feature-title {
+  font-family: var(--serif); font-size: clamp(1.4rem,3vw,2rem);
+  font-weight: 400; line-height: 1.2; color: var(--text);
+  letter-spacing: -.02em;
+}
+.feature-title em { font-style: italic; color: var(--signal); }
+.feature-body { font-size: .88rem; color: var(--text-2); line-height: 1.9; font-weight: 300; }
+.feature-cta {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: .8rem; font-weight: 700; color: var(--signal);
+  cursor: pointer; background: none; border: none;
+  font-family: var(--sans); padding: 0;
+}
+.feature-visual {
+  border-radius: var(--r-xl); overflow: hidden;
+  background: var(--surface-2); border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+}
+
+/* ── Live Drug Level Widget ── */
+.drug-live-widget {
+  padding: 24px; display: flex; flex-direction: column; gap: 16px;
+}
+.dlw-header { display: flex; align-items: center; justify-content: space-between; }
+.dlw-title { font-size: .72rem; font-weight: 700; color: var(--text-2); text-transform: uppercase; letter-spacing: .08em; }
+.dlw-badge { font-size: .6rem; font-weight: 700; color: var(--signal); background: var(--signal-dim); padding: 2px 8px; border-radius: 99px; border: 1px solid rgba(0,212,200,.2); }
+.dlw-number { font-family: var(--mono); font-size: 3.5rem; font-weight: 500; line-height: 1; transition: color .4s; }
+.dlw-bar-track { height: 8px; border-radius: 99px; background: var(--surface-3); overflow: hidden; margin: 4px 0; }
+.dlw-bar-fill { height: 100%; border-radius: 99px; transition: width .8s ease, background .4s; }
+.dlw-days { display: flex; gap: 4px; }
+.dlw-day {
+  flex: 1; height: 36px; border-radius: var(--r-sm);
+  display: flex; align-items: center; justify-content: center;
+  font-size: .58rem; font-weight: 700; font-family: var(--mono);
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--text-3); cursor: pointer; transition: all .15s;
+}
+.dlw-day.active { background: var(--signal-dim); color: var(--signal); border-color: rgba(0,212,200,.3); }
+.dlw-day.current { background: var(--signal); color: #0a0b0e; border-color: var(--signal); }
+.dlw-insight { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 12px 14px; font-size: .78rem; color: var(--text-2); line-height: 1.6; }
+.dlw-insight strong { color: var(--text); }
+
+/* ── Metabolic Shield Widget ── */
+.shield-widget { padding: 24px; }
+.sw-header { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+.sw-score {
+  width: 52px; height: 52px; border-radius: 50%;
+  background: conic-gradient(var(--signal) 0% 72%, var(--surface-3) 72% 100%);
+  display: flex; align-items: center; justify-content: center;
+  position: relative;
+}
+.sw-score::after {
+  content: '72'; position: absolute;
+  font-family: var(--mono); font-size: .72rem; font-weight: 700;
+  color: var(--signal); width: 36px; height: 36px;
+  background: var(--surface-2); border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: .62rem;
+}
+.sw-score-label { font-size: .7rem; color: var(--text-3); }
+.sw-score-label strong { display: block; font-size: .88rem; color: var(--text); }
+.sw-metrics { display: flex; flex-direction: column; gap: 10px; }
+.sw-metric { display: flex; align-items: center; gap: 12px; }
+.sw-metric-icon { width: 32px; height: 32px; border-radius: var(--r-sm); display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: .8rem; }
+.sw-metric-body { flex: 1; }
+.sw-metric-label { font-size: .68rem; color: var(--text-3); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+.sw-metric-val { font-size: .82rem; color: var(--text); font-weight: 600; margin: 2px 0; }
+.sw-metric-bar { height: 4px; border-radius: 99px; background: var(--surface-3); overflow: hidden; margin-top: 3px; }
+.sw-metric-fill { height: 100%; border-radius: 99px; }
+
+/* ── Lab Markers Widget ── */
+.labs-widget { padding: 24px; }
+.labs-header { margin-bottom: 16px; }
+.labs-title { font-size: .72rem; font-weight: 700; color: var(--text-2); text-transform: uppercase; letter-spacing: .08em; }
+.labs-alert { background: rgba(229,62,62,.06); border: 1px solid rgba(229,62,62,.2); border-radius: var(--r); padding: 10px 12px; margin-bottom: 14px; font-size: .76rem; color: var(--danger); display: flex; align-items: center; gap: 8px; }
+.lab-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.lab-row:last-child { border-bottom: none; }
+.lab-name { font-size: .78rem; color: var(--text); flex: 1; font-weight: 500; }
+.lab-val { font-family: var(--mono); font-size: .78rem; font-weight: 600; }
+.lab-val.high { color: var(--danger); }
+.lab-val.ok { color: var(--ok); }
+.lab-trend { font-size: .62rem; padding: 2px 7px; border-radius: 99px; font-weight: 700; }
+.lab-trend.up { background: rgba(229,62,62,.1); color: var(--danger); }
+.lab-trend.stable { background: var(--ok-dim); color: var(--ok); }
+
+/* ── PHI Chat Widget ── */
+.chat-widget { padding: 20px; display: flex; flex-direction: column; gap: 10px; }
+.chat-msg { display: flex; gap: 10px; }
+.chat-msg.phi { flex-direction: row; }
+.chat-msg.user { flex-direction: row-reverse; }
+.chat-avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--signal); display: flex; align-items: center; justify-content: center; font-size: .7rem; color: #0a0b0e; font-family: var(--serif); flex-shrink: 0; font-weight: 600; }
+.chat-bubble { max-width: 85%; padding: 10px 13px; border-radius: var(--r-lg); font-size: .78rem; line-height: 1.6; }
+.chat-bubble.phi { background: var(--surface-2); color: var(--text); border-radius: 4px var(--r-lg) var(--r-lg) var(--r-lg); }
+.chat-bubble.user { background: var(--signal); color: #0a0b0e; border-radius: var(--r-lg) 4px var(--r-lg) var(--r-lg); }
+.chat-typing { display: flex; gap: 4px; align-items: center; padding: 10px 13px; background: var(--surface-2); border-radius: 4px var(--r-lg) var(--r-lg) var(--r-lg); width: fit-content; }
+.chat-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); animation: chatBounce 1.4s ease infinite; }
+.chat-dot:nth-child(2) { animation-delay: .2s; }
+.chat-dot:nth-child(3) { animation-delay: .4s; }
+@keyframes chatBounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-6px)} }
+
+/* ── Signup nudge banner ── */
+.sticky-signup {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 200;
+  background: var(--signal); color: #0a0b0e;
+  padding: 14px max(16px,4vw); display: none;
+  align-items: center; justify-content: space-between; gap: 12px;
+  box-shadow: 0 -4px 24px rgba(0,0,0,.15);
+  animation: slideUp .3s ease;
+}
+@keyframes slideUp { from{transform:translateY(100%)} to{transform:translateY(0)} }
+.sticky-signup.visible { display: flex; }
+.sticky-text { font-size: .82rem; font-weight: 600; }
+.sticky-text span { font-weight: 400; opacity: .8; font-size: .75rem; }
+.sticky-btn {
+  padding: 10px 20px; border-radius: 99px;
+  background: #0a0b0e; color: var(--signal);
+  font-size: .8rem; font-weight: 700; border: none;
+  cursor: pointer; font-family: var(--sans); white-space: nowrap;
+}
+
+/* ═══════════════════════════════════════════════════════════
    TAPER DEMO
 ═══════════════════════════════════════════════════════════ */
 #taper-demo { background: var(--surface); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
@@ -758,6 +942,181 @@ footer {
   <!-- Secondary path for insurance denial -->
   <div style="margin-top:18px;font-size:.76rem;color:var(--text-3);opacity:0;animation:fadeUp .5s .54s ease forwards;">
     Insurance denied you? <a href="/appeal" style="color:var(--signal);text-decoration:underline;font-weight:600;">Generate your appeal packet free →</a>
+  </div>
+</section>
+
+<!-- ═══ FEATURE 1 — DRUG LEVEL TRACKER ═══ -->
+<section class="feature-section fade-in">
+  <div class="feature-inner">
+    <div class="feature-text-block">
+      <div class="feature-number">01 — drug level tracker</div>
+      <h2 class="feature-title">See your semaglutide level<br><em>dropping in real time</em></h2>
+      <p class="feature-body">Most people don't know semaglutide has a 7-day half-life. By day 8 after your last dose, you're at 38% — and that's exactly when the food noise hits. Curabook shows you the curve so the hungry days never blindside you again.</p>
+      <p class="feature-body">Enter your last dose date and your drug level appears instantly. Watch it drop day by day. See your hunger forecast for the next two weeks.</p>
+      <button class="feature-cta" onclick="location.href='/signup'">
+        See my level now — free <i class="fa-solid fa-arrow-right" style="font-size:.65rem"></i>
+      </button>
+    </div>
+    <div class="feature-visual">
+      <div class="drug-live-widget">
+        <div class="dlw-header">
+          <div class="dlw-title">Semaglutide Level</div>
+          <div class="dlw-badge">● Live</div>
+        </div>
+        <div class="dlw-number" id="f1Pct" style="color:var(--amber)">38%</div>
+        <div style="font-size:.62rem;color:var(--text-3);font-family:var(--mono);margin-top:2px;">active in your system</div>
+        <div class="dlw-bar-track">
+          <div class="dlw-bar-fill" id="f1Bar" style="width:38%;background:var(--amber)"></div>
+        </div>
+        <div class="dlw-days" id="f1Days"></div>
+        <div class="dlw-insight" id="f1Insight">
+          <strong>🔴 Peak ghrelin window.</strong> Your drug level has dropped to 38% — this is why day 8 always feels impossible. The food noise you're feeling right now is a documented biological event, not a failure of willpower.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ FEATURE 2 — METABOLIC SHIELD ═══ -->
+<section class="feature-section fade-in" style="background:var(--surface);">
+  <div class="feature-inner reverse">
+    <div class="feature-text-block">
+      <div class="feature-number">02 — metabolic shield</div>
+      <h2 class="feature-title">Protect your muscle.<br><em>Not just your weight.</em></h2>
+      <p class="feature-body">When the weight comes back after stopping GLP-1, it comes back as fat — not muscle. Studies show up to 40% of regained weight is lean mass loss. The Metabolic Shield tracks your protein, steps, and sleep with one goal: preserving what you built.</p>
+      <p class="feature-body">Your daily protein target is calculated from your goal weight. Every gram you log moves you closer to preserving the muscle that keeps your metabolism strong.</p>
+      <button class="feature-cta" onclick="location.href='/signup'">
+        Start protecting my results — free <i class="fa-solid fa-arrow-right" style="font-size:.65rem"></i>
+      </button>
+    </div>
+    <div class="feature-visual">
+      <div class="shield-widget">
+        <div class="sw-header">
+          <div class="sw-score" style="background:conic-gradient(var(--signal) 0% 78%,var(--surface-3) 78% 100%);">
+            <div style="width:36px;height:36px;background:var(--surface);border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:.65rem;font-weight:700;color:var(--signal);">78</div>
+          </div>
+          <div class="sw-score-label">
+            <strong>Metabolic Shield</strong>
+            Today's protection score
+          </div>
+        </div>
+        <div class="sw-metrics">
+          <div class="sw-metric">
+            <div class="sw-metric-icon" style="background:rgba(0,212,200,.1);">🥩</div>
+            <div class="sw-metric-body">
+              <div class="sw-metric-label">Protein</div>
+              <div class="sw-metric-val">112g <span style="font-size:.7rem;color:var(--text-3);font-weight:400;">/ 120g target</span></div>
+              <div class="sw-metric-bar"><div class="sw-metric-fill" style="width:93%;background:var(--signal);"></div></div>
+            </div>
+          </div>
+          <div class="sw-metric">
+            <div class="sw-metric-icon" style="background:rgba(251,191,36,.1);">👟</div>
+            <div class="sw-metric-body">
+              <div class="sw-metric-label">Steps</div>
+              <div class="sw-metric-val">8,452 <span style="font-size:.7rem;color:var(--text-3);font-weight:400;">/ 10,000 goal</span></div>
+              <div class="sw-metric-bar"><div class="sw-metric-fill" style="width:84%;background:var(--amber);"></div></div>
+            </div>
+          </div>
+          <div class="sw-metric">
+            <div class="sw-metric-icon" style="background:rgba(22,163,74,.1);">😴</div>
+            <div class="sw-metric-body">
+              <div class="sw-metric-label">Sleep</div>
+              <div class="sw-metric-val">7.6 hrs <span style="font-size:.7rem;color:var(--text-3);font-weight:400;">/ 7-9h optimal</span></div>
+              <div class="sw-metric-bar"><div class="sw-metric-fill" style="width:88%;background:var(--ok);"></div></div>
+            </div>
+          </div>
+          <div style="background:var(--signal-dim);border:1px solid rgba(0,212,200,.2);border-radius:var(--r);padding:10px 12px;font-size:.75rem;color:var(--text-2);margin-top:4px;">
+            <i class="fa-solid fa-circle-check" style="color:var(--signal);margin-right:6px;"></i>
+            <strong>Muscle preservation on track.</strong> Your protein is above the leucine threshold needed to prevent sarcopenic fat regain.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ FEATURE 3 — LAB CLIFF DETECTION ═══ -->
+<section class="feature-section fade-in">
+  <div class="feature-inner">
+    <div class="feature-text-block">
+      <div class="feature-number">03 — lab cliff detection</div>
+      <h2 class="feature-title">Your labs show the rebound<br><em>weeks before the scale does.</em></h2>
+      <p class="feature-body">Upload your blood work. Curabook reads your HbA1c, fasting glucose, and triglycerides — and flags when they're shifting toward the post-GLP-1 rebound pattern. No other app does this.</p>
+      <p class="feature-body">Most people don't know their glucose is creeping up until they feel it. We tell you 6-8 weeks early — when you can still do something about it.</p>
+      <button class="feature-cta" onclick="location.href='/signup'">
+        Upload my labs — free <i class="fa-solid fa-arrow-right" style="font-size:.65rem"></i>
+      </button>
+    </div>
+    <div class="feature-visual">
+      <div class="labs-widget">
+        <div class="labs-header">
+          <div class="labs-title">Lab Markers — Cliff Signal Report</div>
+        </div>
+        <div class="labs-alert">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+          2 active cliff signals detected — metabolic rebound in progress
+        </div>
+        <div class="lab-row">
+          <div class="lab-name">Fasting Glucose</div>
+          <div class="lab-val high">133.2 mg/dL</div>
+          <div class="lab-trend up">+18% ↑</div>
+        </div>
+        <div class="lab-row">
+          <div class="lab-name">HbA1c</div>
+          <div class="lab-val high">6.4%</div>
+          <div class="lab-trend up">+0.3% ↑</div>
+        </div>
+        <div class="lab-row">
+          <div class="lab-name">Triglycerides</div>
+          <div class="lab-val ok">142 mg/dL</div>
+          <div class="lab-trend stable">Stable</div>
+        </div>
+        <div class="lab-row">
+          <div class="lab-name">LDL Cholesterol</div>
+          <div class="lab-val ok">118 mg/dL</div>
+          <div class="lab-trend stable">Stable</div>
+        </div>
+        <div style="margin-top:12px;font-size:.74rem;color:var(--text-3);line-height:1.6;">
+          <i class="fa-solid fa-circle-info" style="color:var(--signal);margin-right:5px;"></i>
+          Glucose above 15% from baseline is the clinical threshold for active post-GLP-1 rebound.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ FEATURE 4 — PHI AI ═══ -->
+<section class="feature-section fade-in" style="background:var(--surface);">
+  <div class="feature-inner reverse">
+    <div class="feature-text-block">
+      <div class="feature-number">04 — PHI health AI</div>
+      <h2 class="feature-title">An AI that actually knows<br><em>your biology.</em></h2>
+      <p class="feature-body">Not a generic chatbot. PHI knows your drug level, your labs, your protein intake, your sleep, your taper status. When the food noise hits at 11pm it doesn't say "drink more water." It tells you exactly where you are in your biological window.</p>
+      <p class="feature-body">Ask anything. PHI answers with your actual data — not advice meant for someone else.</p>
+      <button class="feature-cta" onclick="location.href='/signup'">
+        Talk to PHI — free <i class="fa-solid fa-arrow-right" style="font-size:.65rem"></i>
+      </button>
+    </div>
+    <div class="feature-visual">
+      <div class="chat-widget">
+        <div class="chat-msg user">
+          <div class="chat-bubble user">Why am I so hungry today?</div>
+          <div class="chat-avatar" style="background:var(--surface-3);color:var(--text-2);">U</div>
+        </div>
+        <div class="chat-msg phi">
+          <div class="chat-avatar">φ</div>
+          <div class="chat-bubble phi">Your semaglutide is at <strong>38% active</strong> — you're in your peak ghrelin window. Day 8 after your last dose is always the hardest. Your sleep was 5.9 hours last night which raises ghrelin another 15%. And your protein was 48g today — below the 120g threshold that buffers this window. <strong>Three biological causes hitting at once. None of them are willpower.</strong></div>
+        </div>
+        <div class="chat-msg user">
+          <div class="chat-bubble user">What should I do right now?</div>
+          <div class="chat-avatar" style="background:var(--surface-3);color:var(--text-2);">U</div>
+        </div>
+        <div class="chat-msg phi">
+          <div class="chat-avatar">φ</div>
+          <div class="chat-bubble phi">Hit 40g protein in your next meal — that's the leucine threshold to quiet the ghrelin surge. A 20-minute walk after eating drops glucose 30-50 points which reduces the hunger spike. Your drug level starts recovering slightly tomorrow. <strong>Tonight is the hardest night of this cycle.</strong></div>
+        </div>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -1031,6 +1390,71 @@ const io = new IntersectionObserver(
   { threshold: 0.06 }
 );
 document.querySelectorAll('.fade-in').forEach(el => io.observe(el));
+
+// ── Sticky signup banner ────────────────────────────────────────────────────
+(function() {
+  const banner = document.createElement('div');
+  banner.className = 'sticky-signup';
+  banner.innerHTML = `
+    <div class="sticky-text">
+      Your drug level is dropping right now.
+      <span>See it free — no card needed.</span>
+    </div>
+    <button class="sticky-btn" onclick="location.href='/signup'">See my level →</button>
+  `;
+  document.body.appendChild(banner);
+  let shown = false;
+  window.addEventListener('scroll', () => {
+    if (!shown && window.scrollY > 600) {
+      shown = true;
+      banner.classList.add('visible');
+    }
+  }, { passive: true });
+})();
+
+// ── Feature 1 drug level animation ──────────────────────────────────────────
+(function() {
+  const HALF_LIFE = 7;
+  let currentDay = 8;
+  let dir = 1;
+  function calcPct(day) { return Math.pow(0.5, day / HALF_LIFE) * 100; }
+  function getColor(pct) { return pct >= 55 ? 'var(--signal)' : pct >= 30 ? 'var(--amber)' : 'var(--danger)'; }
+  function getInsight(pct, day) {
+    if (pct >= 70) return '<strong>✓ Well suppressed.</strong> Appetite is quiet. Food noise minimal.';
+    if (pct >= 45) return '<strong>◎ Suppression fading.</strong> Subtle hunger returning as drug clears.';
+    if (pct >= 25) return '<strong>⚠ Ghrelin window opening.</strong> Food noise returning — this is biology, not failure.';
+    return `<strong>🔴 Peak ghrelin window.</strong> Day ${day} — drug at ${pct.toFixed(0)}%. This is why day 8 always feels impossible. The food noise you're feeling is a documented biological event, not a failure of willpower.`;
+  }
+  function update() {
+    const pct = calcPct(currentDay);
+    const color = getColor(pct);
+    const pctEl = document.getElementById('f1Pct');
+    const barEl = document.getElementById('f1Bar');
+    const insEl = document.getElementById('f1Insight');
+    const daysEl = document.getElementById('f1Days');
+    if (!pctEl) return;
+    pctEl.textContent = pct.toFixed(0) + '%';
+    pctEl.style.color = color;
+    if (barEl) { barEl.style.width = pct + '%'; barEl.style.background = color; }
+    if (insEl) insEl.innerHTML = getInsight(pct, currentDay);
+    if (daysEl) {
+      daysEl.innerHTML = '';
+      for (let d = 1; d <= 14; d++) {
+        const dp = calcPct(d);
+        const el = document.createElement('div');
+        el.className = 'dlw-day' + (dp < 55 && dp >= 25 ? ' active' : '') + (d === currentDay ? ' current' : '');
+        el.textContent = d;
+        el.onclick = () => { currentDay = d; update(); };
+        daysEl.appendChild(el);
+      }
+    }
+    currentDay += dir;
+    if (currentDay >= 14) dir = -1;
+    if (currentDay <= 1) dir = 1;
+  }
+  update();
+  setInterval(update, 2000);
+})();
 
 // ── Taper Demo ──────────────────────────────────────────────────────────────
 const HALF_LIVES = { semaglutide: 7, tirzepatide: 5, liraglutide: 1 };
