@@ -1158,3 +1158,152 @@ def get_feedback():
         return jsonify({"feedback": feedback, "source": "audit_logs", "count": len(feedback)})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# ── /api/track-visit — public endpoint, no auth (called from index.html) ───
+@analytics_bp.route("/api/track-visit", methods=["POST"])
+def track_visit():
+    """
+    Receives visitor behavior events from index.html.
+    No auth required — this is a public marketing page endpoint.
+    Stores into visitor_events table. Silently no-ops on failure
+    so it never breaks the landing page experience.
+    """
+    try:
+        from app import supabase
+        body = request.json or {}
+
+        event_row = {
+            "session_id":  str(body.get("session_id", ""))[:64],
+            "event_type":  str(body.get("event", "unknown"))[:40],
+            "source":      str(body.get("source", ""))[:50],
+            "landing_path": str(body.get("landing_path", ""))[:200],
+            "referrer":    str(body.get("referrer", ""))[:300],
+            "section":     str(body.get("section", ""))[:60],
+            "button_text": str(body.get("button_text", ""))[:100],
+            "destination": str(body.get("destination", ""))[:200],
+            "details":     body.get("details", {}),
+            "duration_seconds": body.get("duration_seconds"),
+            "user_agent":  str(body.get("user_agent", ""))[:300],
+            "screen_width": body.get("screen_width"),
+            "created_at":  body.get("timestamp") or None,
+        }
+        # Remove None values to let DB defaults apply
+        event_row = {k: v for k, v in event_row.items() if v not in (None, "")}
+
+        supabase.table("visitor_events").insert(event_row).execute()
+        return jsonify({"ok": True}), 200
+    except Exception as e:
+        # Never break the landing page — log and return ok anyway
+        print(f"[TRACK] visitor_events insert failed: {e}")
+        return jsonify({"ok": True}), 200
+
+
+# ── /api/founder/visitor-behavior ───────────────────────────────────────────
+@analytics_bp.route("/api/founder/visitor-behavior", methods=["GET"])
+def get_visitor_behavior():
+    err = _require_auth()
+    if err:
+        return err
+    supabase = _deps()
+    try:
+        days = int(request.args.get("days", 7))
+        from datetime import datetime, timedelta, timezone
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+        rows = (
+            supabase.table("visitor_events")
+            .select("*")
+            .gte("created_at", cutoff)
+            .order("created_at", desc=True)
+            .limit(2000)
+            .execute()
+            .data or []
+        )
+
+        # ── Aggregate by session ──────────────────────────────────────────
+        sessions = {}
+        for r in rows:
+            sid = r.get("session_id", "unknown")
+            if sid not in sessions:
+                sessions[sid] = {
+                    "session_id": sid,
+                    "source": "",
+                    "landing_path": "",
+                    "referrer": "",
+                    "first_seen": r.get("created_at"),
+                    "sections_viewed": set(),
+                    "cta_clicks": [],
+                    "demo_used": False,
+                    "demo_details": None,
+                    "duration_seconds": None,
+                    "event_count": 0,
+                }
+            s = sessions[sid]
+            s["event_count"] += 1
+            et = r.get("event_type", "")
+            if et == "page_view":
+                s["source"] = r.get("source", "") or s["source"]
+                s["landing_path"] = r.get("landing_path", "") or s["landing_path"]
+                s["referrer"] = r.get("referrer", "") or s["referrer"]
+            elif et == "section_view" and r.get("section"):
+                s["sections_viewed"].add(r["section"])
+            elif et == "cta_click":
+                s["cta_clicks"].append({
+                    "text": r.get("button_text", ""),
+                    "dest": r.get("destination", ""),
+                    "at": r.get("created_at", ""),
+                })
+            elif et == "demo_interaction":
+                s["demo_used"] = True
+                s["demo_details"] = r.get("details")
+            elif et == "session_end":
+                s["duration_seconds"] = r.get("duration_seconds")
+
+        session_list = []
+        for s in sessions.values():
+            s["sections_viewed"] = list(s["sections_viewed"])
+            session_list.append(s)
+        session_list.sort(key=lambda x: x["first_seen"] or "", reverse=True)
+
+        # ── Summary stats ──────────────────────────────────────────────────
+        total_sessions = len(session_list)
+        by_source = {}
+        for s in session_list:
+            src = s["source"] or "direct"
+            by_source[src] = by_source.get(src, 0) + 1
+
+        demo_used_count = sum(1 for s in session_list if s["demo_used"])
+        cta_clicked_count = sum(1 for s in session_list if s["cta_clicks"])
+        avg_duration = None
+        durations = [s["duration_seconds"] for s in session_list if s["duration_seconds"]]
+        if durations:
+            avg_duration = round(sum(durations) / len(durations))
+
+        # Top sections viewed
+        section_counts = {}
+        for s in session_list:
+            for sec in s["sections_viewed"]:
+                section_counts[sec] = section_counts.get(sec, 0) + 1
+
+        # Top CTA buttons clicked
+        cta_counts = {}
+        for s in session_list:
+            for c in s["cta_clicks"]:
+                key = c["text"]
+                cta_counts[key] = cta_counts.get(key, 0) + 1
+
+        return jsonify({
+            "total_sessions": total_sessions,
+            "demo_used_count": demo_used_count,
+            "demo_used_pct": round((demo_used_count / total_sessions * 100), 1) if total_sessions else 0,
+            "cta_clicked_count": cta_clicked_count,
+            "cta_clicked_pct": round((cta_clicked_count / total_sessions * 100), 1) if total_sessions else 0,
+            "avg_duration_seconds": avg_duration,
+            "by_source": by_source,
+            "top_sections": sorted(section_counts.items(), key=lambda x: -x[1])[:10],
+            "top_ctas": sorted(cta_counts.items(), key=lambda x: -x[1])[:10],
+            "sessions": session_list[:100],
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500

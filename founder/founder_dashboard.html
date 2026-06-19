@@ -288,6 +288,7 @@ tr:hover td{background:rgba(0,0,0,.02);}
     <span class="nav-label">Overview</span>
     <button class="nav-item active" onclick="showPage('overview')"><span class="nav-dot"></span> Dashboard</button>
     <button class="nav-item" onclick="showPage('activity')"><span class="nav-dot"></span> Activity Timeline</button>
+    <button class="nav-item" onclick="showPage('visitors')"><span class="nav-dot"></span> Visitor Behavior</button>
     <button class="nav-item" onclick="showPage('retention')"><span class="nav-dot"></span> Retention</button>
   </div>
 
@@ -472,6 +473,82 @@ tr:hover td{background:rgba(0,0,0,.02);}
         </thead>
         <tbody id="feedbackTableBody">
           <tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text3);">Loading feedback...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── VISITOR BEHAVIOR PAGE ───────────────────────────────────────── -->
+  <div class="page" id="page-visitors">
+    <div class="page-header">
+      <div><h2>Visitor Behavior</h2><p>How people coming from ads and organic traffic actually use the landing page</p></div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <select id="vbDays" onchange="loadVisitorBehavior()" style="font-size:.75rem;padding:5px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);">
+          <option value="1">Last 24 hours</option>
+          <option value="3">Last 3 days</option>
+          <option value="7" selected>Last 7 days</option>
+          <option value="30">Last 30 days</option>
+        </select>
+        <button class="btn-sm" onclick="loadVisitorBehavior()">↻ Refresh</button>
+      </div>
+    </div>
+
+    <!-- Summary cards -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px;" id="vbSummary">
+      <div class="chart-panel" style="text-align:center;">
+        <div style="font-size:1.6rem;font-weight:700;color:var(--accent);" id="vbTotal">—</div>
+        <div style="font-size:.72rem;color:var(--text2);">Total Visitors</div>
+      </div>
+      <div class="chart-panel" style="text-align:center;">
+        <div style="font-size:1.6rem;font-weight:700;color:var(--ok);" id="vbDemoPct">—</div>
+        <div style="font-size:.72rem;color:var(--text2);">Used Live Demo</div>
+      </div>
+      <div class="chart-panel" style="text-align:center;">
+        <div style="font-size:1.6rem;font-weight:700;color:var(--signal);" id="vbCtaPct">—</div>
+        <div style="font-size:.72rem;color:var(--text2);">Clicked Any CTA</div>
+      </div>
+      <div class="chart-panel" style="text-align:center;">
+        <div style="font-size:1.6rem;font-weight:700;color:var(--warn);" id="vbDuration">—</div>
+        <div style="font-size:.72rem;color:var(--text2);">Avg Time on Page</div>
+      </div>
+    </div>
+
+    <!-- Source breakdown + top sections side by side -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;">
+      <div class="chart-panel">
+        <h3 style="font-size:.85rem;margin-bottom:10px;">Traffic Source</h3>
+        <div id="vbSources" style="display:flex;flex-direction:column;gap:6px;"></div>
+      </div>
+      <div class="chart-panel">
+        <h3 style="font-size:.85rem;margin-bottom:10px;">Top CTA Buttons Clicked</h3>
+        <div id="vbCtas" style="display:flex;flex-direction:column;gap:6px;"></div>
+      </div>
+    </div>
+
+    <!-- Session table -->
+    <div class="table-panel">
+      <div class="table-panel-header">
+        <div><h3>Individual Sessions</h3><p>Most recent first — click any row to see full journey</p></div>
+        <select id="vbFilter" onchange="filterVisitorSessions()" style="font-size:.75rem;padding:4px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);">
+          <option value="">All sessions</option>
+          <option value="demo">Used demo only</option>
+          <option value="cta">Clicked CTA only</option>
+          <option value="engaged">Demo + CTA (hot leads)</option>
+        </select>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th style="width:90px">Source</th>
+            <th style="width:80px">Demo?</th>
+            <th>Sections Viewed</th>
+            <th>CTA Clicked</th>
+            <th style="width:70px">Time</th>
+            <th style="width:110px">First Seen</th>
+          </tr>
+        </thead>
+        <tbody id="vbSessionTable">
+          <tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text3);">Loading visitor data...</td></tr>
         </tbody>
       </table>
     </div>
@@ -836,12 +913,100 @@ function renderFeedback(items) {
     </tr>`).join('');
 }
 
+// ── Visitor Behavior functions ───────────────────────────────────────────
+let _allVisitorSessions = [];
+
+async function loadVisitorBehavior() {
+  const tbody = document.getElementById('vbSessionTable');
+  const days = document.getElementById('vbDays')?.value || 7;
+  if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text3);">Loading...</td></tr>';
+  try {
+    const res = await fetch(API + '/api/founder/visitor-behavior?days=' + days, {
+      headers: { 'X-Founder-Secret': FOUNDER_SECRET }
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+
+    const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+    setEl('vbTotal', data.total_sessions || 0);
+    setEl('vbDemoPct', (data.demo_used_pct || 0) + '%');
+    setEl('vbCtaPct', (data.cta_clicked_pct || 0) + '%');
+    setEl('vbDuration', data.avg_duration_seconds ? data.avg_duration_seconds + 's' : '—');
+
+    // Source breakdown
+    const srcEl = document.getElementById('vbSources');
+    if (srcEl) {
+      const sources = Object.entries(data.by_source || {}).sort((a,b) => b[1]-a[1]);
+      const total = data.total_sessions || 1;
+      srcEl.innerHTML = sources.length ? sources.map(([src, count]) => `
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div style="font-size:.78rem;color:var(--text);width:90px;flex-shrink:0;text-transform:capitalize;">${src}</div>
+          <div style="flex:1;height:8px;background:var(--surface2);border-radius:4px;overflow:hidden;">
+            <div style="height:100%;width:${(count/total*100)}%;background:var(--accent);border-radius:4px;"></div>
+          </div>
+          <div style="font-size:.72rem;color:var(--text3);width:30px;text-align:right;">${count}</div>
+        </div>`).join('') : '<div style="color:var(--text3);font-size:.78rem;">No data yet</div>';
+    }
+
+    // Top CTAs
+    const ctaEl = document.getElementById('vbCtas');
+    if (ctaEl) {
+      const ctas = data.top_ctas || [];
+      ctaEl.innerHTML = ctas.length ? ctas.map(([text, count]) => `
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+          <div style="font-size:.76rem;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">${text}</div>
+          <div style="font-size:.72rem;color:var(--accent);font-weight:700;flex-shrink:0;">${count}</div>
+        </div>`).join('') : '<div style="color:var(--text3);font-size:.78rem;">No clicks yet</div>';
+    }
+
+    _allVisitorSessions = data.sessions || [];
+    renderVisitorSessions(_allVisitorSessions);
+  } catch(e) {
+    if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text3);">No visitor data yet — once Meta ads start sending traffic this populates automatically.</td></tr>';
+    console.error('Visitor behavior error:', e);
+  }
+}
+
+function filterVisitorSessions() {
+  const filter = document.getElementById('vbFilter')?.value || '';
+  let filtered = _allVisitorSessions;
+  if (filter === 'demo') filtered = _allVisitorSessions.filter(s => s.demo_used);
+  if (filter === 'cta') filtered = _allVisitorSessions.filter(s => s.cta_clicks && s.cta_clicks.length);
+  if (filter === 'engaged') filtered = _allVisitorSessions.filter(s => s.demo_used && s.cta_clicks && s.cta_clicks.length);
+  renderVisitorSessions(filtered);
+}
+
+function renderVisitorSessions(sessions) {
+  const tbody = document.getElementById('vbSessionTable');
+  if (!tbody) return;
+  if (!sessions.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text3);">No sessions match this filter</td></tr>';
+    return;
+  }
+  tbody.innerHTML = sessions.map(s => {
+    const sourceColor = { instagram:'#E1306C', facebook:'#1877F2', reddit:'#FF4500', google:'#4285F4', direct:'var(--text3)' }[s.source] || 'var(--text2)';
+    const ctaText = (s.cta_clicks && s.cta_clicks.length) ? s.cta_clicks.map(c => c.text).join(', ').slice(0, 50) : '<span style="color:var(--text3)">—</span>';
+    const sectionsText = (s.sections_viewed && s.sections_viewed.length) ? s.sections_viewed.join(', ') : '<span style="color:var(--text3)">—</span>';
+    const isHot = s.demo_used && s.cta_clicks && s.cta_clicks.length;
+    return `
+      <tr style="${isHot ? 'background:rgba(22,163,74,.05);' : ''}">
+        <td><span style="font-size:.7rem;font-weight:700;color:${sourceColor};text-transform:capitalize;">${s.source || 'direct'}</span></td>
+        <td style="text-align:center;">${s.demo_used ? '<span style="color:var(--ok);font-weight:700;">✓</span>' : '<span style="color:var(--text3);">—</span>'}</td>
+        <td style="font-size:.74rem;color:var(--text2);max-width:240px;overflow:hidden;text-overflow:ellipsis;">${sectionsText}</td>
+        <td style="font-size:.74rem;color:var(--text);max-width:200px;overflow:hidden;text-overflow:ellipsis;">${ctaText}</td>
+        <td style="font-size:.72rem;color:var(--text3);">${s.duration_seconds ? s.duration_seconds + 's' : '—'}</td>
+        <td style="font-size:.68rem;color:var(--text3);">${s.first_seen ? new Date(s.first_seen).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '—'}</td>
+      </tr>`;
+  }).join('');
+}
+
 function showPage(name) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById(`page-${name}`).classList.add('active');
   event?.target?.closest('.nav-item')?.classList.add('active');
   if (name === 'feedback') loadFeedback();
+  if (name === 'visitors') loadVisitorBehavior();
   loadPage(name);
 }
 
