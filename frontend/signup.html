@@ -502,7 +502,7 @@ function selectPlan(plan) {
     const card = document.getElementById('plan' + plan.charAt(0).toUpperCase() + plan.slice(1));
     if (card) card.classList.add('selected');
     document.getElementById('freePlanNote').style.display = plan === 'free' ? 'block' : 'none';
-    document.getElementById('finishBtn').textContent = plan === 'free' ? 'Start Free →' : 'Start 14-day Trial →';
+    document.getElementById('finishBtn').textContent = plan === 'free' ? 'Start Free →' : 'Continue →';
 }
 
 async function saveConsentToBackend(token) {
@@ -635,7 +635,7 @@ async function startPayPalCheckout() {
 
     } catch (e) {
         if (msgEl) { msgEl.textContent = e.message; msgEl.className = 'status-msg error'; }
-        if (btn)   { btn.disabled = false; btn.textContent = ob.plan === 'free' ? 'Start Free →' : 'Start 14-day Trial →'; }
+        if (btn)   { btn.disabled = false; btn.textContent = ob.plan === 'free' ? 'Start Free →' : 'Continue →'; }
     }
 }
 
@@ -671,7 +671,7 @@ async function finishOnboarding() {
     } catch (e) {
         const msgEl = document.getElementById('planStatusMsg');
         if (msgEl) { msgEl.textContent = e.message || 'Something went wrong. Please try again.'; msgEl.className = 'status-msg error'; }
-        if (btn) { btn.disabled = false; btn.textContent = ob.plan === 'free' ? 'Start Free →' : 'Start 14-day Trial →'; }
+        if (btn) { btn.disabled = false; btn.textContent = ob.plan === 'free' ? 'Start Free →' : 'Continue →'; }
     }
 }
 

@@ -131,9 +131,7 @@ tr:hover td{background:rgba(0,0,0,.02);}
 .badge{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:20px;font-size:.62rem;font-weight:700;white-space:nowrap;}
 .badge-pro{background:rgba(0,188,213,.12);color:var(--accent);border:1px solid rgba(0,188,213,.2);}
 .badge-free{background:var(--surface3);color:var(--text3);border:1px solid var(--border);}
-.badge-trial{background:rgba(167,139,250,.12);color:var(--purple);border:1px solid rgba(167,139,250,.2);}
 .badge-annual{background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.2);}
-.badge-clinical{background:rgba(139,92,246,.12);color:var(--purple);border:1px solid rgba(139,92,246,.2);}
 .badge-admin{background:rgba(245,158,11,.12);color:var(--amber);border:1px solid rgba(245,158,11,.2);}
 .badge-google{background:rgba(66,133,244,.1);color:#4285F4;border:1px solid rgba(66,133,244,.2);}
 .badge-email{background:var(--surface3);color:var(--text3);border:1px solid var(--border);}
@@ -413,7 +411,6 @@ tr:hover td{background:rgba(0,0,0,.02);}
       <button class="filter-btn" onclick="setUserFilter(this,'monthly')">Monthly</button>
       <button class="filter-btn" onclick="setUserFilter(this,'annual')">Annual</button>
       <button class="filter-btn" onclick="setUserFilter(this,'pa_appeal')">PA Appeal</button>
-      <button class="filter-btn" onclick="setUserFilter(this,'trial')">Trial</button>
       <button class="filter-btn" onclick="setUserFilter(this,'free')">Free</button>
     </div>
     <div class="table-panel" id="usersTable"><div class="spinner"></div></div>
@@ -602,7 +599,6 @@ tr:hover td{background:rgba(0,0,0,.02);}
             <option value="monthly">Monthly ($24.99)</option>
             <option value="annual">Annual ($179/yr)</option>
             <option value="pa_appeal">PA Appeal ($49 one-time)</option>
-            <option value="trial">Trial</option>
             <option value="free">Free (Revoke)</option>
           </select>
         </div>
@@ -1285,7 +1281,6 @@ async function openDetail(handle) {
           <option value="monthly" ${d.plan==='monthly'?'selected':''}>Monthly ($24.99/mo)</option>
           <option value="annual" ${d.plan==='annual'?'selected':''}>Annual ($179/yr)</option>
           <option value="pa_appeal" ${d.plan==='pa_appeal'?'selected':''}>PA Appeal ($49 one-time)</option>
-          <option value="trial" ${d.plan==='trial'?'selected':''}>Trial</option>
           <option value="free" ${d.plan==='free'?'selected':''}>Free</option>
         </select>
         <div class="plan-btn-row">
@@ -1403,7 +1398,7 @@ function deepMerge(a,b) {
 
 // ── UTILS ─────────────────────────────────────────────────────────────────────
 function planBadge(plan) {
-  const m={monthly:'badge-pro',annual:'badge-annual',pa_appeal:'badge-pro',pro:'badge-pro',trial:'badge-trial',free:'badge-free'};
+  const m={monthly:'badge-pro',annual:'badge-annual',pro:'badge-pro',free:'badge-free'};
   return m[plan]||'badge-free';
 }
 function timeSince(iso) {

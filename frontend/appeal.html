@@ -488,7 +488,7 @@ footer{border-top:1px solid var(--border);padding:36px max(16px,5vw);display:fle
           </div>
           <div class="upsell-actions">
             <a href="/signup?source=appeal&plan=annual" class="upsell-cta">
-              <i class="fa-solid fa-shield-halved"></i>Start 14-day free trial — Shield Annual $179/yr
+              <i class="fa-solid fa-shield-halved"></i>Upgrade to Shield Annual — $179/yr
             </a>
             <a href="/signup?source=appeal&plan=monthly" class="upsell-cta-ghost">
               Shield Monthly — $24.99/mo · cancel anytime
@@ -515,13 +515,13 @@ const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 
 let _sb = null;
 let _session = null;
-let _userPlan = 'free';   // 'free' | 'pro' | 'trial' | 'annual' | 'monthly'
+let _userPlan = 'free';   // 'free' | 'pro' | 'annual' | 'monthly'
 let _storedMarkers = [];
 let _storedMemories = [];
 let generatedPacket = '';
 
 function _isShield() {
-  return _userPlan === 'pro' || _userPlan === 'annual' || _userPlan === 'monthly' || _userPlan === 'trial';
+  return _userPlan === 'pro' || _userPlan === 'annual' || _userPlan === 'monthly';
 }
 
 // ── Supabase init ─────────────────────────────────────────────────────────────

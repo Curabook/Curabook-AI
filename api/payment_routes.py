@@ -4,9 +4,11 @@ api/payment_routes.py — PayPal Subscriptions Payment System
 Migrated from Razorpay → PayPal Subscriptions API.
 
 PRICING:
-  Shield Monthly  — $24.99/mo         (plan key: "monthly")
+  Free            — $0, limited        (plan key: "free")
+                    3 lifetime lab report uploads, 15 chats/day
+  Shield Monthly  — $24.99/mo          (plan key: "monthly")
   Shield Annual   — $179/yr ($14.92/mo — save $120, 5 months free) (plan key: "annual")
-  Trial           — $0                (plan key: "trial")
+  Shield (admin)  — founder/admin-granted, full access (plan key: "pro")
 
 HOW PAYPAL SUBSCRIPTIONS WORK:
   1. Frontend calls POST /api/payment/paypal/create-subscription
@@ -30,7 +32,6 @@ REQUIRED ENV VARS:
   PAYPAL_ENV                — "sandbox" (default) or "live"
   FRONTEND_URL              — e.g. https://curabook.com
   ADMIN_SECRET              — for admin endpoints
-  TRIAL_DAYS                — integer, 0 = no trial
 
 DB MIGRATION NOTE:
   Run /api/payment/setup-tables once after deploying — adds
@@ -54,12 +55,11 @@ PAYPAL_CLIENT_SECRET    = os.getenv("PAYPAL_CLIENT_SECRET", "")
 PAYPAL_WEBHOOK_ID       = os.getenv("PAYPAL_WEBHOOK_ID", "")
 PAYPAL_PLAN_MONTHLY_ID  = os.getenv("PAYPAL_PLAN_MONTHLY_ID", "")
 PAYPAL_PLAN_ANNUAL_ID   = os.getenv("PAYPAL_PLAN_ANNUAL_ID", "")
-PAYPAL_PLAN_PA_ID       = os.getenv("PAYPAL_PLAN_PA_ID", "")
 PAYPAL_ENV              = os.getenv("PAYPAL_ENV", "sandbox")   # "sandbox" | "live"
 FRONTEND_URL            = os.getenv("FRONTEND_URL", "https://curabook.com")
 ADMIN_SECRET            = os.getenv("ADMIN_SECRET", "")
 CRON_SECRET             = os.getenv("CRON_SECRET", "")
-TRIAL_DAYS              = int(os.getenv("TRIAL_DAYS", "0"))
+FREE_REPORT_LIMIT       = 3
 
 _PAYPAL_BASE = (
     "https://api-m.sandbox.paypal.com"
@@ -83,24 +83,16 @@ PLAN_PRICING = {
         "interval_days": 365,
         "paypal_plan":   PAYPAL_PLAN_ANNUAL_ID,
     },
-    "trial":    {
-        "amount":        0,
-        "currency":      "USD",
-        "description":   f"Curabook PHI Trial — {TRIAL_DAYS} days",
-        "interval_days": TRIAL_DAYS,
-        "paypal_plan":   "",
-    },
 }
 
 PLAN_DISPLAY = {
     "free":      "PHI Free",
-    "trial":     "PHI Trial",
     "monthly":   "Shield Monthly",
     "annual":    "Shield Annual",
     "pro":       "Shield",
 }
 
-_PRO_PLANS = {"monthly", "annual", "pro", "trial"}
+_PRO_PLANS = {"monthly", "annual", "pro"}
 
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
@@ -225,7 +217,7 @@ def _downgrade_to_free(supabase, user_id: str) -> None:
     supabase.table("user_profiles").upsert({
         "user_id":               user_id,
         "plan":                  "free",
-        "reports_remaining":     1,
+        "reports_remaining":     FREE_REPORT_LIMIT,
         "paypal_subscription_id": None,
         "subscription_end_date": None,
         "cancel_at_period_end":  False,
@@ -276,7 +268,7 @@ def payment_config():
             "monthly":   {"amount": 24.99, "currency": "USD", "label": "Shield — $24.99/mo",           "interval": "monthly"},
             "annual":    {"amount": 179,   "currency": "USD", "label": "Shield — $179/yr",             "interval": "annual",  "saves": "Save $120 — 5 months free"},
         },
-        "trial_days": TRIAL_DAYS,
+        "free_report_limit": FREE_REPORT_LIMIT,
     })
 
 
@@ -352,13 +344,12 @@ def payment_status():
                 "subscription_end":     None,
                 "cancel_at_period_end": False,
                 "has_billing":          False,
-                "had_trial":            False,
                 "paypal_configured":    bool(PAYPAL_CLIENT_ID),
             })
 
         res = (supabase.table("user_profiles")
                .select("plan,reports_remaining,paypal_subscription_id,"
-                       "subscription_end_date,cancel_at_period_end,had_trial")
+                       "subscription_end_date,cancel_at_period_end")
                .eq("user_id", user.id)
                .limit(1)
                .execute())
@@ -368,7 +359,7 @@ def payment_status():
                 "plan":              "free",
                 "plan_display":      "PHI Free",
                 "is_pro":            False,
-                "reports_remaining": 1,
+                "reports_remaining": FREE_REPORT_LIMIT,
                 "paypal_configured": bool(PAYPAL_CLIENT_ID),
             })
 
@@ -379,71 +370,16 @@ def payment_status():
             "plan":                 plan,
             "plan_display":         PLAN_DISPLAY.get(plan, plan.title()),
             "is_pro":               _is_pro(plan),
-            "reports_remaining":    row.get("reports_remaining", 1),
+            "reports_remaining":    row.get("reports_remaining", FREE_REPORT_LIMIT),
             "subscription_end":     row.get("subscription_end_date", ""),
             "cancel_at_period_end": row.get("cancel_at_period_end", False),
             "has_billing":          bool(row.get("paypal_subscription_id")),
-            "had_trial":            row.get("had_trial", False),
             "paypal_configured":    bool(PAYPAL_CLIENT_ID),
         })
 
     except Exception as e:
         logger.error(f"[PAY] Status error: {e}")
         return jsonify({"plan": "free", "is_pro": False, "paypal_configured": bool(PAYPAL_CLIENT_ID)})
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# FREE TRIAL
-# ══════════════════════════════════════════════════════════════════════════════
-
-@payment_bp.route("/api/payment/start-trial", methods=["POST"])
-def start_trial():
-    if not TRIAL_DAYS:
-        return jsonify({"error": "Free trial is not currently available"}), 400
-
-    supabase, get_user, _ = _deps()
-    user = get_user(supabase)
-    if not user:
-        return jsonify({"error": "Unauthorized"}), 401
-
-    try:
-        res = (supabase.table("user_profiles")
-               .select("plan,had_trial")
-               .eq("user_id", user.id)
-               .limit(1)
-               .execute())
-
-        if res.data:
-            row = res.data[0]
-            if row.get("had_trial"):
-                return jsonify({"error": "You've already used your free trial"}), 400
-            if _is_pro(row.get("plan", "free")):
-                return jsonify({"error": "You already have an active plan"}), 400
-
-        end_date = (datetime.now(timezone.utc) + timedelta(days=TRIAL_DAYS)).isoformat()
-        supabase.table("user_profiles").upsert({
-            "user_id":               user.id,
-            "plan":                  "trial",
-            "reports_remaining":     9999,
-            "subscription_end_date": end_date,
-            "had_trial":             True,
-            "updated_at":            _now_iso(),
-        }, on_conflict="user_id").execute()
-
-        _log_payment_event(supabase, user.id, "TRIAL_STARTED",
-                           f"days:{TRIAL_DAYS} ends:{end_date[:10]}")
-
-        return jsonify({
-            "success":    True,
-            "plan":       "trial",
-            "trial_ends": end_date,
-            "trial_days": TRIAL_DAYS,
-            "message":    f"Your {TRIAL_DAYS}-day trial is now active. Enjoy full access to Curabook PHI!",
-        })
-
-    except Exception as e:
-        logger.error(f"[PAY] Trial start error: {e}")
-        return jsonify({"error": "Could not start trial. Please try again."}), 500
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -467,7 +403,7 @@ def create_paypal_subscription():
     body = request.json or {}
     plan = body.get("plan", "monthly").lower()
 
-    if plan not in PLAN_PRICING or plan == "trial":
+    if plan not in PLAN_PRICING:
         return jsonify({"error": f"Invalid plan: {plan}"}), 400
 
     pricing = PLAN_PRICING[plan]
@@ -569,7 +505,7 @@ def capture_paypal_subscription():
 
     if not subscription_id:
         return jsonify({"error": "subscription_id is required"}), 400
-    if plan not in PLAN_PRICING or plan == "trial":
+    if plan not in PLAN_PRICING:
         return jsonify({"error": f"Invalid plan: {plan}"}), 400
 
     try:
@@ -883,7 +819,6 @@ def setup_missing_tables():
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS paypal_subscription_id text",
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS subscription_end_date timestamptz",
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS cancel_at_period_end boolean default false",
-        "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS had_trial boolean default false",
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS goal_weight_lbs numeric",
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS current_weight_lbs numeric",
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS glp1_status text",

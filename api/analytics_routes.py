@@ -311,13 +311,12 @@ def overview():
             if r.get("is_admin_granted"):
                 admin_granted_count += 1
 
-        pro_count = sum(v for k, v in plan_counts.items() if k in ("monthly", "annual", "clinical", "pro", "trial"))
+        pro_count = sum(v for k, v in plan_counts.items() if k in ("monthly", "annual", "pro"))
 
         mrr = (
-            plan_counts.get("monthly", 0) * 49 +
-            plan_counts.get("annual", 0) * 33.25 +
-            plan_counts.get("clinical", 0) * 99 +
-            plan_counts.get("pro", 0) * 49
+            plan_counts.get("monthly", 0) * 24.99 +
+            plan_counts.get("annual", 0) * 14.92 +
+            plan_counts.get("pro", 0) * 24.99
         )
 
         markers_res = supabase.table("health_markers").select("id", count="exact").execute()
@@ -471,7 +470,7 @@ def users():
             ))
 
             plan   = (p.get("plan") or "free").lower()
-            is_pro = plan in ("monthly", "annual", "clinical", "pro", "trial")
+            is_pro = plan in ("monthly", "annual", "pro")
 
             result.append({
                 "handle":             handle,
@@ -513,7 +512,7 @@ def users():
 def set_user_plan(handle: str):
     """
     Grant or revoke a plan for a specific user.
-    Body: { "plan": "monthly"|"annual"|"clinical"|"free"|"trial", "days": 31, "reason": "..." }
+    Body: { "plan": "monthly"|"annual"|"free"|"pro", "days": 31, "reason": "..." }
     """
     err = _require_auth()
     if err: return err
@@ -524,7 +523,7 @@ def set_user_plan(handle: str):
     days   = int(body.get("days", 31))
     reason = str(body.get("reason", "Founder grant"))[:200]
 
-    VALID_PLANS = {"free", "trial", "monthly", "annual", "clinical", "pro"}
+    VALID_PLANS = {"free", "monthly", "annual", "pro"}
     if plan not in VALID_PLANS:
         return jsonify({"error": f"Invalid plan: {plan}"}), 400
 
@@ -703,7 +702,7 @@ def user_deep_dive(handle: str):
             "provider":         provider,
             "is_admin_granted": is_admin_granted,
             "plan":             plan,
-            "is_pro":           plan in ("monthly", "annual", "clinical", "pro", "trial"),
+            "is_pro":           plan in ("monthly", "annual", "pro"),
             "glp1_status":      target_profile.get("glp1_status") or "unknown",
             "goal_weight":      goal_wt,
             "current_weight":   target_profile.get("current_weight_lbs"),
@@ -962,22 +961,20 @@ def payments():
 
     try:
         profiles = supabase.table("user_profiles").select(
-            "user_id,plan,subscription_end_date,cancel_at_period_end,created_at,had_trial,is_admin_granted"
+            "user_id,plan,subscription_end_date,cancel_at_period_end,created_at,is_admin_granted"
         ).execute().data or []
 
         plan_counts = defaultdict(int)
-        churned     = 0
-        trialing    = 0
+        churned     = 0  # users who cancelled a paid plan and are now back on free
 
         for p in profiles:
             plan = (p.get("plan") or "free").lower()
             plan_counts[plan] += 1
-            if p.get("had_trial") and plan == "free":
+            if plan == "free" and p.get("subscription_end_date"):
+                # had a subscription_end_date set at some point but is free now = churned
                 churned += 1
-            if plan == "trial":
-                trialing += 1
 
-        mrr_map  = {"monthly": 49, "annual": 39, "clinical": 99, "pro": 49, "trial": 0}
+        mrr_map  = {"monthly": 24.99, "annual": 14.92, "pro": 24.99}
         total_mrr = sum(mrr_map.get(plan, 0) * count for plan, count in plan_counts.items())
 
         payment_logs = supabase.table("audit_logs").select("user_id,detail,action,created_at").eq("category", "PAYMENT").order("created_at", desc=True).limit(200).execute().data or []
@@ -986,7 +983,6 @@ def payments():
             "PAYMENT_SUBSCRIPTION_ACTIVATED":    "subscription",
             "PAYMENT_SUBSCRIPTION_CHARGED":      "renewal",
             "PAYMENT_ONE_TIME_PAYMENT_CAPTURED": "one-time",
-            "PAYMENT_TRIAL_STARTED":             "trial start",
             "PAYMENT_SUBSCRIPTION_CANCELLED":    "cancellation",
             "PAYMENT_ADMIN_GRANT":               "admin grant",
         }
@@ -1012,10 +1008,10 @@ def payments():
         mrr_breakdown = {
             plan: round(mrr_map.get(plan, 0) * count, 2)
             for plan, count in plan_counts.items()
-            if plan not in ("free", "trial")
+            if plan != "free"
         }
 
-        paying_users = sum(v for k, v in plan_counts.items() if k in ("monthly", "annual", "clinical", "pro"))
+        paying_users = sum(v for k, v in plan_counts.items() if k in ("monthly", "annual", "pro"))
         churn_rate   = round(churned / max(paying_users + churned, 1) * 100, 1)
         pending_cancel = sum(1 for p in profiles if p.get("cancel_at_period_end"))
         admin_granted_count = sum(1 for p in profiles if p.get("is_admin_granted"))
@@ -1030,8 +1026,7 @@ def payments():
             "mrr_by_plan":       mrr_breakdown,
             "paying_users":      paying_users,
             "free_users":        plan_counts.get("free", 0),
-            "trial_users":       trialing,
-            "churned_trials":    churned,
+            "churned_users":     churned,
             "churn_rate_pct":    churn_rate,
             "pending_cancels":   pending_cancel,
             "upgrades_30d":      upgrades_30d,

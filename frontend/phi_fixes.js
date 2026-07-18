@@ -96,26 +96,13 @@ function _applyPlanToUI(plan, cache) {
   const isPro = plan && plan !== 'free';
   const planEl = document.getElementById('userPlan');
   if (planEl) {
-    const labels = { monthly:'Shield $24.99/mo ✦', annual:'Shield $179/yr ✦', pa_appeal:'PA Appeal ✦', trial:'Trial Active ✦', pro:'Shield Pro ✦', free:'PHI Free' };
+    const labels = { monthly:'Shield $24.99/mo ✦', annual:'Shield $179/yr ✦', pro:'Shield Pro ✦', free:'PHI Free' };
     planEl.textContent = labels[plan] || 'PHI Free';
     planEl.style.color = isPro ? 'var(--signal,#00d4c8)' : 'var(--text-3,#566070)';
   }
-  if (plan === 'trial' && cache.subscription_end_date) showTrialBanner(cache.subscription_end_date);
+
   const pill = document.getElementById('upgradeNavBtn');
   if (pill) pill.style.display = isPro ? 'none' : 'inline-block';
-}
-
-function showTrialBanner(endDate) {
-  if (document.getElementById('trialBanner')) return;
-  try {
-    const days = Math.ceil((new Date(endDate) - Date.now()) / 86400000);
-    if (days <= 0) return;
-    const banner = document.createElement('div');
-    banner.id = 'trialBanner';
-    banner.style.cssText = `position:fixed;top:0;left:0;right:0;z-index:200;background:linear-gradient(90deg,var(--signal,#00d4c8),#00a89e);color:#0a0b0e;text-align:center;padding:9px 20px;font-size:.8rem;font-weight:600;display:flex;align-items:center;justify-content:center;gap:12px;`;
-    banner.innerHTML = `<span>⏰ Trial active — ${days} day${days !== 1 ? 's' : ''} remaining</span><button onclick="showUpgradeModal('trial');document.getElementById('trialBanner').remove()" style="background:rgba(0,0,0,.15);border:none;border-radius:6px;padding:4px 12px;color:#0a0b0e;font-size:.75rem;font-weight:700;cursor:pointer;font-family:inherit">Upgrade Now</button><button onclick="document.getElementById('trialBanner').remove()" style="background:none;border:none;color:rgba(0,0,0,.5);cursor:pointer;font-size:1.1rem;padding:0 4px">×</button>`;
-    document.body.prepend(banner);
-  } catch (e) {}
 }
 
 // ── 3. UPGRADE MODAL — PayPal ─────────────────────────────────────────────────
@@ -132,9 +119,9 @@ window.showUpgradeModal = function(reason) {
       <button onclick="closeUpgradeModal()" style="position:absolute;top:14px;right:14px;width:30px;height:30px;border-radius:8px;border:none;background:var(--surface-3,#23272f);color:var(--text-2,#9aa3b0);font-size:.85rem;cursor:pointer;display:flex;align-items:center;justify-content:center;">✕</button>
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;padding-right:36px;">
         <div style="width:42px;height:42px;flex-shrink:0;background:linear-gradient(135deg,var(--signal,#00d4c8),#00a89e);border-radius:12px;display:flex;align-items:center;justify-content:center;font-family:var(--serif,'Georgia');font-size:1.15rem;color:#0a0b0e;font-weight:600;box-shadow:0 4px 16px rgba(0,212,200,.3);">φ</div>
-        <div><h2 style="font-size:1.1rem;font-weight:700;color:var(--text,#f0f2f5);margin-bottom:3px;line-height:1.2;">Start your 14-day free trial</h2><p style="font-size:.73rem;color:var(--text-3,#566070);line-height:1.4;">Full access · Cancel anytime · Less than half a Wegovy copay</p></div>
+        <div><h2 style="font-size:1.1rem;font-weight:700;color:var(--text,#f0f2f5);margin-bottom:3px;line-height:1.2;">Upgrade to Shield</h2><p style="font-size:.73rem;color:var(--text-3,#566070);line-height:1.4;">Full access · Cancel anytime · Less than half a Wegovy copay</p></div>
       </div>
-      ${reason === 'upload' ? `<div style="background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.3);border-radius:10px;padding:10px 13px;margin-bottom:16px;font-size:.8rem;color:var(--amber,#fbbf24);display:flex;align-items:center;gap:8px;"><i class="fa-solid fa-triangle-exclamation" style="flex-shrink:0;"></i><span><strong>Shield plan required</strong> — Start your 14-day free trial to unlock lab uploads and cliff detection.</span></div>` : ''}
+      ${reason === 'upload' ? `<div style="background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.3);border-radius:10px;padding:10px 13px;margin-bottom:16px;font-size:.8rem;color:var(--amber,#fbbf24);display:flex;align-items:center;gap:8px;"><i class="fa-solid fa-triangle-exclamation" style="flex-shrink:0;"></i><span><strong>Shield plan required</strong> — Upgrade to unlock unlimited lab uploads and cliff detection.</span></div>` : ''}
       <div style="background:var(--surface-2,#1a1d24);border:1px solid var(--border,rgba(255,255,255,.07));border-radius:12px;padding:14px 16px;margin-bottom:18px;">
         <div style="font-size:.62rem;font-weight:700;color:var(--text-3,#566070);text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px;">What you unlock</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px 12px;">
@@ -146,7 +133,7 @@ window.showUpgradeModal = function(reason) {
         <button id="ppMonthlyBtn" onclick="initiatePayPalCheckout('monthly')" style="width:100%;padding:13px 16px;background:var(--surface-3,#23272f);color:var(--text,#f0f2f5);border:2px solid var(--border-2,rgba(255,255,255,.13));border-radius:12px;font-size:.9rem;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s;display:flex;align-items:center;justify-content:space-between;"><span style="display:flex;align-items:center;gap:8px;">Shield Annual<span style="font-size:.58rem;font-weight:700;background:rgba(0,0,0,.2);color:#0a0b0e;padding:2px 7px;border-radius:20px;letter-spacing:.04em;">BEST VALUE</span></span><span style="font-family:monospace;font-size:1rem;">$179<span style="font-size:.72rem;font-weight:500;color:var(--text-2);">/yr</span></span></button>
 
       </div>
-      <div style="font-size:.68rem;color:var(--text-3,#566070);text-align:center;line-height:1.6;margin-bottom:10px;padding:8px 10px;background:var(--surface-2,#1a1d24);border:1px solid var(--border,rgba(255,255,255,.07));border-radius:8px;">14-day free trial · HSA/FSA eligible · Save $120 on annual vs monthly</div>
+      <div style="font-size:.68rem;color:var(--text-3,#566070);text-align:center;line-height:1.6;margin-bottom:10px;padding:8px 10px;background:var(--surface-2,#1a1d24);border:1px solid var(--border,rgba(255,255,255,.07));border-radius:8px;">3 free lab reports · 15 free chats/day · HSA/FSA eligible · Save $120 on annual vs monthly</div>
       <div id="upgradeStatus" style="text-align:center;font-size:.78rem;color:var(--text-3,#566070);min-height:18px;margin-bottom:6px;"></div>
       <p style="font-size:.67rem;color:var(--text-3,#9ca3af);text-align:center;">🔒 Secure via PayPal · Cancel anytime</p>
     </div>
@@ -576,7 +563,7 @@ window.openAppointmentPrepModal = openAppointmentPrepModal;
 async function openPAArchitectModal() {
   // ── PLAN GATE: Clinical only ──────────────────────────────────────────────
   const currentPlan = window._userPlan || window.__startupCache?.plan || 'free';
-  const isShield = currentPlan === 'pro' || currentPlan === 'annual' || currentPlan === 'monthly' || currentPlan === 'trial';
+  const isShield = currentPlan === 'pro' || currentPlan === 'annual' || currentPlan === 'monthly';
   // Also check free-all override
   let freeAllActive = false;
   try {
@@ -597,8 +584,8 @@ async function openPAArchitectModal() {
           <button onclick="document.getElementById('paGateModal').remove()" style="position:absolute;top:12px;right:12px;width:28px;height:28px;border-radius:7px;border:none;background:var(--surface-3,#23272f);color:var(--text-2);cursor:pointer;">✕</button>
           <div style="font-size:2rem;margin-bottom:14px;">🛡</div>
           <h3 style="font-size:1.05rem;font-weight:700;color:var(--text,#f0f2f5);margin-bottom:8px;">Shield Plan Required</h3>
-          <p style="font-size:.82rem;color:var(--text-3,#566070);line-height:1.6;margin-bottom:20px;">PA Architect generates a physician-ready prior authorization packet from your actual lab data. Included in your <strong style="color:var(--signal,#00d4c8);">Shield plan (14-day free trial)</strong>.</p>
-          <button onclick="if(typeof initiatePayPalCheckout==='function')initiatePayPalCheckout('annual');document.getElementById('paGateModal').remove();" style="width:100%;padding:12px;background:var(--signal,#00d4c8);color:#0a0b0e;border:none;border-radius:10px;font-size:.9rem;font-weight:700;cursor:pointer;font-family:inherit;">Start 14-day free trial →</button>
+          <p style="font-size:.82rem;color:var(--text-3,#566070);line-height:1.6;margin-bottom:20px;">PA Architect generates a physician-ready prior authorization packet from your actual lab data. Included in your <strong style="color:var(--signal,#00d4c8);">Shield plan (Monthly or Annual)</strong>.</p>
+          <button onclick="if(typeof initiatePayPalCheckout==='function')initiatePayPalCheckout('annual');document.getElementById('paGateModal').remove();" style="width:100%;padding:12px;background:var(--signal,#00d4c8);color:#0a0b0e;border:none;border-radius:10px;font-size:.9rem;font-weight:700;cursor:pointer;font-family:inherit;">Upgrade to Shield →</button>
           <p style="font-size:.72rem;color:var(--text-3,#566070);margin-top:12px;">The public PA tool is available free at <a href="/appeal" style="color:var(--signal,#00d4c8);">curabook.com/appeal</a> — no login required.</p>
         </div>`;
       document.body.appendChild(modal);
@@ -861,7 +848,7 @@ function injectQuickActionsIntoDropdown() {
       <i class="fa-solid fa-calendar-check"></i><span>Appointment Prep</span>
     </button>
     <button class="qa-dd-item" onclick="openPAArchitectModal();closeUserMenu()">
-      <i class="fa-solid fa-shield-halved"></i><span>Insurance PA Architect</span>${(()=>{const p=window._userPlan||window.__startupCache?.plan||'free';const isS=p==='pro'||p==='annual'||p==='monthly'||p==='trial';return isS?'':' <span style="font-size:.6rem;background:var(--signal-dim,rgba(0,212,200,.1));color:var(--signal,#00d4c8);border:1px solid rgba(0,212,200,.25);padding:1px 6px;border-radius:20px;letter-spacing:.04em;font-weight:700;">SHIELD</span>'})()}
+      <i class="fa-solid fa-shield-halved"></i><span>Insurance PA Architect</span>${(()=>{const p=window._userPlan||window.__startupCache?.plan||'free';const isS=p==='pro'||p==='annual'||p==='monthly';return isS?'':' <span style="font-size:.6rem;background:var(--signal-dim,rgba(0,212,200,.1));color:var(--signal,#00d4c8);border:1px solid rgba(0,212,200,.25);padding:1px 6px;border-radius:20px;letter-spacing:.04em;font-weight:700;">SHIELD</span>'})()}
     </button>
     <div class="qa-dd-divider"></div>
   `;
@@ -887,7 +874,7 @@ function injectUpgradeButton() {
   const pill = document.createElement('button');
   pill.id = 'upgradeNavBtn';
   pill.style.cssText = `
-    display:none;           /* shown only for free/trial users via refreshPlanDisplay */
+    display:none;           /* shown only for free users via refreshPlanDisplay */
     margin-left:6px;
     padding:1px 7px;
     background:var(--signal-dim,rgba(0,212,200,.1));

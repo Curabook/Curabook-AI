@@ -58,7 +58,7 @@ MANDATORY_DISCLAIMER = (
     "before making any medical decisions.*"
 )
 
-_PRO_PLANS = {"pro", "monthly", "annual", "clinical"}
+_PRO_PLANS = {"pro", "monthly", "annual"}
 
 _GENERAL_QUESTION_PATTERNS = [
     r"^(hi|hello|hey|good morning|good evening|thanks|thank you|okay|ok|sure)[\s!.?]*$",
@@ -1184,6 +1184,10 @@ def _extract_text_from_base64_image(base64_data: str) -> str:
 # FIX-TIER-1: SERVER-SIDE TIER ENFORCEMENT
 # ══════════════════════════════════════════════════════════════════════════════
 
+FREE_REPORT_LIMIT = 3
+FREE_CHAT_DAILY_LIMIT = 15
+
+
 def _get_user_plan(supabase, user_id: str) -> tuple[str, int]:
     try:
         res = (supabase.table("user_profiles")
@@ -1194,13 +1198,31 @@ def _get_user_plan(supabase, user_id: str) -> tuple[str, int]:
         if res.data:
             row = res.data[0]
             plan = row.get("plan", "free") or "free"
-            remaining = row.get("reports_remaining", 1)
+            remaining = row.get("reports_remaining", FREE_REPORT_LIMIT)
             if remaining is None:
-                remaining = 1
+                remaining = FREE_REPORT_LIMIT
             return plan, int(remaining)
     except Exception as e:
         print(f"[TIER] Plan fetch error: {e}")
-    return "free", 1
+    return "free", FREE_REPORT_LIMIT
+
+
+def _check_chat_daily_limit(supabase, user_id: str) -> tuple[bool, int]:
+    """Returns (allowed, messages_sent_today). Free plan only — pro is unlimited."""
+    from datetime import datetime, timezone
+    today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+    try:
+        res = (supabase.table("chats")
+               .select("id", count="exact")
+               .eq("user_id", user_id)
+               .eq("role", "user")
+               .gte("created_at", today)
+               .execute())
+        count = res.count if res.count is not None else 0
+        return count < FREE_CHAT_DAILY_LIMIT, count
+    except Exception as e:
+        print(f"[TIER] Chat limit check error: {e}")
+        return True, 0
 
 
 def _is_pro_user(plan: str) -> bool:
@@ -1210,7 +1232,7 @@ def _is_pro_user(plan: str) -> bool:
 def _is_feature_allowed(supabase, user_id: str, feature: str) -> bool:
     """
     Unified feature gate. Checks free-all override first, then plan.
-    Used for gating Clinical-only features (PA, insurance advocacy).
+    Used for gating paid-only features (PA, insurance advocacy).
     """
     # 1. Check global free-all toggle first
     try:
@@ -1223,8 +1245,8 @@ def _is_feature_allowed(supabase, user_id: str, feature: str) -> bool:
 
     # 2. Check plan
     GATES = {
-        "pa_architect":       {"clinical"},
-        "insurance_advocacy": {"clinical"},
+        "pa_architect":       _PRO_PLANS,
+        "insurance_advocacy": _PRO_PLANS,
         "unlimited_reports":  _PRO_PLANS,
         "health_memory":      _PRO_PLANS,
         "doctor_prep":        _PRO_PLANS,
@@ -1330,11 +1352,25 @@ def chat():
             return jsonify({
                 "error": "upgrade_required",
                 "message": (
-                    "You've used your free report upload. Upgrade to PHI Pro "
-                    "for unlimited lab reports, full health memory, and insurance PA support."
+                    f"You've used all {FREE_REPORT_LIMIT} free lab report uploads. Upgrade to Shield "
+                    "for unlimited reports, full health memory, and insurance PA support."
                 ),
                 "plan": user_plan,
                 "reports_remaining": 0,
+            }), 402
+
+    # ── Server-side daily chat message gate (free plan only) ──────────────────
+    if not is_pro:
+        chat_allowed, msgs_today = _check_chat_daily_limit(supabase, user.id)
+        if not chat_allowed:
+            return jsonify({
+                "error": "upgrade_required",
+                "message": (
+                    f"You've reached today's free limit of {FREE_CHAT_DAILY_LIMIT} messages. "
+                    "Upgrade to Shield for unlimited chat."
+                ),
+                "plan": user_plan,
+                "messages_today": msgs_today,
             }), 402
 
     # ── STEP 1: Extract immediate facts SYNCHRONOUSLY ─────────────────────────

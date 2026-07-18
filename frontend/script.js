@@ -23,7 +23,7 @@
  *   category selection, and smooth success animation.
  *
  * FIX-4: PAYPAL PAYMENT TIERS (replaces Razorpay)
- *   Free tier: 14-day trial, then Shield plan required.
+ *   Free tier: 3 lab uploads + 15 chats/day, then Shield plan required.
  *   Pro tier: unlimited reports, full marker memory, advocacy briefs.
  *   PayPal subscription flow — redirects to PayPal hosted checkout.
  *   No Razorpay SDK needed.
@@ -62,7 +62,7 @@ let _redirecting   = false;
 
 // Payment state
 let _userPlan = "free";
-// No free report limit — 14-day trial model. isPro check controls access.
+let _reportsRemaining = 3; // free plan: 3 lifetime lab report uploads
 
 // FIX-2: Health memory cache — refreshed after every message
 let _cachedMemories = [];
@@ -315,7 +315,10 @@ async function loadPaymentStatus() {
     if (ok && data) {
       _userPlan         = data.plan || "free";
       window._userPlan  = _userPlan; // expose for phi_fixes.js
-      // trial model — no per-report limits
+      if (data.reports_remaining !== undefined) {
+        _reportsRemaining        = data.reports_remaining;
+        window._reportsRemaining = _reportsRemaining;
+      }
       // Apply free-all override (founder toggle)
       if (data.is_free_all) {
         _userPlan         = "pro";
@@ -332,7 +335,7 @@ async function loadPaymentStatus() {
 function _renderPlanBadge() {
   const planEl = el("userPlan");
   if (planEl) {
-    const isPro = _userPlan === "pro" || _userPlan === "annual" || _userPlan === "monthly" || _userPlan === "trial";
+    const isPro = _userPlan === "pro" || _userPlan === "annual" || _userPlan === "monthly";
     planEl.textContent = isPro ? "Curabook Pro ✦" : "Curabook Free";
     planEl.style.color = isPro ? "var(--signal)" : "var(--text-3)";
   }
@@ -352,13 +355,12 @@ function _startPlanPoll() {
 
       const prevPlan = _userPlan;
       const newPlan  = data.plan || "free";
-      const wasPro   = prevPlan === "pro" || prevPlan === "annual" || prevPlan === "monthly" || prevPlan === "trial";
-      const nowPro   = newPlan  === "pro" || newPlan  === "annual" || newPlan  === "monthly" || newPlan  === "trial";
+      const wasPro   = prevPlan === "pro" || prevPlan === "annual" || prevPlan === "monthly";
+      const nowPro   = newPlan  === "pro" || newPlan  === "annual" || newPlan  === "monthly";
 
       // Update globals
       _userPlan         = newPlan;
         window._userPlan  = newPlan;
-      // trial model — access controlled by plan only
       if (data.is_free_all) {
         _userPlan         = "pro";
         window._userPlan  = "pro";
@@ -379,8 +381,8 @@ function _startPlanPoll() {
 
 // ── Upload click gate ──────────────────────────────────────────────────────
 function handleUploadClick() {
-  const isPro = _userPlan === "pro" || _userPlan === "annual" || _userPlan === "monthly" || _userPlan === "trial";
-  if (!isPro) {
+  const isPro = _userPlan === "pro" || _userPlan === "annual" || _userPlan === "monthly";
+  if (!isPro && _reportsRemaining <= 0) {
     showUpgradeModal("upload");
     return;
   }
@@ -435,7 +437,7 @@ function showUpgradeModal(reason = "manual") {
           box-shadow:0 4px 16px var(--signal-glow);">φ</div>
         <div>
           <h2 style="font-family:var(--serif);font-size:1.2rem;font-weight:400;
-            color:var(--text);margin-bottom:2px;line-height:1.2;">Start your 14-day free trial</h2>
+            color:var(--text);margin-bottom:2px;line-height:1.2;">Upgrade to Shield</h2>
           <p style="font-size:.73rem;color:var(--text-3);line-height:1.4;">
             Full access · Cancel anytime · Less than half a Wegovy copay
           </p>
@@ -449,7 +451,7 @@ function showUpgradeModal(reason = "manual") {
           font-size:.8rem;color:var(--amber);
           display:flex;align-items:center;gap:8px;">
           <i class="fa-solid fa-triangle-exclamation" style="flex-shrink:0;"></i>
-          <span><strong>Shield plan required</strong> — Start your 14-day free trial to unlock lab uploads and cliff detection.</span>
+          <span><strong>Shield plan required</strong> — Upgrade to unlock unlimited lab uploads and cliff detection.</span>
         </div>` : ""}
 
       <div style="
@@ -507,7 +509,7 @@ function showUpgradeModal(reason = "manual") {
       </div>
 
       <div style="font-size:.68rem;color:var(--text-3);text-align:center;line-height:1.6;margin-bottom:10px;padding:8px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;">
-        14-day free trial on both plans · HSA/FSA eligible · Save $120 on annual vs monthly
+        3 free lab reports · 15 free chats/day · HSA/FSA eligible · Save $120 on annual vs monthly
       </div>
 
       <div id="upgradeStatus" style="text-align:center;font-size:.78rem;color:var(--text-3);min-height:18px;margin-bottom:6px;"></div>
@@ -1244,7 +1246,7 @@ async function sendMessage(text) {
     }
 
     if (_uploads.length) {
-      const isPro = _userPlan === "pro" || _userPlan === "annual" || _userPlan === "monthly" || _userPlan === "trial";
+      const isPro = _userPlan === "pro" || _userPlan === "annual" || _userPlan === "monthly";
       const isMealPhoto = _uploads[0]?._isMealPhoto === true;
 
       // ── Lab report / document: use /analyze pipeline ─────────────────
@@ -1387,8 +1389,10 @@ async function _postChatActions(reply, userText, responseData) {
 
   if (responseData?.plan) {
     _userPlan = responseData.plan;
+    window._userPlan = _userPlan;
     if (responseData.reports_remaining !== undefined) {
-      // trial model — ignore per-report counter from backend
+      _reportsRemaining = responseData.reports_remaining;
+      window._reportsRemaining = _reportsRemaining;
     }
     _renderPlanBadge();
   }
