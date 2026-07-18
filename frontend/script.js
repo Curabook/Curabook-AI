@@ -1251,7 +1251,7 @@ async function sendMessage(text) {
 
       // ── Lab report / document: use /analyze pipeline ─────────────────
       // (Meal photos are handled by _queueMealUpload which sets _docCtx directly)
-      if (!isPro) {
+      if (!isPro && _reportsRemaining <= 0) {
         _isSending = false;
         setSendingState(false);
         showUpgradeModal("upload");
