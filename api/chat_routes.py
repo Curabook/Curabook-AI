@@ -1750,29 +1750,32 @@ def chat():
     )
     # Only append disclaimer for clinical responses — not for simple conversational ones
     # First strip any disclaimer the LLM generated on its own (prevents doubles/triples)
-    _disclaimer_patterns = [
-        "\n\n⚕️ *Curabook is an educational wellness tool. Always consult your healthcare provider.*",
-        "\n⚕️ *Curabook is an educational wellness tool. Always consult your healthcare provider.*",
-        "⚕️ Curabook is an educational wellness tool. Always consult your healthcare provider.",
-        "\n\n⚕️ *This is health education, not medical advice. Discuss changes with your provider.*",
-        "\n⚕️ *This is health education, not medical advice. Discuss changes with your provider.*",
-        "⚕️ This is health education, not medical advice. Discuss changes with your provider.",
-        "\n\nMedical Disclaimer: This response is for informational purposes only and should not be considered medical advice. Always consult with a healthcare professional for medical advice and treatment.",
-        "\nMedical Disclaimer: This response is for informational purposes only and should not be considered medical advice. Always consult with a healthcare professional for medical concerns.",
-        "\n\n---\n⚕️ *PHI is an educational wellness tool. It does not provide medical diagnoses or prescriptions. Always consult your healthcare provider before making any medical decisions.*",
-    ]
-    for pattern in _disclaimer_patterns:
-        reply = reply.replace(pattern, "")
-    # Also catch any remaining disclaimer variations with regex
     import re as _re_disc
-    reply = _re_disc.sub(
-        r'\n*⚕️\s*\*?(?:Curabook|PHI|This)[^*\n]*(?:provider|advice|decisions)\.?\*?\s*$',
-        '', reply, flags=_re_disc.IGNORECASE | _re_disc.MULTILINE
-    ).rstrip()
-    reply = _re_disc.sub(
-        r'\n*Medical Disclaimer:[^\n]*(?:provider|advice|treatment|concerns)\.?\s*$',
-        '', reply, flags=_re_disc.IGNORECASE | _re_disc.MULTILINE
-    ).rstrip()
+
+    # Aggressive multi-pattern strip — catches all known LLM-generated disclaimer formats
+    _disc_regexes = [
+        # ⚕️ emoji-based disclaimers (with or without markdown italics)
+        r'\n*\s*⚕️[^\n]*(?:provider|advice|decisions|healthcare|medical)[^\n]*',
+        # "Medical Disclaimer:" block
+        r'\n*\s*Medical Disclaimer:[^\n]*(?:provider|advice|treatment|concerns|professional)[^\n]*',
+        # Horizontal rule + disclaimer
+        r'\n*---\n*\s*⚕️[^\n]*',
+        # "Disclaimer:" block
+        r'\n*\s*Disclaimer:[^\n]*(?:provider|advice|treatment|concerns|professional)[^\n]*',
+        # "As always, consult..." standalone lines
+        r'\n*\s*As always,?\s*consult[^\n]*',
+        # Stray horizontal rules left after disclaimer removal
+        r'\n*\s*---\s*$',
+        # "Remember, this is general information..." lines
+        r'\n*\s*Remember,?\s*this is (?:general )?information[^\n]*(?:provider|advice)[^\n]*',
+        # "Please consult..." standalone
+        r'\n*\s*Please consult[^\n]*(?:provider|professional|advice)[^\n]*',
+    ]
+
+    for pattern in _disc_regexes:
+        reply = _re_disc.sub(pattern, '', reply, flags=_re_disc.IGNORECASE)
+
+    reply = reply.rstrip()
 
     _disclaimer = MANDATORY_DISCLAIMER if is_clinical_response(reply) else CONVERSATIONAL_DISCLAIMER
     final_reply = _inject_protein_action(message, reply, is_meal_photo=_is_meal_photo_upload) + _disclaimer
