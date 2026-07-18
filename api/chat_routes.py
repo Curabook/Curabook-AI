@@ -1028,7 +1028,7 @@ def _web_search(query: str, max_results: int = 3) -> str:
             resp = _req.get(
                 "https://serpapi.com/search",
                 params={
-                    "q": query + " site:nih.gov OR site:fda.gov OR site:pubmed.ncbi.nlm.nih.gov OR site:nejm.org",
+                    "q": query,
                     "api_key": serpapi_key,
                     "num": max_results,
                 },
@@ -1686,11 +1686,17 @@ def chat():
     if _needs_web_search(message, intent):
         try:
             search_query = _build_search_query(message)
+            print(f"[SEARCH] Triggering web search for: '{search_query[:80]}'")
             web_context = _web_search(search_query)
             if web_context:
-                print(f"[SEARCH] Web search triggered for: '{search_query[:60]}'")
+                print(f"[SEARCH] Got results ({len(web_context)} chars)")
+            else:
+                print(f"[SEARCH] No results returned — check SERPAPI_KEY or GOOGLE_SEARCH_KEY in env")
         except Exception as e:
             print(f"[SEARCH] Error (non-fatal): {e}")
+    else:
+        if any(sig in message.lower() for sig in _WEB_SEARCH_SIGNALS):
+            print(f"[SEARCH] Skipped — intent '{intent}' or known topic")
 
     # ── STEP 6: Build LLM messages (FIX-SHIELD-3: pass shield) ───────────────
     # Trim document text before LLM call to free memory on Render 512MB worker
