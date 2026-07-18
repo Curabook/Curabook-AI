@@ -705,9 +705,7 @@ If memory is empty and no health data is stored:
 • If a value is not in memory: "I don't have that data yet — upload a lab report and I'll track it."
 • Never invent numbers. Never guess values not in your context.
 • Severe symptoms (chest pain, severe abdominal pain, vomiting blood, suicidal thoughts) → "This needs immediate medical attention. Call 911 or go to your nearest ER now." No hedging.
-• End clinical responses with a SHORT disclaimer (one line, not a paragraph):
-  "⚕️ This is health education, not medical advice. Discuss changes with your provider."
-• For casual/conversational responses, skip the disclaimer entirely.
+• Do NOT add any medical disclaimer or "consult your provider" footer to your response — the application adds this automatically. If you add one, it will appear twice.
 """.strip()
 
 _NO_MEMORY_INSTRUCTION = """
@@ -740,8 +738,22 @@ def _build_smart_messages(
 
     messages = [{"role": "system", "content": _PHI_BASE_SYSTEM}]
 
-    # Inject plan context so PHI knows what features to recommend
+    # Inject date/time + plan context
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    today_str = now.strftime("%A, %B %d, %Y")
+    time_str = now.strftime("%I:%M %p UTC")
+
     plan_context = f"""
+TODAY'S DATE: {today_str}
+CURRENT TIME: {time_str}
+USE THIS DATE TO:
+• Calculate days since last injection ("your last dose was 11 days ago — that's 1.6 half-lives")
+• Calculate rates of change ("glucose rose 25 mg/dL in 38 days — that's 0.66 mg/dL per day")
+• Compare marker dates to today ("your last HbA1c was 3 months ago — time for a recheck")
+• Project trends ("at this rate, you'd cross the diabetic threshold in ~6 weeks")
+• Reference seasonality or timing when relevant
+
 USER'S CURRENT PLAN: {user_plan}
 {"REPORTS REMAINING: " + str(reports_remaining) if user_plan == "free" else "UNLIMITED ACCESS"}
 {"This user is on the free tier. When relevant, mention specific Shield features that would help them — but always answer their question first." if user_plan == "free" else "This user has full Shield access. No need to mention upgrades — focus on using all features to help them."}
@@ -948,6 +960,137 @@ def _detect_intent(message: str) -> str:
         if any(kw in lower for kw in _INTENT_KEYWORDS.get(intent, [])):
             return intent
     return "general"
+
+
+# ── Conditional web search (only for new/unknown topics) ─────────────────────
+
+_KNOWN_TOPICS = {
+    "wegovy", "ozempic", "mounjaro", "zepbound", "semaglutide", "tirzepatide",
+    "glp-1", "glp1", "ghrelin", "hba1c", "glucose", "insulin", "ldl", "hdl",
+    "triglycerides", "cholesterol", "crp", "protein", "leucine", "muscle",
+    "bmi", "metabolic", "diabetes", "prediabetes", "obesity", "taper",
+    "prior auth", "insurance", "coverage", "food noise", "cliff",
+    "metformin", "contrave", "saxenda", "victoza", "trulicity", "byetta",
+    "rybelsus", "liraglutide", "exenatide", "dulaglutide",
+}
+
+_WEB_SEARCH_SIGNALS = [
+    "latest", "newest", "recent", "new study", "new research", "new drug",
+    "just approved", "fda approved", "2025", "2026", "news about",
+    "have you heard", "is there a new", "what's new", "any updates",
+    "alternative to", "new alternative", "compared to",
+    "current price", "how much does", "cost of",
+    "new guidelines", "updated guidelines", "new policy",
+]
+
+def _needs_web_search(message: str, intent: str) -> bool:
+    """
+    Returns True only when the user is asking about something PHI
+    doesn't have baked into its system prompt — new drugs, recent studies,
+    updated policies, current pricing, etc.
+
+    Returns False for personal health queries, shield data, emotional support,
+    or any topic already covered by the system prompt.
+    """
+    # Never search for personal/emotional/shield queries
+    if intent in ("emotional", "shield", "food_noise", "muscle_defense"):
+        return False
+
+    lower = message.lower()
+
+    # Check if the message contains web search signals
+    has_search_signal = any(sig in lower for sig in _WEB_SEARCH_SIGNALS)
+    if not has_search_signal:
+        return False
+
+    # If the topic is already well-covered in our prompt, skip search
+    known_count = sum(1 for topic in _KNOWN_TOPICS if topic in lower)
+    # If 2+ known topics are in the message AND no "new/latest" signal about them,
+    # we probably already know enough
+    if known_count >= 2 and not any(w in lower for w in ["new", "latest", "recent", "2026", "2025", "just"]):
+        return False
+
+    return True
+
+
+def _web_search(query: str, max_results: int = 3) -> str:
+    """
+    Perform a web search using a search API and return formatted results.
+    Uses SerpAPI or falls back to a simple Google search.
+    Returns a context string to inject into the LLM messages.
+    """
+    import requests as _req
+
+    # Try SerpAPI first (most reliable)
+    serpapi_key = os.getenv("SERPAPI_KEY", "")
+    if serpapi_key:
+        try:
+            resp = _req.get(
+                "https://serpapi.com/search",
+                params={
+                    "q": query + " site:nih.gov OR site:fda.gov OR site:pubmed.ncbi.nlm.nih.gov OR site:nejm.org",
+                    "api_key": serpapi_key,
+                    "num": max_results,
+                },
+                timeout=8,
+            )
+            if resp.ok:
+                data = resp.json()
+                results = data.get("organic_results", [])[:max_results]
+                if results:
+                    lines = ["WEB SEARCH RESULTS (use these to supplement your knowledge — cite sources):"]
+                    for r in results:
+                        title = r.get("title", "")
+                        snippet = r.get("snippet", "")
+                        source = r.get("displayed_link", r.get("link", ""))
+                        lines.append(f"• {title}: {snippet} (Source: {source})")
+                    lines.append("\nIMPORTANT: Use these results to answer the user's question accurately. Cite the source. If results conflict with your knowledge, prefer the more recent source.")
+                    return "\n".join(lines)
+        except Exception as e:
+            print(f"[SEARCH] SerpAPI error: {e}")
+
+    # Fallback: try Google Custom Search
+    google_key = os.getenv("GOOGLE_SEARCH_KEY", "")
+    google_cx = os.getenv("GOOGLE_SEARCH_CX", "")
+    if google_key and google_cx:
+        try:
+            resp = _req.get(
+                "https://www.googleapis.com/customsearch/v1",
+                params={
+                    "key": google_key,
+                    "cx": google_cx,
+                    "q": query,
+                    "num": max_results,
+                },
+                timeout=8,
+            )
+            if resp.ok:
+                items = resp.json().get("items", [])[:max_results]
+                if items:
+                    lines = ["WEB SEARCH RESULTS (cite sources when using):"]
+                    for item in items:
+                        lines.append(f"• {item.get('title','')}: {item.get('snippet','')} (Source: {item.get('link','')})")
+                    lines.append("\nUse these to supplement your answer. Cite the source.")
+                    return "\n".join(lines)
+        except Exception as e:
+            print(f"[SEARCH] Google CSE error: {e}")
+
+    return ""
+
+
+def _build_search_query(message: str) -> str:
+    """Extract a clean search query from the user's message."""
+    # Remove personal context, keep the factual question
+    import re as _re_q
+    # Strip common conversational prefixes
+    query = _re_q.sub(
+        r'^(hey|hi|can you|could you|please|tell me|what do you know about|i want to know|do you know)\s+',
+        '', message.strip(), flags=_re_q.IGNORECASE
+    )
+    # Add medical context for better results
+    if not any(w in query.lower() for w in ["glp-1", "glp1", "weight loss", "obesity", "diabetes"]):
+        query += " GLP-1 medication"
+    return query[:200]
 
 
 # ── LLM caller ────────────────────────────────────────────────────────────────
@@ -1538,6 +1681,17 @@ def chat():
     if cliff_ctx:
         overlay = cliff_ctx + "\n\n" + overlay if overlay else cliff_ctx
 
+    # ── STEP 5b: Conditional web search (only for new/unknown topics) ─────────
+    web_context = ""
+    if _needs_web_search(message, intent):
+        try:
+            search_query = _build_search_query(message)
+            web_context = _web_search(search_query)
+            if web_context:
+                print(f"[SEARCH] Web search triggered for: '{search_query[:60]}'")
+        except Exception as e:
+            print(f"[SEARCH] Error (non-fatal): {e}")
+
     # ── STEP 6: Build LLM messages (FIX-SHIELD-3: pass shield) ───────────────
     # Trim document text before LLM call to free memory on Render 512MB worker
     doc_for_llm = (resolved_document_text[:4000] if (has_documents and resolved_document_text) else "")
@@ -1559,6 +1713,10 @@ def chat():
         user_plan=user_plan,
         reports_remaining=reports_remaining,
     )
+
+    # Inject web search results as final system message (if any)
+    if web_context:
+        messages_for_llm.insert(-1, {"role": "system", "content": web_context})
 
     # ── STEP 7: Call LLM ──────────────────────────────────────────────────────
     reply = _call_llm_safe(messages_for_llm)
@@ -1591,6 +1749,31 @@ def chat():
         document_text.strip().startswith("MEAL_PHOTO")
     )
     # Only append disclaimer for clinical responses — not for simple conversational ones
+    # First strip any disclaimer the LLM generated on its own (prevents doubles/triples)
+    _disclaimer_patterns = [
+        "\n\n⚕️ *Curabook is an educational wellness tool. Always consult your healthcare provider.*",
+        "\n⚕️ *Curabook is an educational wellness tool. Always consult your healthcare provider.*",
+        "⚕️ Curabook is an educational wellness tool. Always consult your healthcare provider.",
+        "\n\n⚕️ *This is health education, not medical advice. Discuss changes with your provider.*",
+        "\n⚕️ *This is health education, not medical advice. Discuss changes with your provider.*",
+        "⚕️ This is health education, not medical advice. Discuss changes with your provider.",
+        "\n\nMedical Disclaimer: This response is for informational purposes only and should not be considered medical advice. Always consult with a healthcare professional for medical advice and treatment.",
+        "\nMedical Disclaimer: This response is for informational purposes only and should not be considered medical advice. Always consult with a healthcare professional for medical concerns.",
+        "\n\n---\n⚕️ *PHI is an educational wellness tool. It does not provide medical diagnoses or prescriptions. Always consult your healthcare provider before making any medical decisions.*",
+    ]
+    for pattern in _disclaimer_patterns:
+        reply = reply.replace(pattern, "")
+    # Also catch any remaining disclaimer variations with regex
+    import re as _re_disc
+    reply = _re_disc.sub(
+        r'\n*⚕️\s*\*?(?:Curabook|PHI|This)[^*\n]*(?:provider|advice|decisions)\.?\*?\s*$',
+        '', reply, flags=_re_disc.IGNORECASE | _re_disc.MULTILINE
+    ).rstrip()
+    reply = _re_disc.sub(
+        r'\n*Medical Disclaimer:[^\n]*(?:provider|advice|treatment|concerns)\.?\s*$',
+        '', reply, flags=_re_disc.IGNORECASE | _re_disc.MULTILINE
+    ).rstrip()
+
     _disclaimer = MANDATORY_DISCLAIMER if is_clinical_response(reply) else CONVERSATIONAL_DISCLAIMER
     final_reply = _inject_protein_action(message, reply, is_meal_photo=_is_meal_photo_upload) + _disclaimer
 
@@ -1613,6 +1796,7 @@ def chat():
         "memory_facts": len(memories),
         "shield_metrics": len(shield),
         "intent": intent,
+        "web_searched": bool(web_context),
         "used_memory": True,           # always True now
         "plan": user_plan,
         "reports_remaining": reports_remaining,
