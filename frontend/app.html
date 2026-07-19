@@ -13,6 +13,24 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
 
 <link rel="stylesheet" href="style.css?v=13">
+<style>
+/* Cliff Alert System + Trend Chart */
+.ca-item{border-radius:10px;padding:10px 14px;margin-bottom:8px;font-size:13px;line-height:1.5;}
+.ca-ok{background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.2);}
+.ca-ok .ca-title{color:#059669;font-weight:600;}
+.ca-ok .ca-desc{color:#047857;margin-top:2px;font-size:12px;}
+.ca-warn{background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.25);}
+.ca-warn .ca-title{color:#d97706;font-weight:600;}
+.ca-warn .ca-desc{color:#b45309;margin-top:2px;font-size:12px;}
+.ca-critical{background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.25);}
+.ca-critical .ca-title{color:#dc2626;font-weight:600;}
+.ca-critical .ca-desc{color:#b91c1c;margin-top:2px;font-size:12px;}
+.ca-loading{background:rgba(0,0,0,.03);border:1px solid rgba(0,0,0,.06);}
+.ca-loading .ca-title{color:#888;}
+.ca-danger{background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.25);}
+.ca-danger .ca-title{color:#dc2626;font-weight:600;}
+.ca-danger .ca-desc{color:#b91c1c;margin-top:2px;font-size:12px;}
+</style>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -343,10 +361,37 @@
         </button>
       </div>
       <div id="cliffAlerts">
-        <div class="ca-item ca-ok">
-          <div class="ca-title">✅ No rebound signals</div>
-          <div class="ca-desc">Upload a Quest or LabCorp report to enable automatic cliff monitoring.</div>
+        <div class="ca-item ca-loading">
+          <div class="ca-title">⏳ Checking cliff signals...</div>
         </div>
+      </div>
+
+      <!-- Cessation Timeline (shown when user has last_dose_date) -->
+      <div id="cessationTimeline" style="display:none;margin-top:12px;padding:12px 14px;border-radius:10px;background:rgba(0,188,213,.06);border:1px solid rgba(0,188,213,.2);">
+        <div style="font-size:13px;font-weight:600;color:#0097a7;margin-bottom:4px;" id="cessationTitle">Cessation Timeline</div>
+        <div style="font-size:12px;color:#00796b;line-height:1.6;" id="cessationDetail"></div>
+      </div>
+    </section>
+
+    <!-- ── TREND CHART ──────────────────────────────────────────────────── -->
+    <section class="cp-section" id="trendChartSection" style="display:none;">
+      <div class="cp-section-hd">
+        <h2 class="cp-section-title">Lab Trends</h2>
+        <select id="trendMarkerSelect" style="font-size:12px;padding:4px 8px;border-radius:6px;border:1px solid var(--border,#ddd);background:var(--bg,#fff);color:var(--text,#333);cursor:pointer;">
+          <option value="all">All key markers</option>
+          <option value="HbA1c">HbA1c</option>
+          <option value="Glucose Fasting">Glucose</option>
+          <option value="LDL Cholesterol">LDL</option>
+          <option value="Triglycerides">Triglycerides</option>
+          <option value="Total Cholesterol">Cholesterol</option>
+        </select>
+      </div>
+      <div style="position:relative;height:220px;margin:8px 0;">
+        <canvas id="trendChart"></canvas>
+      </div>
+      <div id="trendSummary" style="font-size:12px;color:var(--muted,#888);line-height:1.6;margin-top:4px;"></div>
+      <div id="nextCheckin" style="display:none;margin-top:8px;padding:8px 12px;border-radius:8px;background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.2);font-size:12px;color:#b45309;">
+        📅 <span id="nextCheckinDate"></span>
       </div>
     </section>
 
@@ -401,6 +446,220 @@ function handleMealPhoto(input) {
   }
   input.value = '';
 }
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+/* ── Cliff Detection + Trend Chart ─────────────────────────────────── */
+(function() {
+  let _trendChart = null;
+  let _cliffData = null;
+
+  const CLIFF_COLORS = {
+    'HbA1c':           '#e24b4a',
+    'Glucose Fasting':  '#eb6834',
+    'LDL Cholesterol':  '#d85a30',
+    'Triglycerides':    '#eda100',
+    'Total Cholesterol':'#7f77dd',
+    'HDL Cholesterol':  '#1d9e75',
+    'Vitamin D':        '#1baf7a',
+  };
+
+  async function loadCliffData() {
+    try {
+      const h = typeof headers === 'function' ? await headers() : null;
+      if (!h) return;
+
+      const res = await fetch((window._API || '') + '/api/cliff-check', { headers: h });
+      if (!res.ok) return;
+      _cliffData = await res.json();
+
+      renderCliffAlerts(_cliffData);
+      renderTrendChart(_cliffData, 'all');
+      renderNextCheckin(_cliffData);
+    } catch (e) { console.warn('[CLIFF] Load error:', e); }
+  }
+
+  function renderCliffAlerts(data) {
+    const el = document.getElementById('cliffAlerts');
+    if (!el) return;
+
+    if (!data.cliff_signals || data.cliff_signals.length === 0) {
+      if (data.markers_tracked > 0) {
+        el.innerHTML = '<div class="ca-item ca-ok"><div class="ca-title">✅ No cliff signals detected</div><div class="ca-desc">Your markers are within safe ranges. Next check-in: upload labs in ' + (data.next_checkin_date ? Math.ceil((new Date(data.next_checkin_date) - new Date()) / 86400000) + ' days' : '6 weeks') + '.</div></div>';
+      } else {
+        el.innerHTML = '<div class="ca-item ca-ok"><div class="ca-title">📋 No lab data yet</div><div class="ca-desc">Upload a lab report (📎) to enable automatic cliff monitoring. 3 free uploads included.</div></div>';
+      }
+      return;
+    }
+
+    el.innerHTML = data.cliff_signals.map(s => {
+      const cls = s.severity === 'critical' ? 'ca-critical' : 'ca-warn';
+      const icon = s.severity === 'critical' ? '🚨' : '⚠️';
+      return '<div class="ca-item ' + cls + '">' +
+        '<div class="ca-title">' + icon + ' ' + s.marker + '</div>' +
+        '<div class="ca-desc">' + s.message + '</div>' +
+        '</div>';
+    }).join('');
+  }
+
+  function renderTrendChart(data, filter) {
+    const section = document.getElementById('trendChartSection');
+    const canvas = document.getElementById('trendChart');
+    if (!section || !canvas) return;
+
+    const trends = (data.trends || []).filter(t => t.readings_count >= 2);
+    if (trends.length === 0) { section.style.display = 'none'; return; }
+
+    section.style.display = 'block';
+
+    // Get timeline data for chart
+    const datasets = [];
+    const allDates = new Set();
+
+    const markersToShow = filter === 'all'
+      ? ['HbA1c', 'Glucose Fasting', 'LDL Cholesterol', 'Triglycerides']
+      : [filter];
+
+    for (const t of trends) {
+      if (!markersToShow.includes(t.marker)) continue;
+      allDates.add(t.previous_date);
+      allDates.add(t.current_date);
+    }
+
+    const sortedDates = Array.from(allDates).sort();
+    if (sortedDates.length < 2) { section.style.display = 'none'; return; }
+
+    for (const t of trends) {
+      if (!markersToShow.includes(t.marker)) continue;
+      const color = CLIFF_COLORS[t.marker] || '#888';
+      datasets.push({
+        label: t.marker,
+        data: [
+          { x: t.previous_date, y: t.previous },
+          { x: t.current_date, y: t.current }
+        ],
+        borderColor: color,
+        backgroundColor: color + '22',
+        pointBackgroundColor: color,
+        pointRadius: 5,
+        pointHoverRadius: 7,
+        borderWidth: 2,
+        tension: 0,
+        fill: false,
+      });
+    }
+
+    if (_trendChart) _trendChart.destroy();
+
+    const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const gridColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+    const textColor = isDark ? '#aaa' : '#666';
+
+    _trendChart = new Chart(canvas, {
+      type: 'line',
+      data: { datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'nearest', intersect: false },
+        plugins: {
+          legend: { display: true, position: 'bottom', labels: { font: { size: 11 }, color: textColor, boxWidth: 12, padding: 8 } },
+          tooltip: {
+            callbacks: {
+              label: function(ctx) {
+                return ctx.dataset.label + ': ' + ctx.parsed.y + (ctx.dataset.label === 'HbA1c' ? '%' : ' mg/dL');
+              }
+            }
+          }
+        },
+        scales: {
+          x: { type: 'category', labels: sortedDates, grid: { color: gridColor }, ticks: { font: { size: 10 }, color: textColor } },
+          y: { grid: { color: gridColor }, ticks: { font: { size: 10 }, color: textColor } }
+        }
+      }
+    });
+
+    // Trend summary text
+    const summary = document.getElementById('trendSummary');
+    if (summary) {
+      const lines = trends.filter(t => markersToShow.includes(t.marker)).map(t => {
+        const arrow = t.direction === 'up' ? '↑' : t.direction === 'down' ? '↓' : '→';
+        return t.marker + ': ' + t.previous + ' → ' + t.current + ' ' + arrow + ' ' + Math.abs(t.change_pct) + '% in ' + t.days_between + ' days';
+      });
+      summary.textContent = lines.join(' · ');
+    }
+  }
+
+  function renderNextCheckin(data) {
+    const el = document.getElementById('nextCheckin');
+    const dateEl = document.getElementById('nextCheckinDate');
+    if (!el || !dateEl) return;
+
+    if (data.next_checkin_date && data.markers_tracked > 0) {
+      const d = new Date(data.next_checkin_date);
+      const daysLeft = Math.ceil((d - new Date()) / 86400000);
+      dateEl.textContent = 'Next lab upload recommended: ' + d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) +
+        (daysLeft > 0 ? ' (' + daysLeft + ' days)' : ' (overdue — upload now!)');
+      el.style.display = 'block';
+    }
+  }
+
+  // Load cessation timeline
+  async function loadCessationTimeline() {
+    try {
+      const h = typeof headers === 'function' ? await headers() : null;
+      if (!h) return;
+      const res = await fetch((window._API || '') + '/api/cliff-status', { headers: h });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.cessation_context) {
+        const el = document.getElementById('cessationTimeline');
+        const detail = document.getElementById('cessationDetail');
+        if (el && detail) {
+          detail.textContent = data.cessation_context;
+          el.style.display = 'block';
+        }
+      }
+    } catch (e) { console.warn('[CESSATION] Load error:', e); }
+  }
+
+  // Marker filter dropdown
+  const select = document.getElementById('trendMarkerSelect');
+  if (select) {
+    select.addEventListener('change', function() {
+      if (_cliffData) renderTrendChart(_cliffData, this.value);
+    });
+  }
+
+  // Refresh button
+  const refreshBtn = document.getElementById('refreshAlertsBtn');
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', function() {
+      loadCliffData();
+      loadCessationTimeline();
+    });
+  }
+
+  // Auto-load when cockpit opens
+  const observer = new MutationObserver(function() {
+    const cockpit = document.getElementById('cockpit');
+    if (cockpit && cockpit.classList.contains('open')) {
+      loadCliffData();
+      loadCessationTimeline();
+    }
+  });
+  const cockpit = document.getElementById('cockpit');
+  if (cockpit) observer.observe(cockpit, { attributes: true, attributeFilter: ['class'] });
+
+  // Also load on page load after a short delay (for users who land on cockpit view)
+  setTimeout(function() {
+    const c = document.getElementById('cockpit');
+    if (c && c.classList.contains('open')) {
+      loadCliffData();
+      loadCessationTimeline();
+    }
+  }, 2000);
+})();
 </script>
 <script src="script.js?v=30"></script>
 <script src="phi_fixes.js?v=3"></script>
