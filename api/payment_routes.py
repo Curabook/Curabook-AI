@@ -822,7 +822,12 @@ def setup_missing_tables():
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS goal_weight_lbs numeric",
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS current_weight_lbs numeric",
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS glp1_status text",
+        "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS last_dose_date date",
+        "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS stop_reason text",
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS is_admin_granted boolean default false",
+        "ALTER TABLE glp1_onboarding ADD COLUMN IF NOT EXISTS last_dose_date date",
+        "ALTER TABLE glp1_onboarding ADD COLUMN IF NOT EXISTS stop_reason text",
+        "ALTER TABLE glp1_onboarding ADD COLUMN IF NOT EXISTS expected_stop_date date",
     ]
 
     missing_tables_sql = [

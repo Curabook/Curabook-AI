@@ -719,6 +719,247 @@ def behavioral_logs_post():
         print(f"[BEHAVIORAL-LOGS] Insert error: {e}")
         return jsonify({"error": f"Could not save log: {type(e).__name__}"}), 500
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CLIFF DETECTION — Cross-report comparison + early warning
+# ══════════════════════════════════════════════════════════════════════════════
+
+_CLIFF_THRESHOLDS = {
+    "HbA1c":           {"type": "rise", "threshold": 0.25, "unit": "%",    "label": "HbA1c rebound"},
+    "Glucose Fasting":  {"type": "pct",  "threshold": 15,   "unit": "mg/dL","label": "Glucose rebound"},
+    "Triglycerides":    {"type": "pct",  "threshold": 20,   "unit": "mg/dL","label": "Triglyceride spike"},
+    "LDL Cholesterol":  {"type": "pct",  "threshold": 15,   "unit": "mg/dL","label": "LDL increase"},
+    "Total Cholesterol":{"type": "pct",  "threshold": 15,   "unit": "mg/dL","label": "Cholesterol rise"},
+}
+
+
+@health_bp.route("/api/cliff-check", methods=["GET"])
+def cliff_check():
+    """
+    Compare the user's most recent lab values against their previous values.
+    Returns cliff signals: markers that crossed threshold between reports.
+
+    Response:
+    {
+        "cliff_signals": [
+            {
+                "marker": "HbA1c",
+                "previous": 5.4, "previous_date": "2025-03-01",
+                "current": 5.9,  "current_date": "2025-06-15",
+                "change": 0.5, "change_pct": 9.3,
+                "threshold": 0.25, "severity": "critical",
+                "message": "HbA1c increased 0.5% in 106 days — above the 0.25% cliff threshold"
+            }
+        ],
+        "trends": [...],
+        "days_between_reports": 106,
+        "next_checkin_date": "2025-08-01",
+        "risk_level": "high"
+    }
+    """
+    from app import supabase
+    from services.auth import get_authenticated_user
+    from services.compliance import audit_log
+    from datetime import date, timedelta
+
+    user = get_authenticated_user(supabase)
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    try:
+        # Get all markers ordered by date, grouped by marker name
+        res = (supabase.table("health_markers")
+               .select("marker,value,unit,status,source_document,created_at")
+               .eq("user_id", user.id)
+               .order("created_at", desc=True)
+               .limit(500)
+               .execute())
+
+        if not res.data:
+            return jsonify({
+                "cliff_signals": [],
+                "trends": [],
+                "risk_level": "unknown",
+                "message": "No lab data yet. Upload your first report to start cliff monitoring.",
+                "next_checkin_date": None,
+            })
+
+        # Group by marker name, take the two most recent values for each
+        from collections import defaultdict
+        marker_history = defaultdict(list)
+        for row in res.data:
+            marker_history[row["marker"]].append(row)
+
+        cliff_signals = []
+        trends = []
+
+        for marker_name, readings in marker_history.items():
+            if len(readings) < 2:
+                # Only one reading — add to trends but no comparison possible
+                r = readings[0]
+                trends.append({
+                    "marker": marker_name,
+                    "value": r["value"],
+                    "unit": r.get("unit", ""),
+                    "date": r["created_at"][:10],
+                    "status": r.get("status", "UNKNOWN"),
+                    "readings_count": 1,
+                })
+                continue
+
+            current = readings[0]
+            previous = readings[1]
+
+            try:
+                curr_val = float(current["value"])
+                prev_val = float(previous["value"])
+            except (ValueError, TypeError):
+                continue
+
+            change = round(curr_val - prev_val, 2)
+            change_pct = round((change / prev_val) * 100, 1) if prev_val != 0 else 0
+
+            curr_date = current["created_at"][:10]
+            prev_date = previous["created_at"][:10]
+            days_between = (date.fromisoformat(curr_date) - date.fromisoformat(prev_date)).days
+
+            trend_entry = {
+                "marker": marker_name,
+                "previous": prev_val, "previous_date": prev_date,
+                "current": curr_val,  "current_date": curr_date,
+                "change": change, "change_pct": change_pct,
+                "days_between": days_between,
+                "direction": "up" if change > 0 else "down" if change < 0 else "stable",
+                "unit": current.get("unit", ""),
+                "readings_count": len(readings),
+            }
+            trends.append(trend_entry)
+
+            # Check against cliff thresholds
+            threshold_config = _CLIFF_THRESHOLDS.get(marker_name)
+            if not threshold_config:
+                continue
+
+            is_cliff = False
+            if threshold_config["type"] == "rise" and change > 0:
+                is_cliff = change >= threshold_config["threshold"]
+            elif threshold_config["type"] == "pct" and change_pct > 0:
+                is_cliff = change_pct >= threshold_config["threshold"]
+
+            if is_cliff:
+                cliff_signals.append({
+                    "marker": marker_name,
+                    "previous": prev_val, "previous_date": prev_date,
+                    "current": curr_val,  "current_date": curr_date,
+                    "change": change, "change_pct": change_pct,
+                    "days_between": days_between,
+                    "threshold": threshold_config["threshold"],
+                    "severity": "critical" if (
+                        (threshold_config["type"] == "rise" and change >= threshold_config["threshold"] * 2) or
+                        (threshold_config["type"] == "pct" and change_pct >= threshold_config["threshold"] * 1.5)
+                    ) else "warning",
+                    "message": (
+                        f"{marker_name} {'increased' if change > 0 else 'decreased'} "
+                        f"{'by ' + str(abs(change)) + threshold_config['unit'] if threshold_config['type'] == 'rise' else str(abs(change_pct)) + '%'} "
+                        f"in {days_between} days — "
+                        f"{'above' if change > 0 else 'below'} the "
+                        f"{threshold_config['threshold']}{'%' if threshold_config['type'] == 'pct' else threshold_config['unit']} cliff threshold"
+                    ),
+                })
+
+        # Determine overall risk level
+        if any(s["severity"] == "critical" for s in cliff_signals):
+            risk_level = "critical"
+        elif cliff_signals:
+            risk_level = "high"
+        elif trends:
+            risk_level = "monitoring"
+        else:
+            risk_level = "unknown"
+
+        # Calculate next check-in: 6 weeks from most recent report, or 4 weeks if cliff detected
+        most_recent_date = max(
+            (t["current_date"] if "current_date" in t else t["date"])
+            for t in trends
+        ) if trends else date.today().isoformat()
+        checkin_weeks = 4 if cliff_signals else 6
+        next_checkin = (date.fromisoformat(most_recent_date) + timedelta(weeks=checkin_weeks)).isoformat()
+
+        audit_log(supabase, user.id, "CLIFF_CHECK",
+                  f"signals:{len(cliff_signals)} risk:{risk_level} trends:{len(trends)}", "PHI")
+
+        return jsonify({
+            "cliff_signals":       cliff_signals,
+            "trends":              trends,
+            "risk_level":          risk_level,
+            "next_checkin_date":   next_checkin,
+            "signal_count":        len(cliff_signals),
+            "markers_tracked":     len(trends),
+        })
+
+    except Exception as e:
+        print(f"[CLIFF] Error: {e}")
+        return jsonify({"cliff_signals": [], "trends": [], "risk_level": "error"})
+
+
+@health_bp.route("/api/cliff-status", methods=["GET"])
+def cliff_status_summary():
+    """
+    Lightweight endpoint for the chat system prompt to inject cliff context.
+    Returns a one-line summary suitable for LLM injection.
+    """
+    from app import supabase
+    from services.auth import get_authenticated_user
+    from datetime import date
+
+    user = get_authenticated_user(supabase)
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    try:
+        # Get last dose date from profile
+        profile = supabase.table("user_profiles").select(
+            "glp1_status,last_dose_date,stop_reason,goal_weight_lbs"
+        ).eq("user_id", user.id).limit(1).execute()
+
+        cessation_context = ""
+        if profile.data:
+            p = profile.data[0]
+            last_dose = p.get("last_dose_date")
+            if last_dose:
+                try:
+                    days_since = (date.today() - date.fromisoformat(str(last_dose)[:10])).days
+                    med = "semaglutide"  # default
+                    hl = _HALF_LIVES.get(med, 7.0)
+                    pct = round(100 * (0.5 ** (days_since / hl)), 1)
+                    cessation_context = (
+                        f"CESSATION STATUS: {days_since} days since last dose. "
+                        f"~{pct}% of drug remains active (half-life: {hl} days). "
+                    )
+                    if days_since <= 14:
+                        cessation_context += "Drug still partially active. Early transition phase."
+                    elif days_since <= 28:
+                        cessation_context += "PEAK DANGER WINDOW — ghrelin rebound at maximum. Highest cliff risk."
+                    elif days_since <= 60:
+                        cessation_context += "Post-peak phase. Hunger may be stabilizing but metabolic markers need monitoring."
+                    else:
+                        cessation_context += "Extended post-cessation. Lab monitoring critical to detect slow drift."
+                except Exception:
+                    pass
+
+            stop_reason = p.get("stop_reason")
+            if stop_reason:
+                cessation_context += f" Stop reason: {stop_reason}."
+                if stop_reason in ("insurance", "compounding", "cost"):
+                    cessation_context += " → PA Architect may help this user get back on medication."
+
+        return jsonify({"cessation_context": cessation_context})
+
+    except Exception as e:
+        print(f"[CLIFF-STATUS] Error: {e}")
+        return jsonify({"cessation_context": ""})
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # TAPER TRACKER
 # ══════════════════════════════════════════════════════════════════════════════

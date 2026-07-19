@@ -760,6 +760,51 @@ USER'S CURRENT PLAN: {user_plan}
 """.strip()
     messages.append({"role": "system", "content": plan_context})
 
+    # Inject cessation context (last dose date, half-life, risk phase)
+    try:
+        from datetime import date as _date
+        profile_res = supabase.table("user_profiles").select(
+            "glp1_status,last_dose_date,stop_reason"
+        ).eq("user_id", user_id).limit(1).execute()
+
+        if profile_res.data:
+            p = profile_res.data[0]
+            last_dose = p.get("last_dose_date")
+            glp1_status = p.get("glp1_status", "")
+
+            if last_dose and glp1_status in ("stopped", "tapering"):
+                days_since = (_date.today() - _date.fromisoformat(str(last_dose)[:10])).days
+                hl = 7.0  # default semaglutide
+                pct = round(100 * (0.5 ** (days_since / hl)), 1)
+                half_lives_elapsed = round(days_since / hl, 1)
+
+                phase = "early transition — drug still partially active"
+                if days_since <= 14:
+                    phase = "early transition — drug still partially active, ghrelin starting to rise"
+                elif days_since <= 28:
+                    phase = "PEAK DANGER WINDOW — ghrelin rebound at maximum, highest cliff risk period"
+                elif days_since <= 60:
+                    phase = "post-peak — hunger may be stabilizing but metabolic markers need monitoring"
+                else:
+                    phase = "extended post-cessation — lab monitoring critical to detect slow metabolic drift"
+
+                cessation_block = (
+                    f"CESSATION TIMELINE:\n"
+                    f"• Last dose: {last_dose} ({days_since} days ago)\n"
+                    f"• Drug remaining: ~{pct}% active ({half_lives_elapsed} half-lives elapsed)\n"
+                    f"• Phase: {phase}\n"
+                    f"USE THIS in every relevant response. Say 'You're {days_since} days post-cessation' not vague statements."
+                )
+                stop_reason = p.get("stop_reason")
+                if stop_reason:
+                    cessation_block += f"\n• Reason stopped: {stop_reason}"
+                    if stop_reason in ("insurance", "compounding", "cost"):
+                        cessation_block += " — PA Architect may help this user get back on medication"
+
+                messages.append({"role": "system", "content": cessation_block})
+    except Exception as e:
+        print(f"[CHAT] Cessation context error (non-fatal): {e}")
+
     has_health_data = bool(memories or markers or shield)
     if has_health_data:
         memory_block = _format_memory_block(memories, markers, shield)
@@ -786,6 +831,52 @@ USER'S CURRENT PLAN: {user_plan}
 
     if health_context_overlay:
         messages.append({"role": "system", "content": health_context_overlay})
+
+    # Inject cross-report cliff signals if user has 2+ reports
+    try:
+        from collections import defaultdict as _dd
+        marker_res = (supabase.table("health_markers")
+                      .select("marker,value,unit,created_at")
+                      .eq("user_id", user_id)
+                      .order("created_at", desc=True)
+                      .limit(200)
+                      .execute())
+        if marker_res.data:
+            _mh = _dd(list)
+            for row in marker_res.data:
+                _mh[row["marker"]].append(row)
+
+            cliff_lines = []
+            for mk, readings in _mh.items():
+                if len(readings) < 2:
+                    continue
+                try:
+                    curr = float(readings[0]["value"])
+                    prev = float(readings[1]["value"])
+                    change = round(curr - prev, 2)
+                    pct_change = round((change / prev) * 100, 1) if prev else 0
+                    curr_date = readings[0]["created_at"][:10]
+                    prev_date = readings[1]["created_at"][:10]
+                    unit = readings[0].get("unit", "")
+                    direction = "↑" if change > 0 else "↓" if change < 0 else "→"
+                    cliff_lines.append(
+                        f"  {mk}: {prev}{unit} ({prev_date}) → {curr}{unit} ({curr_date}) "
+                        f"{direction} {abs(change)}{unit} ({abs(pct_change)}%)"
+                    )
+                except (ValueError, TypeError):
+                    continue
+
+            if cliff_lines:
+                cliff_block = (
+                    "CROSS-REPORT COMPARISON (latest two values per marker):\n"
+                    + "\n".join(cliff_lines[:15])
+                    + "\n\nUSE THESE TRENDS when the user asks about their labs, progress, or cliff risk. "
+                    "Calculate rates of change and project forward. Flag any marker that crossed cliff thresholds "
+                    "(HbA1c ≥0.25% rise, glucose ≥15% rise, triglycerides ≥20% rise)."
+                )
+                messages.append({"role": "system", "content": cliff_block})
+    except Exception as e:
+        print(f"[CHAT] Cliff injection error (non-fatal): {e}")
 
     if has_documents and document_text:
         messages.append({

@@ -282,6 +282,47 @@
                         <span class="glp1-option-desc">Researching or getting started</span>
                     </button>
                 </div>
+
+                <!-- Conditional: Last dose date (shown for stopped/tapering) -->
+                <div id="lastDoseGroup" style="display:none;margin-top:16px;">
+                    <label class="form-label" for="lastDoseDate">When was your last dose?</label>
+                    <input type="date" id="lastDoseDate" class="form-input"
+                        style="font-size:1rem;text-align:center;max-width:220px;">
+                    <p style="font-size:11.5px;color:var(--muted);margin-top:4px;">PHI uses this to calculate your cliff risk timeline</p>
+                </div>
+
+                <!-- Conditional: Expected stop date (shown for tapering) -->
+                <div id="expectedStopGroup" style="display:none;margin-top:12px;">
+                    <label class="form-label" for="expectedStopDate">When do you expect to fully stop?</label>
+                    <input type="date" id="expectedStopDate" class="form-input"
+                        style="font-size:1rem;text-align:center;max-width:220px;">
+                </div>
+
+                <!-- Conditional: Why did you stop (shown for stopped) -->
+                <div id="stopReasonGroup" style="display:none;margin-top:12px;">
+                    <div class="form-label" style="margin-bottom:8px">Why did you stop?</div>
+                    <div class="glp1-option-grid" style="grid-template-columns:1fr 1fr;">
+                        <button class="glp1-option" data-val="insurance" onclick="selectOption(this,'stopReason')" style="padding:10px 12px;">
+                            <span class="glp1-option-label" style="font-size:13px;">Insurance denied</span>
+                        </button>
+                        <button class="glp1-option" data-val="cost" onclick="selectOption(this,'stopReason')" style="padding:10px 12px;">
+                            <span class="glp1-option-label" style="font-size:13px;">Too expensive</span>
+                        </button>
+                        <button class="glp1-option" data-val="side_effects" onclick="selectOption(this,'stopReason')" style="padding:10px 12px;">
+                            <span class="glp1-option-label" style="font-size:13px;">Side effects</span>
+                        </button>
+                        <button class="glp1-option" data-val="personal" onclick="selectOption(this,'stopReason')" style="padding:10px 12px;">
+                            <span class="glp1-option-label" style="font-size:13px;">Personal choice</span>
+                        </button>
+                        <button class="glp1-option" data-val="compounding" onclick="selectOption(this,'stopReason')" style="padding:10px 12px;">
+                            <span class="glp1-option-label" style="font-size:13px;">Compounding shutdown</span>
+                        </button>
+                        <button class="glp1-option" data-val="doctor" onclick="selectOption(this,'stopReason')" style="padding:10px 12px;">
+                            <span class="glp1-option-label" style="font-size:13px;">Doctor advised</span>
+                        </button>
+                    </div>
+                </div>
+
                 <div class="onboarding-nav">
                     <button class="btn-next" id="nextA" onclick="goToPanel('B')" disabled>Continue →</button>
                 </div>
@@ -444,7 +485,7 @@ let supabaseClient = null;
 let _userId        = null;
 let _accessToken   = null;
 
-const ob = { glp1Status: null, goalWeight: null, currentWeight: null, concern: null, plan: 'monthly' };
+const ob = { glp1Status: null, goalWeight: null, currentWeight: null, concern: null, stopReason: null, plan: 'monthly' };
 
 function initSupabase() {
     supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
@@ -486,12 +527,17 @@ function selectOption(btn, field) {
         // Reveal date fields based on status
         const lastDoseGrp   = document.getElementById('lastDoseGroup');
         const expectedGrp   = document.getElementById('expectedStopGroup');
+        const stopReasonGrp = document.getElementById('stopReasonGroup');
         const val = btn.dataset.val;
-        if (lastDoseGrp)   lastDoseGrp.style.display   = val === 'stopped'   ? 'block' : 'none';
-        if (expectedGrp)   expectedGrp.style.display   = val === 'tapering'  ? 'block' : 'none';
+        if (lastDoseGrp)    lastDoseGrp.style.display   = (val === 'stopped' || val === 'tapering') ? 'block' : 'none';
+        if (expectedGrp)    expectedGrp.style.display   = val === 'tapering'  ? 'block' : 'none';
+        if (stopReasonGrp)  stopReasonGrp.style.display  = val === 'stopped'  ? 'block' : 'none';
         // Reset critical zone preview when status changes
         const czPrev = document.getElementById('czPreview');
         if (czPrev) czPrev.style.display = 'none';
+    }
+    if (field === 'stopReason') {
+        // No gate — just store the value
     }
     if (field === 'concern')    document.getElementById('nextC').disabled = false;
 }
@@ -554,6 +600,8 @@ async function saveOnboardingData() {
                         current_weight_lbs: ob.currentWeight || null,
                         primary_concern:    ob.concern       || '',
                         first_name:         fn               || '',
+                        last_dose_date:     ob.lastDoseDate  || null,
+                        stop_reason:        ob.stopReason    || null,
                     }),
                 });
             }
@@ -590,6 +638,17 @@ async function saveOnboardingData() {
         }
         if (ob.expectedStopDate) {
             facts.push(`User is tapering GLP-1, expected last dose: ${ob.expectedStopDate}`);
+        }
+        if (ob.stopReason) {
+            const stopLabels = {
+                'insurance':   'User stopped GLP-1 because insurance denied coverage — PA Architect may help them appeal',
+                'cost':        'User stopped GLP-1 due to cost — interested in affordable alternatives or getting coverage',
+                'side_effects':'User stopped GLP-1 due to side effects — needs careful monitoring during transition',
+                'personal':    'User stopped GLP-1 by personal choice — focused on behavioral maintenance',
+                'compounding': 'User was forced off compounded GLP-1 due to FDA shutdown — involuntary cessation, may need help getting branded coverage',
+                'doctor':      'User stopped GLP-1 on doctor advice — may have a planned transition protocol',
+            };
+            if (stopLabels[ob.stopReason]) facts.push(stopLabels[ob.stopReason]);
         }
 
         const now = new Date().toISOString();

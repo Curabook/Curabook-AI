@@ -41,6 +41,8 @@ def save_onboarding():
     concern        = str(body.get("primary_concern",    "") or "")[:100]
     first_name     = str(body.get("first_name",         "") or "")[:80]
     plan           = str(body.get("plan",        "free") or "free")[:20]
+    last_dose_date = str(body.get("last_dose_date",     "") or "")[:10] or None
+    stop_reason    = str(body.get("stop_reason",        "") or "")[:50] or None
     now            = datetime.now(timezone.utc).isoformat()
 
     # Ensure consents exist
@@ -54,6 +56,10 @@ def save_onboarding():
     }
     if first_name:
         profile_data["first_name"] = first_name
+    if last_dose_date:
+        profile_data["last_dose_date"] = last_dose_date
+    if stop_reason:
+        profile_data["stop_reason"] = stop_reason
     if goal_weight:
         try:
             profile_data["goal_weight_lbs"] = float(goal_weight)
@@ -148,6 +154,32 @@ def save_onboarding():
     }
     if concern and concern in concern_labels:
         facts.append(concern_labels[concern])
+
+    # Last dose date fact — critical for cliff timeline
+    if last_dose_date and glp1_status in ("stopped", "tapering"):
+        try:
+            from datetime import date
+            last = date.fromisoformat(last_dose_date)
+            days_ago = (date.today() - last).days
+            facts.append(
+                f"User's last GLP-1 dose was on {last_dose_date} ({days_ago} days ago). "
+                f"Cliff monitoring is active — ghrelin rebound peaks between days 14-28 post-cessation."
+            )
+        except (ValueError, TypeError):
+            pass
+
+    # Stop reason fact — determines which features to recommend
+    if stop_reason:
+        stop_labels = {
+            "insurance":   "User stopped GLP-1 because insurance denied coverage — PA Architect appeal may help them get back on medication",
+            "cost":        "User stopped GLP-1 due to cost — interested in affordable alternatives or getting insurance coverage",
+            "side_effects":"User stopped GLP-1 due to side effects — needs careful monitoring during transition, do not recommend restarting without provider guidance",
+            "personal":    "User stopped GLP-1 by personal choice — focused on behavioral maintenance strategies",
+            "compounding": "User was forced off compounded GLP-1 due to FDA shutdown — involuntary cessation, may need help getting branded coverage through PA appeal",
+            "doctor":      "User stopped GLP-1 on doctor's advice — may have a planned transition protocol in place",
+        }
+        if stop_reason in stop_labels:
+            facts.append(stop_labels[stop_reason])
 
     saved_count = 0
     for fact in facts:
