@@ -452,10 +452,10 @@ footer{border-top:1px solid var(--border);padding:36px max(16px,5vw);display:fle
         <div class="upsell-split">
           <!-- Left: what just happened -->
           <div class="upsell-col upsell-col-left">
-            <div class="upsell-col-badge manual">You just built this manually</div>
+            <div class="upsell-col-badge manual">One-time PA appeal</div>
             <h3>Your PA letter is ready.</h3>
-            <p>You entered your health details by hand. PHI used them to generate this appeal packet.</p>
-            <p class="upsell-friction">Next time insurance denies you, you'll fill this form again from scratch. And the time after that.</p>
+            <p>You paid $79 for this appeal packet. It's yours — download it, share it with your doctor, submit it to your insurer.</p>
+            <p class="upsell-friction">Next denial? You'll pay $79 again. Or upgrade to Shield for unlimited appeals + everything else.</p>
           </div>
           <!-- Center: VS -->
           <div class="upsell-vs-col">
@@ -546,6 +546,9 @@ function _isShield() {
       } catch(e) { /* non-fatal */ }
       renderAuthBanner(true, _session.user.email);
       await loadStoredData();
+
+      // Handle return from PA appeal PayPal payment
+      handlePAPaymentReturn();
 
       // Returning from auth — restore form state and auto-generate
       const savedState = sessionStorage.getItem('phi_appeal_state');
@@ -799,15 +802,19 @@ function renderGenerateBtn() {
         <i class="fa-solid fa-shield-halved"></i> Shield plan — full PA Architect access
       </div>`;
   } else {
-    // Free user — can generate one appeal packet
-    // Shield users get stored data auto-populated; free users fill manually
+    // Free user — show pay-per-appeal option OR subscribe
     wrap.innerHTML = `
-      <button class="btn-primary" id="generateBtn" onclick="generatePacket()">
-        <i class="fa-solid fa-file-medical"></i> Build My Appeal Packet
+      <button class="btn-primary" id="generateBtn" onclick="handleGenerateClick()" style="width:100%;">
+        <i class="fa-solid fa-file-medical"></i> Build My Appeal Packet — $79
       </button>
-      <div style="font-size:.74rem;color:var(--text-3);margin-top:8px;display:flex;align-items:center;gap:5px;">
-        <i class="fa-solid fa-circle-info" style="font-size:.65rem"></i>
-        Free account — generate your packet. Shield members get lab data auto-populated.
+      <div style="font-size:.74rem;color:var(--text-3);margin-top:8px;text-align:center;line-height:1.6;">
+        One-time purchase · No subscription required · HSA/FSA eligible
+      </div>
+      <div style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.06);text-align:center;">
+        <div style="font-size:.72rem;color:var(--text-3);margin-bottom:6px;">Or get unlimited appeals with Shield</div>
+        <a href="/signup?source=appeal&plan=annual" style="font-size:.76rem;color:var(--signal,#00d4c8);text-decoration:none;font-weight:600;">
+          Shield Annual — $179/yr (unlimited appeals + lab monitoring + AI chat)
+        </a>
       </div>`;
   }
 }
@@ -820,8 +827,125 @@ function handleGenerateClick() {
     showAuthGate();
     return;
   }
-  // Both free and Shield users can generate
-  generatePacket();
+
+  // Check if user has access (Shield or PA credits)
+  checkPAAccessAndProceed();
+}
+
+async function checkPAAccessAndProceed() {
+  try {
+    const h = { 'Authorization': 'Bearer ' + _session.access_token };
+    const res = await fetch(`${API}/api/payment/pa-appeal/status`, { headers: h });
+    if (!res.ok) { generatePacket(); return; } // fallback: let server-side handle it
+
+    const data = await res.json();
+
+    if (data.has_access) {
+      // Shield user or has credits — generate directly
+      generatePacket();
+      return;
+    }
+
+    // No access — initiate PayPal one-time payment
+    initiatePAPayment();
+  } catch (e) {
+    console.warn('[PA] Access check error, proceeding:', e);
+    generatePacket(); // fallback
+  }
+}
+
+async function initiatePAPayment() {
+  const btn = document.getElementById('generateBtn');
+  const origLabel = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner" style="animation:spin .7s linear infinite"></i> Connecting to PayPal…';
+
+  try {
+    const h = {
+      'Authorization': 'Bearer ' + _session.access_token,
+      'Content-Type': 'application/json',
+    };
+
+    const res = await fetch(`${API}/api/payment/pa-appeal/create-order`, {
+      method: 'POST',
+      headers: h,
+    });
+
+    const data = await res.json();
+
+    if (data.already_pro) {
+      // They're already Shield — just generate
+      btn.disabled = false;
+      btn.innerHTML = origLabel;
+      generatePacket();
+      return;
+    }
+
+    if (!res.ok || !data.approve_url) {
+      throw new Error(data.error || 'Could not create payment');
+    }
+
+    // Save form state before redirecting to PayPal
+    saveFormState();
+    sessionStorage.setItem('phi_pa_order_id', data.order_id);
+
+    // Redirect to PayPal
+    window.location.href = data.approve_url;
+
+  } catch (e) {
+    btn.disabled = false;
+    btn.innerHTML = origLabel;
+    alert('Payment setup failed: ' + e.message);
+  }
+}
+
+// Handle return from PayPal payment
+async function handlePAPaymentReturn() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('payment') !== 'success') return;
+
+  const orderId = sessionStorage.getItem('phi_pa_order_id');
+  if (!orderId) return;
+
+  // Wait for session to be ready
+  let retries = 0;
+  while (!_session?.access_token && retries < 20) {
+    await new Promise(r => setTimeout(r, 300));
+    retries++;
+  }
+  if (!_session?.access_token) return;
+
+  try {
+    const h = {
+      'Authorization': 'Bearer ' + _session.access_token,
+      'Content-Type': 'application/json',
+    };
+
+    const res = await fetch(`${API}/api/payment/pa-appeal/capture`, {
+      method: 'POST',
+      headers: h,
+      body: JSON.stringify({ order_id: orderId }),
+    });
+
+    const data = await res.json();
+    sessionStorage.removeItem('phi_pa_order_id');
+
+    if (data.success) {
+      // Payment captured — restore form and generate
+      if (typeof toast === 'function') toast('Payment successful! Generating your appeal…');
+      restoreFormState();
+      // Small delay to let UI settle, then generate
+      setTimeout(() => generatePacket(), 500);
+    } else {
+      alert('Payment verification failed: ' + (data.error || 'Unknown error'));
+    }
+  } catch (e) {
+    console.error('[PA] Capture error:', e);
+    alert('Could not verify payment. Please contact support@curabook.com with order: ' + orderId);
+  }
+
+  // Clean up URL
+  window.history.replaceState({}, '', '/appeal');
 }
 
 async function generatePacket() {

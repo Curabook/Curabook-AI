@@ -94,6 +94,10 @@ PLAN_DISPLAY = {
 
 _PRO_PLANS = {"monthly", "annual", "pro"}
 
+# One-time PA Appeal purchase
+PA_APPEAL_PRICE = 79.00  # USD per appeal packet
+PA_APPEAL_CURRENCY = "USD"
+
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -269,6 +273,7 @@ def payment_config():
             "annual":    {"amount": 179,   "currency": "USD", "label": "Shield — $179/yr",             "interval": "annual",  "saves": "Save $120 — 5 months free"},
         },
         "free_report_limit": FREE_REPORT_LIMIT,
+        "pa_appeal_price": PA_APPEAL_PRICE,
     })
 
 
@@ -763,6 +768,195 @@ def paypal_webhook():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# PA APPEAL — ONE-TIME PURCHASE ($79 per appeal)
+# ══════════════════════════════════════════════════════════════════════════════
+
+@payment_bp.route("/api/payment/pa-appeal/create-order", methods=["POST"])
+def create_pa_appeal_order():
+    """
+    Creates a PayPal one-time order for a PA appeal packet.
+    Shield users don't need this — they get unlimited appeals.
+    Response: { "order_id": "xxx", "approve_url": "https://paypal.com/..." }
+    """
+    supabase, get_user, _ = _deps()
+    user = get_user(supabase)
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    # Shield users already have access — don't charge them
+    try:
+        res = supabase.table("user_profiles").select("plan").eq("user_id", user.id).limit(1).execute()
+        if res.data:
+            plan = (res.data[0].get("plan") or "free").lower()
+            if plan in _PRO_PLANS:
+                return jsonify({"error": "You already have Shield — PA appeals are included in your plan.", "already_pro": True}), 400
+    except Exception:
+        pass
+
+    if not PAYPAL_CLIENT_ID:
+        return jsonify({"error": "PayPal is not configured"}), 503
+
+    try:
+        payload = {
+            "intent": "CAPTURE",
+            "purchase_units": [{
+                "amount": {
+                    "currency_code": PA_APPEAL_CURRENCY,
+                    "value": str(PA_APPEAL_PRICE),
+                },
+                "description": "Curabook PHI — PA Appeal Packet (one-time)",
+                "custom_id": f"{user.id}|pa_appeal",
+            }],
+            "application_context": {
+                "brand_name": "Curabook PHI",
+                "landing_page": "NO_PREFERENCE",
+                "shipping_preference": "NO_SHIPPING",
+                "user_action": "PAY_NOW",
+                "return_url": f"{FRONTEND_URL}/appeal?payment=success",
+                "cancel_url": f"{FRONTEND_URL}/appeal?payment=cancel",
+            },
+        }
+
+        resp = requests.post(
+            f"{_PAYPAL_BASE}/v2/checkout/orders",
+            headers=_paypal_headers(),
+            json=payload,
+            timeout=15,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        order_id = data.get("id", "")
+        approve_url = next(
+            (link["href"] for link in data.get("links", []) if link.get("rel") == "approve"),
+            None,
+        )
+
+        if not approve_url:
+            raise ValueError("PayPal did not return an approval URL")
+
+        logger.info(f"[PAY] PA appeal order created: {order_id} for {user.id[:8]}")
+
+        return jsonify({
+            "order_id":    order_id,
+            "approve_url": approve_url,
+            "amount":      PA_APPEAL_PRICE,
+            "currency":    PA_APPEAL_CURRENCY,
+        })
+
+    except Exception as e:
+        logger.error(f"[PAY] PA appeal order error: {e}")
+        return jsonify({"error": "Could not create payment. Please try again."}), 500
+
+
+@payment_bp.route("/api/payment/pa-appeal/capture", methods=["POST"])
+def capture_pa_appeal_order():
+    """
+    Captures a completed PA appeal payment.
+    Request: { "order_id": "xxx" }
+    Response: { "success": true, "credits": 1 }
+    """
+    supabase, get_user, _ = _deps()
+    user = get_user(supabase)
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    body     = request.json or {}
+    order_id = body.get("order_id", "").strip()
+
+    if not order_id:
+        return jsonify({"error": "order_id is required"}), 400
+
+    try:
+        # Capture the order via PayPal
+        resp = requests.post(
+            f"{_PAYPAL_BASE}/v2/checkout/orders/{order_id}/capture",
+            headers=_paypal_headers(),
+            timeout=15,
+        )
+        resp.raise_for_status()
+        capture_data = resp.json()
+
+        status = capture_data.get("status", "")
+        if status != "COMPLETED":
+            return jsonify({"error": f"Payment not completed (status: {status})"}), 400
+
+        # Verify custom_id belongs to this user
+        custom_id = ""
+        for pu in capture_data.get("purchase_units", []):
+            for cap in pu.get("payments", {}).get("captures", []):
+                custom_id = cap.get("custom_id", "")
+                break
+
+        if custom_id and not custom_id.startswith(user.id):
+            return jsonify({"error": "Payment does not belong to this account"}), 403
+
+        # Grant one PA appeal credit
+        try:
+            # Increment pa_credits (or set to 1 if doesn't exist)
+            profile = supabase.table("user_profiles").select("pa_credits").eq("user_id", user.id).limit(1).execute()
+            current_credits = 0
+            if profile.data:
+                current_credits = profile.data[0].get("pa_credits") or 0
+
+            supabase.table("user_profiles").upsert({
+                "user_id":    user.id,
+                "pa_credits": current_credits + 1,
+                "updated_at": _now_iso(),
+            }, on_conflict="user_id").execute()
+        except Exception as e:
+            logger.warning(f"[PAY] PA credit grant error (non-fatal): {e}")
+
+        # Log the payment
+        _log_payment_event(supabase, user.id, "PA_APPEAL_PURCHASED",
+                           f"order:{order_id} amount:{PA_APPEAL_PRICE}")
+
+        logger.info(f"[PAY] PA appeal captured: {order_id} for {user.id[:8]}")
+
+        return jsonify({
+            "success":  True,
+            "credits":  current_credits + 1,
+            "message":  "PA Appeal credit added! You can now generate your appeal packet.",
+            "amount":   PA_APPEAL_PRICE,
+        })
+
+    except requests.HTTPError as e:
+        logger.error(f"[PAY] PA appeal capture failed: {e}")
+        return jsonify({"error": "Could not verify payment. Contact support@curabook.com"}), 500
+    except Exception as e:
+        logger.error(f"[PAY] PA appeal capture error: {e}")
+        return jsonify({"error": "Payment processing failed. Contact support@curabook.com"}), 500
+
+
+@payment_bp.route("/api/payment/pa-appeal/status", methods=["GET"])
+def pa_appeal_status():
+    """Check if user has PA appeal credits or Shield access."""
+    supabase, get_user, _ = _deps()
+    user = get_user(supabase)
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    try:
+        res = supabase.table("user_profiles").select("plan,pa_credits").eq("user_id", user.id).limit(1).execute()
+        if not res.data:
+            return jsonify({"has_access": False, "credits": 0, "is_shield": False, "price": PA_APPEAL_PRICE})
+
+        row = res.data[0]
+        plan = (row.get("plan") or "free").lower()
+        is_shield = plan in _PRO_PLANS
+        credits = row.get("pa_credits") or 0
+
+        return jsonify({
+            "has_access": is_shield or credits > 0,
+            "credits":    credits if not is_shield else 999,
+            "is_shield":  is_shield,
+            "price":      PA_APPEAL_PRICE,
+        })
+    except Exception:
+        return jsonify({"has_access": False, "credits": 0, "is_shield": False, "price": PA_APPEAL_PRICE})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # ADMIN — GRANT PLAN MANUALLY
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -824,6 +1018,7 @@ def setup_missing_tables():
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS glp1_status text",
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS last_dose_date date",
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS stop_reason text",
+        "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS pa_credits integer default 0",
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS is_admin_granted boolean default false",
         "ALTER TABLE glp1_onboarding ADD COLUMN IF NOT EXISTS last_dose_date date",
         "ALTER TABLE glp1_onboarding ADD COLUMN IF NOT EXISTS stop_reason text",
