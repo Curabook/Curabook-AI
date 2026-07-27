@@ -836,7 +836,7 @@ USER'S CURRENT PLAN: {user_plan}
     try:
         from collections import defaultdict as _dd
         marker_res = (supabase.table("health_markers")
-                      .select("marker,value,unit,created_at")
+                      .select("marker_name,value,unit,created_at")
                       .eq("user_id", user_id)
                       .order("created_at", desc=True)
                       .limit(200)
@@ -844,7 +844,7 @@ USER'S CURRENT PLAN: {user_plan}
         if marker_res.data:
             _mh = _dd(list)
             for row in marker_res.data:
-                _mh[row["marker"]].append(row)
+                _mh[row["marker_name"]].append(row)
 
             cliff_lines = []
             for mk, readings in _mh.items():
@@ -1171,16 +1171,23 @@ def _web_search(query: str, max_results: int = 3) -> str:
 
 def _build_search_query(message: str) -> str:
     """Extract a clean search query from the user's message."""
-    # Remove personal context, keep the factual question
     import re as _re_q
-    # Strip common conversational prefixes
+    # Strip quotes, question marks, and common conversational prefixes
+    query = message.strip().strip('"\'')
+    query = _re_q.sub(r'[?!"\']', '', query)
     query = _re_q.sub(
-        r'^(hey|hi|can you|could you|please|tell me|what do you know about|i want to know|do you know)\s+',
-        '', message.strip(), flags=_re_q.IGNORECASE
+        r'^(hey|hi|can you|could you|please|tell me|what do you know about|i want to know|do you know|is there)\s+',
+        '', query, flags=_re_q.IGNORECASE
     )
-    # Add medical context for better results
-    if not any(w in query.lower() for w in ["glp-1", "glp1", "weight loss", "obesity", "diabetes"]):
-        query += " GLP-1 medication"
+    # Keep it short — search engines work best with 3-8 words
+    words = query.split()
+    if len(words) > 8:
+        filler = {'a', 'an', 'the', 'is', 'are', 'was', 'were', 'any', 'there', 'in', 'for', 'of', 'my', 'me', 'i'}
+        words = [w for w in words if w.lower() not in filler][:8]
+    query = ' '.join(words)
+    # Add medical context if not already present
+    if not any(w in query.lower() for w in ["glp-1", "glp1", "weight loss", "obesity", "diabetes", "ozempic", "wegovy", "mounjaro", "zepbound", "semaglutide", "tirzepatide"]):
+        query += " GLP-1"
     return query[:200]
 
 

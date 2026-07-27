@@ -769,7 +769,7 @@ def cliff_check():
     try:
         # Get all markers ordered by date, grouped by marker name
         res = (supabase.table("health_markers")
-               .select("marker,value,unit,status,source_document,created_at")
+               .select("marker_name,value,unit,status,source_document,created_at")
                .eq("user_id", user.id)
                .order("created_at", desc=True)
                .limit(500)
@@ -788,7 +788,7 @@ def cliff_check():
         from collections import defaultdict
         marker_history = defaultdict(list)
         for row in res.data:
-            marker_history[row["marker"]].append(row)
+            marker_history[row["marker_name"]].append(row)
 
         cliff_signals = []
         trends = []
