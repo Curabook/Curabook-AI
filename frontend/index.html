@@ -247,6 +247,67 @@ footer { background:var(--surface); border-top:1px solid var(--border); padding:
 
 .fade-in { opacity:0; transform:translateY(16px); transition:opacity .6s ease,transform .6s ease; }
 .fade-in.visible { opacity:1; transform:translateY(0); }
+
+/* FEATURE DEMO SECTIONS */
+.feat-section { padding:72px max(20px,5vw); }
+.feat-inner { max-width:960px; margin:0 auto; display:grid; grid-template-columns:1fr 1fr; gap:40px; align-items:center; }
+.feat-inner.reverse { direction:rtl; }
+.feat-inner.reverse > * { direction:ltr; }
+@media(max-width:720px) { .feat-inner, .feat-inner.reverse { grid-template-columns:1fr; direction:ltr; } .feat-inner.reverse > * { direction:ltr; } }
+.feat-badge { display:inline-flex; align-items:center; gap:6px; font-size:.65rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; padding:5px 12px; border-radius:99px; background:var(--signal-dim); color:var(--signal); margin-bottom:14px; }
+.feat-h { font-family:var(--serif); font-size:clamp(1.5rem,3.5vw,2.2rem); font-weight:400; line-height:1.15; letter-spacing:-.02em; margin-bottom:12px; }
+.feat-h em { font-style:italic; color:var(--signal); }
+.feat-p { font-size:.88rem; color:var(--text-2); line-height:1.8; font-weight:300; margin-bottom:16px; }
+.feat-list { list-style:none; display:flex; flex-direction:column; gap:8px; }
+.feat-list li { font-size:.8rem; color:var(--text-2); display:flex; gap:8px; align-items:flex-start; line-height:1.5; font-weight:300; }
+.feat-list li i { color:var(--signal); font-size:.6rem; margin-top:4px; flex-shrink:0; }
+.feat-cta { display:inline-flex; align-items:center; gap:6px; padding:10px 20px; background:#7c3aed; color:#fff; border-radius:var(--r); font-size:.82rem; font-weight:700; }
+.feat-cta:hover { opacity:.9; }
+.feat-cta-ghost { display:inline-flex; align-items:center; padding:10px 16px; font-size:.78rem; color:var(--text-3); font-weight:500; }
+
+/* CHAT MOCK */
+.chat-mock { background:var(--surface-2); border:1px solid var(--border); border-radius:var(--r-lg); overflow:hidden; box-shadow:var(--shadow-md); }
+.chat-mock-header { display:flex; align-items:center; gap:8px; padding:10px 14px; border-bottom:1px solid var(--border); background:var(--surface); }
+.chat-mock-dot { width:8px; height:8px; border-radius:50%; }
+.chat-mock-dot.green { background:var(--ok); }
+.chat-mock-title { font-size:.72rem; font-weight:600; color:var(--text-2); }
+.chat-msg { padding:12px 14px; font-size:.78rem; line-height:1.7; }
+.chat-msg.user { background:var(--signal-dim); border-bottom:1px solid var(--border); color:var(--text); font-weight:400; }
+.chat-msg.bot { color:var(--text-2); font-weight:300; }
+.chat-msg-name { font-size:.65rem; font-weight:700; color:var(--signal); margin-bottom:6px; letter-spacing:.04em; }
+
+/* CHART MOCK */
+.chart-mock { background:var(--surface); border:1px solid var(--border); border-radius:var(--r-lg); overflow:hidden; box-shadow:var(--shadow-md); }
+.chart-mock-header { padding:12px 14px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
+.chart-mock-title { font-size:.75rem; font-weight:600; color:var(--text-2); }
+.chart-mock-alert { padding:10px 14px; background:rgba(229,62,62,.04); border-top:1px solid rgba(229,62,62,.1); }
+
+/* APPEAL MOCK */
+.appeal-mock { background:var(--surface); border:1px solid var(--border); border-radius:var(--r-lg); overflow:hidden; box-shadow:var(--shadow-md); }
+.appeal-mock-header { display:flex; align-items:center; gap:8px; padding:12px 14px; border-bottom:1px solid var(--border); font-size:.78rem; font-weight:600; color:var(--text); }
+.appeal-mock-score { margin-left:auto; background:rgba(22,163,74,.1); color:var(--ok); padding:3px 10px; border-radius:99px; font-size:.7rem; font-weight:700; }
+.appeal-mock-body { padding:14px; }
+.appeal-mock-section { margin-bottom:12px; }
+.appeal-mock-section:last-child { margin-bottom:0; }
+.appeal-mock-label { font-size:.65rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--text-3); margin-bottom:8px; }
+.appeal-mock-item { font-size:.76rem; color:var(--text-2); display:flex; align-items:flex-start; gap:6px; margin-bottom:5px; line-height:1.5; }
+.appeal-mock-item.ok i { color:var(--ok); font-size:.65rem; margin-top:2px; }
+.appeal-mock-item.warn i { color:var(--amber); font-size:.65rem; margin-top:2px; }
+
+/* SHIELD MOCK */
+.shield-mock { background:var(--surface); border:1px solid var(--border); border-radius:var(--r-lg); overflow:hidden; box-shadow:var(--shadow-md); }
+.shield-mock-header { padding:12px 14px; border-bottom:1px solid var(--border); font-size:.78rem; font-weight:600; color:var(--text); }
+.shield-mock-grid { padding:12px; display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.shield-card { background:var(--surface-2); border-radius:var(--r); padding:12px; }
+.shield-card.full { grid-column:1/-1; }
+.shield-card-label { font-size:.62rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--text-3); margin-bottom:4px; }
+.shield-card-val { font-size:1.1rem; font-weight:600; font-family:var(--mono); margin-bottom:4px; }
+.shield-card-val.ok { color:var(--ok); }
+.shield-card-val.warn { color:var(--amber); }
+.shield-card-val.danger { color:var(--danger); }
+.shield-card-target { font-size:.7rem; font-weight:400; color:var(--text-3); }
+.shield-card-bar { height:4px; background:var(--surface-3); border-radius:4px; overflow:hidden; margin-bottom:6px; }
+.shield-card-note { font-size:.68rem; color:var(--text-3); line-height:1.5; }
 @media(prefers-reduced-motion:reduce) { *,*::before,*::after { animation-duration:.01ms!important; transition-duration:.01ms!important; } }
 </style>
 </head>
@@ -266,33 +327,300 @@ footer { background:var(--surface); border-top:1px solid var(--border); padding:
 
 <!-- HERO -->
 <section class="hero">
-  <div class="hero-tag"><div class="hero-dot"></div>Just stopped or tapering off GLP-1?</div>
-  <h1>The hunger is back.<br>Here's <em>exactly why.</em></h1>
+  <div class="hero-tag"><div class="hero-dot"></div>Built for life after GLP-1</div>
+  <h1>You lost the weight.<br>Then they took the <em>medication away.</em></h1>
   <p class="hero-sub">
-    Curabook shows your drug level dropping in real time — so you know 
-    <strong>which days will be hardest before they hit.</strong> 
-    Plus lab monitoring that catches weight regain weeks before the scale does.
+    The hunger came back. The scale is creeping. And everyone thinks it's about willpower. 
+    <strong>It's not. It's ghrelin — and it's documented, predictable, and manageable.</strong>
   </p>
   <div class="hero-cta-wrap">
     <button class="btn-primary-hero" onclick="location.href='/signup'">
       <i class="fa-solid fa-shield-halved"></i>
-      Show me what's happening — free
+      Catch the cliff before it catches you — free
     </button>
-    <div class="free-note">Free forever · No credit card needed</div>
+    <div class="free-note">3 free lab uploads · No credit card · 60 seconds</div>
   </div>
   <div class="trust-strip">
-    <div class="trust-item"><i class="fa-solid fa-circle-check"></i> Works for tapering, stopped, or insurance-denied</div>
-    <div class="trust-item"><i class="fa-solid fa-circle-check"></i> Peer-reviewed research backed</div>
-    <div class="trust-item"><i class="fa-solid fa-circle-check"></i> No ads. No data selling.</div>
+    <div class="trust-item"><i class="fa-solid fa-circle-check"></i> Insurance denied · Side effects · Cost · Compounding shutdown</div>
+    <div class="trust-item"><i class="fa-solid fa-circle-check"></i> We built this for every reason you stopped</div>
   </div>
 </section>
 
-<!-- LIVE DEMO -->
-<section class="demo-section fade-in">
+<!-- WE KNOW WHAT YOU'RE GOING THROUGH -->
+<section class="feat-section fade-in" id="empathy" style="background:var(--surface);">
+  <div style="max-width:620px;margin:0 auto;text-align:center;padding:0 20px;">
+    <h2 class="feat-h" style="text-align:center;font-size:clamp(1.6rem,4vw,2.4rem);">We know what<br>you're going <em>through.</em></h2>
+    <div style="margin-top:28px;display:flex;flex-direction:column;gap:16px;text-align:left;">
+      <div style="display:flex;gap:14px;align-items:flex-start;">
+        <div style="width:36px;height:36px;border-radius:10px;background:var(--danger-dim);display:flex;align-items:center;justify-content:center;flex-shrink:0;"><i class="fa-solid fa-volume-high" style="font-size:.8rem;color:var(--danger);"></i></div>
+        <div>
+          <div style="font-size:.9rem;font-weight:600;color:var(--text);margin-bottom:3px;">The food noise came back — louder than before.</div>
+          <div style="font-size:.8rem;color:var(--text-2);line-height:1.7;font-weight:300;">Your ghrelin didn't just return to normal. It overshot. The hunger you're feeling now is clinically stronger than before you started. That's not weakness — it's a documented hormonal rebound.</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:14px;align-items:flex-start;">
+        <div style="width:36px;height:36px;border-radius:10px;background:rgba(124,58,237,.08);display:flex;align-items:center;justify-content:center;flex-shrink:0;"><i class="fa-solid fa-file-circle-xmark" style="font-size:.8rem;color:#7c3aed;"></i></div>
+        <div>
+          <div style="font-size:.9rem;font-weight:600;color:var(--text);margin-bottom:3px;">Insurance said no. Or the pharmacy shut down. Or the cost became impossible.</div>
+          <div style="font-size:.8rem;color:var(--text-2);line-height:1.7;font-weight:300;">62% of GLP-1 prescriptions get denied. Compounding pharmacies got shut down. The system didn't fail — it worked exactly as designed. Against you.</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:14px;align-items:flex-start;">
+        <div style="width:36px;height:36px;border-radius:10px;background:rgba(251,191,36,.1);display:flex;align-items:center;justify-content:center;flex-shrink:0;"><i class="fa-solid fa-face-meh" style="font-size:.8rem;color:#d97706;"></i></div>
+        <div>
+          <div style="font-size:.9rem;font-weight:600;color:var(--text);margin-bottom:3px;">And the worst part? Everyone thinks you just need more discipline.</div>
+          <div style="font-size:.8rem;color:var(--text-2);line-height:1.7;font-weight:300;">You don't need discipline. You need data. Your HbA1c and glucose shift weeks before your weight does — and nobody is watching those numbers. Until now.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- LAB CHART — THE "OH SHIT" MOMENT (moved up — strongest visual) -->
+<section class="feat-section fade-in" id="feat-labs">
+  <div class="feat-inner reverse">
+    <div class="feat-text">
+      <div class="feat-badge" style="background:rgba(229,62,62,.08);color:#e53e3e;"><i class="fa-solid fa-triangle-exclamation"></i> Cliff Detection</div>
+      <h2 class="feat-h">Your labs shift <em>before</em> your weight does.</h2>
+      <p class="feat-p">Upload a lab report — Quest, LabCorp, any provider PDF. Curabook extracts every marker, compares it to your previous results, and flags cliff signals weeks before the scale tells you anything.</p>
+      <p style="font-size:.82rem;color:var(--text);font-weight:500;margin-bottom:14px;">This is a real post-cessation trajectory. Curabook caught the cliff at month 2. The scale didn't show it until month 4.</p>
+      <ul class="feat-list">
+        <li><i class="fa-solid fa-check"></i> Automatic PDF extraction — no manual entry</li>
+        <li><i class="fa-solid fa-check"></i> Cross-report comparison with rates of change</li>
+        <li><i class="fa-solid fa-check"></i> HbA1c ≥0.25% rise or glucose ≥15% rise = cliff signal</li>
+        <li><i class="fa-solid fa-check"></i> Next check-in reminders so you never miss a window</li>
+      </ul>
+    </div>
+    <div class="feat-demo">
+      <div class="chart-mock">
+        <div class="chart-mock-header">
+          <span class="chart-mock-title">Lab Trends — 5 months post-cessation</span>
+        </div>
+        <svg viewBox="0 0 380 200" style="width:100%;height:auto;">
+          <line x1="40" y1="20" x2="40" y2="170" stroke="rgba(0,0,0,.06)" stroke-width="1"/>
+          <line x1="40" y1="170" x2="370" y2="170" stroke="rgba(0,0,0,.06)" stroke-width="1"/>
+          <line x1="40" y1="120" x2="370" y2="120" stroke="rgba(0,0,0,.04)" stroke-width="1" stroke-dasharray="4"/>
+          <line x1="40" y1="70" x2="370" y2="70" stroke="rgba(0,0,0,.04)" stroke-width="1" stroke-dasharray="4"/>
+          <line x1="40" y1="85" x2="370" y2="85" stroke="#e53e3e" stroke-width="1.5" stroke-dasharray="6,3" opacity=".5"/>
+          <text x="372" y="88" fill="#e53e3e" font-size="8" font-family="var(--mono)">CLIFF</text>
+          <polyline points="60,150 140,140 220,120 300,80 350,65" fill="none" stroke="#e53e3e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="60" cy="150" r="4" fill="#e53e3e"/><text x="46" y="163" fill="#e53e3e" font-size="8" font-family="var(--mono)">5.4%</text>
+          <circle cx="140" cy="140" r="4" fill="#e53e3e"/>
+          <circle cx="220" cy="120" r="4" fill="#e53e3e"/><text x="224" y="115" fill="#e53e3e" font-size="7" font-family="var(--mono)">5.7%</text>
+          <circle cx="300" cy="80" r="4" fill="#e53e3e"/>
+          <circle cx="350" cy="65" r="5" fill="#e53e3e" stroke="#fff" stroke-width="2"/><text x="330" y="58" fill="#e53e3e" font-size="8" font-weight="700" font-family="var(--mono)">6.1%</text>
+          <polyline points="60,145 140,138 220,118 300,100 350,88" fill="none" stroke="#eb6834" stroke-width="2" stroke-linecap="round" opacity=".7"/>
+          <circle cx="60" cy="145" r="3" fill="#eb6834"/><text x="42" y="145" fill="#eb6834" font-size="7" font-family="var(--mono)">98</text>
+          <circle cx="350" cy="88" r="4" fill="#eb6834"/><text x="354" y="95" fill="#eb6834" font-size="7" font-family="var(--mono)">133</text>
+          <text x="55" y="185" fill="var(--text-3)" font-size="8">Jan</text>
+          <text x="130" y="185" fill="var(--text-3)" font-size="8">Feb</text>
+          <text x="210" y="185" fill="var(--text-3)" font-size="8">Mar</text>
+          <text x="290" y="185" fill="var(--text-3)" font-size="8">Apr</text>
+          <text x="340" y="185" fill="var(--text-3)" font-size="8">May</text>
+          <circle cx="55" cy="15" r="3" fill="#e53e3e"/><text x="62" y="18" fill="var(--text-2)" font-size="8">HbA1c</text>
+          <circle cx="110" cy="15" r="3" fill="#eb6834"/><text x="117" y="18" fill="var(--text-2)" font-size="8">Glucose (mg/dL)</text>
+        </svg>
+        <div class="chart-mock-alert">
+          <div style="display:flex;align-items:center;gap:6px;"><span style="color:#e53e3e;font-weight:700;">🚨 Cliff signal detected</span></div>
+          <div style="font-size:.72rem;color:var(--text-2);margin-top:3px;">HbA1c increased 0.7% in 5 months — above the 0.25% cliff threshold. Fasting glucose rose 36% from baseline. <strong style="color:var(--text);">The scale only showed 3 lbs. The labs showed everything.</strong></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ FEATURE DEMOS ═══════════════════════════════════════════════════════ -->
+
+<!-- DEMO: AI HEALTH CHAT (emotional conversation) -->
+<section class="feat-section fade-in" id="feat-chat" style="background:var(--surface);">
+  <div class="feat-inner">
+    <div class="feat-text">
+      <div class="feat-badge"><i class="fa-solid fa-brain"></i> AI Health Intelligence</div>
+      <h2 class="feat-h">The first AI that says <em>"it's not your fault"</em> — and means it.</h2>
+      <p class="feat-p">PHI doesn't give generic advice. It knows your labs, your medication history, your cessation timeline. When you're struggling, it validates first and calculates second — because data without empathy is just noise.</p>
+      <ul class="feat-list">
+        <li><i class="fa-solid fa-check"></i> Remembers everything across every conversation</li>
+        <li><i class="fa-solid fa-check"></i> Calculates your exact drug remaining and ghrelin phase</li>
+        <li><i class="fa-solid fa-check"></i> References YOUR lab values — not generic ranges</li>
+        <li><i class="fa-solid fa-check"></i> Never uses the words "willpower" or "discipline"</li>
+      </ul>
+    </div>
+    <div class="feat-demo">
+      <div class="chat-mock">
+        <div class="chat-mock-header">
+          <div style="width:24px;height:24px;border-radius:6px;background:var(--signal);display:flex;align-items:center;justify-content:center;color:#0a0b0e;font-size:10px;font-weight:700;">φ</div>
+          <div class="chat-mock-title">PHI · Health Intelligence</div>
+          <div style="margin-left:auto;font-size:.6rem;color:var(--text-3);">curabook.com</div>
+        </div>
+        <div style="padding:12px;display:flex;flex-direction:column;gap:10px;background:var(--bg);min-height:310px;">
+          <div style="display:flex;gap:8px;flex-direction:row-reverse;">
+            <div style="width:26px;height:26px;border-radius:50%;background:var(--signal-dim);display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:700;color:var(--signal);flex-shrink:0;">S</div>
+            <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px 12px 4px 12px;padding:10px 13px;max-width:82%;font-size:.78rem;color:var(--text);line-height:1.6;">I feel like I'm failing. I've gained 8 lbs in 3 weeks since stopping Wegovy.</div>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <div style="width:26px;height:26px;border-radius:50%;background:var(--signal);display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;color:#0a0b0e;flex-shrink:0;">φ</div>
+            <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px 12px 12px 4px;padding:10px 13px;max-width:82%;font-size:.78rem;color:var(--text-2);line-height:1.7;">
+              <strong style="color:var(--text);">You're not failing.</strong> You're 22 days post-cessation — right in the peak ghrelin window. The 8 lbs in 3 weeks tracks exactly with the BMJ data (0.4 kg/month, faster in month one).
+              <br><br>
+              This was going to happen on this schedule <strong style="color:var(--text);">regardless of what you ate.</strong>
+              <br><br>
+              <span style="color:var(--signal);font-weight:500;">Your last HbA1c was 5.4% on Jun 2. If it's still under 5.65%, your metabolism is holding better than the weight suggests.</span> When's your next blood draw?
+            </div>
+          </div>
+        </div>
+        <div style="padding:8px 12px;border-top:1px solid var(--border);display:flex;align-items:center;gap:8px;background:var(--surface);">
+          <div style="flex:1;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:.75rem;color:var(--text-3);">Ask PHI anything about your health...</div>
+          <div style="width:28px;height:28px;border-radius:6px;background:var(--signal);display:flex;align-items:center;justify-content:center;"><i class="fa-solid fa-arrow-up" style="font-size:.65rem;color:#0a0b0e;"></i></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- DEMO 3: PA APPEAL ARCHITECT -->
+<section class="feat-section fade-in" id="feat-appeal" style="background:var(--surface);">
+  <div class="feat-inner">
+    <div class="feat-text">
+      <div class="feat-badge" style="background:rgba(124,58,237,.08);color:#7c3aed;"><i class="fa-solid fa-gavel"></i> PA Appeal Architect</div>
+      <h2 class="feat-h">They denied your medication.<br><em>We write the letter that gets it back.</em></h2>
+      <p class="feat-p">62% of GLP-1 prescriptions get denied. Less than 1% of patients appeal. But when they do, 39-59% win. The system is designed for you to give up. Don't.</p>
+      <p style="font-size:.88rem;color:var(--text);font-weight:500;margin-bottom:14px;">Your medication is worth $12,000/year. This letter costs $79.</p>
+      <ul class="feat-list">
+        <li><i class="fa-solid fa-check"></i> Maps YOUR HbA1c, BMI, glucose to PA criteria automatically</li>
+        <li><i class="fa-solid fa-check"></i> Cites STEP-1/4, SURMOUNT-4, ADA/AACE 2025 guidelines</li>
+        <li><i class="fa-solid fa-check"></i> Generates the clinical narrative your doctor submits</li>
+        <li><i class="fa-solid fa-check"></i> $79 one-time — no subscription required · HSA/FSA eligible</li>
+      </ul>
+      <div style="margin-top:18px;display:flex;gap:10px;flex-wrap:wrap;">
+        <a href="/appeal" class="feat-cta">Build my appeal — $79 <i class="fa-solid fa-arrow-right"></i></a>
+        <a href="/signup?plan=annual" class="feat-cta-ghost">Or get unlimited with Shield</a>
+      </div>
+    </div>
+    <div class="feat-demo">
+      <div class="appeal-mock">
+        <div class="appeal-mock-header">
+          <i class="fa-solid fa-file-medical" style="color:#7c3aed;"></i>
+          <span>PA Appeal Packet — Generated</span>
+          <span class="appeal-mock-score">Score: 85/100</span>
+        </div>
+        <div class="appeal-mock-body">
+          <div class="appeal-mock-section">
+            <div class="appeal-mock-label">Clinical Evidence (auto-extracted)</div>
+            <div class="appeal-mock-item ok"><i class="fa-solid fa-check-circle"></i> HbA1c: 6.1% — above pre-diabetic threshold (≥5.7%)</div>
+            <div class="appeal-mock-item ok"><i class="fa-solid fa-check-circle"></i> BMI: 34.2 — meets obesity criteria (≥30)</div>
+            <div class="appeal-mock-item ok"><i class="fa-solid fa-check-circle"></i> Documented 0.7% HbA1c rebound post-cessation</div>
+            <div class="appeal-mock-item warn"><i class="fa-solid fa-triangle-exclamation"></i> Missing: documented failed lifestyle intervention</div>
+          </div>
+          <div class="appeal-mock-section">
+            <div class="appeal-mock-label">Generated Appeal Letter</div>
+            <div style="font-size:.72rem;color:var(--text-2);line-height:1.7;font-style:italic;border-left:2px solid #7c3aed;padding-left:10px;">
+              "Per SURMOUNT-4 post-hoc analysis, medication cessation resulted in HbA1c increase of 0.35% and fasting insulin rise of 26.3%. This patient's documented metabolic regression constitutes medical necessity for continued GLP-1 therapy..."
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- DEMO 4: METABOLIC SHIELD -->
+<section class="feat-section fade-in" id="feat-shield">
+  <div class="feat-inner reverse">
+    <div class="feat-text">
+      <div class="feat-badge" style="background:var(--signal-dim);color:var(--signal);"><i class="fa-solid fa-shield-halved"></i> Metabolic Shield</div>
+      <h2 class="feat-h">The cliff doesn't happen<br>in <em>one day.</em></h2>
+      <p class="feat-p">It's 30 days of skipped protein, short sleep, and rising food noise — each one too small to notice, together enough to trigger full metabolic rebound. Shield tracks the three things that predict regain, so you catch the drift before it becomes the cliff.</p>
+      <ul class="feat-list">
+        <li><i class="fa-solid fa-check"></i> Personal protein target calculated from your goal weight</li>
+        <li><i class="fa-solid fa-check"></i> Sleep tracking with ghrelin impact calculation</li>
+        <li><i class="fa-solid fa-check"></i> Food noise slider — log the volume, not the calories</li>
+        <li><i class="fa-solid fa-check"></i> Cessation timeline with half-life countdown</li>
+      </ul>
+    </div>
+    <div class="feat-demo">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden;box-shadow:var(--shadow-md);">
+        <!-- Header matching real cockpit -->
+        <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;">
+          <span style="font-size:.82rem;font-weight:600;color:var(--text);">Metabolic Shield</span>
+          <span style="font-size:.55rem;font-weight:700;letter-spacing:.08em;background:var(--signal-dim);color:var(--signal);padding:2px 7px;border-radius:4px;">AUTO</span>
+          <span style="margin-left:auto;font-size:.78rem;font-weight:700;color:var(--signal);font-family:var(--mono);">72%</span>
+        </div>
+
+        <!-- Ring visualization matching real product -->
+        <div style="display:flex;align-items:center;justify-content:center;padding:20px 0 8px;position:relative;">
+          <svg width="140" height="140" viewBox="0 0 160 160">
+            <!-- Track rings -->
+            <circle cx="80" cy="80" r="70" fill="none" stroke-width="12" stroke="var(--surface-3)" opacity=".5"/>
+            <circle cx="80" cy="80" r="55" fill="none" stroke-width="11" stroke="var(--surface-3)" opacity=".5"/>
+            <circle cx="80" cy="80" r="41" fill="none" stroke-width="10" stroke="var(--surface-3)" opacity=".5"/>
+            <!-- Protein ring (88%) -->
+            <circle cx="80" cy="80" r="70" fill="none" stroke-width="12" stroke-linecap="round"
+              stroke="var(--signal)" stroke-dasharray="440" stroke-dashoffset="53"
+              transform="rotate(-90 80 80)"/>
+            <!-- Movement ring (62%) -->
+            <circle cx="80" cy="80" r="55" fill="none" stroke-width="11" stroke-linecap="round"
+              stroke="var(--amber)" stroke-dasharray="346" stroke-dashoffset="132"
+              transform="rotate(-90 80 80)"/>
+            <!-- Recovery ring (45%) -->
+            <circle cx="80" cy="80" r="41" fill="none" stroke-width="10" stroke-linecap="round"
+              stroke="var(--ok)" stroke-dasharray="258" stroke-dashoffset="142"
+              transform="rotate(-90 80 80)"/>
+          </svg>
+          <div style="position:absolute;text-align:center;">
+            <div style="font-size:1.6rem;font-weight:600;color:var(--text);font-family:var(--mono);line-height:1;">72</div>
+            <div style="font-size:.6rem;color:var(--text-3);font-weight:500;">Shield %</div>
+          </div>
+        </div>
+
+        <!-- Ring legend matching real product -->
+        <div style="padding:4px 16px 12px;display:flex;flex-direction:column;gap:8px;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="width:8px;height:8px;border-radius:50%;background:var(--signal);flex-shrink:0;"></span>
+            <div style="flex:1;">
+              <div style="display:flex;justify-content:space-between;font-size:.72rem;"><span style="color:var(--text-2);">Protein</span><span style="font-weight:600;color:var(--text);font-family:var(--mono);">72g / 82g</span></div>
+              <div style="height:3px;background:var(--surface-3);border-radius:3px;margin-top:3px;overflow:hidden;"><div style="width:88%;height:100%;background:var(--signal);border-radius:3px;"></div></div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="width:8px;height:8px;border-radius:50%;background:var(--amber);flex-shrink:0;"></span>
+            <div style="flex:1;">
+              <div style="display:flex;justify-content:space-between;font-size:.72rem;"><span style="color:var(--text-2);">Movement</span><span style="font-weight:600;color:var(--text);font-family:var(--mono);">4,200 steps</span></div>
+              <div style="height:3px;background:var(--surface-3);border-radius:3px;margin-top:3px;overflow:hidden;"><div style="width:62%;height:100%;background:var(--amber);border-radius:3px;"></div></div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="width:8px;height:8px;border-radius:50%;background:var(--ok);flex-shrink:0;"></span>
+            <div style="flex:1;">
+              <div style="display:flex;justify-content:space-between;font-size:.72rem;"><span style="color:var(--text-2);">Recovery</span><span style="font-weight:600;color:var(--danger);font-family:var(--mono);">5.5h sleep</span></div>
+              <div style="height:3px;background:var(--surface-3);border-radius:3px;margin-top:3px;overflow:hidden;"><div style="width:45%;height:100%;background:var(--danger);border-radius:3px;"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Cessation timeline -->
+        <div style="padding:8px 14px 12px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px;">
+          <div style="font-size:1.2rem;font-weight:700;color:var(--danger);font-family:var(--mono);">Day 22</div>
+          <div>
+            <div style="font-size:.7rem;font-weight:600;color:var(--text);">Peak Danger Window</div>
+            <div style="font-size:.65rem;color:var(--text-3);">~12% drug remaining · Ghrelin at maximum</div>
+          </div>
+        </div>
+
+        <!-- Log button matching real product -->
+        <div style="padding:0 14px 14px;">
+          <div style="width:100%;padding:10px;background:var(--signal);border-radius:var(--r);text-align:center;font-size:.8rem;font-weight:700;color:#0a0b0e;cursor:pointer;">Log Today's Data</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- INTERACTIVE DEMO — Drug Level Calculator (positioned after trust is established) -->
+<section class="demo-section fade-in" id="demo" style="background:var(--surface);">
   <div class="demo-inner">
-    <div class="demo-label">No account needed — try it now</div>
+    <div class="demo-label">Try it now — no account needed</div>
     <h2 class="demo-h">When did you stop? <em>Let's see what's happening.</em></h2>
-    <p class="demo-sub">Enter your last dose. We'll show you exactly where you are — and what's coming next.</p>
+    <p class="demo-sub">Enter your last dose. We'll show your exact drug level and what's coming next.</p>
     <div class="demo-widget">
       <div class="demo-med-row">
         <button class="demo-med-btn on" onclick="setMed('sema',this)">Ozempic / Wegovy</button>
@@ -321,40 +649,55 @@ footer { background:var(--surface); border-top:1px solid var(--border); padding:
       <div class="demo-insight" id="dInsight" style="color:var(--text-3);font-size:.78rem;">Your biological picture will appear here.</div>
       <div class="demo-nudge" id="dNudge">
         <div class="nudge-h">⚡ Your full picture is ready</div>
-        <div class="nudge-b">Create your free account to save this, get your 7-day hunger forecast, monitor your labs, and ask PHI anything about your biology.</div>
+        <div class="nudge-b">Create your free account to save this, upload your labs, and ask PHI anything about your biology.</div>
         <button class="nudge-btn" onclick="location.href='/signup?source=demo'">
           <i class="fa-solid fa-shield-halved"></i> See my full picture — free
         </button>
-        <div class="nudge-free">Free forever · No credit card · 60 seconds</div>
+        <div class="nudge-free">3 free lab uploads · No credit card · 60 seconds</div>
       </div>
     </div>
   </div>
 </section>
 
-<!-- SOCIAL PROOF — RESEARCH -->
-<section class="proof-section fade-in">
+<!-- SOCIAL PROOF — RESEARCH (now positioned after demos, validates what they just saw) -->
+<section class="proof-section fade-in" id="proof">
   <div class="proof-inner">
-    <h2 class="proof-h">The fear is real.<br>So is the <em>science.</em></h2>
+    <h2 class="proof-h">This isn't opinion.<br>It's <em>peer-reviewed data.</em></h2>
     <div class="proof-grid">
       <div class="proof-card">
-        <div class="proof-source">JAMA Internal Medicine · 2025</div>
-        <div class="proof-stat">82%</div>
-        <div class="proof-desc">of patients regain significant weight within 1 year of stopping GLP-1 medication.</div>
-        <div class="proof-note">The rebound is biological. It was always going to happen on this schedule.</div>
+        <div class="proof-source">JAMA Network Open · 2025 · 125,474 patients</div>
+        <div class="proof-stat">54%</div>
+        <div class="proof-desc">of GLP-1 users stop within the first year. By year two, 72% have discontinued.</div>
+        <div class="proof-note">The cliff isn't rare. It's the default outcome.</div>
       </div>
       <div class="proof-card">
-        <div class="proof-source">Lancet eClinicalMedicine · 2025</div>
-        <div class="proof-stat">+15%</div>
-        <div class="proof-desc">Ghrelin surges above pre-medication baseline after stopping. The hunger that returns is clinically stronger than before you started.</div>
-        <div class="proof-note">Food noise coming back is not failure. It is a documented hormonal event.</div>
+        <div class="proof-source">BMJ Meta-analysis · Jan 2026 · 9,341 patients</div>
+        <div class="proof-stat">0.4 kg</div>
+        <div class="proof-desc">regained per month after stopping — 4x faster than behavioral programs. Weight returns to baseline in ~1.7 years.</div>
+        <div class="proof-note">The rebound is faster than any other weight loss method.</div>
       </div>
       <div class="proof-card">
-        <div class="proof-source">KFF Health Tracking Poll · 2025</div>
-        <div class="proof-stat">50%+</div>
-        <div class="proof-desc">of GLP-1 users stop within the first year. Cost and insurance denial are the top two reasons — not lack of results.</div>
-        <div class="proof-note">The system failed you. The biology explains the rest.</div>
+        <div class="proof-source">IQVIA Analytics · 2025</div>
+        <div class="proof-stat">62%</div>
+        <div class="proof-desc">of GLP-1 obesity prescriptions get denied. <1% appeal. But 39-59% of appeals succeed.</div>
+        <div class="proof-note">The system is designed for you to give up. Don't.</div>
       </div>
     </div>
+  </div>
+</section>
+
+<!-- FOUNDER STORY -->
+<section class="feat-section fade-in" id="founder" style="background:var(--surface);">
+  <div style="max-width:580px;margin:0 auto;text-align:center;padding:0 20px;">
+    <div class="feat-badge" style="margin:0 auto 16px;"><i class="fa-solid fa-heart"></i> Why I built this</div>
+    <h2 class="feat-h" style="text-align:center;">Nobody was watching the cliff.</h2>
+    <p style="font-size:.88rem;color:var(--text-2);line-height:1.9;margin-top:16px;font-weight:300;">
+      I watched people lose incredible amounts of weight on GLP-1s — and then lose it all when they stopped. Their doctors had no post-cessation protocol. Their apps were built for people ON medication, not off it. The insurance system denied them and counted on them not fighting back.
+    </p>
+    <p style="font-size:.88rem;color:var(--text-2);line-height:1.9;margin-top:12px;font-weight:300;">
+      I built Curabook because this moment — the cliff — is where people need help most, and nobody was there. The labs shift before the scale. The hunger is biology, not failure. And 62% of denials can be fought. Someone needed to build the tool that does all three.
+    </p>
+    <p style="font-size:.82rem;color:var(--signal);margin-top:16px;font-weight:500;">— Siddharth, Founder</p>
   </div>
 </section>
 
@@ -392,6 +735,11 @@ footer { background:var(--surface); border-top:1px solid var(--border); padding:
   <div class="pricing-inner">
     <h2 class="pricing-h">Start free.<br><em>Upgrade when you're ready.</em></h2>
     <p class="pricing-sub-text">3 free lab reports · 15 free chats/day. Upgrade to Shield anytime.</p>
+    <div style="text-align:center;margin-bottom:24px;">
+      <a href="/appeal" style="display:inline-flex;align-items:center;gap:6px;padding:8px 18px;background:rgba(124,58,237,.08);border:1px solid rgba(124,58,237,.2);border-radius:99px;font-size:.76rem;font-weight:600;color:#7c3aed;">
+        <i class="fa-solid fa-gavel"></i> Just need an insurance appeal? $79 one-time — no subscription
+      </a>
+    </div>
     <div class="plan-row">
       <div class="plan-card">
         <div class="plan-name">Free</div>
