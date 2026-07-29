@@ -373,6 +373,49 @@
       </div>
     </section>
 
+    <!-- ── DRUG LEVEL VISUALIZATION ─────────────────────────────────── -->
+    <section class="cp-section" id="drugLevelSection" style="display:none;">
+      <div class="cp-section-hd">
+        <h2 class="cp-section-title">Drug Level</h2>
+        <span class="cp-section-badge" id="drugPctBadge" style="background:var(--signal-dim);color:var(--signal);">--%</span>
+      </div>
+      <div style="position:relative;height:24px;background:var(--surface-3);border-radius:12px;overflow:hidden;margin:8px 0;">
+        <div id="drugLevelBar" style="height:100%;border-radius:12px;background:var(--signal);transition:width .8s ease;width:0%;"></div>
+        <div id="drugLevelMarker" style="position:absolute;top:-2px;width:3px;height:28px;background:var(--text);border-radius:2px;transition:left .8s ease;left:0%;"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:.65rem;color:var(--text-3);">
+        <span>0% (cleared)</span>
+        <span>50% (half-life)</span>
+        <span>100% (peak)</span>
+      </div>
+      <div id="drugLevelDetail" style="margin-top:8px;font-size:.75rem;color:var(--text-2);line-height:1.6;"></div>
+    </section>
+
+    <!-- ── HUNGER FORECAST ──────────────────────────────────────────── -->
+    <section class="cp-section" id="hungerForecastSection" style="display:none;">
+      <div class="cp-section-hd">
+        <h2 class="cp-section-title">Hunger Forecast</h2>
+        <span class="cp-section-badge" id="hungerRiskBadge">--</span>
+      </div>
+      <p class="cp-caption">Predicted ghrelin activity based on your cessation timeline.</p>
+      <div id="hungerForecastGrid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin:10px 0;"></div>
+      <div id="hungerForecastDetail" style="font-size:.75rem;color:var(--text-2);line-height:1.7;margin-top:6px;"></div>
+      <div id="hungerForecastTip" style="margin-top:8px;padding:8px 12px;border-radius:8px;background:rgba(0,188,213,.05);border:1px solid rgba(0,188,213,.15);font-size:.72rem;color:var(--signal);line-height:1.6;display:none;"></div>
+    </section>
+
+    <!-- ── NEXT CHECK-IN ────────────────────────────────────────────── -->
+    <section class="cp-section" id="nextCheckinSection" style="display:none;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="width:36px;height:36px;border-radius:10px;background:rgba(245,158,11,.08);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <i class="fa-solid fa-calendar-check" style="color:#d97706;font-size:.85rem;"></i>
+        </div>
+        <div>
+          <div style="font-size:.8rem;font-weight:600;color:var(--text);" id="nextCheckinTitle">Next lab upload</div>
+          <div style="font-size:.72rem;color:var(--text-3);" id="nextCheckinSub"></div>
+        </div>
+      </div>
+    </section>
+
     <!-- ── TREND CHART ──────────────────────────────────────────────────── -->
     <section class="cp-section" id="trendChartSection" style="display:none;">
       <div class="cp-section-hd">
@@ -604,22 +647,113 @@ function handleMealPhoto(input) {
     }
   }
 
-  // Load cessation timeline
+  // Load cessation timeline + drug level + hunger forecast
   async function loadCessationTimeline() {
     try {
       const h = typeof headers === 'function' ? await headers() : null;
       if (!h) return;
-      const res = await fetch((window._API || '') + '/api/cliff-status', { headers: h });
-      if (!res.ok) return;
+      const res = await fetch((window._API || '') + '/api/hunger-forecast', { headers: h });
+      if (!res.ok) {
+        // Fallback to cliff-status if hunger-forecast not deployed yet
+        const res2 = await fetch((window._API || '') + '/api/cliff-status', { headers: h });
+        if (!res2.ok) return;
+        const data2 = await res2.json();
+        if (data2.cessation_context) {
+          const el = document.getElementById('cessationTimeline');
+          const detail = document.getElementById('cessationDetail');
+          if (el && detail) { detail.textContent = data2.cessation_context; el.style.display = 'block'; }
+        }
+        return;
+      }
       const data = await res.json();
+
+      // Cessation timeline
       if (data.cessation_context) {
         const el = document.getElementById('cessationTimeline');
         const detail = document.getElementById('cessationDetail');
-        if (el && detail) {
-          detail.textContent = data.cessation_context;
-          el.style.display = 'block';
-        }
+        if (el && detail) { detail.textContent = data.cessation_context; el.style.display = 'block'; }
       }
+
+      // Drug level visualization
+      if (data.drug_remaining_pct !== undefined && data.days_since_last_dose !== undefined) {
+        const section = document.getElementById('drugLevelSection');
+        const bar = document.getElementById('drugLevelBar');
+        const marker = document.getElementById('drugLevelMarker');
+        const badge = document.getElementById('drugPctBadge');
+        const detail = document.getElementById('drugLevelDetail');
+        if (!section) return;
+
+        const pct = Math.max(0, Math.min(100, data.drug_remaining_pct));
+        const days = data.days_since_last_dose;
+        const halfLives = data.half_lives_elapsed || 0;
+
+        bar.style.width = pct + '%';
+        bar.style.background = pct > 50 ? 'var(--signal)' : pct > 20 ? 'var(--amber)' : 'var(--danger)';
+        marker.style.left = pct + '%';
+        badge.textContent = pct.toFixed(1) + '%';
+        badge.style.background = pct > 50 ? 'var(--signal-dim)' : pct > 20 ? 'rgba(245,158,11,.1)' : 'rgba(239,68,68,.08)';
+        badge.style.color = pct > 50 ? 'var(--signal)' : pct > 20 ? '#d97706' : '#dc2626';
+
+        detail.innerHTML = '<strong>' + days + ' days</strong> since last dose · ' +
+          halfLives.toFixed(1) + ' half-lives elapsed · ' +
+          '<strong>' + pct.toFixed(1) + '% active</strong>';
+
+        section.style.display = 'block';
+      }
+
+      // Hunger forecast
+      if (data.forecast && data.forecast.length > 0) {
+        const section = document.getElementById('hungerForecastSection');
+        const grid = document.getElementById('hungerForecastGrid');
+        const detail = document.getElementById('hungerForecastDetail');
+        const tip = document.getElementById('hungerForecastTip');
+        const badge = document.getElementById('hungerRiskBadge');
+        if (!section || !grid) return;
+
+        const riskColors = { low: '#10b981', moderate: '#f59e0b', high: '#ef4444', peak: '#dc2626', stabilizing: '#6366f1' };
+        const riskLabels = { low: '🟢 Low', moderate: '🟡 Moderate', high: '🔴 High', peak: '🔴 Peak', stabilizing: '🟣 Stabilizing' };
+
+        // Render 7-day forecast grid
+        grid.innerHTML = data.forecast.map(function(day) {
+          const color = riskColors[day.risk] || '#888';
+          const isToday = day.label === 'Today';
+          return '<div style="text-align:center;' + (isToday ? 'transform:scale(1.1);' : '') + '">' +
+            '<div style="font-size:.55rem;color:' + (isToday ? 'var(--text)' : 'var(--text-3)') + ';font-weight:' + (isToday ? '700' : '400') + ';margin-bottom:3px;">' + day.label + '</div>' +
+            '<div style="height:' + (20 + day.intensity * 3) + 'px;background:' + color + ';border-radius:4px;opacity:' + (0.4 + day.intensity * 0.06) + ';margin:0 2px;"></div>' +
+            '<div style="font-size:.55rem;color:var(--text-3);margin-top:2px;">Day ' + day.day_number + '</div>' +
+            '</div>';
+        }).join('');
+
+        // Today's risk
+        const today = data.forecast.find(function(d) { return d.label === 'Today'; }) || data.forecast[0];
+        badge.textContent = riskLabels[today.risk] || today.risk;
+        badge.style.background = (riskColors[today.risk] || '#888') + '15';
+        badge.style.color = riskColors[today.risk] || '#888';
+
+        detail.textContent = data.today_detail || '';
+
+        // Actionable tip
+        if (data.today_tip) {
+          tip.textContent = data.today_tip;
+          tip.style.display = 'block';
+        }
+
+        section.style.display = 'block';
+      }
+
+      // Next check-in
+      if (data.next_checkin_date) {
+        const section = document.getElementById('nextCheckinSection');
+        const title = document.getElementById('nextCheckinTitle');
+        const sub = document.getElementById('nextCheckinSub');
+        if (!section) return;
+        const d = new Date(data.next_checkin_date);
+        const daysLeft = Math.ceil((d - new Date()) / 86400000);
+        title.textContent = daysLeft <= 0 ? '⚠️ Lab upload overdue' : 'Next lab upload in ' + daysLeft + ' days';
+        sub.textContent = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        section.style.display = 'block';
+      }
+
     } catch (e) { console.warn('[CESSATION] Load error:', e); }
   }
 

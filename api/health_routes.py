@@ -961,6 +961,166 @@ def cliff_status_summary():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# HUNGER FORECAST — Rule-based prediction from cessation timeline
+# ══════════════════════════════════════════════════════════════════════════════
+
+_GHRELIN_PHASES = [
+    (0,  7,   "low",         "Drug still partially active. Ghrelin suppression fading gradually."),
+    (7,  14,  "moderate",    "Ghrelin rising. Food noise returning. Protein loading critical."),
+    (14, 21,  "peak",        "PEAK DANGER WINDOW. Ghrelin at 2-3x baseline. Strongest hunger of the entire process."),
+    (21, 28,  "high",        "Still elevated. Ghrelin beginning to stabilize but remain above pre-medication levels."),
+    (28, 42,  "moderate",    "Post-peak. Hunger stabilizing for most people. Metabolic markers need monitoring."),
+    (42, 90,  "stabilizing", "Extended post-cessation. Hunger may normalize. Lab monitoring critical for slow drift."),
+    (90, 9999,"stabilizing", "Long-term maintenance phase. Behavioral patterns now primary driver."),
+]
+
+_GHRELIN_TIPS = {
+    "low":         "Your drug is still working. Use this window to build protein habits — they'll matter most when the drug clears.",
+    "moderate":    "Protein at every meal (30g+) blunts ghrelin by ~25%. Pre-load meals before hunger peaks.",
+    "peak":        "This is the hardest week. It WILL get easier. Focus: 30g protein per meal, 7+ hours sleep, and one post-meal walk today.",
+    "high":        "Still tough but you've survived the peak. Every day past day 21 gets slightly easier. Keep protein locked in.",
+    "stabilizing": "Your body is adjusting. The noise should be quieter now. If it's not, get labs done — metabolic factors may be driving it.",
+}
+
+
+@health_bp.route("/api/hunger-forecast", methods=["GET"])
+def hunger_forecast():
+    """
+    Returns a 7-day hunger forecast based on cessation timeline,
+    drug level visualization data, and next check-in date.
+    """
+    from app import supabase
+    from services.auth import get_authenticated_user
+    from datetime import date, timedelta
+
+    user = get_authenticated_user(supabase)
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    try:
+        profile = supabase.table("user_profiles").select(
+            "glp1_status,last_dose_date,stop_reason,goal_weight_lbs"
+        ).eq("user_id", user.id).limit(1).execute()
+
+        if not profile.data:
+            return jsonify({"forecast": [], "cessation_context": ""})
+
+        p = profile.data[0]
+        last_dose = p.get("last_dose_date")
+        glp1_status = p.get("glp1_status", "")
+        stop_reason = p.get("stop_reason", "")
+        goal_weight = p.get("goal_weight_lbs")
+
+        if not last_dose or glp1_status not in ("stopped", "tapering"):
+            return jsonify({"forecast": [], "cessation_context": ""})
+
+        try:
+            last_dose_date = date.fromisoformat(str(last_dose)[:10])
+        except (ValueError, TypeError):
+            return jsonify({"forecast": [], "cessation_context": ""})
+
+        today = date.today()
+        days_since = (today - last_dose_date).days
+        med = "semaglutide"  # default
+        hl = _HALF_LIVES.get(med, 7.0)
+        drug_pct = round(100 * (0.5 ** (days_since / hl)), 1)
+        half_lives_elapsed = round(days_since / hl, 1)
+
+        # Build 7-day forecast
+        forecast = []
+        day_labels = ["Today", "Tomorrow"]
+        for i in range(7):
+            day_num = days_since + i
+            day_date = today + timedelta(days=i)
+
+            # Find ghrelin phase for this day
+            risk = "low"
+            for phase_start, phase_end, phase_risk, _ in _GHRELIN_PHASES:
+                if phase_start <= day_num < phase_end:
+                    risk = phase_risk
+                    break
+
+            # Intensity score 1-10
+            intensity_map = {"low": 2, "moderate": 5, "high": 7, "peak": 10, "stabilizing": 4}
+            intensity = intensity_map.get(risk, 3)
+
+            # Adjust intensity for drug level
+            day_drug_pct = 100 * (0.5 ** (day_num / hl))
+            if day_drug_pct > 30:
+                intensity = max(1, intensity - 2)
+
+            label = day_labels[i] if i < len(day_labels) else day_date.strftime("%a")
+            forecast.append({
+                "day_number": day_num,
+                "date": day_date.isoformat(),
+                "label": label,
+                "risk": risk,
+                "intensity": intensity,
+                "drug_remaining_pct": round(day_drug_pct, 1),
+            })
+
+        # Today's detail
+        today_phase = "low"
+        today_desc = ""
+        for phase_start, phase_end, phase_risk, phase_desc in _GHRELIN_PHASES:
+            if phase_start <= days_since < phase_end:
+                today_phase = phase_risk
+                today_desc = phase_desc
+                break
+
+        today_tip = _GHRELIN_TIPS.get(today_phase, "")
+
+        # Protein target reminder
+        if goal_weight:
+            try:
+                protein_target = round(float(goal_weight) * 0.545, 1)
+                today_tip += f" Your daily protein target: {protein_target}g ({round(protein_target/3, 1)}g per meal)."
+            except (ValueError, TypeError):
+                pass
+
+        # Build cessation context for chat
+        cessation_context = (
+            f"{days_since} days since last dose. "
+            f"~{drug_pct}% drug remaining ({half_lives_elapsed} half-lives). "
+            f"{today_desc}"
+        )
+        if stop_reason:
+            cessation_context += f" Stop reason: {stop_reason}."
+
+        # Next check-in
+        try:
+            cliff_res = supabase.table("health_markers").select(
+                "created_at"
+            ).eq("user_id", user.id).order("created_at", desc=True).limit(1).execute()
+
+            if cliff_res.data:
+                last_lab = date.fromisoformat(cliff_res.data[0]["created_at"][:10])
+                checkin_weeks = 4 if today_phase in ("peak", "high") else 6
+                next_checkin = (last_lab + timedelta(weeks=checkin_weeks)).isoformat()
+            else:
+                next_checkin = (today + timedelta(weeks=2)).isoformat()
+        except Exception:
+            next_checkin = (today + timedelta(weeks=4)).isoformat()
+
+        return jsonify({
+            "days_since_last_dose": days_since,
+            "drug_remaining_pct":   drug_pct,
+            "half_lives_elapsed":   half_lives_elapsed,
+            "today_phase":          today_phase,
+            "today_detail":         today_desc,
+            "today_tip":            today_tip,
+            "forecast":             forecast,
+            "cessation_context":    cessation_context,
+            "next_checkin_date":    next_checkin,
+            "stop_reason":          stop_reason,
+        })
+
+    except Exception as e:
+        print(f"[HUNGER-FORECAST] Error: {e}")
+        return jsonify({"forecast": [], "cessation_context": ""})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # TAPER TRACKER
 # ══════════════════════════════════════════════════════════════════════════════
 
