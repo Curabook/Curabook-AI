@@ -491,6 +491,295 @@ function handleMealPhoto(input) {
 }
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+
+<!-- ── GUIDED TOUR / PRODUCT WALKTHROUGH ─────────────────────────────── -->
+<style>
+/* Tour overlay */
+.tour-overlay{position:fixed;top:0;left:0;right:0;bottom:0;z-index:9998;pointer-events:none;}
+.tour-highlight{position:absolute;z-index:9999;border-radius:12px;box-shadow:0 0 0 4000px rgba(0,0,0,.55);pointer-events:none;transition:all .4s ease;}
+.tour-tooltip{position:fixed;z-index:10000;max-width:340px;background:var(--surface,#fff);border:1px solid var(--border,#e2e2e2);border-radius:16px;padding:20px;box-shadow:0 12px 40px rgba(0,0,0,.2);pointer-events:auto;animation:tourFadeIn .3s ease;}
+.tour-tooltip-arrow{position:absolute;width:12px;height:12px;background:var(--surface,#fff);border:1px solid var(--border,#e2e2e2);transform:rotate(45deg);border-right:none;border-top:none;}
+.tour-step-num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--signal,#00d4c8);color:#0a0b0e;font-size:.65rem;font-weight:700;margin-right:8px;}
+.tour-title{font-size:.92rem;font-weight:600;color:var(--text,#111);margin-bottom:6px;display:flex;align-items:center;}
+.tour-body{font-size:.8rem;color:var(--text-2,#555);line-height:1.7;margin-bottom:16px;}
+.tour-body strong{color:var(--text,#111);}
+.tour-footer{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.tour-dots{display:flex;gap:5px;}
+.tour-dot{width:7px;height:7px;border-radius:50%;background:var(--surface-3,#ddd);}
+.tour-dot.active{background:var(--signal,#00d4c8);}
+.tour-btn{padding:7px 16px;border-radius:8px;font-size:.78rem;font-weight:600;cursor:pointer;border:none;transition:all .15s;}
+.tour-btn-primary{background:var(--signal,#00d4c8);color:#0a0b0e;}
+.tour-btn-primary:hover{opacity:.85;}
+.tour-btn-skip{background:none;color:var(--text-3,#999);font-size:.72rem;padding:7px 8px;}
+.tour-btn-skip:hover{color:var(--text,#111);}
+.tour-welcome{position:fixed;top:0;left:0;right:0;bottom:0;z-index:10001;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.6);animation:tourFadeIn .3s ease;}
+.tour-welcome-card{background:var(--surface,#fff);border-radius:20px;padding:32px;max-width:400px;width:90%;text-align:center;box-shadow:0 16px 48px rgba(0,0,0,.25);}
+.tour-welcome-icon{font-size:2.5rem;margin-bottom:12px;}
+.tour-welcome-title{font-size:1.2rem;font-weight:600;color:var(--text,#111);margin-bottom:8px;}
+.tour-welcome-sub{font-size:.82rem;color:var(--text-2,#555);line-height:1.7;margin-bottom:20px;}
+.tour-welcome-btns{display:flex;flex-direction:column;gap:8px;}
+@keyframes tourFadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+</style>
+
+<script>
+(function() {
+  const TOUR_KEY = 'phi_tour_completed';
+
+  // Tour steps — each targets a real UI element
+  const STEPS = [
+    {
+      target: '#chatInput',
+      title: 'Ask PHI Anything',
+      body: 'This is your health co-pilot. Ask about your medications, lab values, hunger, weight — PHI remembers everything across conversations. Try: <strong>"I stopped Wegovy 2 weeks ago, what should I expect?"</strong>',
+      position: 'top',
+    },
+    {
+      target: '#attachInputBtn',
+      title: 'Upload Lab Reports',
+      body: 'Tap the 📎 button to upload your blood work PDF (Quest, LabCorp, any provider). PHI extracts every marker automatically — <strong>no manual entry.</strong> You get 3 free uploads.',
+      position: 'top',
+    },
+    {
+      target: '#mobileCockpitBtn',
+      title: 'Your Health Cockpit',
+      body: 'This opens your <strong>Metabolic Shield</strong> — protein tracking, hunger forecast, drug level visualization, and cliff detection. It\'s your daily defense dashboard.',
+      position: 'bottom',
+      action: function() {
+        // Open cockpit so user sees it
+        if (typeof openCockpit === 'function') openCockpit();
+      },
+    },
+    {
+      target: '#cliffAlerts',
+      title: 'Cliff Detection',
+      body: 'When you upload 2+ lab reports, Curabook compares them and flags <strong>cliff signals</strong> — HbA1c drift, glucose spikes, lipid changes. These show up <strong>weeks before the scale moves.</strong>',
+      position: 'left',
+    },
+    {
+      target: '#hungerForecastSection,#drugLevelSection,#cessationTimeline',
+      title: 'Hunger Forecast',
+      body: 'Based on when you stopped your medication, PHI predicts which days hunger will peak. It\'s like a <strong>weather forecast for your appetite.</strong> Set your last dose date in your profile to activate this.',
+      position: 'left',
+      fallbackTarget: '#cockpit',
+    },
+    {
+      target: '#newChatBtn',
+      title: 'You\'re Ready!',
+      body: 'Start a new conversation anytime. PHI remembers your labs, medication history, and goals across every chat. <strong>Upload your first lab report to unlock cliff detection.</strong>',
+      position: 'right',
+      action: function() {
+        if (typeof closeCockpit === 'function') closeCockpit();
+      },
+    },
+  ];
+
+  let currentStep = 0;
+  let overlayEl = null;
+  let highlightEl = null;
+  let tooltipEl = null;
+
+  function shouldShowTour() {
+    // Show tour only for first-time users who haven't completed it
+    if (localStorage.getItem(TOUR_KEY)) return false;
+    return true;
+  }
+
+  function showWelcome() {
+    const welcome = document.createElement('div');
+    welcome.className = 'tour-welcome';
+    welcome.innerHTML = `
+      <div class="tour-welcome-card">
+        <div class="tour-welcome-icon">🛡️</div>
+        <div class="tour-welcome-title">Welcome to Curabook PHI</div>
+        <div class="tour-welcome-sub">
+          Your post-GLP-1 health co-pilot. Let me show you around in 30 seconds — you'll know exactly how to use every feature.
+        </div>
+        <div class="tour-welcome-btns">
+          <button class="tour-btn tour-btn-primary" id="tourStartBtn" style="width:100%;padding:12px;">
+            Show me around — 30 seconds
+          </button>
+          <button class="tour-btn tour-btn-skip" id="tourSkipAllBtn" style="width:100%;">
+            I'll figure it out myself
+          </button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(welcome);
+
+    document.getElementById('tourStartBtn').onclick = function() {
+      welcome.remove();
+      startTour();
+    };
+    document.getElementById('tourSkipAllBtn').onclick = function() {
+      welcome.remove();
+      localStorage.setItem(TOUR_KEY, 'true');
+    };
+  }
+
+  function startTour() {
+    currentStep = 0;
+    
+    // Create overlay
+    overlayEl = document.createElement('div');
+    overlayEl.className = 'tour-overlay';
+    document.body.appendChild(overlayEl);
+
+    // Create highlight
+    highlightEl = document.createElement('div');
+    highlightEl.className = 'tour-highlight';
+    document.body.appendChild(highlightEl);
+
+    // Create tooltip
+    tooltipEl = document.createElement('div');
+    tooltipEl.className = 'tour-tooltip';
+    document.body.appendChild(tooltipEl);
+
+    showStep(0);
+  }
+
+  function findTarget(step) {
+    // Support comma-separated selectors (first match wins)
+    const selectors = step.target.split(',');
+    for (const sel of selectors) {
+      const el = document.querySelector(sel.trim());
+      if (el && el.offsetParent !== null) return el;
+    }
+    // Fallback
+    if (step.fallbackTarget) return document.querySelector(step.fallbackTarget);
+    return null;
+  }
+
+  function showStep(idx) {
+    if (idx >= STEPS.length) { endTour(); return; }
+    currentStep = idx;
+    const step = STEPS[idx];
+
+    // Run action (like opening cockpit)
+    if (step.action) step.action();
+
+    // Small delay for DOM updates after action
+    setTimeout(function() {
+      const target = findTarget(step);
+      if (!target) { showStep(idx + 1); return; } // Skip if element not found
+
+      // Position highlight over target
+      const rect = target.getBoundingClientRect();
+      const pad = 8;
+      highlightEl.style.left = (rect.left - pad) + 'px';
+      highlightEl.style.top = (rect.top - pad) + 'px';
+      highlightEl.style.width = (rect.width + pad * 2) + 'px';
+      highlightEl.style.height = (rect.height + pad * 2) + 'px';
+
+      // Build tooltip content
+      const dots = STEPS.map(function(_, i) {
+        return '<div class="tour-dot' + (i === idx ? ' active' : '') + '"></div>';
+      }).join('');
+
+      const isLast = idx === STEPS.length - 1;
+      tooltipEl.innerHTML = `
+        <div class="tour-title">
+          <span class="tour-step-num">${idx + 1}</span>
+          ${step.title}
+        </div>
+        <div class="tour-body">${step.body}</div>
+        <div class="tour-footer">
+          <div class="tour-dots">${dots}</div>
+          <div style="display:flex;gap:6px;">
+            <button class="tour-btn tour-btn-skip" id="tourSkip">${isLast ? '' : 'Skip'}</button>
+            <button class="tour-btn tour-btn-primary" id="tourNext">${isLast ? 'Get Started! 🚀' : 'Next →'}</button>
+          </div>
+        </div>
+      `;
+
+      // Position tooltip
+      positionTooltip(rect, step.position);
+
+      // Event listeners
+      document.getElementById('tourNext').onclick = function() {
+        if (isLast) endTour();
+        else showStep(idx + 1);
+      };
+      const skipBtn = document.getElementById('tourSkip');
+      if (skipBtn) skipBtn.onclick = function() { endTour(); };
+
+      // Scroll target into view
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 350);
+  }
+
+  function positionTooltip(targetRect, position) {
+    const gap = 16;
+    const tt = tooltipEl;
+    
+    // Reset
+    tt.style.left = ''; tt.style.right = ''; tt.style.top = ''; tt.style.bottom = '';
+
+    switch (position) {
+      case 'top':
+        tt.style.left = Math.max(12, targetRect.left) + 'px';
+        tt.style.bottom = (window.innerHeight - targetRect.top + gap) + 'px';
+        break;
+      case 'bottom':
+        tt.style.left = Math.max(12, targetRect.left) + 'px';
+        tt.style.top = (targetRect.bottom + gap) + 'px';
+        break;
+      case 'left':
+        tt.style.right = (window.innerWidth - targetRect.left + gap) + 'px';
+        tt.style.top = Math.max(12, targetRect.top) + 'px';
+        break;
+      case 'right':
+        tt.style.left = (targetRect.right + gap) + 'px';
+        tt.style.top = Math.max(12, targetRect.top) + 'px';
+        break;
+    }
+
+    // Keep tooltip on screen
+    requestAnimationFrame(function() {
+      const ttRect = tt.getBoundingClientRect();
+      if (ttRect.right > window.innerWidth - 12) {
+        tt.style.left = 'auto';
+        tt.style.right = '12px';
+      }
+      if (ttRect.left < 12) tt.style.left = '12px';
+      if (ttRect.bottom > window.innerHeight - 12) {
+        tt.style.top = 'auto';
+        tt.style.bottom = '12px';
+      }
+    });
+  }
+
+  function endTour() {
+    if (overlayEl) overlayEl.remove();
+    if (highlightEl) highlightEl.remove();
+    if (tooltipEl) tooltipEl.remove();
+    localStorage.setItem(TOUR_KEY, 'true');
+
+    // Close cockpit if it was opened during tour
+    if (typeof closeCockpit === 'function') closeCockpit();
+  }
+
+  // Trigger tour after page is fully loaded and user is authenticated
+  function initTour() {
+    if (!shouldShowTour()) return;
+    // Wait for auth and UI to settle
+    setTimeout(function() {
+      // Only show if user is logged in (chatInput exists and is visible)
+      const chat = document.getElementById('chatInput');
+      if (chat) showWelcome();
+    }, 2000);
+  }
+
+  // Hook into page load
+  if (document.readyState === 'complete') initTour();
+  else window.addEventListener('load', function() { setTimeout(initTour, 1500); });
+
+  // Expose reset function for testing
+  window._resetTour = function() {
+    localStorage.removeItem(TOUR_KEY);
+    location.reload();
+  };
+})();
+</script>
 <script>
 /* ── Cliff Detection + Trend Chart ─────────────────────────────────── */
 (function() {
