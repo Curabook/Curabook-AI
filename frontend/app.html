@@ -30,6 +30,50 @@
 .ca-danger{background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.25);}
 .ca-danger .ca-title{color:#dc2626;font-weight:600;}
 .ca-danger .ca-desc{color:#b91c1c;margin-top:2px;font-size:12px;}
+
+/* ── Chat UI Font & Spacing Fixes ───────────────────────────────────── */
+.msg-body{font-size:15px !important;line-height:1.75 !important;color:var(--text) !important;}
+.msg-body p{margin:0 0 10px 0;}
+.msg-body p:last-child{margin-bottom:0;}
+.msg-body strong{font-weight:600;color:var(--text);}
+.msg-body ul,.msg-body ol{margin:8px 0;padding-left:20px;}
+.msg-body li{margin-bottom:4px;font-size:14px;line-height:1.65;}
+.msg-body code{font-size:13px;background:var(--surface-2);padding:2px 6px;border-radius:4px;}
+.msg-body em{color:var(--signal);}
+
+/* User message bubble */
+.user-msg .msg-body{font-size:15px !important;color:var(--text) !important;}
+
+/* AI avatar */
+.av-ai{background:var(--signal) !important;color:#0a0b0e !important;font-weight:700 !important;font-size:14px !important;}
+
+/* Typing/search indicator */
+.msg-body .typing-indicator{display:flex;gap:4px;align-items:center;padding:4px 0;}
+.t-dot{width:7px;height:7px;border-radius:50%;background:var(--text-3);animation:tBounce 1.2s infinite;}
+.t-dot:nth-child(2){animation-delay:.15s;}
+.t-dot:nth-child(3){animation-delay:.3s;}
+@keyframes tBounce{0%,80%,100%{transform:translateY(0);opacity:.4}40%{transform:translateY(-6px);opacity:1}}
+
+/* Input bar improvements */
+.input-bar{border:1.5px solid var(--border) !important;border-radius:14px !important;padding:6px 8px !important;background:var(--surface) !important;transition:border-color .2s;}
+.input-bar:focus-within{border-color:var(--signal) !important;box-shadow:0 0 0 3px rgba(0,212,200,.1) !important;}
+.chat-ta{font-size:15px !important;line-height:1.5 !important;padding:8px 12px !important;min-height:44px !important;}
+.chat-ta::placeholder{font-size:14px !important;color:var(--text-3) !important;}
+.send-btn{width:36px !important;height:36px !important;border-radius:10px !important;font-size:14px !important;}
+.input-btn{width:36px !important;height:36px !important;font-size:14px !important;}
+
+/* Chat display area spacing */
+.chat-msg{padding:14px 18px !important;}
+@media(max-width:640px){.chat-msg{padding:12px 14px !important;}.msg-body{font-size:14px !important;}}
+
+/* Welcome screen chip buttons */
+.chip{font-size:13px !important;padding:8px 14px !important;line-height:1.4 !important;}
+
+/* Disclaimer styling — subtle, not loud */
+.msg-body em:last-child{font-size:12px !important;color:var(--text-3) !important;display:block;margin-top:12px;}
+
+/* Search indicator in typing */
+.msg-body:has(.typing-indicator){font-size:13px !important;color:var(--text-3) !important;}
 </style>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>

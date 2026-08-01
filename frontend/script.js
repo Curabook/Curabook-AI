@@ -1300,8 +1300,24 @@ async function sendMessage(text) {
     let dotCount = 0;
     const typingInterval = setInterval(() => {
       dotCount = (dotCount + 1) % 4;
-      updateTyping(botRow, "Curabook is thinking" + ".".repeat(dotCount));
+      updateTyping(botRow, "PHI is thinking" + ".".repeat(dotCount));
     }, 600);
+
+    // Show "searching" indicator if query might trigger web search
+    const _searchSignals = ["latest", "newest", "recent", "new study", "new drug", "just approved", "2025", "2026", "news", "updates", "current price"];
+    if (_searchSignals.some(s => text.toLowerCase().includes(s))) {
+      updateTyping(botRow, "🔍 Searching the web...");
+      setTimeout(() => {
+        if (botRow?.querySelector(".msg-body")?.textContent?.includes("Searching")) {
+          updateTyping(botRow, "📖 Reading results...");
+        }
+      }, 3000);
+      setTimeout(() => {
+        if (botRow?.querySelector(".msg-body")?.textContent?.includes("Reading")) {
+          updateTyping(botRow, "✍️ Writing response...");
+        }
+      }, 6000);
+    }
 
     const res = await fetch(API + "/chat", { method: "POST", headers: h, body: JSON.stringify(payload) });
     clearInterval(typingInterval);

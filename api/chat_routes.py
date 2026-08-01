@@ -1948,25 +1948,44 @@ def chat():
     # Aggressive multi-pattern strip — catches all known LLM-generated disclaimer formats
     _disc_regexes = [
         # ⚕️ emoji-based disclaimers (with or without markdown italics)
-        r'\n*\s*⚕️[^\n]*(?:provider|advice|decisions|healthcare|medical)[^\n]*',
+        r'\n*\s*⚕️[^\n]*(?:provider|advice|decisions|healthcare|medical|wellness|educational|consult)[^\n]*',
         # "Medical Disclaimer:" block
-        r'\n*\s*Medical Disclaimer:[^\n]*(?:provider|advice|treatment|concerns|professional)[^\n]*',
+        r'\n*\s*Medical Disclaimer:[^\n]*',
         # Horizontal rule + disclaimer
         r'\n*---\n*\s*⚕️[^\n]*',
         # "Disclaimer:" block
-        r'\n*\s*Disclaimer:[^\n]*(?:provider|advice|treatment|concerns|professional)[^\n]*',
+        r'\n*\s*Disclaimer:[^\n]*(?:provider|advice|treatment|concerns|professional|medical)[^\n]*',
         # "As always, consult..." standalone lines
         r'\n*\s*As always,?\s*consult[^\n]*',
         # Stray horizontal rules left after disclaimer removal
         r'\n*\s*---\s*$',
         # "Remember, this is general information..." lines
-        r'\n*\s*Remember,?\s*this is (?:general )?information[^\n]*(?:provider|advice)[^\n]*',
+        r'\n*\s*Remember,?\s*(?:this is|I\'m|I am)[^\n]*(?:provider|advice|medical|professional|diagnosis)[^\n]*',
         # "Please consult..." standalone
-        r'\n*\s*Please consult[^\n]*(?:provider|professional|advice)[^\n]*',
+        r'\n*\s*Please consult[^\n]*',
+        # "Always consult..." standalone
+        r'\n*\s*Always consult[^\n]*(?:provider|professional|healthcare)[^\n]*',
+        # "Consult your/with..." standalone
+        r'\n*\s*Consult (?:your|with|a)[^\n]*(?:provider|professional|healthcare|doctor)[^\n]*',
+        # "This response is for informational..." block
+        r'\n*\s*This (?:response|information) is (?:for )?informational[^\n]*',
+        # Curabook-specific disclaimer
+        r'\n*\s*\*?Curabook is an? (?:educational|informational)[^\n]*\*?',
+        # PHI-specific disclaimer
+        r'\n*\s*\*?PHI is an? (?:educational|informational)[^\n]*\*?',
+        # Generic "not a substitute" lines
+        r'\n*\s*This is not a? ?substitute[^\n]*',
+        # "Note:" medical disclaimer variants
+        r'\n*\s*Note:?\s*(?:This|I|Always)[^\n]*(?:medical|provider|professional|advice)[^\n]*',
     ]
 
     for pattern in _disc_regexes:
         reply = _re_disc.sub(pattern, '', reply, flags=_re_disc.IGNORECASE)
+
+    # Final catch-all: remove any line at the end containing both a medical emoji and "provider/advice/medical"
+    reply = _re_disc.sub(r'\n.*(?:⚕️|🏥|💊).*(?:provider|advice|medical|consult|healthcare).*$', '', reply, flags=_re_disc.IGNORECASE).rstrip()
+    # Also catch any trailing line with "consult" + "provider" even without emoji
+    reply = _re_disc.sub(r'\n\s*\*?[^.]*consult[^.]*(?:provider|professional|healthcare)[^.]*\.?\*?\s*$', '', reply, flags=_re_disc.IGNORECASE).rstrip()
 
     reply = reply.rstrip()
 
