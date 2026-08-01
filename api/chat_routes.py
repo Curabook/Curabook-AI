@@ -48,6 +48,67 @@ from flask import Blueprint, request, jsonify
 
 chat_bp = Blueprint("chat", __name__)
 
+
+# ── Search diagnostic endpoint (remove in production) ────────────────────────
+@chat_bp.route("/api/test-search", methods=["GET"])
+def test_search():
+    """
+    Test endpoint to verify web search is working.
+    Usage: GET /api/test-search?q=new GLP-1 drug 2026
+    """
+    query = request.args.get("q", "new GLP-1 drug approved 2026")
+    serpapi_key = os.getenv("SERPAPI_KEY", "")
+    google_key = os.getenv("GOOGLE_SEARCH_KEY", "")
+
+    diagnostics = {
+        "query": query,
+        "serpapi_key_set": bool(serpapi_key),
+        "serpapi_key_length": len(serpapi_key),
+        "serpapi_key_preview": serpapi_key[:8] + "..." if len(serpapi_key) > 8 else "(empty)",
+        "google_key_set": bool(google_key),
+    }
+
+    # Test SerpAPI directly
+    if serpapi_key:
+        try:
+            import requests as _req
+            resp = _req.get(
+                "https://serpapi.com/search",
+                params={"q": query, "api_key": serpapi_key, "num": 3, "engine": "google"},
+                timeout=10,
+            )
+            diagnostics["serpapi_status_code"] = resp.status_code
+            data = resp.json()
+
+            if "error" in data:
+                diagnostics["serpapi_error"] = data["error"]
+            else:
+                organic = data.get("organic_results", [])
+                diagnostics["serpapi_organic_count"] = len(organic)
+                diagnostics["serpapi_response_keys"] = list(data.keys())[:15]
+                if organic:
+                    diagnostics["serpapi_first_result"] = {
+                        "title": organic[0].get("title", ""),
+                        "link": organic[0].get("link", ""),
+                    }
+                answer_box = data.get("answer_box")
+                if answer_box:
+                    diagnostics["serpapi_answer_box"] = str(answer_box)[:200]
+
+        except Exception as e:
+            diagnostics["serpapi_exception"] = f"{type(e).__name__}: {e}"
+    else:
+        diagnostics["serpapi_error"] = "SERPAPI_KEY not set in environment variables"
+
+    # Test the full _web_search function
+    result = _web_search(query)
+    diagnostics["web_search_result_length"] = len(result)
+    diagnostics["web_search_returned_data"] = bool(result)
+    if result:
+        diagnostics["web_search_preview"] = result[:300]
+
+    return jsonify(diagnostics)
+
 MAX_MESSAGE_LEN  = 2000
 MAX_DOC_TEXT_LEN = 6_000  # Reduced from 20k — Render free tier is 512MB
 
@@ -1106,53 +1167,77 @@ def _needs_web_search(message: str, intent: str) -> bool:
 
 def _web_search(query: str, max_results: int = 3) -> str:
     """
-    Perform a web search using a search API and return formatted results.
-    Uses SerpAPI or falls back to a simple Google search.
+    Perform a web search using SerpAPI or Google CSE.
     Returns a context string to inject into the LLM messages.
     """
     import requests as _req
 
-    # Try SerpAPI first (most reliable)
+    # Try SerpAPI first
     serpapi_key = os.getenv("SERPAPI_KEY", "")
     if serpapi_key:
         try:
-            resp = _req.get(
-                "https://serpapi.com/search",
-                params={
-                    "q": query,
-                    "api_key": serpapi_key,
-                    "num": max_results,
-                },
-                timeout=8,
-            )
-            if resp.ok:
-                data = resp.json()
-                results = data.get("organic_results", [])[:max_results]
-                if results:
-                    lines = ["WEB SEARCH RESULTS (use these to supplement your knowledge — cite sources):"]
-                    for r in results:
-                        title = r.get("title", "")
-                        snippet = r.get("snippet", "")
-                        source = r.get("displayed_link", r.get("link", ""))
-                        lines.append(f"• {title}: {snippet} (Source: {source})")
-                    lines.append("\nIMPORTANT: Use these results to answer the user's question accurately. Cite the source. If results conflict with your knowledge, prefer the more recent source.")
-                    return "\n".join(lines)
-        except Exception as e:
-            print(f"[SEARCH] SerpAPI error: {e}")
+            params = {
+                "q": query,
+                "api_key": serpapi_key,
+                "num": max_results,
+                "engine": "google",
+            }
+            print(f"[SEARCH] SerpAPI request: q='{query}' num={max_results}")
+            resp = _req.get("https://serpapi.com/search", params=params, timeout=10)
 
-    # Fallback: try Google Custom Search
+            if not resp.ok:
+                print(f"[SEARCH] SerpAPI HTTP error: {resp.status_code} — {resp.text[:200]}")
+                # Fall through to Google CSE
+            else:
+                data = resp.json()
+
+                # Check for SerpAPI error response
+                if "error" in data:
+                    print(f"[SEARCH] SerpAPI API error: {data['error']}")
+                else:
+                    results = data.get("organic_results", [])[:max_results]
+                    print(f"[SEARCH] SerpAPI returned {len(results)} organic results")
+
+                    if results:
+                        lines = ["WEB SEARCH RESULTS (use these to supplement your knowledge — cite sources):"]
+                        for r in results:
+                            title = r.get("title", "")
+                            snippet = r.get("snippet", "")
+                            source = r.get("displayed_link", r.get("link", ""))
+                            lines.append(f"• {title}: {snippet} (Source: {source})")
+                        lines.append("\nIMPORTANT: Use these results to answer accurately. Cite the source. Prefer the more recent source when results conflict.")
+                        return "\n".join(lines)
+                    else:
+                        # Check if there are answer box or knowledge graph results
+                        answer_box = data.get("answer_box", {})
+                        if answer_box:
+                            snippet = answer_box.get("snippet", answer_box.get("answer", ""))
+                            source = answer_box.get("displayed_link", answer_box.get("link", "Google"))
+                            if snippet:
+                                print(f"[SEARCH] Using answer_box instead of organic results")
+                                return f"WEB SEARCH RESULT:\n• {snippet} (Source: {source})\n\nUse this to supplement your answer."
+
+                        print(f"[SEARCH] SerpAPI returned 0 results for query: '{query}'")
+                        # Log what keys ARE in the response for debugging
+                        print(f"[SEARCH] Response keys: {list(data.keys())[:10]}")
+
+        except _req.exceptions.Timeout:
+            print(f"[SEARCH] SerpAPI timeout (10s)")
+        except Exception as e:
+            print(f"[SEARCH] SerpAPI error: {type(e).__name__}: {e}")
+
+    elif not serpapi_key:
+        print(f"[SEARCH] SERPAPI_KEY not set in environment")
+
+    # Fallback: Google Custom Search
     google_key = os.getenv("GOOGLE_SEARCH_KEY", "")
     google_cx = os.getenv("GOOGLE_SEARCH_CX", "")
     if google_key and google_cx:
         try:
+            print(f"[SEARCH] Trying Google CSE fallback")
             resp = _req.get(
                 "https://www.googleapis.com/customsearch/v1",
-                params={
-                    "key": google_key,
-                    "cx": google_cx,
-                    "q": query,
-                    "num": max_results,
-                },
+                params={"key": google_key, "cx": google_cx, "q": query, "num": max_results},
                 timeout=8,
             )
             if resp.ok:
@@ -1163,6 +1248,10 @@ def _web_search(query: str, max_results: int = 3) -> str:
                         lines.append(f"• {item.get('title','')}: {item.get('snippet','')} (Source: {item.get('link','')})")
                     lines.append("\nUse these to supplement your answer. Cite the source.")
                     return "\n".join(lines)
+                else:
+                    print(f"[SEARCH] Google CSE returned 0 results")
+            else:
+                print(f"[SEARCH] Google CSE HTTP error: {resp.status_code}")
         except Exception as e:
             print(f"[SEARCH] Google CSE error: {e}")
 
