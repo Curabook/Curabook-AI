@@ -693,7 +693,8 @@ function switchView(view) {
     el(`view${v[0].toUpperCase() + v.slice(1)}`)?.classList.toggle("active", v === view);
     el(`nav${v[0].toUpperCase() + v.slice(1)}`)?.classList.toggle("active", v === view);
   });
-  closeSidebar();
+  // Only close sidebar on mobile (< 768px) — on desktop sidebar stays open
+  if (window.innerWidth < 768) closeSidebar();
   if (view === "health") loadHealthView();
   if (view === "reports") loadReportsView();
   setText("convTitle", { chat: "Chat with Curabook", health: "My Health", reports: "Lab Reports" }[view] || "");
@@ -1009,13 +1010,41 @@ async function loadReportsView() {
           <div class="report-date">${date}</div>
           <div class="report-tags">${markerBadge}${abnormalBadge}</div>
         </div>
-        <button class="report-ask-btn" onclick="askAboutReport('${esc(r.filename || "report")}')">Ask Curabook →</button>
+        <button class="report-ask-btn" onclick="askAboutReport('${esc(r.filename || "report")}', '${esc(r.id || "")}')">Ask Curabook →</button>
       </div>`;
     }).join("");
   } catch { list.innerHTML = `<div class="hv-empty">Could not load reports.</div>`; }
 }
 
-function askAboutReport(f) { switchView("chat"); setTimeout(() => sendMessage(`Summarize my ${f} report and flag any cliff signals.`), 100); }
+async function askAboutReport(filename, docId) {
+  // Switch to chat view (will close sidebar on mobile — expected)
+  switchView("chat");
+  
+  // Load the report's stored markers to give PHI context
+  try {
+    const h = await headers();
+    if (h && docId) {
+      const { ok, data } = await apiJson(`/api/summary/${docId}`, { headers: h });
+      if (ok && data) {
+        // Build a context-rich message that includes the stored data
+        const markers = data.markers || [];
+        if (markers.length > 0) {
+          const markerList = markers.map(m => 
+            `${m.marker_name || m.name || m.marker}: ${m.value} ${m.unit || ''} (${m.status || ''})`
+          ).join(', ');
+          setTimeout(() => sendMessage(
+            `Analyze my ${filename} report. Here are the stored markers: ${markerList}. ` +
+            `Flag any cliff signals, compare to my previous values if available, and tell me what I should watch.`
+          ), 200);
+          return;
+        }
+      }
+    }
+  } catch (e) { console.warn("[REPORT] Could not load markers:", e); }
+
+  // Fallback if markers couldn't be loaded
+  setTimeout(() => sendMessage(`Analyze my ${filename} lab report from my stored data. Flag any cliff signals and compare to previous values.`), 200);
+}
 
 // ── History ────────────────────────────────────────────────────────────────
 async function loadHistory() {
@@ -2244,7 +2273,7 @@ function toast(msg, type = "ok") {
 // ── Wire all events ────────────────────────────────────────────────────────
 function wireEvents() {
   document.querySelectorAll(".nav-item[data-view]").forEach(btn =>
-    btn.addEventListener("click", () => { switchView(btn.dataset.view); closeSidebar(); })
+    btn.addEventListener("click", () => { switchView(btn.dataset.view); if (window.innerWidth < 768) closeSidebar(); })
   );
   el("newChatBtn")?.addEventListener("click", () => { resetChat(); switchView("chat"); });
 
