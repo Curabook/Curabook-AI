@@ -1531,19 +1531,51 @@ function appendTyping() {
   d.appendChild(w); scrollBottom(); return w;
 }
 
-function updateTyping(w, text) { const b = w?.querySelector(".msg-body"); if (b) b.textContent = text; }
+function updateTyping(w, text) {
+  const b = w?.querySelector(".msg-body");
+  if (b) {
+    // Check if it's a search status message (has emoji prefix)
+    if (text.startsWith("🔍") || text.startsWith("📖") || text.startsWith("✍️")) {
+      b.innerHTML = `<div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-3);"><span style="font-size:16px;">${text.slice(0,2)}</span><span>${text.slice(2).trim()}</span></div>`;
+    } else {
+      b.textContent = text;
+    }
+  }
+}
 function updateMsg(w, text) { const b = w?.querySelector(".msg-body"); if (b) { renderAI(b, text); scrollBottom(); } }
 
 function renderAI(elem, text) {
   if (!elem) return;
-  const parts = text.split(/---\n⚕️/);
-  elem.innerHTML = typeof marked !== "undefined" ? marked.parse(parts[0].trim()) : esc(parts[0].trim()).replace(/\n/g, "<br>");
-  if (parts.length > 1 || text.includes("⚕️")) {
-    const l = document.createElement("p");
-    l.className = "phi-legal";
-    l.textContent = "⚕️ Curabook is an educational wellness tool. Always consult your healthcare provider.";
-    elem.appendChild(l);
-  }
+
+  // Strip any disclaimer before rendering (client-side safety net)
+  let clean = text
+    .replace(/\n*\s*---\s*\n*\s*⚕️[^\n]*/g, '')
+    .replace(/\n*\s*⚕️[^\n]*(?:provider|advice|healthcare|medical|wellness|educational|consult)[^\n]*/gi, '')
+    .replace(/\n*\s*Medical Disclaimer:[^\n]*/gi, '')
+    .replace(/\n*\s*Disclaimer:[^\n]*(?:provider|advice|medical)[^\n]*/gi, '')
+    .replace(/\n*\s*\*?Curabook is an? (?:educational|informational)[^\n]*\*?/gi, '')
+    .replace(/\n*\s*\*?PHI is an? (?:educational|informational)[^\n]*\*?/gi, '')
+    .replace(/\n*\s*Always consult[^\n]*(?:provider|professional|healthcare)[^\n]*/gi, '')
+    .replace(/\n*\s*This (?:response|information) is (?:for )?informational[^\n]*/gi, '')
+    .replace(/\n*\s*Please consult[^\n]*(?:provider|professional)[^\n]*/gi, '')
+    .trim();
+
+  // Parse markdown
+  let html = typeof marked !== "undefined" ? marked.parse(clean) : esc(clean).replace(/\n/g, "<br>");
+
+  // Make source links open in new tab
+  html = html.replace(/<a /g, '<a target="_blank" rel="noopener" ');
+
+  // Style source links
+  html = html.replace(/<a ([^>]*)>/g, '<a $1 style="color:var(--signal);text-decoration:underline;font-weight:500;">');
+
+  elem.innerHTML = html;
+
+  // Append single controlled disclaimer
+  const disc = document.createElement("div");
+  disc.style.cssText = "font-size:11px;color:var(--text-3);margin-top:14px;padding-top:8px;border-top:1px solid var(--border);line-height:1.5;";
+  disc.textContent = "⚕️ This is health education, not medical advice. Discuss changes with your provider.";
+  elem.appendChild(disc);
 }
 
 const scrollBottom = () => { const d = el("chatDisplay"); if (d) d.scrollTop = d.scrollHeight; };

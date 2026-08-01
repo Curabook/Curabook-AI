@@ -1199,13 +1199,13 @@ def _web_search(query: str, max_results: int = 3) -> str:
                     print(f"[SEARCH] SerpAPI returned {len(results)} organic results")
 
                     if results:
-                        lines = ["WEB SEARCH RESULTS (use these to supplement your knowledge — cite sources):"]
+                        lines = ["WEB SEARCH RESULTS (use these to answer the user's question):"]
                         for r in results:
                             title = r.get("title", "")
                             snippet = r.get("snippet", "")
-                            source = r.get("displayed_link", r.get("link", ""))
-                            lines.append(f"• {title}: {snippet} (Source: {source})")
-                        lines.append("\nIMPORTANT: Use these results to answer accurately. Cite the source. Prefer the more recent source when results conflict.")
+                            link = r.get("link", "")
+                            lines.append(f"• {title}: {snippet} [Source]({link})")
+                        lines.append("\nIMPORTANT: Use these results to answer accurately. Include the source links in markdown format [Source Name](URL) so the user can click them.")
                         return "\n".join(lines)
                     else:
                         # Check if there are answer box or knowledge graph results
@@ -1989,8 +1989,8 @@ def chat():
 
     reply = reply.rstrip()
 
-    _disclaimer = MANDATORY_DISCLAIMER if is_clinical_response(reply) else CONVERSATIONAL_DISCLAIMER
-    final_reply = _inject_protein_action(message, reply, is_meal_photo=_is_meal_photo_upload) + _disclaimer
+    # Disclaimer is now handled client-side in renderAI() — no server-side append
+    final_reply = _inject_protein_action(message, reply, is_meal_photo=_is_meal_photo_upload)
 
     # ── STEP 9: Background ops ────────────────────────────────────────────────
     # Skip background LLM doc analysis when markers already extracted —
