@@ -1010,31 +1010,40 @@ async function loadReportsView() {
           <div class="report-date">${date}</div>
           <div class="report-tags">${markerBadge}${abnormalBadge}</div>
         </div>
-        <button class="report-ask-btn" onclick="askAboutReport('${esc(r.filename || "report")}', '${esc(r.id || "")}')">Ask Curabook →</button>
+        <button class="report-ask-btn" onclick="askAboutReport('${esc(r.filename || "report")}')">Ask Curabook →</button>
       </div>`;
     }).join("");
   } catch { list.innerHTML = `<div class="hv-empty">Could not load reports.</div>`; }
 }
 
-async function askAboutReport(filename, docId) {
-  // Switch to chat view (will close sidebar on mobile — expected)
+async function askAboutReport(filename) {
   switchView("chat");
   
-  // Load the report's stored markers to give PHI context
+  // Fetch this report's markers directly from lab-reports API
   try {
     const h = await headers();
-    if (h && docId) {
-      const { ok, data } = await apiJson(`/api/summary/${docId}`, { headers: h });
-      if (ok && data) {
-        // Build a context-rich message that includes the stored data
-        const markers = data.markers || [];
-        if (markers.length > 0) {
-          const markerList = markers.map(m => 
-            `${m.marker_name || m.name || m.marker}: ${m.value} ${m.unit || ''} (${m.status || ''})`
+    if (h) {
+      const { ok, data } = await apiJson("/api/lab-reports", { headers: h });
+      if (ok && Array.isArray(data)) {
+        const report = data.find(r => r.filename === filename);
+        if (report && report.abnormal_markers && report.abnormal_markers.length > 0) {
+          const markerList = report.abnormal_markers.map(m => 
+            `${m.name}: ${m.value} ${m.unit || ''} (${m.status})`
           ).join(', ');
+          const normalCount = report.normal_count || 0;
+          const abnormalCount = report.abnormal_count || 0;
+          
           setTimeout(() => sendMessage(
-            `Analyze my ${filename} report. Here are the stored markers: ${markerList}. ` +
-            `Flag any cliff signals, compare to my previous values if available, and tell me what I should watch.`
+            `Analyze my lab report "${filename}" (${report.marker_count} markers total, ${abnormalCount} flagged, ${normalCount} normal). ` +
+            `Flagged markers: ${markerList}. ` +
+            `Compare these to my previous values, calculate rates of change, and flag any cliff signals.`
+          ), 200);
+          return;
+        } else if (report) {
+          // Report exists but no abnormal markers
+          setTimeout(() => sendMessage(
+            `Analyze my lab report "${filename}" (${report.marker_count} markers, all within normal range). ` +
+            `Compare these to my previous values and confirm whether my metabolic markers are stable.`
           ), 200);
           return;
         }
@@ -1042,8 +1051,8 @@ async function askAboutReport(filename, docId) {
     }
   } catch (e) { console.warn("[REPORT] Could not load markers:", e); }
 
-  // Fallback if markers couldn't be loaded
-  setTimeout(() => sendMessage(`Analyze my ${filename} lab report from my stored data. Flag any cliff signals and compare to previous values.`), 200);
+  // Fallback
+  setTimeout(() => sendMessage(`Analyze my "${filename}" lab report from my stored health data. Flag any cliff signals and compare to my previous values.`), 200);
 }
 
 // ── History ────────────────────────────────────────────────────────────────
