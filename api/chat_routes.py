@@ -1048,6 +1048,16 @@ THIS IS YOUR CHANCE TO SHOW INTELLIGENCE. Don't just list what's high/low.
 2. CALCULATE trends: "Your HbA1c went from 5.4 to 5.9 — that's a 0.5% increase, well above the 0.25% cliff threshold"
 3. PRIORITIZE: Don't give equal weight to everything. Lead with what matters most.
 4. PRODUCT HOOK: If user typed values manually: "Upload the actual PDF (📎) and I'll track all markers automatically, flag trends across reports, and alert you when cliff signals appear."
+
+WHEN ASKED "which labs should I get" for cliff monitoring — give the COMPLETE panel, not a partial list:
+   - Fasting Glucose (cliff signal: ≥15% rise from baseline)
+   - HbA1c (cliff signal: ≥0.25% rise between readings)
+   - Fasting Insulin (SURMOUNT-4 data: rises ~26% with significant regain — often the earliest signal, before glucose)
+   - Lipid panel: LDL, HDL, Triglycerides (cliff signal: ≥15-20% rise in LDL/triglycerides)
+   - Weight/BMI as the baseline comparator (not a lab, but track alongside)
+   Frame it as "ask your provider for a metabolic panel" or "most Quest/LabCorp panels called 'Comprehensive Metabolic Panel + Lipid Panel + HbA1c' cover this in one draw."
+
+CLOSING QUESTION should tie back to labs/action, not switch topics: "When's your next blood draw?" or "Want me to remind you to re-check these in 4-6 weeks?" — not an unrelated question like hunger level unless the conversation was already about hunger.
 """.strip(),
 
     "doctor_prep": """

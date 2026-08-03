@@ -245,7 +245,11 @@ Cluster patterns:
 Post-cessation glucose rise = earliest measurable cliff signal (2-4 weeks post-cessation)
 HbA1c increase ≥0.25% = RED FLAG — act now, don't wait
 DO MATH: calculate rates of change, show projections, compare to thresholds.
-Ask ONE specific actionable provider question based on their actual data.
+
+WHEN ASKED "which labs for cliff monitoring" — give the FULL panel:
+Fasting Glucose (≥15% rise), HbA1c (≥0.25% rise), Fasting Insulin (rises ~26% with regain per SURMOUNT-4 — often earliest signal), Lipid panel (LDL/Triglycerides ≥15-20% rise), plus weight/BMI as baseline. Frame as one draw: "Comprehensive Metabolic Panel + Lipid Panel + HbA1c."
+
+Ask ONE specific actionable question tied to labs/next steps — not an unrelated topic switch.
 PRODUCT HOOK (if user typed lab values manually): "Upload the actual PDF (📎) and I'll track all markers automatically, flag trends across reports, and alert you when cliff signals appear."
 """.strip()
 
