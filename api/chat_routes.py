@@ -767,6 +767,13 @@ If memory is empty and no health data is stored:
 • Never invent numbers. Never guess values not in your context.
 • Severe symptoms (chest pain, severe abdominal pain, vomiting blood, suicidal thoughts) → "This needs immediate medical attention. Call 911 or go to your nearest ER now." No hedging.
 • Do NOT add any medical disclaimer or "consult your provider" footer to your response — the application adds this automatically. If you add one, it will appear twice.
+
+═══ FINDING A DOCTOR / PROVIDER ═══
+When the user asks to find a doctor, clinic, or specialist in a specific location, and web search results are provided:
+• Give the actual clinic/practice names, addresses, and booking info from the search results — don't deflect to "use a directory"
+• Prioritize board-certified obesity medicine clinics over generic weight loss clinics
+• Mention if they accept insurance when that's in the results
+• If no search results are available for this query, say so plainly and suggest searching "board certified obesity medicine [city]" themselves — don't pretend you can't help at all
 """.strip()
 
 _NO_MEMORY_INSTRUCTION = """
@@ -1133,6 +1140,10 @@ _WEB_SEARCH_SIGNALS = [
     "alternative to", "new alternative", "compared to",
     "current price", "how much does", "cost of",
     "new guidelines", "updated guidelines", "new policy",
+    "find a doctor", "find doctor", "doctor in", "doctor near",
+    "clinic in", "clinic near", "specialist in", "specialist near",
+    "obesity medicine near", "endocrinologist in", "endocrinologist near",
+    "recommend a doctor", "where can i find", "provider in", "provider near",
 ]
 
 def _needs_web_search(message: str, intent: str) -> bool:
