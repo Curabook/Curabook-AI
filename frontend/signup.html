@@ -933,22 +933,14 @@ try {
             return;
         }
 
-        // Check backend: if profile exists with any real data → already onboarded on another device
+        // Check backend: if profile has first_name → already onboarded on another device
         try {
             const profileRes = await fetch(`${API_BASE}/api/profile`, {
                 headers: { 'Authorization': 'Bearer ' + _accessToken }
             });
             if (profileRes.ok) {
                 const profile = await profileRes.json();
-                // Check multiple signals — any one means the user has used the app before
-                const hasProfile = profile && (
-                    profile.first_name ||
-                    profile.plan ||
-                    profile.glp1_status ||
-                    profile.last_dose_date ||
-                    profile.goal_weight_lbs
-                );
-                if (hasProfile) {
+                if (profile && profile.first_name) {
                     try { localStorage.setItem('phi_onboarded_' + _userId, 'true'); } catch(e) {}
                     const _rp2 = new URLSearchParams(window.location.search).get('redirect');
                     if (_rp2 && _rp2.startsWith('/') && !_rp2.startsWith('//')) {

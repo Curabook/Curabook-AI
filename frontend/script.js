@@ -1357,9 +1357,6 @@ async function sendMessage(text) {
       }, 6000);
     }
 
-    // Add stream flag to payload
-    payload.stream = true;
-
     const res = await fetch(API + "/chat", { method: "POST", headers: h, body: JSON.stringify(payload) });
     clearInterval(typingInterval);
 
@@ -1388,63 +1385,15 @@ async function sendMessage(text) {
       throw new Error("Authentication failed. Please refresh the page.");
     }
 
-    // Check if response is streaming (SSE) or regular JSON
-    const contentType = res.headers.get("content-type") || "";
-    if (contentType.includes("text/event-stream")) {
-      // STREAMING — render word by word like ChatGPT
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let fullReply = "";
-      const msgBody = botRow?.querySelector(".msg-body");
+    const txt = await res.text();
+    let data = null; try { data = JSON.parse(txt); } catch (e) {}
 
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split("\n");
-
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          try {
-            const parsed = JSON.parse(line.slice(6));
-            if (parsed.token) {
-              fullReply += parsed.token;
-              // Render incrementally with markdown
-              if (msgBody) {
-                const rendered = typeof marked !== "undefined" ? marked.parse(fullReply) : fullReply.replace(/\n/g, "<br>");
-                msgBody.innerHTML = rendered;
-              }
-              scrollBottom();
-            }
-            if (parsed.done && parsed.full_reply) {
-              fullReply = parsed.full_reply;
-            }
-          } catch (e) {}
-        }
-      }
-
-      // Final render with full processing
-      const cleanReply = interceptPHIActions(fullReply, text);
-      renderAI(msgBody, cleanReply);
-      // Extract and render follow-up suggestions as clickable buttons
-      _renderFollowUps(botRow, cleanReply);
-      scrollBottom();
-      await _postChatActions(cleanReply, text, {reply: cleanReply});
-
+    if (res.ok && data?.reply) {
+      const cleanReply = interceptPHIActions(data.reply, text);
+      updateMsg(botRow, cleanReply);
+      await _postChatActions(cleanReply, text, data);
     } else {
-      // NON-STREAMING — regular JSON response (fallback)
-      const txt = await res.text();
-      let data = null; try { data = JSON.parse(txt); } catch (e) {}
-
-      if (res.ok && data?.reply) {
-        const cleanReply = interceptPHIActions(data.reply, text);
-        updateMsg(botRow, cleanReply);
-        _renderFollowUps(botRow, cleanReply);
-        await _postChatActions(cleanReply, text, data);
-      } else {
-        throw new Error(`Server Error (${res.status}): txt.slice(0, 150)`);
-      }
+      throw new Error(`Server Error (${res.status}): ${txt.slice(0, 150)}`);
     }
 
   } catch (err) {
@@ -1668,44 +1617,6 @@ function renderAI(elem, text) {
 }
 
 const scrollBottom = () => { const d = el("chatDisplay"); if (d) d.scrollTop = d.scrollHeight; };
-
-// Render follow-up suggestions as clickable buttons
-function _renderFollowUps(botRow, reply) {
-  if (!botRow || !reply) return;
-  // Extract 💡 suggestions from reply
-  const lines = reply.split("\n");
-  const suggestions = [];
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (trimmed.startsWith("💡")) {
-      suggestions.push(trimmed.replace(/^💡\s*/, "").trim());
-    }
-  }
-  if (suggestions.length === 0) return;
-
-  const container = document.createElement("div");
-  container.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;padding-top:10px;border-top:1px solid var(--border,#e5e5e5);";
-
-  for (const suggestion of suggestions.slice(0, 3)) {
-    const btn = document.createElement("button");
-    btn.textContent = suggestion;
-    btn.style.cssText = "background:var(--surface-2,#f5f5f5);border:1px solid var(--border,#e0e0e0);border-radius:20px;padding:6px 14px;font-size:12px;color:var(--signal,#00b8b0);cursor:pointer;font-weight:500;transition:all .15s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px;";
-    btn.onmouseover = function() { this.style.background = "var(--signal-dim,#e0faf8)"; };
-    btn.onmouseout = function() { this.style.background = "var(--surface-2,#f5f5f5)"; };
-    btn.onclick = function() {
-      // Remove the follow-up buttons after clicking
-      container.remove();
-      // Send the suggestion as a new message
-      if (typeof sendMessage === "function") sendMessage(suggestion);
-      else { const input = el("chatInput"); if (input) { input.value = suggestion; el("sendBtn")?.click(); } }
-    };
-    container.appendChild(btn);
-  }
-
-  // Append to the message body
-  const msgBody = botRow?.querySelector(".msg-body");
-  if (msgBody) msgBody.appendChild(container);
-}
 
 // ── Shield ─────────────────────────────────────────────────────────────────
 async function autoLoadShield() {
