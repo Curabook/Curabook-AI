@@ -71,6 +71,24 @@ def save_onboarding():
         except (ValueError, TypeError):
             pass
 
+    # Always ensure reports_remaining is set for new users
+    # Use upsert with a check — don't overwrite existing valid counts
+    try:
+        existing = supabase.table("user_profiles").select(
+            "reports_remaining"
+        ).eq("user_id", user.id).limit(1).execute()
+
+        if existing.data:
+            existing_count = existing.data[0].get("reports_remaining")
+            # Only set if NULL (new user or migration not run)
+            if existing_count is None:
+                profile_data["reports_remaining"] = 3
+        else:
+            # Brand new row — set to 3
+            profile_data["reports_remaining"] = 3
+    except Exception:
+        profile_data["reports_remaining"] = 3
+
     try:
         supabase.table("user_profiles").upsert(profile_data, on_conflict="user_id").execute()
     except Exception as e:

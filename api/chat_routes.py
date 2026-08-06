@@ -98,6 +98,7 @@ def phi_greeting():
             try:
                 last_dt = date.fromisoformat(str(last_dose)[:10])
                 days = (date.today() - last_dt).days
+                print(f"[GREETING] last_dose raw: {last_dose} → parsed: {last_dt} → days: {days}")
                 hl = 7.0  # default semaglutide
                 pct = round(100 * (0.5 ** (days / hl)), 1)
 
@@ -168,10 +169,12 @@ def phi_greeting():
         ).eq("user_id", user.id).order("created_at", desc=True).limit(10).execute()
         memories = [r["fact"] for r in (mem_res.data or [])]
 
-        # ── Missing data check ──────────────────────────────────────────────
+        # ── Missing data check — only flag truly missing fields ─────────────
         missing = []
-        if not last_dose: missing.append("last_dose_date")
-        if not goal_weight: missing.append("goal_weight_lbs")
+        if not last_dose and glp1_status in ("stopped", "tapering"):
+            missing.append("last_dose_date")
+        if not goal_weight:
+            missing.append("goal_weight_lbs")
         if glp1_status not in ("stopped", "tapering", "active", "considering"):
             missing.append("glp1_status")
 
@@ -215,27 +218,62 @@ def phi_greeting():
 
         context_str = "\n".join(context_parts)
 
+        # ── Is this a brand new user? ───────────────────────────────────────
+        # New user = has profile data but NO lab markers and NO conversation memories
+        is_new_user = not latest_markers and not memories
+
         # ── Generate greeting via LLM ───────────────────────────────────────
-        greeting_prompt = f"""You are PHI — Curabook's health intelligence system.
+        if is_new_user:
+            # New user — warm welcome first, then acknowledge their data
+            if cessation_ctx:
+                days = cessation_ctx["days"]
+                phase_desc = cessation_ctx["phase_desc"]
+                protein_target = round(float(goal_weight) * 0.545, 1) if goal_weight else None
+                greeting_prompt = f"""You are PHI — Curabook's health intelligence system. This is a NEW USER who just signed up.
+
+User context:
+{context_str}
+
+Generate a warm, welcoming opening message. Rules:
+- Start by welcoming them to Curabook — make them feel they came to the right place
+- Acknowledge the data they just provided (day {days} post-cessation is meaningful)
+- Reference ONE specific thing from their data naturally
+- End with ONE gentle, specific question OR an observation that shows PHI understands their situation
+- DO NOT ask for data they already provided (last_dose_date, goal_weight)
+- DO NOT lead with danger/urgency — this is their first moment, make it feel safe
+- Max 3 sentences total. Warm, clear, specific.
+
+Example of a GOOD new user greeting:
+"Welcome to Curabook. You're {days} days post-cessation — right in the phase where ghrelin starts rebounding, which means the hunger you might be feeling is completely biological. Let's start by getting a baseline blood panel to track your markers from here."
+
+Generate the greeting now:"""
+            else:
+                greeting_prompt = f"""You are PHI — Curabook's health intelligence system. This is a NEW USER who just signed up.
+
+User context:
+{context_str}
+
+Generate a warm welcome. Rules:
+- Welcome them genuinely — they came to the right place
+- Briefly explain what PHI does for them (monitors their metabolic health post-GLP-1)
+- Ask ONE question to understand their situation better
+- Max 2-3 sentences. Warm, clear, no jargon.
+
+Generate the greeting now:"""
+        else:
+            # Returning user — show intelligence, reference their data
+            greeting_prompt = f"""You are PHI — Curabook's health intelligence system. This user has history with you.
 
 {context_str}
 
-Generate a single, specific opening message. Rules:
+Generate a specific, data-driven opening message. Rules:
 - Reference REAL numbers from the context above
-- If it's a peak danger day (days 14-28), lead with that urgency
 - If labs are overdue (6+ weeks), mention it with the specific timeframe
-- If missing data, ask ONE question naturally at the end
-- If no data at all, warmly ask what brought them here today
+- If missing data, ask ONE question naturally at the end — but ONLY if the data wasn't just collected during signup
 - NEVER say "How can I help you?" or "What can I do for you?"
 - NEVER be generic — every sentence must reference something specific
 - Max 3 sentences. Be direct. Sound like you've been thinking about this person.
-- If user has a name, use it once naturally
-- End with either a specific observation OR one focused question (not both)
-
-Examples of GOOD openings:
-"Day 22 — you're in your peak ghrelin window right now. Your HbA1c was 5.9% eight weeks ago and we're overdue for a check. How are you actually feeling today?"
-"Your glucose was 133 last month and that was already above threshold. Six weeks of drift since then could mean a meaningful change — time to get labs ordered."
-"Welcome back. Your protein target is 89g and based on what you logged yesterday you were 23g short. What did today's eating look like so far?"
+- End with either a specific observation OR one focused question
 
 Generate ONE opening message now:"""
 
