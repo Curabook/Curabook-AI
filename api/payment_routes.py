@@ -996,6 +996,44 @@ def admin_grant_plan():
 # SETUP TABLES
 # ══════════════════════════════════════════════════════════════════════════════
 
+@payment_bp.route("/api/payment/reset-reports", methods=["POST"])
+def reset_reports():
+    """
+    Admin endpoint to reset a user's reports_remaining to FREE_REPORT_LIMIT.
+    Body: { "user_id": "xxx" } or {} to reset the calling user's own count.
+    """
+    from app import supabase
+    from services.auth import get_authenticated_user
+
+    # Allow admin reset for any user, or self-reset
+    body = request.json or {}
+    target_user_id = body.get("user_id")
+
+    if target_user_id:
+        # Admin reset — requires admin secret
+        if not ADMIN_SECRET or request.headers.get("X-Admin-Secret") != ADMIN_SECRET:
+            return jsonify({"error": "Unauthorized"}), 401
+    else:
+        # Self-reset — authenticated user resets their own (for debugging)
+        user = get_authenticated_user(supabase)
+        if not user:
+            return jsonify({"error": "Unauthorized"}), 401
+        target_user_id = user.id
+
+    try:
+        supabase.table("user_profiles").upsert({
+            "user_id": target_user_id,
+            "reports_remaining": FREE_REPORT_LIMIT,
+        }, on_conflict="user_id").execute()
+        return jsonify({
+            "success": True,
+            "reports_remaining": FREE_REPORT_LIMIT,
+            "message": f"Reset to {FREE_REPORT_LIMIT} free uploads"
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @payment_bp.route("/api/payment/setup-tables", methods=["POST"])
 def setup_missing_tables():
     """
@@ -1019,13 +1057,24 @@ def setup_missing_tables():
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS last_dose_date date",
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS stop_reason text",
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS pa_credits integer default 0",
+        "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS notification_opt_out boolean default false",
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS is_admin_granted boolean default false",
+        f"ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS reports_remaining integer default {FREE_REPORT_LIMIT}",
+        f"UPDATE user_profiles SET reports_remaining = {FREE_REPORT_LIMIT} WHERE reports_remaining IS NULL OR reports_remaining <= 0 AND plan = 'free'",
         "ALTER TABLE glp1_onboarding ADD COLUMN IF NOT EXISTS last_dose_date date",
         "ALTER TABLE glp1_onboarding ADD COLUMN IF NOT EXISTS stop_reason text",
         "ALTER TABLE glp1_onboarding ADD COLUMN IF NOT EXISTS expected_stop_date date",
     ]
 
     missing_tables_sql = [
+        """CREATE TABLE IF NOT EXISTS notification_log (
+            id               uuid primary key default gen_random_uuid(),
+            user_id          uuid not null references auth.users(id) on delete cascade,
+            notification_key text not null,
+            sent_at          timestamptz default now(),
+            unique(user_id, notification_key)
+        )""",
+        "CREATE INDEX IF NOT EXISTS idx_notif_user ON notification_log(user_id, sent_at desc)",
         """CREATE TABLE IF NOT EXISTS app_config (
             key        text PRIMARY KEY,
             value      text NOT NULL DEFAULT '',

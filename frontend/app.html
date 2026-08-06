@@ -848,22 +848,21 @@ function handleMealPhoto(input) {
 
       window._phiGreetingData = data;
 
-      // Show PHI's opening message before user types anything
+      // Show PHI's opening message — inject ABOVE the chips, don't hide them
       if (data.greeting) {
         const display = document.getElementById('chatDisplay');
-        const chipsEl = document.getElementById('welcomeChips');
-        const welcomeEl = chipsEl ? chipsEl.closest('.welcome-wrap') || chipsEl.parentElement : null;
+        const welcomeScreen = document.getElementById('welcomeScreen');
 
         if (display && !display.querySelector('.chat-msg')) {
+          // Show chat display alongside welcome screen
           display.classList.remove('hidden');
-          if (welcomeEl) welcomeEl.style.display = 'none';
 
-          // Create PHI message row
+          // Create PHI greeting bubble
           const row = document.createElement('div');
           row.className = 'chat-msg bot-msg';
-          row.innerHTML = `
-            <div class="msg-av av-ai" aria-hidden="true">φ</div>
-            <div class="msg-body"></div>`;
+          row.setAttribute('data-phi-greeting', '1');
+          row.style.cssText = 'margin-bottom:8px;';
+          row.innerHTML = `<div class="msg-av av-ai" aria-hidden="true">φ</div><div class="msg-body"></div>`;
           display.appendChild(row);
 
           const body = row.querySelector('.msg-body');
@@ -872,6 +871,12 @@ function handleMealPhoto(input) {
           } else if (body) {
             body.textContent = data.greeting;
           }
+
+          // Move chatDisplay ABOVE welcomeScreen so greeting shows first
+          if (welcomeScreen && welcomeScreen.parentNode) {
+            welcomeScreen.parentNode.insertBefore(display, welcomeScreen);
+          }
+
           display.scrollTop = display.scrollHeight;
         }
       }
@@ -882,15 +887,19 @@ function handleMealPhoto(input) {
         if (ta) ta.placeholder = data.placeholder;
       }
 
-      // CHANGE 8: Dynamic suggestion chips
+      // CHANGE 8: Update chips with context-aware ones (keep welcome screen visible)
       if (data.chips && data.chips.length > 0) {
         const chipsWrap = document.getElementById('welcomeChips');
         if (chipsWrap) {
-          chipsWrap.innerHTML = data.chips.map(chip => `
-            <button class="chip" style="text-align:left;padding:8px 14px;" onclick="sendMessage(${JSON.stringify(chip.q)})">
-              <span class="chip-text">${chip.text}</span>
+          // Keep existing chips but add context chips at the TOP
+          const contextChipsHtml = data.chips.map(chip => `
+            <button class="chip" style="background:var(--signal-dim);border-color:var(--signal);color:var(--signal);"
+              onclick="sendMessage(${JSON.stringify(chip.q).replace(/'/g, '&#39;')})">
+              <span>${chip.text}</span>
             </button>
           `).join('');
+          // Prepend context chips before existing ones
+          chipsWrap.insertAdjacentHTML('afterbegin', contextChipsHtml);
         }
       }
 

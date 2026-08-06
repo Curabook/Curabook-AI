@@ -2207,11 +2207,26 @@ def _get_user_plan(supabase, user_id: str) -> tuple[str, int]:
                .execute())
         if res.data:
             row = res.data[0]
-            plan = row.get("plan", "free") or "free"
-            remaining = row.get("reports_remaining", FREE_REPORT_LIMIT)
+            plan = (row.get("plan") or "free").lower()
+
+            # Pro users always have unlimited
+            if plan in _PRO_PLANS:
+                return plan, 9999
+
+            remaining = row.get("reports_remaining")
+
+            # NULL means column didn't exist when user was created — give them full 3
             if remaining is None:
-                remaining = FREE_REPORT_LIMIT
-            return plan, int(remaining)
+                # Initialize the column for this user
+                try:
+                    supabase.table("user_profiles").update({
+                        "reports_remaining": FREE_REPORT_LIMIT
+                    }).eq("user_id", user_id).execute()
+                except Exception:
+                    pass
+                return plan, FREE_REPORT_LIMIT
+
+            return plan, max(0, int(remaining))
     except Exception as e:
         print(f"[TIER] Plan fetch error: {e}")
     return "free", FREE_REPORT_LIMIT
