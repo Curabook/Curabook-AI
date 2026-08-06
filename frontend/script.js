@@ -1116,25 +1116,17 @@ function renderHistory(convs) {
 }
 
 async function openConversation(id) {
-  if (_isSending || id === _convId) { if (window.innerWidth < 768) closeSidebar(); return; }
-  _convId = id; _uploads = []; _docCtx = { text: null, hasDoc: false, filename: "", isMealPhoto: false };
+  if (_isSending || id === _convId) { closeSidebar(); return; }
+  _convId = id; _uploads = []; _docCtx = { text: null, hasDoc: false, filename: "" };
   clearFilePreview(); showChat();
   if (el("chatDisplay")) el("chatDisplay").innerHTML = "";
-  el("welcomeChips")?.removeAttribute("data-ctx-chips-added");
   document.querySelectorAll(".hist-item").forEach(e => e.classList.toggle("active", e.dataset.id === id));
-  if (window.innerWidth < 768) closeSidebar();
+  closeSidebar();
   const h = await headers(); if (!h) return;
   try {
     const { ok, data } = await apiJson("/conversation", { method: "POST", headers: h, body: JSON.stringify({ conversation_id: id }) });
-    if (ok && Array.isArray(data)) {
-      data.forEach(m => {
-        if (m.content && m.content.trim()) {
-          appendMsg(m.content, m.role === "user" ? "user" : "ai");
-        }
-      });
-      scrollBottom();
-    }
-  } catch (e) { console.warn("[OPEN CONV]", e); }
+    if (ok && Array.isArray(data)) { data.forEach(m => appendMsg(m.content, m.role === "user" ? "user" : "ai")); scrollBottom(); }
+  } catch {}
 }
 
 async function deleteConversation(id, e) {
@@ -1634,20 +1626,10 @@ function appendMsg(text, role) {
   const d = el("chatDisplay"); if (!d) return null;
   const wrap = document.createElement("div");
   wrap.className = `chat-msg ${role === "user" ? "user-msg" : "ai-msg"}`;
-  const body = document.createElement("div");
-  body.className = "msg-body";
-  const av = document.createElement("div");
-  av.className = `msg-av ${role === "user" ? "av-user" : "av-ai"}`;
-  av.textContent = role === "user" ? (_userName?.[0]?.toUpperCase() || "U") : "φ";
-  if (role === "user") {
-    body.textContent = text;
-    wrap.appendChild(body);
-    wrap.appendChild(av);
-  } else {
-    renderAI(body, text);
-    wrap.appendChild(av);
-    wrap.appendChild(body);
-  }
+  const av = `<div class="msg-av ${role === "user" ? "av-user" : "av-ai"}">${role === "user" ? (_userName?.[0]?.toUpperCase() || "U") : "φ"}</div>`;
+  const body = document.createElement("div"); body.className = "msg-body";
+  if (role === "user") { body.textContent = text; wrap.innerHTML = av; wrap.insertBefore(body, wrap.firstChild); }
+  else { renderAI(body, text); wrap.innerHTML = av; wrap.appendChild(body); }
   d.appendChild(wrap); return wrap;
 }
 
