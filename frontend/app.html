@@ -853,10 +853,9 @@ function handleMealPhoto(input) {
 
       window._phiGreetingData = data;
 
-      // Show PHI greeting ABOVE welcome screen — don't hide chips
+      // Show PHI greeting in chat display — no DOM movement
       if (data.greeting) {
         const display = document.getElementById('chatDisplay');
-        const welcomeScreen = document.getElementById('welcomeScreen');
 
         if (display && !display.querySelector('[data-phi-greeting]')) {
           display.classList.remove('hidden');
@@ -872,11 +871,6 @@ function handleMealPhoto(input) {
             renderAI(body, data.greeting);
           } else if (body) {
             body.textContent = data.greeting;
-          }
-
-          // Move chatDisplay above welcomeScreen
-          if (welcomeScreen && welcomeScreen.parentNode) {
-            welcomeScreen.parentNode.insertBefore(display, welcomeScreen);
           }
           display.scrollTop = display.scrollHeight;
         }
