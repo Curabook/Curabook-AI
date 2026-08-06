@@ -336,8 +336,20 @@ function _renderPlanBadge() {
   const planEl = el("userPlan");
   if (planEl) {
     const isPro = _userPlan === "pro" || _userPlan === "annual" || _userPlan === "monthly";
-    planEl.textContent = isPro ? "Curabook Pro ✦" : "Curabook Free";
-    planEl.style.color = isPro ? "var(--signal)" : "var(--text-3)";
+    if (isPro) {
+      planEl.textContent = "Curabook Shield ✦";
+      planEl.style.color = "var(--signal)";
+      planEl.title = "Shield plan — unlimited uploads";
+    } else {
+      const rem = typeof _reportsRemaining === "number" ? _reportsRemaining : 3;
+      planEl.textContent = rem > 0
+        ? `Free · ${rem} upload${rem === 1 ? "" : "s"} left`
+        : "Free · No uploads left";
+      planEl.style.color = rem > 0 ? "var(--text-3)" : "var(--danger)";
+      planEl.title = rem > 0
+        ? `${rem} of 3 free lab uploads remaining — upgrade to Shield for unlimited`
+        : "All 3 free uploads used — upgrade to Shield for unlimited";
+    }
   }
 }
 
@@ -385,6 +397,10 @@ function handleUploadClick() {
   if (!isPro && _reportsRemaining <= 0) {
     showUpgradeModal("upload");
     return;
+  }
+  // Show remaining count as a subtle toast before opening file picker
+  if (!isPro && _reportsRemaining > 0 && _reportsRemaining <= 3) {
+    toast(`${_reportsRemaining} free upload${_reportsRemaining === 1 ? '' : 's'} remaining`);
   }
   el("fileInput")?.click();
 }
@@ -451,7 +467,7 @@ function showUpgradeModal(reason = "manual") {
           font-size:.8rem;color:var(--amber);
           display:flex;align-items:center;gap:8px;">
           <i class="fa-solid fa-triangle-exclamation" style="flex-shrink:0;"></i>
-          <span><strong>Shield plan required</strong> — Upgrade to unlock unlimited lab uploads and cliff detection.</span>
+          <span><strong>You've used all 3 free lab uploads.</strong> Upgrade to Shield for unlimited uploads, full cliff detection, and PA appeals.</span>
         </div>` : ""}
 
       <div style="
@@ -1498,6 +1514,7 @@ async function _postChatActions(reply, userText, responseData) {
     if (responseData.reports_remaining !== undefined) {
       _reportsRemaining = responseData.reports_remaining;
       window._reportsRemaining = _reportsRemaining;
+      _renderPlanBadge(); // Update the "X uploads left" counter immediately
     }
     _renderPlanBadge();
   }

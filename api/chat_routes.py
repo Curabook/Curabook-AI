@@ -2291,12 +2291,16 @@ def _is_feature_allowed(supabase, user_id: str, feature: str) -> bool:
 
 
 def _decrement_reports(supabase, user_id: str, current_remaining: int) -> bool:
+    """Safely decrement reports_remaining. Never goes below 0."""
+    if current_remaining <= 0:
+        return False  # Already at limit — don't write unnecessary updates
     new_val = max(0, current_remaining - 1)
     try:
         supabase.table("user_profiles").upsert({
             "user_id": user_id,
             "reports_remaining": new_val,
         }, on_conflict="user_id").execute()
+        print(f"[TIER] Reports decremented: {current_remaining} → {new_val} for {user_id[:8]}")
         return True
     except Exception as e:
         print(f"[TIER] Decrement error: {e}")

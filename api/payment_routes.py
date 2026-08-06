@@ -370,12 +370,31 @@ def payment_status():
 
         row  = res.data[0]
         plan = (row.get("plan") or "free").lower()
+        is_pro = _is_pro(plan)
+
+        # Always return a valid integer — never None
+        # Pro users get unlimited (9999), free users get their remaining count
+        if is_pro:
+            reports_remaining = 9999
+        else:
+            raw = row.get("reports_remaining")
+            if raw is None:
+                # Column exists but NULL — self-heal by setting to FREE_REPORT_LIMIT
+                try:
+                    supabase.table("user_profiles").update({
+                        "reports_remaining": FREE_REPORT_LIMIT
+                    }).eq("user_id", user.id).execute()
+                except Exception:
+                    pass
+                reports_remaining = FREE_REPORT_LIMIT
+            else:
+                reports_remaining = max(0, int(raw))
 
         return jsonify({
             "plan":                 plan,
             "plan_display":         PLAN_DISPLAY.get(plan, plan.title()),
-            "is_pro":               _is_pro(plan),
-            "reports_remaining":    row.get("reports_remaining", FREE_REPORT_LIMIT),
+            "is_pro":               is_pro,
+            "reports_remaining":    reports_remaining,
             "subscription_end":     row.get("subscription_end_date", ""),
             "cancel_at_period_end": row.get("cancel_at_period_end", False),
             "has_billing":          bool(row.get("paypal_subscription_id")),
