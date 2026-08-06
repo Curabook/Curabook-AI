@@ -293,15 +293,32 @@ def overview():
         msgs_7d_res = supabase.table("chats").select("id", count="exact").eq("role", "user").gte("created_at", d7).execute()
         msgs_7d = msgs_7d_res.count or 0
 
-        docs_res = supabase.table("health_markers").select("source_document").execute()
-        total_docs = len(set(r["source_document"] for r in (docs_res.data or []) if r.get("source_document")))
-        # Also count from medical_documents table if it exists
+        docs_res = supabase.table("health_markers").select("source_document,user_id").execute()
+        # Count unique source documents — include rows where source_document is set
+        unique_docs = set()
+        for r in (docs_res.data or []):
+            src = r.get("source_document")
+            uid = r.get("user_id", "")
+            if src:
+                unique_docs.add(f"{uid}::{src}")
+        total_docs = len(unique_docs)
+
+        # Also try medical_documents table
         try:
-            med_docs_res = supabase.table("medical_documents").select("user_id", count="exact").execute()
-            if med_docs_res.count and med_docs_res.count > total_docs:
-                total_docs = med_docs_res.count
+            med_docs_res = supabase.table("medical_documents").select("id", count="exact").execute()
+            med_count = med_docs_res.count or 0
+            if med_count > total_docs:
+                total_docs = med_count
         except Exception:
             pass
+
+        # Fallback: count distinct users who have ANY health markers
+        if total_docs == 0:
+            try:
+                marker_users = set(r["user_id"] for r in (docs_res.data or []) if r.get("user_id"))
+                total_docs = len(marker_users)  # At least one upload per user with markers
+            except Exception:
+                pass
 
         plans_res = supabase.table("user_profiles").select("plan,is_admin_granted").execute()
         plan_counts = defaultdict(int)

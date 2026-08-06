@@ -1366,6 +1366,9 @@ function dStat(val, label) {
 function closeDetailPanel() { document.getElementById('userDetailOverlay').style.display = 'none'; }
 function closeDetail(e) { if (e.target === document.getElementById('userDetailOverlay')) closeDetailPanel(); }
 
+// Alias — called after grant/revoke to refresh the detail panel
+function loadUserDetail(handle) { return openDetail(handle); }
+
 // ── CHART HELPER ──────────────────────────────────────────────────────────────
 function mkChart(id, type, data, extraOpts={}) {
   const canvas = document.getElementById(id);

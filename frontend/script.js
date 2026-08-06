@@ -1116,17 +1116,47 @@ function renderHistory(convs) {
 }
 
 async function openConversation(id) {
-  if (_isSending || id === _convId) { closeSidebar(); return; }
-  _convId = id; _uploads = []; _docCtx = { text: null, hasDoc: false, filename: "" };
-  clearFilePreview(); showChat();
-  if (el("chatDisplay")) el("chatDisplay").innerHTML = "";
+  if (_isSending || id === _convId) { if (window.innerWidth < 768) closeSidebar(); return; }
+  _convId = id; _uploads = []; _docCtx = { text: null, hasDoc: false, filename: "", isMealPhoto: false };
+  clearFilePreview();
+
+  // Reset the display — clear greeting and any existing messages
+  const display = el("chatDisplay");
+  if (display) {
+    display.innerHTML = "";
+    display.classList.remove("hidden");
+    // Reset DOM position — move back after welcomeScreen if it was moved
+    const welcomeScreen = el("welcomeScreen");
+    const mainArea = display.parentElement;
+    if (welcomeScreen && mainArea && display.previousElementSibling !== welcomeScreen) {
+      mainArea.appendChild(display); // Move back to natural position
+    }
+  }
+
+  // Hide welcome screen, show chat
+  el("welcomeScreen")?.classList.add("hidden");
+  el("welcomeChips")?.removeAttribute("data-ctx-chips-added");
+
   document.querySelectorAll(".hist-item").forEach(e => e.classList.toggle("active", e.dataset.id === id));
-  closeSidebar();
+  if (window.innerWidth < 768) closeSidebar();
+
   const h = await headers(); if (!h) return;
   try {
     const { ok, data } = await apiJson("/conversation", { method: "POST", headers: h, body: JSON.stringify({ conversation_id: id }) });
-    if (ok && Array.isArray(data)) { data.forEach(m => appendMsg(m.content, m.role === "user" ? "user" : "ai")); scrollBottom(); }
-  } catch {}
+    if (ok && Array.isArray(data) && data.length > 0) {
+      data.forEach(m => {
+        if (m.content && m.content.trim()) {
+          appendMsg(m.content, m.role === "user" ? "user" : "ai");
+        }
+      });
+      scrollBottom();
+    } else if (ok && Array.isArray(data) && data.length === 0) {
+      // Empty conversation
+      if (display) display.innerHTML = '<div style="text-align:center;color:var(--text-3);font-size:.82rem;padding:40px;">No messages yet in this conversation.</div>';
+    }
+  } catch (e) {
+    console.warn("[OPEN CONV] Error:", e);
+  }
 }
 
 async function deleteConversation(id, e) {
