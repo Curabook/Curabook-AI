@@ -1634,10 +1634,20 @@ function appendMsg(text, role) {
   const d = el("chatDisplay"); if (!d) return null;
   const wrap = document.createElement("div");
   wrap.className = `chat-msg ${role === "user" ? "user-msg" : "ai-msg"}`;
-  const av = `<div class="msg-av ${role === "user" ? "av-user" : "av-ai"}">${role === "user" ? (_userName?.[0]?.toUpperCase() || "U") : "φ"}</div>`;
-  const body = document.createElement("div"); body.className = "msg-body";
-  if (role === "user") { body.textContent = text; wrap.innerHTML = av; wrap.insertBefore(body, wrap.firstChild); }
-  else { renderAI(body, text); wrap.innerHTML = av; wrap.appendChild(body); }
+  const body = document.createElement("div");
+  body.className = "msg-body";
+  const av = document.createElement("div");
+  av.className = `msg-av ${role === "user" ? "av-user" : "av-ai"}`;
+  av.textContent = role === "user" ? (_userName?.[0]?.toUpperCase() || "U") : "φ";
+  if (role === "user") {
+    body.textContent = text;
+    wrap.appendChild(body);
+    wrap.appendChild(av);
+  } else {
+    renderAI(body, text);
+    wrap.appendChild(av);
+    wrap.appendChild(body);
+  }
   d.appendChild(wrap); return wrap;
 }
 
