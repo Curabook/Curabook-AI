@@ -2638,10 +2638,10 @@ def chat():
                 complete = _re_stream.sub(pattern, '', complete, flags=_re_stream.IGNORECASE)
             complete = complete.rstrip()
 
-            # Save conversation
+            # Save conversation — use the real save function
             try:
-                _save_assistant_message(supabase, user_id, conversation_id, complete)
-                _extract_and_save_facts(supabase, user_id, conversation_id, message)
+                _save_chat_turn(supabase, user_id, conversation_id, message, complete)
+                _extract_facts_synchronous(supabase, user_id, conversation_id, message)
             except Exception as e:
                 print(f"[CHAT] Stream save error (non-fatal): {e}")
 
