@@ -151,12 +151,16 @@ def phi_greeting():
         if last_upload_date:
             weeks_since_upload = (date.today() - date.fromisoformat(last_upload_date)).days // 7
 
-        # ── Behavioral logs today ───────────────────────────────────────────
+        # ── Behavioral logs today (optional — table may not exist yet) ─────
         today_str = date.today().isoformat()
-        logs_res = supabase.table("behavioral_logs").select(
-            "protein_g,sleep_hours,food_noise,steps"
-        ).eq("user_id", user.id).gte("logged_at", today_str).limit(1).execute()
-        todays_log = logs_res.data[0] if logs_res.data else {}
+        todays_log = {}
+        try:
+            logs_res = supabase.table("behavioral_logs").select(
+                "protein_g,sleep_hours,food_noise,steps"
+            ).eq("user_id", user.id).gte("logged_at", today_str).limit(1).execute()
+            todays_log = logs_res.data[0] if logs_res.data else {}
+        except Exception:
+            pass  # Table may not exist yet — non-fatal
 
         # ── Memory facts ────────────────────────────────────────────────────
         mem_res = supabase.table("conversation_memories").select(
