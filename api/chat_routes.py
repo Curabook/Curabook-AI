@@ -205,10 +205,10 @@ def phi_greeting():
             p = todays_log.get("protein_g", 0) or 0
             s = todays_log.get("sleep_hours", 0) or 0
             fn = todays_log.get("food_noise", 0) or 0
-            context_parts.append(f"Today logged: protein {p}g, sleep {s}h, food noise {fn}/10")
+            context_parts.append(f"Today ACTUALLY LOGGED by user: protein {p}g consumed, sleep {s}h, food noise {fn}/10")
         if goal_weight:
             protein_target = round(float(goal_weight) * 0.545, 1)
-            context_parts.append(f"Goal weight: {goal_weight} lbs, protein target: {protein_target}g/day")
+            context_parts.append(f"Protein TARGET (not consumed — calculated from goal weight): {protein_target}g/day")
         if stop_reason:
             context_parts.append(f"Stopped because: {stop_reason}")
         if memories:
@@ -277,25 +277,47 @@ Generate a specific, data-driven opening message. Rules:
 
 Generate ONE opening message now:"""
 
-        try:
-            from openai import OpenAI as _OAI
-            _client = _OAI(api_key=os.getenv("OPENAI_API_KEY"), timeout=15.0)
-            resp = _client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": greeting_prompt}],
-                max_tokens=150,
-                temperature=0.7,
-            )
-            greeting = resp.choices[0].message.content.strip()
-        except Exception as e:
-            print(f"[GREETING] LLM error: {e}")
-            # Fallback greeting based on data
+        # ── Fast greeting — use template for simple cases, LLM only for complex ──
+        # This cuts greeting time from 5-15s to <1s for most users
+        greeting = None
+
+        if is_new_user:
+            # New users always get a template — fast and warm
             if cessation_ctx:
-                greeting = f"Day {cessation_ctx['days']} post-cessation — {cessation_ctx['phase_desc']}. What's your hunger level right now?"
-            elif weeks_since_upload and weeks_since_upload >= 6:
-                greeting = f"Your last lab upload was {weeks_since_upload} weeks ago. Time to check your metabolic markers. Ready to get updated numbers?"
+                days = cessation_ctx["days"]
+                phase = cessation_ctx["phase"]
+                if phase == "peak":
+                    greeting = f"Welcome to Curabook{', ' + first_name if first_name else ''}. You're day {days} post-cessation — your ghrelin is starting to surge. PHI will help you stay ahead of the cliff. How are you feeling right now?"
+                elif phase == "rising":
+                    greeting = f"Welcome{', ' + first_name if first_name else ''}. Day {days} post-cessation — the ghrelin rebound is starting. You're in exactly the right place. What's your hunger level today?"
+                else:
+                    greeting = f"Welcome to Curabook{', ' + first_name if first_name else ''}. Day {days} since your last dose — PHI is now watching your metabolic markers. Let's get a baseline blood panel ordered."
             else:
-                greeting = "PHI is watching your metabolic health. What's on your mind today?"
+                greeting = f"Welcome to Curabook{', ' + first_name if first_name else ''}. PHI monitors your metabolic health after GLP-1 therapy — catching the cliff before the scale shows it. What brought you here today?"
+        else:
+            # Returning users with data — try LLM but with short timeout
+            # Fall through to template if LLM is too slow
+            try:
+                from openai import OpenAI as _OAI
+                _client = _OAI(api_key=os.getenv("OPENAI_API_KEY"), timeout=8.0)  # Short timeout
+                resp = _client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[{"role": "user", "content": greeting_prompt}],
+                    max_tokens=120,
+                    temperature=0.7,
+                )
+                greeting = resp.choices[0].message.content.strip()
+            except Exception as e:
+                print(f"[GREETING] LLM error (using template): {e}")
+
+        # Template fallback for returning users if LLM failed/slow
+        if not greeting:
+            if cessation_ctx:
+                greeting = f"Day {cessation_ctx['days']} post-cessation — {cessation_ctx['phase_desc']}. How are you feeling right now?"
+            elif weeks_since_upload and weeks_since_upload >= 6:
+                greeting = f"Your last lab upload was {weeks_since_upload} weeks ago. Time to check your metabolic markers."
+            else:
+                greeting = "PHI is watching your health. What's on your mind today?"
 
         # ── Dynamic placeholder ─────────────────────────────────────────────
         if cessation_ctx and cessation_ctx["phase"] == "peak":
@@ -1117,6 +1139,8 @@ BAD PHI RESPONSES (never do these):
 
 ═══ RESPONSE QUALITY RULES ═══
 1. NEVER repeat the same fact twice in one response. If you already stated the protein target, reference it ("that target") — don't restate the formula.
+2. CRITICAL: Never confuse protein TARGET with protein CONSUMED. The protein target (e.g. 89.9g) is a daily goal calculated from goal weight. It is NOT what the user ate. If no protein has been logged today, say so. NEVER say "you've logged 89.9g" unless the Shield data explicitly shows "Protein logged today: 89.9g."
+3. NEVER log protein from a question. If the user asks "explain ghrelin rebound" or "what does 89.9g mean?" — that is information-seeking, not a log request. Only log protein when the user explicitly reports eating something.
 2. NEVER repeat information from a previous message unless the user asks. Check conversation history first.
 3. When the user provides numbers (weight, labs, calories), DO MATH. Show calculations, rates of change, projections. "Your weight increased 1.3 kg in 12 days — that's 3.25 kg/month, which tracks exactly with the BMJ cessation data" is intelligence. "This might be fluctuation" is Google.
 4. Connect multiple data points. If hunger is 8/10 AND sleep is 5h AND protein is low — show HOW they compound, don't just list them separately.
@@ -1893,9 +1917,11 @@ def _inject_protein_action(user_message: str, reply: str, is_meal_photo: bool = 
     Post-processing: force-inject JSON action to log protein to Shield.
 
     Three triggers:
-    1. MEAL PHOTO — auto-log immediately from PHI estimate (no confirmation needed)
-    2. USER SPECIFIES GRAMS — "100 gram", "31g" etc
-    3. USER CONFIRMS — "yes", "log it", "sure", "ok" etc
+    1. MEAL PHOTO — auto-log immediately from PHI estimate
+    2. USER SPECIFIES GRAMS they consumed — "I ate 31g protein"
+    3. USER CONFIRMS affirmatively — "yes", "log it", "sure"
+
+    IMPORTANT: Never log protein if the user is asking a question (not reporting intake).
     """
     import re as _re
 
@@ -1904,6 +1930,25 @@ def _inject_protein_action(user_message: str, reply: str, is_meal_photo: bool = 
         return reply
 
     msg_lower = user_message.lower().strip()
+
+    # ── Question detector — BLOCK logging if user is asking, not reporting ───
+    # If the message ends with ? or contains question words, it's not a log
+    question_signals = [
+        msg_lower.endswith('?'),
+        msg_lower.startswith(('what', 'how', 'why', 'when', 'where', 'who', 'is ', 'are ',
+                               'can ', 'could ', 'should ', 'would ', 'explain', 'tell me',
+                               'does ', 'do ', 'did ', 'will ', 'which ')),
+        'ghrelin' in msg_lower,
+        'biology' in msg_lower,
+        'explain' in msg_lower,
+        'what is' in msg_lower,
+        'what does' in msg_lower,
+        'help me' in msg_lower,
+        'understand' in msg_lower,
+    ]
+    if any(question_signals) and not is_meal_photo:
+        return reply  # Never log protein from a question
+
     protein_value = None
 
     # ── Trigger 1: MEAL PHOTO — auto-log from PHI's estimate ─────────────────

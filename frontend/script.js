@@ -1339,16 +1339,19 @@ async function sendMessage(text) {
 
     // Build payload BEFORE clearing _docCtx
     const _wasMealPhoto = _docCtx?.isMealPhoto === true;
+    const _hasDoc = _docCtx?.hasDoc || false;
     const payload = {
       conversation_id: _convId,
       message:         text,
-      has_documents:   _docCtx?.hasDoc || false,
-      document_text:   _docCtx?.hasDoc ? (_docCtx.text || "") : "",
+      has_documents:   _hasDoc,
+      document_text:   _hasDoc ? (_docCtx.text || "") : "",
     };
 
-    // Clear meal photo context AFTER payload is built — only send image once
-    if (_wasMealPhoto) {
-      _docCtx = { text: null, hasDoc: false, filename: "" };
+    // Clear document context after EVERY send — document only sent once
+    // Without this, every follow-up question re-sends the document and
+    // triggers the paywall check on questions (not new uploads)
+    if (_hasDoc) {
+      _docCtx = { text: null, hasDoc: false, filename: "", isMealPhoto: false };
     }
 
     let dotCount = 0;
