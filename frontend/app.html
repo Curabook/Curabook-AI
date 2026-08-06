@@ -829,6 +829,9 @@ function handleMealPhoto(input) {
 /* ── PHI Proactive Intelligence — Changes 6-10 ─────────────────────── */
 (function() {
 
+  // Use the same API base as script.js (already set as const API)
+  const _getAPI = () => window._API || (typeof API !== 'undefined' ? API : 'https://api.curabook.com');
+
   function escAttr(str) {
     return (str || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
@@ -839,7 +842,7 @@ function handleMealPhoto(input) {
       const h = typeof headers === 'function' ? await headers() : null;
       if (!h) return;
 
-      const res = await fetch((window._API || '') + '/api/phi/greeting', { headers: h });
+      const res = await fetch((window._API || (typeof API !== 'undefined' ? API : 'https://api.curabook.com')) + '/api/phi/greeting', { headers: h });
       if (!res.ok) return;
       const data = await res.json();
 
@@ -925,26 +928,38 @@ function handleMealPhoto(input) {
     };
   }
 
-  // Auto-load greeting when cockpit opens OR user is authenticated
+  // Auto-load greeting when authenticated
   function _tryLoadGreeting() {
+    const apiBase = window._API || (typeof API !== 'undefined' ? API : 'https://api.curabook.com');
     if (window.__phi_auth_ready) {
-      loadPHIGreeting();
+      loadPHIGreeting(apiBase);
       _patchRenderAI();
     }
   }
 
+  // Listen for auth event from script.js
   window.addEventListener('phi:authed', function() {
-    setTimeout(_tryLoadGreeting, 800);
+    setTimeout(_tryLoadGreeting, 500);
   });
 
-  // Also check on visibility change (returning to tab)
-  document.addEventListener('visibilitychange', function() {
-    if (!document.hidden && window.__phi_auth_ready && !window._phiGreetingData) {
+  // Fallback: poll for auth ready (in case event already fired)
+  let _greetingAttempts = 0;
+  const _greetingPoller = setInterval(function() {
+    _greetingAttempts++;
+    if (window.__phi_auth_ready && !window._phiGreetingData) {
+      clearInterval(_greetingPoller);
       _tryLoadGreeting();
     }
-  });
+    if (_greetingAttempts > 20) clearInterval(_greetingPoller); // give up after 10s
+  }, 500);
 
-  // Expose for external calls
+  // Also try on page load after delay
+  setTimeout(function() {
+    if (window.__phi_auth_ready && !window._phiGreetingData) {
+      _tryLoadGreeting();
+    }
+  }, 3000);
+
   window.loadPHIGreeting = loadPHIGreeting;
 
 })();
@@ -970,7 +985,7 @@ function handleMealPhoto(input) {
       const h = typeof headers === 'function' ? await headers() : null;
       if (!h) return;
 
-      const res = await fetch((window._API || '') + '/api/cliff-check', { headers: h });
+      const res = await fetch((window._API || (typeof API !== 'undefined' ? API : 'https://api.curabook.com')) + '/api/cliff-check', { headers: h });
       if (!res.ok) return;
       _cliffData = await res.json();
 
@@ -1110,10 +1125,10 @@ function handleMealPhoto(input) {
     try {
       const h = typeof headers === 'function' ? await headers() : null;
       if (!h) return;
-      const res = await fetch((window._API || '') + '/api/hunger-forecast', { headers: h });
+      const res = await fetch((window._API || (typeof API !== 'undefined' ? API : 'https://api.curabook.com')) + '/api/hunger-forecast', { headers: h });
       if (!res.ok) {
         // Fallback to cliff-status if hunger-forecast not deployed yet
-        const res2 = await fetch((window._API || '') + '/api/cliff-status', { headers: h });
+        const res2 = await fetch((window._API || (typeof API !== 'undefined' ? API : 'https://api.curabook.com')) + '/api/cliff-status', { headers: h });
         if (!res2.ok) return;
         const data2 = await res2.json();
         if (data2.cessation_context) {
@@ -1253,7 +1268,7 @@ function handleMealPhoto(input) {
   }, 2000);
 })();
 </script>
-<script src="script.js?v=30"></script>
+<script src="script.js?v=32"></script>
 <script src="phi_fixes.js?v=3"></script>
 
 </body>
