@@ -44,12 +44,364 @@ import json
 import threading
 import uuid
 from datetime import datetime, date, timezone, timedelta
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, Response
 
 chat_bp = Blueprint("chat", __name__)
 
 
-# ── Search diagnostic endpoint (remove in production) ────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# CHANGE 1: /api/phi/greeting — PHI speaks first
+# Reads ALL user data and generates a contextual opening message
+# before the user types anything
+# ══════════════════════════════════════════════════════════════════════════════
+
+@chat_bp.route("/api/phi/greeting", methods=["GET"])
+def phi_greeting():
+    """
+    Generate a proactive, data-driven opening message for the user.
+    Called immediately when the app loads — before the user types anything.
+
+    Returns:
+    {
+        "greeting": "Day 22 — you're in your peak window...",
+        "placeholder": "Day 22 — how are you feeling right now?",
+        "chips": [...dynamic suggestion chips...],
+        "context_summary": "I know: stopped tirzepatide July 14...",
+        "has_data": true
+    }
+    """
+    from app import supabase
+    from services.auth import get_authenticated_user
+    from datetime import date, timedelta
+    from collections import defaultdict
+
+    user = get_authenticated_user(supabase)
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    try:
+        # ── Read all user data ──────────────────────────────────────────────
+        profile_res = supabase.table("user_profiles").select(
+            "first_name,glp1_status,last_dose_date,stop_reason,goal_weight_lbs,plan"
+        ).eq("user_id", user.id).limit(1).execute()
+        profile = profile_res.data[0] if profile_res.data else {}
+
+        first_name = profile.get("first_name", "") or ""
+        last_dose = profile.get("last_dose_date")
+        glp1_status = profile.get("glp1_status", "")
+        goal_weight = profile.get("goal_weight_lbs")
+        stop_reason = profile.get("stop_reason", "")
+
+        # ── Cessation timeline ──────────────────────────────────────────────
+        cessation_ctx = {}
+        if last_dose and glp1_status in ("stopped", "tapering"):
+            try:
+                last_dt = date.fromisoformat(str(last_dose)[:10])
+                days = (date.today() - last_dt).days
+                hl = 7.0  # default semaglutide
+                pct = round(100 * (0.5 ** (days / hl)), 1)
+
+                if days <= 7:
+                    phase = "early"
+                    phase_desc = "drug still partially active"
+                elif days <= 14:
+                    phase = "rising"
+                    phase_desc = "ghrelin starting to surge"
+                elif days <= 28:
+                    phase = "peak"
+                    phase_desc = "PEAK DANGER WINDOW — ghrelin at maximum"
+                elif days <= 60:
+                    phase = "post_peak"
+                    phase_desc = "past peak, stabilizing"
+                else:
+                    phase = "extended"
+                    phase_desc = "extended post-cessation"
+
+                cessation_ctx = {
+                    "days": days,
+                    "pct": pct,
+                    "phase": phase,
+                    "phase_desc": phase_desc,
+                }
+            except (ValueError, TypeError):
+                pass
+
+        # ── Latest lab markers ──────────────────────────────────────────────
+        markers_res = supabase.table("health_markers").select(
+            "marker_name,value,unit,created_at"
+        ).eq("user_id", user.id).order("created_at", desc=True).limit(100).execute()
+
+        latest_markers = {}
+        last_upload_date = None
+        if markers_res.data:
+            seen = set()
+            for row in markers_res.data:
+                mk = row["marker_name"]
+                if mk not in seen:
+                    latest_markers[mk] = {
+                        "value": row["value"],
+                        "unit": row.get("unit", ""),
+                        "date": row["created_at"][:10],
+                    }
+                    seen.add(mk)
+                    if last_upload_date is None:
+                        last_upload_date = row["created_at"][:10]
+
+        weeks_since_upload = None
+        if last_upload_date:
+            weeks_since_upload = (date.today() - date.fromisoformat(last_upload_date)).days // 7
+
+        # ── Behavioral logs today ───────────────────────────────────────────
+        today_str = date.today().isoformat()
+        logs_res = supabase.table("behavioral_logs").select(
+            "protein_g,sleep_hours,food_noise,steps"
+        ).eq("user_id", user.id).gte("logged_at", today_str).limit(1).execute()
+        todays_log = logs_res.data[0] if logs_res.data else {}
+
+        # ── Memory facts ────────────────────────────────────────────────────
+        mem_res = supabase.table("conversation_memories").select(
+            "fact"
+        ).eq("user_id", user.id).order("created_at", desc=True).limit(10).execute()
+        memories = [r["fact"] for r in (mem_res.data or [])]
+
+        # ── Missing data check ──────────────────────────────────────────────
+        missing = []
+        if not last_dose: missing.append("last_dose_date")
+        if not goal_weight: missing.append("goal_weight_lbs")
+        if glp1_status not in ("stopped", "tapering", "active", "considering"):
+            missing.append("glp1_status")
+
+        has_data = bool(cessation_ctx or latest_markers or memories)
+
+        # ── Build LLM context for greeting ─────────────────────────────────
+        context_parts = []
+        if first_name:
+            context_parts.append(f"User's name: {first_name}")
+        if cessation_ctx:
+            context_parts.append(
+                f"Cessation: Day {cessation_ctx['days']} post-last-dose. "
+                f"{cessation_ctx['pct']}% drug remaining. "
+                f"Phase: {cessation_ctx['phase_desc']}."
+            )
+        if latest_markers:
+            key_markers = ["HbA1c", "Glucose Fasting", "LDL Cholesterol", "Triglycerides"]
+            marker_lines = []
+            for mk in key_markers:
+                if mk in latest_markers:
+                    m = latest_markers[mk]
+                    marker_lines.append(f"{mk}: {m['value']}{m['unit']} (last: {m['date']})")
+            if marker_lines:
+                context_parts.append("Latest labs: " + ", ".join(marker_lines))
+        if weeks_since_upload is not None:
+            context_parts.append(f"Weeks since last lab upload: {weeks_since_upload}")
+        if todays_log:
+            p = todays_log.get("protein_g", 0) or 0
+            s = todays_log.get("sleep_hours", 0) or 0
+            fn = todays_log.get("food_noise", 0) or 0
+            context_parts.append(f"Today logged: protein {p}g, sleep {s}h, food noise {fn}/10")
+        if goal_weight:
+            protein_target = round(float(goal_weight) * 0.545, 1)
+            context_parts.append(f"Goal weight: {goal_weight} lbs, protein target: {protein_target}g/day")
+        if stop_reason:
+            context_parts.append(f"Stopped because: {stop_reason}")
+        if memories:
+            context_parts.append("What PHI knows: " + "; ".join(memories[:5]))
+        if missing:
+            context_parts.append(f"DATA MISSING — collect conversationally: {', '.join(missing)}")
+
+        context_str = "\n".join(context_parts)
+
+        # ── Generate greeting via LLM ───────────────────────────────────────
+        greeting_prompt = f"""You are PHI — Curabook's health intelligence system.
+
+{context_str}
+
+Generate a single, specific opening message. Rules:
+- Reference REAL numbers from the context above
+- If it's a peak danger day (days 14-28), lead with that urgency
+- If labs are overdue (6+ weeks), mention it with the specific timeframe
+- If missing data, ask ONE question naturally at the end
+- If no data at all, warmly ask what brought them here today
+- NEVER say "How can I help you?" or "What can I do for you?"
+- NEVER be generic — every sentence must reference something specific
+- Max 3 sentences. Be direct. Sound like you've been thinking about this person.
+- If user has a name, use it once naturally
+- End with either a specific observation OR one focused question (not both)
+
+Examples of GOOD openings:
+"Day 22 — you're in your peak ghrelin window right now. Your HbA1c was 5.9% eight weeks ago and we're overdue for a check. How are you actually feeling today?"
+"Your glucose was 133 last month and that was already above threshold. Six weeks of drift since then could mean a meaningful change — time to get labs ordered."
+"Welcome back. Your protein target is 89g and based on what you logged yesterday you were 23g short. What did today's eating look like so far?"
+
+Generate ONE opening message now:"""
+
+        try:
+            from openai import OpenAI as _OAI
+            _client = _OAI(api_key=os.getenv("OPENAI_API_KEY"), timeout=15.0)
+            resp = _client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": greeting_prompt}],
+                max_tokens=150,
+                temperature=0.7,
+            )
+            greeting = resp.choices[0].message.content.strip()
+        except Exception as e:
+            print(f"[GREETING] LLM error: {e}")
+            # Fallback greeting based on data
+            if cessation_ctx:
+                greeting = f"Day {cessation_ctx['days']} post-cessation — {cessation_ctx['phase_desc']}. What's your hunger level right now?"
+            elif weeks_since_upload and weeks_since_upload >= 6:
+                greeting = f"Your last lab upload was {weeks_since_upload} weeks ago. Time to check your metabolic markers. Ready to get updated numbers?"
+            else:
+                greeting = "PHI is watching your metabolic health. What's on your mind today?"
+
+        # ── Dynamic placeholder ─────────────────────────────────────────────
+        if cessation_ctx and cessation_ctx["phase"] == "peak":
+            placeholder = f"Day {cessation_ctx['days']} — peak window. How are you feeling right now?"
+        elif weeks_since_upload and weeks_since_upload >= 6:
+            placeholder = f"Your last labs were {weeks_since_upload} weeks ago. Ready to check your cliff risk?"
+        elif missing:
+            placeholder = "Tell PHI about your GLP-1 journey..."
+        else:
+            placeholder = "Ask PHI — I already know your history..."
+
+        # ── Dynamic chips based on user context ────────────────────────────
+        chips = []
+        if cessation_ctx:
+            d = cessation_ctx["days"]
+            if cessation_ctx["phase"] == "peak":
+                chips.append({"text": "🔴 How bad will tomorrow's hunger be?", "q": f"I'm on day {d} post-cessation and in the peak ghrelin window. Predict my hunger for tomorrow and the next 3 days based on my cessation timeline."})
+                chips.append({"text": "⚡ What should I eat right now?", "q": f"I'm day {d} post-cessation at peak ghrelin. Give me one specific meal I can eat in the next 30 minutes that will make the biggest difference."})
+            else:
+                chips.append({"text": f"📊 Day {d} analysis", "q": f"I'm day {d} post-cessation. Give me a full analysis of where I am in the cessation timeline and what to expect this week."})
+
+        if weeks_since_upload and weeks_since_upload >= 4:
+            chips.append({"text": "🧪 What labs should I order now?", "q": "I need to get labs done. Give me the exact panel to request from my doctor for cliff monitoring — including the specific test names I should ask for."})
+
+        if latest_markers.get("HbA1c"):
+            hba1c = latest_markers["HbA1c"]["value"]
+            chips.append({"text": f"📈 Project my HbA1c trend", "q": f"My last HbA1c was {hba1c}. Based on my cessation timeline and the BMJ meta-analysis data, project where it might be now and in 3 months if I don't intervene."})
+
+        if stop_reason in ("insurance", "cost", "compounding"):
+            chips.append({"text": "⚖️ Build my insurance appeal", "q": "My insurance denied my GLP-1 prescription. Start building my prior authorization appeal packet using my stored lab data right now."})
+
+        if not chips:
+            chips = [
+                {"text": "🔬 Run my cliff risk analysis", "q": "Run a complete cliff risk analysis using my stored lab data. What markers are drifting and what's my overall risk level?"},
+                {"text": "💪 Calculate my protein target", "q": "Calculate my daily protein target using the Muscle Defense formula from my stored goal weight."},
+                {"text": "📋 Prepare for my doctor", "q": "Prepare me for my next provider appointment with my three most important data points and specific questions to ask."},
+            ]
+
+        # ── Context summary for new conversation ───────────────────────────
+        summary_parts = []
+        if cessation_ctx:
+            summary_parts.append(f"Day {cessation_ctx['days']} post-cessation")
+        if latest_markers.get("HbA1c"):
+            summary_parts.append(f"HbA1c {latest_markers['HbA1c']['value']}%")
+        if latest_markers.get("Glucose Fasting"):
+            summary_parts.append(f"Glucose {latest_markers['Glucose Fasting']['value']} mg/dL")
+        if goal_weight:
+            protein_target = round(float(goal_weight) * 0.545, 1)
+            summary_parts.append(f"Protein target {protein_target}g")
+
+        context_summary = "PHI knows: " + " · ".join(summary_parts) if summary_parts else ""
+
+        return jsonify({
+            "greeting":        greeting,
+            "placeholder":     placeholder,
+            "chips":           chips,
+            "context_summary": context_summary,
+            "has_data":        has_data,
+            "cessation_day":   cessation_ctx.get("days"),
+            "phase":           cessation_ctx.get("phase"),
+        })
+
+    except Exception as e:
+        print(f"[GREETING] Error: {e}")
+        return jsonify({
+            "greeting": "PHI is ready. What's on your mind today?",
+            "placeholder": "Ask PHI anything about your health...",
+            "chips": [],
+            "context_summary": "",
+            "has_data": False,
+        })
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CHANGE 5: Cross-session context
+# ══════════════════════════════════════════════════════════════════════════════
+
+@chat_bp.route("/api/phi/last-session", methods=["GET"])
+def phi_last_session():
+    from app import supabase
+    from services.auth import get_authenticated_user
+    user = get_authenticated_user(supabase)
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+    try:
+        conv_res = supabase.table("conversations").select(
+            "id,title,updated_at"
+        ).eq("user_id", user.id).order("updated_at", desc=True).limit(2).execute()
+        if not conv_res.data or len(conv_res.data) < 2:
+            return jsonify({"last_session": None})
+        last_conv = conv_res.data[1]
+        msg_res = supabase.table("messages").select(
+            "role,content,created_at"
+        ).eq("conversation_id", last_conv["id"]).order("created_at", desc=True).limit(3).execute()
+        if not msg_res.data:
+            return jsonify({"last_session": None})
+        last_ai = next((m["content"][:200] for m in msg_res.data if m["role"] == "assistant"), None)
+        last_user = next((m["content"][:100] for m in msg_res.data if m["role"] == "user"), None)
+        return jsonify({"last_session": {
+            "title": last_conv.get("title", ""),
+            "updated_at": last_conv.get("updated_at", ""),
+            "last_user": last_user,
+            "last_phi": last_ai,
+        }})
+    except Exception as e:
+        print(f"[LAST-SESSION] Error: {e}")
+        return jsonify({"last_session": None})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CHANGE 11: Appeal pre-fill from stored labs
+# ══════════════════════════════════════════════════════════════════════════════
+
+@chat_bp.route("/api/phi/appeal-prefill", methods=["GET"])
+def get_appeal_prefill():
+    from app import supabase
+    from services.auth import get_authenticated_user
+    user = get_authenticated_user(supabase)
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+    try:
+        profile = supabase.table("user_profiles").select(
+            "first_name,goal_weight_lbs,last_dose_date,stop_reason"
+        ).eq("user_id", user.id).limit(1).execute()
+        p = profile.data[0] if profile.data else {}
+        markers = supabase.table("health_markers").select(
+            "marker_name,value,unit"
+        ).eq("user_id", user.id).order("created_at", desc=True).limit(100).execute()
+        latest = {}
+        for row in (markers.data or []):
+            mk = row["marker_name"]
+            if mk not in latest:
+                latest[mk] = {"value": row["value"], "unit": row.get("unit", "")}
+        return jsonify({
+            "hba1c":         latest.get("HbA1c", {}).get("value", ""),
+            "glucose":       latest.get("Glucose Fasting", {}).get("value", ""),
+            "ldl":           latest.get("LDL Cholesterol", {}).get("value", ""),
+            "triglycerides": latest.get("Triglycerides", {}).get("value", ""),
+            "goal_weight":   p.get("goal_weight_lbs", ""),
+            "stop_reason":   p.get("stop_reason", ""),
+            "last_dose":     p.get("last_dose_date", ""),
+            "has_data":      bool(latest),
+        })
+    except Exception as e:
+        print(f"[APPEAL-PREFILL] Error: {e}")
+        return jsonify({"has_data": False})
+
+
 @chat_bp.route("/api/test-search", methods=["GET"])
 def test_search():
     """
@@ -686,21 +1038,110 @@ You are PHI — Personal Health Intelligence by Curabook.
 Your mission: prevent metabolic rebound ("the cliff") when patients stop or taper GLP-1 medications (Wegovy, Zepbound, Ozempic, Mounjaro). You are not a generic chatbot — you are the user's dedicated health co-pilot.
 
 ═══ VOICE & PERSONALITY ═══
-• Warm, direct, concise. Talk like a brilliant friend who happens to be a metabolic health expert.
-• Lead with the answer, not a preamble. No "Great question!" or "That's a really good point."
-• Use short paragraphs (2-3 sentences max). Break up walls of text.
-• Mirror the user's energy — if they're scared, be reassuring first. If they're data-driven, lead with numbers.
-• When the user shares emotions (shame, fear, frustration) — sit with it first. Validate for 2-3 sentences before pivoting to data or advice. Never respond to "I feel like a failure" with protein numbers.
-• End responses with a specific follow-up question when it would deepen the conversation — not a generic disclaimer.
+You are PHI — the most intelligent health companion anyone has ever talked to. Not a chatbot. Not a search engine with a friendly face. A genuine metabolic health expert who happens to live in someone's phone.
+
+YOUR PERSONALITY:
+• Confident and direct. You KNOW this science. Speak like it.
+• Conversational, not clinical. "Your ghrelin is screaming right now" not "elevated ghrelin levels may contribute to increased appetite."
+• Occasionally bold. "Honestly? That sleep number is hurting you more than the missed protein" — PHI has opinions backed by data.
+• Never generic. If your response could come from any health chatbot, rewrite it. Every response should have at least one insight that surprises the user.
+• Short. Punchy. 3-4 sentences per paragraph maximum. No walls of text.
+
+WHAT MAKES YOU DIFFERENT FROM CHATGPT:
+• You KNOW the user's data. Reference it. "Your HbA1c was 5.9 last month" not "HbA1c levels can vary."
+• You CONNECT dots. "Your protein was 62g yesterday, your sleep was 5.5 hours, and your food noise is 7/10 — those three things are feeding each other right now."
+• You PREDICT. "Based on your cessation timeline, tomorrow and the day after will likely be harder than today. Front-load your protein at breakfast."
+• You have OPINIONS. "Honestly, at your stage, sleep matters more than the extra 20g of protein. Fix the sleep first."
+
+BANNED PATTERNS (these make you sound like every other chatbot):
+• "Great question!" / "That's a really good point!" / "Absolutely!" → just answer
+• "Here are some tips:" followed by a bullet list → give ONE specific recommendation instead of 5 generic ones
+• "How do you feel about X?" at the end of every response → only ask when it genuinely matters
+• "Consider trying..." / "You might want to..." → be direct: "Do this."
+• Starting with "To [verb]..." → vary your openings
+• Listing 6 meal ideas when they asked for one thing → give the BEST option, not every option
+• "It's important to..." / "Make sure to..." → just state the fact
+• Ending EVERY response with a question → sometimes just end with the answer
+
+GOOD PHI RESPONSES (study these):
+✅ "89.9g protein target, and you hit 140g today — you're 56% over. That's not a problem, but you're spending calories on protein you don't need. If appetite is tight, you could reallocate 50g worth of protein calories (~200 kcal) to fats or complex carbs and feel more satisfied."
+✅ "At 143 lbs with 6,000 steps, you need about 2.1 liters. But here's what actually matters — you're on a GLP-1 taper, which slows gastric emptying. Drinking during meals will make you feel bloated faster. Sip between meals instead."
+✅ "8 hours — that's solid. The reason I ask about sleep isn't just general wellness advice. Below 7 hours, ghrelin increases ~15%. You're above that threshold, which means your food noise today is driven by cessation, not sleep deprivation. Different problem, different fix."
+
+BAD PHI RESPONSES (never do these):
+❌ "For optimal health, adults generally need 7 to 9 hours of sleep per night." → this is Google, not PHI
+❌ "Consider incorporating these options into your meals: Breakfast: [list] Lunch: [list] Dinner: [list]" → this is a recipe blog, not a health companion
+❌ "How does your current water intake compare to this? Any challenges with staying hydrated?" → generic filler question that adds nothing
 
 ═══ RESPONSE QUALITY RULES ═══
-1. NEVER repeat the same fact twice in one response. If you already stated the protein target, reference it ("that target we discussed") — don't restate the formula.
+1. NEVER repeat the same fact twice in one response. If you already stated the protein target, reference it ("that target") — don't restate the formula.
 2. NEVER repeat information from a previous message unless the user asks. Check conversation history first.
-3. When the user provides numbers (weight, labs, calories), DO MATH. Show calculations, rates of change, projections. "Your weight increased 1.3 kg in 12 days — that's 3.25 kg/month" is intelligence. "This might be fluctuation" is Google.
+3. When the user provides numbers (weight, labs, calories), DO MATH. Show calculations, rates of change, projections. "Your weight increased 1.3 kg in 12 days — that's 3.25 kg/month, which tracks exactly with the BMJ cessation data" is intelligence. "This might be fluctuation" is Google.
 4. Connect multiple data points. If hunger is 8/10 AND sleep is 5h AND protein is low — show HOW they compound, don't just list them separately.
-5. Be specific, not generic. "Try eating more protein" is useless. "Add a Greek yogurt (17g) after lunch and 2 eggs (12g) at breakfast to close your 20g gap" is actionable.
-6. Vary your delivery. Don't use bullet points every response. Mix: narrative paragraphs, direct answers, mini-calculations, targeted questions.
-7. Keep responses under 250 words unless the user explicitly asks for a detailed plan. Concise = respected.
+5. Be specific, not generic. "Add a Greek yogurt after lunch — that closes your 20g gap in one move" not "try eating more protein."
+6. Vary your delivery. Don't use bullet points every response. Mix: narrative paragraphs, direct answers, mini-calculations, one-liners.
+
+═══ CRITICAL: STOP SOUNDING LIKE A GENERIC CHATBOT ═══
+Before generating ANY response, check:
+- Would ChatGPT or Google give the same answer? If yes, rewrite. Add something specific to THIS user's data.
+- Did you start with "For optimal health..." or "A general guideline is..." or "To consistently reach..."? If yes, DELETE that line entirely and start with the specific answer.
+- Did you end with "How do you feel about X?" or "Any challenges with Y?" or "Any specific areas where you need more variety?" If yes, DELETE it. Only ask questions that go DEEPER into this specific user's situation.
+- Did you list 4+ meal options? Cut to the 1-2 BEST options and explain WHY they're best for THIS user.
+- Did you give a textbook range (e.g. "7-9 hours")? Instead give the specific answer for THIS user based on their data.
+- Did you format as "Category: bullet list" repeated 4 times (Breakfast: ... Lunch: ... Dinner: ... Snacks: ...)? STOP. This is the most generic format possible. Instead, give ONE specific meal that hits the target and explain why it works.
+- Did you add "(g)" protein counts after every food item in a list? STOP listing like a database. Talk like a person.
+
+REWRITE EXAMPLES — what the user ACTUALLY gets vs what PHI SHOULD say:
+
+User asks: "What should I eat to hit my protein target?"
+❌ BAD (what you're doing): "Consider incorporating these options into your meals: Breakfast: 2 eggs (12g) with Greek yogurt (17g). Lunch: Grilled chicken breast (25g) on a salad with chickpeas (7g). Dinner: Baked salmon (22g) with quinoa (8g)..."
+✅ GOOD (what to do instead): "Easiest fix at your level: swap whatever you're having for lunch to a chicken breast + Greek yogurt combo. That's 42g in one meal — nearly half your target done by 1pm. The rest fills itself in naturally at dinner. What are you currently eating for lunch?"
+
+User asks: "How much water do I need?"
+❌ BAD: "A general guideline for daily water intake is about half your body weight in ounces. For you, at 143 lbs, that would be around 71.5 ounces..."
+✅ GOOD: "At 143 lbs, roughly 2.1 liters. But the real issue for you: GLP-1 taper slows gastric emptying, so drinking with meals will make you feel bloated and kill your appetite — which makes hitting protein harder. Sip between meals, not during."
+
+User asks: "How much sleep do I need?"
+❌ BAD: "For optimal health, adults generally need 7 to 9 hours of sleep per night. You've logged 8 hours last night, which is right within the ideal range."
+✅ GOOD: "You logged 8 hours — that's above the 7-hour ghrelin threshold, which means your food noise today is coming from cessation biology, not sleep deprivation. Different cause, different fix. Your protein and cessation timeline matter more right now than sleep optimization."
+
+CRITICAL RULE: If your response follows the pattern "General statement about the topic. Your specific number. Generic advice. Generic closing question?" — you have written a BAD response. Rewrite it starting from the user's specific data and ending with a specific insight they couldn't get from Google.
+
+═══ FOLLOW-UP SUGGESTIONS ═══
+At the end of EVERY response, add exactly 2-3 follow-up suggestions in this exact format:
+💡 [suggestion 1]
+💡 [suggestion 2]
+💡 [suggestion 3]
+
+Rules for follow-up suggestions:
+- Each should go DEEPER into the current topic, not switch topics
+- They should feel like the natural "what I'd ask next" if I were the user
+- They should reference the user's actual data or situation
+- NEVER generic like "Any other questions?" or "Want to know more?"
+
+GOOD follow-ups after a protein discussion:
+💡 Show me a meal plan that hits 89.9g with only 3 meals
+💡 What happens to my muscle if I stay under target for a week?
+💡 Which protein sources give me the most per calorie?
+
+BAD follow-ups (never do these):
+❌ How do you feel about your current meal plan?
+❌ Any specific areas where you need more variety?
+❌ Do you have any other questions?
+
+GOOD follow-ups after a sleep discussion:
+💡 Calculate how much extra ghrelin I'm producing at 5.5 hours
+💡 What's the connection between my sleep and tomorrow's food noise?
+💡 Give me a pre-bed routine that protects my cessation window
+
+GOOD follow-ups after a lab discussion:
+💡 Project where my HbA1c will be in 3 months at this rate
+💡 Which marker should I retest first?
+💡 Generate a doctor prep brief from these results
+7. Keep responses under 200 words unless the user explicitly asks for a detailed plan. Shorter = smarter.
+8. ONE recommendation is better than five. Give the single most impactful action, not a menu of options. If they want more, they'll ask.
+9. When you give a number, CONTEXTUALIZE it. "2.1 liters" alone is forgettable. "2.1 liters — that's about 9 cups, or a large water bottle refilled twice" is actionable.
+10. Sound like a person, not a manual. Use contractions. Use "honestly." Use "here's the thing." Break grammar rules when it sounds more natural.
 
 ═══ THE GLP-1 CLIFF — EVIDENCE BASE ═══
 • 70% of GLP-1 users discontinue within Year 1 (Cleveland Clinic, 2026)
@@ -946,7 +1387,108 @@ USER'S CURRENT PLAN: {user_plan}
     except Exception as e:
         print(f"[CHAT] Cliff injection error (non-fatal): {e}")
 
-    if has_documents and document_text:
+    # ── CHANGE 2: Conversational data collection ────────────────────────────
+    # Check what profile data is missing and instruct PHI to collect it
+    try:
+        _missing_fields = []
+        _prof_check = supabase.table("user_profiles").select(
+            "last_dose_date,goal_weight_lbs,glp1_status"
+        ).eq("user_id", user_id).limit(1).execute()
+        if _prof_check.data:
+            _p = _prof_check.data[0]
+            if not _p.get("last_dose_date"):
+                _missing_fields.append("when they took their last dose (approximate date is fine)")
+            if not _p.get("goal_weight_lbs"):
+                _missing_fields.append("their goal weight in lbs")
+            if not _p.get("glp1_status"):
+                _missing_fields.append("whether they've stopped, are tapering, or are still on GLP-1")
+        if _missing_fields:
+            _collect_block = (
+                "CONVERSATIONAL DATA COLLECTION:\n"
+                "The following information is missing from this user's profile:\n"
+                + "\n".join(f"• {f}" for f in _missing_fields) +
+                "\n\nIf it fits naturally into your response, ask ONE of these questions conversationally — "
+                "woven into your answer, not as a form. Example: 'Before I calculate your cliff risk — "
+                "when roughly did you take your last dose?' "
+                "When they answer, confirm you'll remember it: 'Got it, I've noted that.'"
+            )
+            messages.append({"role": "system", "content": _collect_block})
+    except Exception as e:
+        print(f"[CHAT] Data collection injection error (non-fatal): {e}")
+
+    # ── CHANGE 3: Auto-appeal trigger on insurance denial ───────────────────
+    try:
+        _lower_msg = user_message.lower()
+        _denial_signals = [
+            "insurance denied", "denied my", "insurance won't", "not covered",
+            "prior auth denied", "pa denied", "coverage denied", "insurance rejected"
+        ]
+        if any(sig in _lower_msg for sig in _denial_signals):
+            # Check if user has lab data to auto-prefill the appeal
+            _appeal_markers = {}
+            _appeal_res = supabase.table("health_markers").select(
+                "marker_name,value,unit"
+            ).eq("user_id", user_id).order("created_at", desc=True).limit(50).execute()
+            if _appeal_res.data:
+                _seen_appeal = set()
+                for _row in _appeal_res.data:
+                    _mk = _row["marker_name"]
+                    if _mk not in _seen_appeal:
+                        _appeal_markers[_mk] = f"{_row['value']}{_row.get('unit','')}"
+                        _seen_appeal.add(_mk)
+
+            _appeal_block = "INSURANCE DENIAL DETECTED — ACT IMMEDIATELY:\n"
+            if _appeal_markers:
+                _key_appeal = ["HbA1c", "Glucose Fasting", "LDL Cholesterol", "Triglycerides"]
+                _found_markers = {k: v for k, v in _appeal_markers.items() if k in _key_appeal}
+                if _found_markers:
+                    _marker_str = ", ".join(f"{k}: {v}" for k, v in _found_markers.items())
+                    _appeal_block += (
+                        f"You have the user's lab data: {_marker_str}. "
+                        "Tell the user: 'I've already pulled your lab values and I'm ready to build your "
+                        "appeal packet right now. Your [key marker] is strong clinical evidence for medical "
+                        "necessity. This will take 2 minutes. Click the button below to generate your appeal.' "
+                        "Then end your message with this exact text on its own line: "
+                        "[[APPEAL_BUTTON:Start my appeal packet →]]"
+                    )
+                else:
+                    _appeal_block += (
+                        "Tell the user: 'I can build your appeal packet — I'll need your recent lab values "
+                        "to make the strongest case. Upload your latest blood work (📎) and I'll generate "
+                        "the full appeal document with clinical citations your insurer can't ignore.' "
+                        "Then explain: 39-59% of GLP-1 appeals succeed when properly documented."
+                    )
+            else:
+                _appeal_block += (
+                    "The user has no stored labs. Tell them: 'I can build your appeal — but first I need "
+                    "your lab values to cite as clinical evidence. Upload any recent blood work (📎) and "
+                    "I'll generate the appeal immediately. Even a basic metabolic panel helps.'"
+                )
+            messages.append({"role": "system", "content": _appeal_block})
+    except Exception as e:
+        print(f"[CHAT] Auto-appeal injection error (non-fatal): {e}")
+
+    # ── CHANGE 4: Auto lab reminder injection ───────────────────────────────
+    try:
+        _lab_check = supabase.table("health_markers").select(
+            "created_at"
+        ).eq("user_id", user_id).order("created_at", desc=True).limit(1).execute()
+        if _lab_check.data:
+            from datetime import date as _d4
+            _last_lab = _d4.fromisoformat(_lab_check.data[0]["created_at"][:10])
+            _weeks_ago = (_d4.today() - _last_lab).days // 7
+            if _weeks_ago >= 6:
+                _lab_reminder = (
+                    f"LAB MONITORING ALERT:\n"
+                    f"The user's last lab upload was {_weeks_ago} weeks ago — they are OVERDUE for a check. "
+                    "Weave this naturally into your response: 'One thing I want to flag — "
+                    f"your last labs were {_weeks_ago} weeks ago. Metabolic markers drift silently in this window. "
+                    "When can you get updated bloodwork?' Don't make this the entire response — "
+                    "just include it naturally alongside your main answer."
+                )
+                messages.append({"role": "system", "content": _lab_reminder})
+    except Exception as e:
+        print(f"[CHAT] Lab reminder injection error (non-fatal): {e}")
         messages.append({
             "role": "system",
             "content": (
@@ -1384,7 +1926,7 @@ def _call_llm_safe(messages: list) -> str:
             from openai import OpenAI
             client = OpenAI(api_key=openai_key, timeout=55.0)
             resp = client.chat.completions.create(
-                model="gpt-4o",
+                model="gpt-4o-mini",
                 messages=messages,
                 temperature=0.4,
                 max_tokens=1200
@@ -1395,6 +1937,32 @@ def _call_llm_safe(messages: list) -> str:
             return f"⚠️ AI connection issue: {str(e)[:100]}. Please try again."
 
     return "⚠️ No AI key configured. Please set OPENAI_API_KEY."
+
+
+def _call_llm_stream(messages: list):
+    """Generator that yields tokens one at a time for streaming responses."""
+    openai_key = os.getenv("OPENAI_API_KEY")
+    if not openai_key or not messages:
+        yield "⚠️ AI connection issue. Please try again."
+        return
+
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=openai_key, timeout=55.0)
+        stream = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=messages,
+            temperature=0.4,
+            max_tokens=1200,
+            stream=True,
+        )
+        for chunk in stream:
+            delta = chunk.choices[0].delta if chunk.choices else None
+            if delta and delta.content:
+                yield delta.content
+    except Exception as e:
+        print(f"[LLM STREAM ERROR] {e}")
+        yield f"⚠️ AI connection issue: {str(e)[:100]}. Please try again."
 
 
 # ── Cliff context detection ───────────────────────────────────────────────────
@@ -1933,6 +2501,57 @@ def chat():
         messages_for_llm.insert(-1, {"role": "system", "content": web_context})
 
     # ── STEP 7: Call LLM ──────────────────────────────────────────────────────
+    # Check if client wants streaming
+    use_stream = body.get("stream", False)
+
+    if use_stream:
+        # Streaming response via Server-Sent Events
+        import json as _json
+        def generate_stream():
+            full_reply = []
+            for token in _call_llm_stream(messages_for_llm):
+                full_reply.append(token)
+                yield f"data: {_json.dumps({'token': token})}\n\n"
+
+            # Post-process the complete reply (disclaimer strip, etc.)
+            complete = "".join(full_reply)
+
+            # Strip LLM-generated disclaimers
+            import re as _re_stream
+            _stream_disc_patterns = [
+                r'\n*\s*⚕️[^\n]*(?:provider|advice|decisions|healthcare|medical|wellness|educational|consult)[^\n]*',
+                r'\n*\s*\*?Curabook is an? (?:educational|informational)[^\n]*\*?',
+                r'\n*\s*\*?PHI is an? (?:educational|informational)[^\n]*\*?',
+                r'\n*\s*Always consult[^\n]*(?:provider|professional|healthcare)[^\n]*',
+                r'\n*\s*Please consult[^\n]*(?:provider|professional)[^\n]*',
+                r'\n*\s*This (?:response|information) is (?:for )?informational[^\n]*',
+                r'\n.*(?:⚕️|🏥|💊).*(?:provider|advice|medical|consult|healthcare).*$',
+                r'\n\s*\*?[^.]*consult[^.]*(?:provider|professional|healthcare)[^.]*\.?\*?\s*$',
+            ]
+            for pattern in _stream_disc_patterns:
+                complete = _re_stream.sub(pattern, '', complete, flags=_re_stream.IGNORECASE)
+            complete = complete.rstrip()
+
+            # Save conversation
+            try:
+                _save_assistant_message(supabase, user_id, conversation_id, complete)
+                _extract_and_save_facts(supabase, user_id, conversation_id, message)
+            except Exception as e:
+                print(f"[CHAT] Stream save error (non-fatal): {e}")
+
+            # Send final message with complete processed reply
+            yield f"data: {_json.dumps({'done': True, 'full_reply': complete})}\n\n"
+
+        return Response(
+            generate_stream(),
+            mimetype="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+                "Connection": "keep-alive",
+            },
+        )
+
     reply = _call_llm_safe(messages_for_llm)
 
     # ── STEP 8: Safety validation ─────────────────────────────────────────────

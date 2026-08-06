@@ -177,6 +177,7 @@
         <div class="status-badge">
           <span class="status-dot"></span>
           <span id="convTitle" class="status-text">Ready</span>
+          <span id="phiContextBadge" style="display:none;font-size:.65rem;color:var(--text-3);font-weight:400;margin-left:8px;max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></span>
         </div>
       </div>
       <div class="topbar-right">
@@ -825,6 +826,130 @@ function handleMealPhoto(input) {
 })();
 </script>
 <script>
+/* ── PHI Proactive Intelligence — Changes 6-10 ─────────────────────── */
+(function() {
+
+  function escAttr(str) {
+    return (str || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  // CHANGE 6: PHI speaks first on every app open
+  async function loadPHIGreeting() {
+    try {
+      const h = typeof headers === 'function' ? await headers() : null;
+      if (!h) return;
+
+      const res = await fetch((window._API || '') + '/api/phi/greeting', { headers: h });
+      if (!res.ok) return;
+      const data = await res.json();
+
+      window._phiGreetingData = data;
+
+      // Show PHI's opening message before user types anything
+      if (data.greeting) {
+        const display = document.getElementById('chatDisplay');
+        const chipsEl = document.getElementById('welcomeChips');
+        const welcomeEl = chipsEl ? chipsEl.closest('.welcome-wrap') || chipsEl.parentElement : null;
+
+        if (display && !display.querySelector('.chat-msg')) {
+          display.classList.remove('hidden');
+          if (welcomeEl) welcomeEl.style.display = 'none';
+
+          // Create PHI message row
+          const row = document.createElement('div');
+          row.className = 'chat-msg bot-msg';
+          row.innerHTML = `
+            <div class="msg-av av-ai" aria-hidden="true">φ</div>
+            <div class="msg-body"></div>`;
+          display.appendChild(row);
+
+          const body = row.querySelector('.msg-body');
+          if (body && typeof renderAI === 'function') {
+            renderAI(body, data.greeting);
+          } else if (body) {
+            body.textContent = data.greeting;
+          }
+          display.scrollTop = display.scrollHeight;
+        }
+      }
+
+      // CHANGE 7: Dynamic placeholder
+      if (data.placeholder) {
+        const ta = document.getElementById('chatInput');
+        if (ta) ta.placeholder = data.placeholder;
+      }
+
+      // CHANGE 8: Dynamic suggestion chips
+      if (data.chips && data.chips.length > 0) {
+        const chipsWrap = document.getElementById('welcomeChips');
+        if (chipsWrap) {
+          chipsWrap.innerHTML = data.chips.map(chip => `
+            <button class="chip" style="text-align:left;padding:8px 14px;" onclick="sendMessage(${JSON.stringify(chip.q)})">
+              <span class="chip-text">${chip.text}</span>
+            </button>
+          `).join('');
+        }
+      }
+
+      // CHANGE 9: Context summary
+      if (data.context_summary) {
+        window._phiContextSummary = data.context_summary;
+        const badge = document.getElementById('phiContextBadge');
+        if (badge) { badge.textContent = data.context_summary; badge.style.display = 'block'; }
+      }
+
+    } catch (e) { console.warn('[PHI-GREETING] Error:', e); }
+  }
+
+  // CHANGE 10: Patch renderAI to render inline appeal buttons
+  function _patchRenderAI() {
+    const orig = window.renderAI;
+    if (!orig || window._renderAIPatched) return;
+    window._renderAIPatched = true;
+    window.renderAI = function(elem, text) {
+      // Convert [[APPEAL_BUTTON:label]] markers to real buttons
+      const processed = text.replace(/\[\[APPEAL_BUTTON:([^\]]+)\]\]/g, (_, label) => {
+        return `\n\n<div style="margin-top:12px;">
+          <a href="/appeal?source=phi&prefill=1"
+             style="display:inline-flex;align-items:center;gap:6px;padding:10px 18px;
+                    background:#7c3aed;color:#fff;border-radius:8px;font-size:.82rem;
+                    font-weight:700;text-decoration:none;">
+            <i class="fa-solid fa-gavel"></i> ${label}
+          </a>
+          <div style="font-size:.72rem;color:var(--text-3);margin-top:4px;">
+            $49 one-time · Your lab values will be pre-filled automatically
+          </div>
+        </div>`;
+      });
+      orig.call(this, elem, processed);
+    };
+  }
+
+  // Auto-load greeting when cockpit opens OR user is authenticated
+  function _tryLoadGreeting() {
+    if (window.__phi_auth_ready) {
+      loadPHIGreeting();
+      _patchRenderAI();
+    }
+  }
+
+  window.addEventListener('phi:authed', function() {
+    setTimeout(_tryLoadGreeting, 800);
+  });
+
+  // Also check on visibility change (returning to tab)
+  document.addEventListener('visibilitychange', function() {
+    if (!document.hidden && window.__phi_auth_ready && !window._phiGreetingData) {
+      _tryLoadGreeting();
+    }
+  });
+
+  // Expose for external calls
+  window.loadPHIGreeting = loadPHIGreeting;
+
+})();
+</script>
+<script>
 /* ── Cliff Detection + Trend Chart ─────────────────────────────────── */
 (function() {
   let _trendChart = null;
@@ -1128,7 +1253,7 @@ function handleMealPhoto(input) {
   }, 2000);
 })();
 </script>
-<script src="script.js?v=31"></script>
+<script src="script.js?v=30"></script>
 <script src="phi_fixes.js?v=3"></script>
 
 </body>
