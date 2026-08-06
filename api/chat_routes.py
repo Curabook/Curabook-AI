@@ -2506,7 +2506,7 @@ def chat():
 
     # ── STEP 7: Call LLM ──────────────────────────────────────────────────────
     # Check if client wants streaming
-    use_stream = body.get("stream", False)
+    use_stream = data.get("stream", False)
 
     if use_stream:
         # Streaming response via Server-Sent Events
