@@ -1355,7 +1355,15 @@ async function sendMessage(text) {
 
     if (res.ok && data?.reply) {
       const cleanReply = interceptPHIActions(data.reply, text);
-      updateMsg(botRow, cleanReply);
+      // Typing animation — word by word
+      const _words = cleanReply.split(/(\s+)/);
+      let _built = "";
+      for (let _i = 0; _i < _words.length; _i++) {
+        _built += _words[_i];
+        updateMsg(botRow, _built);
+        if (_i < _words.length - 1) await new Promise(r => setTimeout(r, 18));
+      }
+      updateMsg(botRow, cleanReply); // final clean render
       // Update upload counter
       if (data.reports_remaining !== undefined) {
         _reportsRemaining = data.reports_remaining;
