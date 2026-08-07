@@ -2645,8 +2645,9 @@ def chat():
             except Exception as e:
                 print(f"[CHAT] Stream save error (non-fatal): {e}")
 
-            # Send final message with complete processed reply
-            yield f"data: {_json.dumps({'done': True, 'full_reply': complete})}\n\n"
+            # Send final message with complete processed reply + updated counts
+            _final_remaining = max(0, reports_remaining - (1 if current_markers and not is_pro else 0))
+            yield f"data: {_json.dumps({'done': True, 'full_reply': complete, 'reports_remaining': _final_remaining, 'plan': user_plan})}\n\n"
 
         return Response(
             generate_stream(),

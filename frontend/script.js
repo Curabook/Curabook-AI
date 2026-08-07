@@ -1438,6 +1438,15 @@ async function sendMessage(text) {
             }
             if (parsed.done && parsed.full_reply) {
               fullReply = parsed.full_reply;
+              // Update upload counter from streaming response
+              if (parsed.reports_remaining !== undefined) {
+                _reportsRemaining = parsed.reports_remaining;
+                window._reportsRemaining = _reportsRemaining;
+              }
+              if (parsed.plan) {
+                _userPlan = parsed.plan;
+                window._userPlan = _userPlan;
+              }
             }
           } catch (e) {}
         }
@@ -1446,10 +1455,10 @@ async function sendMessage(text) {
       // Final render with full processing
       const cleanReply = interceptPHIActions(fullReply, text);
       renderAI(msgBody, cleanReply);
-      // Extract and render follow-up suggestions as clickable buttons
       _renderFollowUps(botRow, cleanReply);
+      _renderPlanBadge(); // Update "X uploads left" badge
       scrollBottom();
-      await _postChatActions(cleanReply, text, {reply: cleanReply});
+      await _postChatActions(cleanReply, text, {reply: cleanReply, reports_remaining: _reportsRemaining, plan: _userPlan});
 
     } else {
       // NON-STREAMING — regular JSON response (fallback)
