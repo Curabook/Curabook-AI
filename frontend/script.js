@@ -1376,8 +1376,8 @@ async function sendMessage(text) {
       }, 6000);
     }
 
-    // Use non-streaming (JSON) response — reliable save to DB
-    // payload.stream = true;  // disabled — streaming path had save issues
+    // Add stream flag to payload
+    payload.stream = true;
 
     const res = await fetch(API + "/chat", { method: "POST", headers: h, body: JSON.stringify(payload) });
     clearInterval(typingInterval);
