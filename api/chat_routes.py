@@ -2611,7 +2611,20 @@ def chat():
     use_stream = data.get("stream", False)
 
     if use_stream:
-        # Streaming response via Server-Sent Events
+        # Save user message immediately BEFORE streaming starts
+        # This ensures history is always saved regardless of connection state
+        try:
+            from datetime import datetime, timezone as _tz
+            supabase.table("chats").insert({
+                "user_id": user_id,
+                "conversation_id": conversation_id,
+                "role": "user",
+                "content": str(message or "").strip(),
+                "created_at": datetime.now(_tz.utc).isoformat()
+            }).execute()
+        except Exception as _e:
+            print(f"[CHAT] Pre-stream user save error: {_e}")
+
         import json as _json
         def generate_stream():
             full_reply = []
@@ -2619,33 +2632,32 @@ def chat():
                 full_reply.append(token)
                 yield f"data: {_json.dumps({'token': token})}\n\n"
 
-            # Post-process the complete reply (disclaimer strip, etc.)
             complete = "".join(full_reply)
 
-            # Strip LLM-generated disclaimers
+            # Strip disclaimers
             import re as _re_stream
-            _stream_disc_patterns = [
+            for pattern in [
                 r'\n*\s*⚕️[^\n]*(?:provider|advice|decisions|healthcare|medical|wellness|educational|consult)[^\n]*',
                 r'\n*\s*\*?Curabook is an? (?:educational|informational)[^\n]*\*?',
-                r'\n*\s*\*?PHI is an? (?:educational|informational)[^\n]*\*?',
                 r'\n*\s*Always consult[^\n]*(?:provider|professional|healthcare)[^\n]*',
-                r'\n*\s*Please consult[^\n]*(?:provider|professional)[^\n]*',
-                r'\n*\s*This (?:response|information) is (?:for )?informational[^\n]*',
-                r'\n.*(?:⚕️|🏥|💊).*(?:provider|advice|medical|consult|healthcare).*$',
-                r'\n\s*\*?[^.]*consult[^.]*(?:provider|professional|healthcare)[^.]*\.?\*?\s*$',
-            ]
-            for pattern in _stream_disc_patterns:
+            ]:
                 complete = _re_stream.sub(pattern, '', complete, flags=_re_stream.IGNORECASE)
             complete = complete.rstrip()
 
-            # Save conversation — use the real save function
+            # Save AI reply
             try:
-                _save_chat_turn(supabase, user_id, conversation_id, message, complete)
+                from datetime import datetime, timezone as _tz2, timedelta as _td
+                supabase.table("chats").insert({
+                    "user_id": user_id,
+                    "conversation_id": conversation_id,
+                    "role": "assistant",
+                    "content": str(complete or "").strip(),
+                    "created_at": (datetime.now(_tz2.utc) + _td(milliseconds=100)).isoformat()
+                }).execute()
                 _extract_facts_synchronous(supabase, user_id, conversation_id, message)
-            except Exception as e:
-                print(f"[CHAT] Stream save error (non-fatal): {e}")
+            except Exception as _e2:
+                print(f"[CHAT] Stream AI save error: {_e2}")
 
-            # Send final message with complete processed reply + updated counts
             _final_remaining = max(0, reports_remaining - (1 if current_markers and not is_pro else 0))
             yield f"data: {_json.dumps({'done': True, 'full_reply': complete, 'reports_remaining': _final_remaining, 'plan': user_plan})}\n\n"
 
