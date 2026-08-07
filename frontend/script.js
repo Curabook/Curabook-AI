@@ -1376,7 +1376,7 @@ async function sendMessage(text) {
       }, 6000);
     }
 
-    // Add stream flag to payload
+    // Streaming — word by word like ChatGPT
     payload.stream = true;
 
     const res = await fetch(API + "/chat", { method: "POST", headers: h, body: JSON.stringify(payload) });
