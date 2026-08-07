@@ -62,6 +62,19 @@
 .send-btn{width:36px !important;height:36px !important;border-radius:10px !important;font-size:14px !important;}
 .input-btn{width:36px !important;height:36px !important;font-size:14px !important;}
 
+/* Mobile fixes — prevent button cutoff */
+@media(max-width:640px){
+  .input-bar{padding:4px 6px !important;}
+  .send-btn{width:34px !important;height:34px !important;flex-shrink:0 !important;}
+  .input-btn{width:34px !important;height:34px !important;flex-shrink:0 !important;}
+  .chat-ta{font-size:16px !important;padding:6px 8px !important;min-height:36px !important;}
+  #inputBar{padding:4px 8px 4px 8px !important;gap:4px !important;}
+  /* Prevent overflow on very small screens */
+  .chat-input-wrap, #inputBar{max-width:100% !important;box-sizing:border-box !important;}
+  /* Safe area for iOS notch */
+  .chat-bottom{padding-bottom:max(8px, env(safe-area-inset-bottom)) !important;}
+}
+
 /* Chat display area spacing */
 .chat-msg{padding:14px 18px !important;}
 @media(max-width:640px){.chat-msg{padding:12px 14px !important;}.msg-body{font-size:14px !important;}}
@@ -1274,7 +1287,7 @@ function handleMealPhoto(input) {
   }, 2000);
 })();
 </script>
-<script src="script.js?v=34"></script>
+<script src="script.js?v=32"></script>
 <script src="phi_fixes.js?v=3"></script>
 
 </body>

@@ -1077,8 +1077,16 @@ async function openConversation(id) {
   const h = await headers(); if (!h) return;
   try {
     const { ok, data } = await apiJson("/conversation", { method: "POST", headers: h, body: JSON.stringify({ conversation_id: id }) });
-    if (ok && Array.isArray(data)) { data.forEach(m => appendMsg(m.content, m.role === "user" ? "user" : "ai")); scrollBottom(); }
-  } catch {}
+    console.log("[HISTORY] ok:", ok, "messages:", Array.isArray(data) ? data.length : data);
+    if (ok && Array.isArray(data) && data.length > 0) {
+      data.forEach(m => {
+        if (m.content) appendMsg(m.content, m.role === "user" ? "user" : "ai");
+      });
+      scrollBottom();
+    } else if (ok && Array.isArray(data) && data.length === 0) {
+      if (el("chatDisplay")) el("chatDisplay").innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-3);font-size:.85rem;">No messages saved in this conversation.</div>';
+    }
+  } catch(e) { console.error("[HISTORY] Error:", e); }
 }
 
 async function deleteConversation(id, e) {
