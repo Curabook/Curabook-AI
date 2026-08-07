@@ -23,7 +23,7 @@
  *   category selection, and smooth success animation.
  *
  * FIX-4: PAYPAL PAYMENT TIERS (replaces Razorpay)
- *   Free tier: 3 lab uploads + 15 chats/day, then Shield plan required.
+ *   Free tier: 14-day trial, then Shield plan required.
  *   Pro tier: unlimited reports, full marker memory, advocacy briefs.
  *   PayPal subscription flow — redirects to PayPal hosted checkout.
  *   No Razorpay SDK needed.
@@ -62,7 +62,8 @@ let _redirecting   = false;
 
 // Payment state
 let _userPlan = "free";
-let _reportsRemaining = 3; // free plan: 3 lifetime lab report uploads
+let _reportsRemaining = 3; // updated from payment_status on load
+// No free report limit — 14-day trial model. isPro check controls access.
 
 // FIX-2: Health memory cache — refreshed after every message
 let _cachedMemories = [];
@@ -314,16 +315,14 @@ async function loadPaymentStatus() {
     const { ok, data } = await apiJson("/api/payment/status", { headers: h });
     if (ok && data) {
       _userPlan         = data.plan || "free";
-      window._userPlan  = _userPlan; // expose for phi_fixes.js
-      if (data.reports_remaining !== undefined) {
-        _reportsRemaining        = data.reports_remaining;
-        window._reportsRemaining = _reportsRemaining;
-      }
-      // Apply free-all override (founder toggle)
+      window._userPlan  = _userPlan;
       if (data.is_free_all) {
         _userPlan         = "pro";
         window._userPlan  = "pro";
-        // pro user — full access
+      }
+      if (data.reports_remaining !== undefined) {
+        _reportsRemaining        = data.reports_remaining;
+        window._reportsRemaining = _reportsRemaining;
       }
       _renderPlanBadge();
     }
@@ -335,20 +334,14 @@ async function loadPaymentStatus() {
 function _renderPlanBadge() {
   const planEl = el("userPlan");
   if (planEl) {
-    const isPro = _userPlan === "pro" || _userPlan === "annual" || _userPlan === "monthly";
+    const isPro = _userPlan === "pro" || _userPlan === "annual" || _userPlan === "monthly" || _userPlan === "trial";
     if (isPro) {
       planEl.textContent = "Curabook Shield ✦";
       planEl.style.color = "var(--signal)";
-      planEl.title = "Shield plan — unlimited uploads";
     } else {
       const rem = typeof _reportsRemaining === "number" ? _reportsRemaining : 3;
-      planEl.textContent = rem > 0
-        ? `Free · ${rem} upload${rem === 1 ? "" : "s"} left`
-        : "Free · No uploads left";
+      planEl.textContent = rem > 0 ? `Free · ${rem} upload${rem === 1 ? "" : "s"} left` : "Free · No uploads left";
       planEl.style.color = rem > 0 ? "var(--text-3)" : "var(--danger)";
-      planEl.title = rem > 0
-        ? `${rem} of 3 free lab uploads remaining — upgrade to Shield for unlimited`
-        : "All 3 free uploads used — upgrade to Shield for unlimited";
     }
   }
 }
@@ -367,12 +360,13 @@ function _startPlanPoll() {
 
       const prevPlan = _userPlan;
       const newPlan  = data.plan || "free";
-      const wasPro   = prevPlan === "pro" || prevPlan === "annual" || prevPlan === "monthly";
-      const nowPro   = newPlan  === "pro" || newPlan  === "annual" || newPlan  === "monthly";
+      const wasPro   = prevPlan === "pro" || prevPlan === "annual" || prevPlan === "monthly" || prevPlan === "trial";
+      const nowPro   = newPlan  === "pro" || newPlan  === "annual" || newPlan  === "monthly" || newPlan  === "trial";
 
       // Update globals
       _userPlan         = newPlan;
         window._userPlan  = newPlan;
+      // trial model — access controlled by plan only
       if (data.is_free_all) {
         _userPlan         = "pro";
         window._userPlan  = "pro";
@@ -393,14 +387,10 @@ function _startPlanPoll() {
 
 // ── Upload click gate ──────────────────────────────────────────────────────
 function handleUploadClick() {
-  const isPro = _userPlan === "pro" || _userPlan === "annual" || _userPlan === "monthly";
-  if (!isPro && _reportsRemaining <= 0) {
+  const isPro = _userPlan === "pro" || _userPlan === "annual" || _userPlan === "monthly" || _userPlan === "trial";
+  if (!isPro) {
     showUpgradeModal("upload");
     return;
-  }
-  // Show remaining count as a subtle toast before opening file picker
-  if (!isPro && _reportsRemaining > 0 && _reportsRemaining <= 3) {
-    toast(`${_reportsRemaining} free upload${_reportsRemaining === 1 ? '' : 's'} remaining`);
   }
   el("fileInput")?.click();
 }
@@ -453,7 +443,7 @@ function showUpgradeModal(reason = "manual") {
           box-shadow:0 4px 16px var(--signal-glow);">φ</div>
         <div>
           <h2 style="font-family:var(--serif);font-size:1.2rem;font-weight:400;
-            color:var(--text);margin-bottom:2px;line-height:1.2;">Upgrade to Shield</h2>
+            color:var(--text);margin-bottom:2px;line-height:1.2;">Start your 14-day free trial</h2>
           <p style="font-size:.73rem;color:var(--text-3);line-height:1.4;">
             Full access · Cancel anytime · Less than half a Wegovy copay
           </p>
@@ -467,7 +457,7 @@ function showUpgradeModal(reason = "manual") {
           font-size:.8rem;color:var(--amber);
           display:flex;align-items:center;gap:8px;">
           <i class="fa-solid fa-triangle-exclamation" style="flex-shrink:0;"></i>
-          <span><strong>You've used all 3 free lab uploads.</strong> Upgrade to Shield for unlimited uploads, full cliff detection, and PA appeals.</span>
+          <span><strong>Shield plan required</strong> — Start your 14-day free trial to unlock lab uploads and cliff detection.</span>
         </div>` : ""}
 
       <div style="
@@ -525,7 +515,7 @@ function showUpgradeModal(reason = "manual") {
       </div>
 
       <div style="font-size:.68rem;color:var(--text-3);text-align:center;line-height:1.6;margin-bottom:10px;padding:8px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;">
-        3 free lab reports · 15 free chats/day · HSA/FSA eligible · Save $120 on annual vs monthly
+        14-day free trial on both plans · HSA/FSA eligible · Save $120 on annual vs monthly
       </div>
 
       <div id="upgradeStatus" style="text-align:center;font-size:.78rem;color:var(--text-3);min-height:18px;margin-bottom:6px;"></div>
@@ -709,8 +699,7 @@ function switchView(view) {
     el(`view${v[0].toUpperCase() + v.slice(1)}`)?.classList.toggle("active", v === view);
     el(`nav${v[0].toUpperCase() + v.slice(1)}`)?.classList.toggle("active", v === view);
   });
-  // Only close sidebar on mobile (< 768px) — on desktop sidebar stays open
-  if (window.innerWidth < 768) closeSidebar();
+  closeSidebar();
   if (view === "health") loadHealthView();
   if (view === "reports") loadReportsView();
   setText("convTitle", { chat: "Chat with Curabook", health: "My Health", reports: "Lab Reports" }[view] || "");
@@ -1032,44 +1021,7 @@ async function loadReportsView() {
   } catch { list.innerHTML = `<div class="hv-empty">Could not load reports.</div>`; }
 }
 
-async function askAboutReport(filename) {
-  switchView("chat");
-  
-  // Fetch this report's markers directly from lab-reports API
-  try {
-    const h = await headers();
-    if (h) {
-      const { ok, data } = await apiJson("/api/lab-reports", { headers: h });
-      if (ok && Array.isArray(data)) {
-        const report = data.find(r => r.filename === filename);
-        if (report && report.abnormal_markers && report.abnormal_markers.length > 0) {
-          const markerList = report.abnormal_markers.map(m => 
-            `${m.name}: ${m.value} ${m.unit || ''} (${m.status})`
-          ).join(', ');
-          const normalCount = report.normal_count || 0;
-          const abnormalCount = report.abnormal_count || 0;
-          
-          setTimeout(() => sendMessage(
-            `Analyze my lab report "${filename}" (${report.marker_count} markers total, ${abnormalCount} flagged, ${normalCount} normal). ` +
-            `Flagged markers: ${markerList}. ` +
-            `Compare these to my previous values, calculate rates of change, and flag any cliff signals.`
-          ), 200);
-          return;
-        } else if (report) {
-          // Report exists but no abnormal markers
-          setTimeout(() => sendMessage(
-            `Analyze my lab report "${filename}" (${report.marker_count} markers, all within normal range). ` +
-            `Compare these to my previous values and confirm whether my metabolic markers are stable.`
-          ), 200);
-          return;
-        }
-      }
-    }
-  } catch (e) { console.warn("[REPORT] Could not load markers:", e); }
-
-  // Fallback
-  setTimeout(() => sendMessage(`Analyze my "${filename}" lab report from my stored health data. Flag any cliff signals and compare to my previous values.`), 200);
-}
+function askAboutReport(f) { switchView("chat"); setTimeout(() => sendMessage(`Summarize my ${f} report and flag any cliff signals.`), 100); }
 
 // ── History ────────────────────────────────────────────────────────────────
 async function loadHistory() {
@@ -1300,12 +1252,12 @@ async function sendMessage(text) {
     }
 
     if (_uploads.length) {
-      const isPro = _userPlan === "pro" || _userPlan === "annual" || _userPlan === "monthly";
+      const isPro = _userPlan === "pro" || _userPlan === "annual" || _userPlan === "monthly" || _userPlan === "trial";
       const isMealPhoto = _uploads[0]?._isMealPhoto === true;
 
       // ── Lab report / document: use /analyze pipeline ─────────────────
       // (Meal photos are handled by _queueMealUpload which sets _docCtx directly)
-      if (!isPro && _reportsRemaining <= 0) {
+      if (!isPro) {
         _isSending = false;
         setSendingState(false);
         showUpgradeModal("upload");
@@ -1339,45 +1291,28 @@ async function sendMessage(text) {
 
     // Build payload BEFORE clearing _docCtx
     const _wasMealPhoto = _docCtx?.isMealPhoto === true;
-    const _hasDoc = _docCtx?.hasDoc || false;
     const payload = {
       conversation_id: _convId,
       message:         text,
-      has_documents:   _hasDoc,
-      document_text:   _hasDoc ? (_docCtx.text || "") : "",
+      has_documents:   _docCtx?.hasDoc || false,
+      document_text:   _docCtx?.hasDoc ? (_docCtx.text || "") : "",
     };
 
-    // Clear document context after EVERY send — document only sent once
-    // Without this, every follow-up question re-sends the document and
-    // triggers the paywall check on questions (not new uploads)
-    if (_hasDoc) {
-      _docCtx = { text: null, hasDoc: false, filename: "", isMealPhoto: false };
+    // Clear document context after sending — only send document once
+    if (_docCtx?.hasDoc) {
+      _docCtx = { text: null, hasDoc: false, filename: "" };
+    }
+
+    // Clear meal photo context AFTER payload is built — only send image once
+    if (_wasMealPhoto) {
+      _docCtx = { text: null, hasDoc: false, filename: "" };
     }
 
     let dotCount = 0;
     const typingInterval = setInterval(() => {
       dotCount = (dotCount + 1) % 4;
-      updateTyping(botRow, "PHI is thinking" + ".".repeat(dotCount));
+      updateTyping(botRow, "Curabook is thinking" + ".".repeat(dotCount));
     }, 600);
-
-    // Show "searching" indicator if query might trigger web search
-    const _searchSignals = ["latest", "newest", "recent", "new study", "new drug", "just approved", "2025", "2026", "news", "updates", "current price"];
-    if (_searchSignals.some(s => text.toLowerCase().includes(s))) {
-      updateTyping(botRow, "🔍 Searching the web...");
-      setTimeout(() => {
-        if (botRow?.querySelector(".msg-body")?.textContent?.includes("Searching")) {
-          updateTyping(botRow, "📖 Reading results...");
-        }
-      }, 3000);
-      setTimeout(() => {
-        if (botRow?.querySelector(".msg-body")?.textContent?.includes("Reading")) {
-          updateTyping(botRow, "✍️ Writing response...");
-        }
-      }, 6000);
-    }
-
-    // Streaming — word by word like ChatGPT
-    payload.stream = true;
 
     const res = await fetch(API + "/chat", { method: "POST", headers: h, body: JSON.stringify(payload) });
     clearInterval(typingInterval);
@@ -1407,72 +1342,21 @@ async function sendMessage(text) {
       throw new Error("Authentication failed. Please refresh the page.");
     }
 
-    // Check if response is streaming (SSE) or regular JSON
-    const contentType = res.headers.get("content-type") || "";
-    if (contentType.includes("text/event-stream")) {
-      // STREAMING — render word by word like ChatGPT
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let fullReply = "";
-      const msgBody = botRow?.querySelector(".msg-body");
+    const txt = await res.text();
+    let data = null; try { data = JSON.parse(txt); } catch (e) {}
 
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split("\n");
-
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          try {
-            const parsed = JSON.parse(line.slice(6));
-            if (parsed.token) {
-              fullReply += parsed.token;
-              // Render incrementally with markdown
-              if (msgBody) {
-                const rendered = typeof marked !== "undefined" ? marked.parse(fullReply) : fullReply.replace(/\n/g, "<br>");
-                msgBody.innerHTML = rendered;
-              }
-              scrollBottom();
-            }
-            if (parsed.done && parsed.full_reply) {
-              fullReply = parsed.full_reply;
-              // Update upload counter from streaming response
-              if (parsed.reports_remaining !== undefined) {
-                _reportsRemaining = parsed.reports_remaining;
-                window._reportsRemaining = _reportsRemaining;
-              }
-              if (parsed.plan) {
-                _userPlan = parsed.plan;
-                window._userPlan = _userPlan;
-              }
-            }
-          } catch (e) {}
-        }
+    if (res.ok && data?.reply) {
+      const cleanReply = interceptPHIActions(data.reply, text);
+      updateMsg(botRow, cleanReply);
+      // Update upload counter
+      if (data.reports_remaining !== undefined) {
+        _reportsRemaining = data.reports_remaining;
+        window._reportsRemaining = _reportsRemaining;
+        _renderPlanBadge();
       }
-
-      // Final render with full processing
-      const cleanReply = interceptPHIActions(fullReply, text);
-      renderAI(msgBody, cleanReply);
-      _renderFollowUps(botRow, cleanReply);
-      _renderPlanBadge(); // Update "X uploads left" badge
-      scrollBottom();
-      await _postChatActions(cleanReply, text, {reply: cleanReply, reports_remaining: _reportsRemaining, plan: _userPlan});
-
+      await _postChatActions(cleanReply, text, data);
     } else {
-      // NON-STREAMING — regular JSON response (fallback)
-      const txt = await res.text();
-      let data = null; try { data = JSON.parse(txt); } catch (e) {}
-
-      if (res.ok && data?.reply) {
-        const cleanReply = interceptPHIActions(data.reply, text);
-        updateMsg(botRow, cleanReply);
-        _renderFollowUps(botRow, cleanReply);
-        await _postChatActions(cleanReply, text, data);
-      } else {
-        throw new Error(`Server Error (${res.status}): txt.slice(0, 150)`);
-      }
+      throw new Error(`Server Error (${res.status}): ${txt.slice(0, 150)}`);
     }
 
   } catch (err) {
@@ -1522,11 +1406,8 @@ async function _postChatActions(reply, userText, responseData) {
 
   if (responseData?.plan) {
     _userPlan = responseData.plan;
-    window._userPlan = _userPlan;
     if (responseData.reports_remaining !== undefined) {
-      _reportsRemaining = responseData.reports_remaining;
-      window._reportsRemaining = _reportsRemaining;
-      _renderPlanBadge(); // Update the "X uploads left" counter immediately
+      // trial model — ignore per-report counter from backend
     }
     _renderPlanBadge();
   }
@@ -1649,92 +1530,22 @@ function appendTyping() {
   d.appendChild(w); scrollBottom(); return w;
 }
 
-function updateTyping(w, text) {
-  const b = w?.querySelector(".msg-body");
-  if (b) {
-    // Check if it's a search status message (has emoji prefix)
-    if (text.startsWith("🔍") || text.startsWith("📖") || text.startsWith("✍️")) {
-      b.innerHTML = `<div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-3);"><span style="font-size:16px;">${text.slice(0,2)}</span><span>${text.slice(2).trim()}</span></div>`;
-    } else {
-      b.textContent = text;
-    }
-  }
-}
+function updateTyping(w, text) { const b = w?.querySelector(".msg-body"); if (b) b.textContent = text; }
 function updateMsg(w, text) { const b = w?.querySelector(".msg-body"); if (b) { renderAI(b, text); scrollBottom(); } }
 
 function renderAI(elem, text) {
   if (!elem) return;
-
-  // Strip any disclaimer before rendering (client-side safety net)
-  let clean = text
-    .replace(/\n*\s*---\s*\n*\s*⚕️[^\n]*/g, '')
-    .replace(/\n*\s*⚕️[^\n]*(?:provider|advice|healthcare|medical|wellness|educational|consult)[^\n]*/gi, '')
-    .replace(/\n*\s*Medical Disclaimer:[^\n]*/gi, '')
-    .replace(/\n*\s*Disclaimer:[^\n]*(?:provider|advice|medical)[^\n]*/gi, '')
-    .replace(/\n*\s*\*?Curabook is an? (?:educational|informational)[^\n]*\*?/gi, '')
-    .replace(/\n*\s*\*?PHI is an? (?:educational|informational)[^\n]*\*?/gi, '')
-    .replace(/\n*\s*Always consult[^\n]*(?:provider|professional|healthcare)[^\n]*/gi, '')
-    .replace(/\n*\s*This (?:response|information) is (?:for )?informational[^\n]*/gi, '')
-    .replace(/\n*\s*Please consult[^\n]*(?:provider|professional)[^\n]*/gi, '')
-    .trim();
-
-  // Parse markdown
-  let html = typeof marked !== "undefined" ? marked.parse(clean) : esc(clean).replace(/\n/g, "<br>");
-
-  // Make source links open in new tab
-  html = html.replace(/<a /g, '<a target="_blank" rel="noopener" ');
-
-  // Style source links
-  html = html.replace(/<a ([^>]*)>/g, '<a $1 style="color:var(--signal);text-decoration:underline;font-weight:500;">');
-
-  elem.innerHTML = html;
-
-  // Append single controlled disclaimer
-  const disc = document.createElement("div");
-  disc.style.cssText = "font-size:11px;color:var(--text-3);margin-top:14px;padding-top:8px;border-top:1px solid var(--border);line-height:1.5;";
-  disc.textContent = "⚕️ This is health education, not medical advice. Discuss changes with your provider.";
-  elem.appendChild(disc);
+  const parts = text.split(/---\n⚕️/);
+  elem.innerHTML = typeof marked !== "undefined" ? marked.parse(parts[0].trim()) : esc(parts[0].trim()).replace(/\n/g, "<br>");
+  if (parts.length > 1 || text.includes("⚕️")) {
+    const l = document.createElement("p");
+    l.className = "phi-legal";
+    l.textContent = "⚕️ Curabook is an educational wellness tool. Always consult your healthcare provider.";
+    elem.appendChild(l);
+  }
 }
 
 const scrollBottom = () => { const d = el("chatDisplay"); if (d) d.scrollTop = d.scrollHeight; };
-
-// Render follow-up suggestions as clickable buttons
-function _renderFollowUps(botRow, reply) {
-  if (!botRow || !reply) return;
-  // Extract 💡 suggestions from reply
-  const lines = reply.split("\n");
-  const suggestions = [];
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (trimmed.startsWith("💡")) {
-      suggestions.push(trimmed.replace(/^💡\s*/, "").trim());
-    }
-  }
-  if (suggestions.length === 0) return;
-
-  const container = document.createElement("div");
-  container.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;padding-top:10px;border-top:1px solid var(--border,#e5e5e5);";
-
-  for (const suggestion of suggestions.slice(0, 3)) {
-    const btn = document.createElement("button");
-    btn.textContent = suggestion;
-    btn.style.cssText = "background:var(--surface-2,#f5f5f5);border:1px solid var(--border,#e0e0e0);border-radius:20px;padding:6px 14px;font-size:12px;color:var(--signal,#00b8b0);cursor:pointer;font-weight:500;transition:all .15s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px;";
-    btn.onmouseover = function() { this.style.background = "var(--signal-dim,#e0faf8)"; };
-    btn.onmouseout = function() { this.style.background = "var(--surface-2,#f5f5f5)"; };
-    btn.onclick = function() {
-      // Remove the follow-up buttons after clicking
-      container.remove();
-      // Send the suggestion as a new message
-      if (typeof sendMessage === "function") sendMessage(suggestion);
-      else { const input = el("chatInput"); if (input) { input.value = suggestion; el("sendBtn")?.click(); } }
-    };
-    container.appendChild(btn);
-  }
-
-  // Append to the message body
-  const msgBody = botRow?.querySelector(".msg-body");
-  if (msgBody) msgBody.appendChild(container);
-}
 
 // ── Shield ─────────────────────────────────────────────────────────────────
 async function autoLoadShield() {
@@ -2400,7 +2211,7 @@ function toast(msg, type = "ok") {
 // ── Wire all events ────────────────────────────────────────────────────────
 function wireEvents() {
   document.querySelectorAll(".nav-item[data-view]").forEach(btn =>
-    btn.addEventListener("click", () => { switchView(btn.dataset.view); if (window.innerWidth < 768) closeSidebar(); })
+    btn.addEventListener("click", () => { switchView(btn.dataset.view); closeSidebar(); })
   );
   el("newChatBtn")?.addEventListener("click", () => { resetChat(); switchView("chat"); });
 
