@@ -1376,8 +1376,9 @@ async function sendMessage(text) {
       }, 6000);
     }
 
-    // Streaming — word by word like ChatGPT
-    payload.stream = true;
+    // Use non-streaming backend (saves to DB reliably)
+    // Frontend simulates typing effect for smooth UX
+    payload.stream = false;
 
     const res = await fetch(API + "/chat", { method: "POST", headers: h, body: JSON.stringify(payload) });
     clearInterval(typingInterval);
@@ -1461,13 +1462,32 @@ async function sendMessage(text) {
       await _postChatActions(cleanReply, text, {reply: cleanReply, reports_remaining: _reportsRemaining, plan: _userPlan});
 
     } else {
-      // NON-STREAMING — regular JSON response (fallback)
+      // NON-STREAMING — JSON response with frontend typing animation
       const txt = await res.text();
       let data = null; try { data = JSON.parse(txt); } catch (e) {}
 
       if (res.ok && data?.reply) {
         const cleanReply = interceptPHIActions(data.reply, text);
-        updateMsg(botRow, cleanReply);
+        
+        // Update reports_remaining from response
+        if (data.reports_remaining !== undefined) {
+          _reportsRemaining = data.reports_remaining;
+          window._reportsRemaining = _reportsRemaining;
+        }
+        if (data.plan) {
+          _userPlan = data.plan;
+          window._userPlan = _userPlan;
+        }
+        _renderPlanBadge();
+
+        // Typing animation — reveal word by word
+        const msgBody = botRow?.querySelector(".msg-body");
+        if (msgBody) {
+          await _typeReveal(msgBody, cleanReply);
+        } else {
+          updateMsg(botRow, cleanReply);
+        }
+
         _renderFollowUps(botRow, cleanReply);
         await _postChatActions(cleanReply, text, data);
       } else {
@@ -1644,6 +1664,28 @@ function appendMsg(text, role) {
 
 function appendTyping() {
   const d = el("chatDisplay"); if (!d) return null;
+
+// ── Typing animation — reveals response word by word ──────────────────────
+async function _typeReveal(msgBody, fullText) {
+  const words = fullText.split(/(\s+)/); // Split but keep whitespace
+  let accumulated = "";
+  const batchSize = 3; // words per frame — faster than 1, smoother than all
+  const delay = 30; // ms between batches
+
+  for (let i = 0; i < words.length; i += batchSize) {
+    const batch = words.slice(i, i + batchSize).join("");
+    accumulated += batch;
+    renderAI(msgBody, accumulated);
+    scrollBottom();
+    if (i + batchSize < words.length) {
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+
+  // Final render with complete text to ensure everything is clean
+  renderAI(msgBody, fullText);
+  scrollBottom();
+}
   const w = document.createElement("div"); w.className = "chat-msg ai-msg";
   w.innerHTML = `<div class="msg-av av-ai">φ</div><div class="msg-body"><div class="typing-indicator"><div class="t-dot"></div><div class="t-dot"></div><div class="t-dot"></div></div></div>`;
   d.appendChild(w); scrollBottom(); return w;
