@@ -1079,7 +1079,7 @@ def setup_missing_tables():
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS notification_opt_out boolean default false",
         "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS is_admin_granted boolean default false",
         f"ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS reports_remaining integer default {FREE_REPORT_LIMIT}",
-        f"UPDATE user_profiles SET reports_remaining = {FREE_REPORT_LIMIT} WHERE reports_remaining IS NULL OR reports_remaining <= 0 AND plan = 'free'",
+        f"UPDATE user_profiles SET reports_remaining = {FREE_REPORT_LIMIT} WHERE (reports_remaining IS NULL OR reports_remaining < {FREE_REPORT_LIMIT}) AND (plan = 'free' OR plan IS NULL)",
         "ALTER TABLE glp1_onboarding ADD COLUMN IF NOT EXISTS last_dose_date date",
         "ALTER TABLE glp1_onboarding ADD COLUMN IF NOT EXISTS stop_reason text",
         "ALTER TABLE glp1_onboarding ADD COLUMN IF NOT EXISTS expected_stop_date date",
