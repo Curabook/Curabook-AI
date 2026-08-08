@@ -74,57 +74,12 @@ def phi_greeting():
     from services.auth import get_authenticated_user
     from datetime import date, timedelta
     from collections import defaultdict
-    import requests as _req
 
     user = get_authenticated_user(supabase)
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
 
     try:
-        # ── Detect user timezone and location from IP ───────────────────────
-        user_tz = "UTC"
-        user_city = ""
-        user_state = ""
-        user_country = "US"
-        local_hour = datetime.now(timezone.utc).hour
-        time_of_day = "morning"
-        location_context = ""
-
-        try:
-            client_ip = (
-                request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or
-                request.headers.get("X-Real-IP", "") or
-                request.remote_addr or ""
-            )
-            if client_ip and not any(client_ip.startswith(p) for p in ("127.", "10.", "192.168.", "172.")):
-                geo = _req.get(
-                    f"http://ip-api.com/json/{client_ip}?fields=status,timezone,city,regionName,country,countryCode",
-                    timeout=3
-                ).json()
-                if geo.get("status") == "success":
-                    user_tz    = geo.get("timezone", "UTC")
-                    user_city  = geo.get("city", "")
-                    user_state = geo.get("regionName", "")
-                    user_country = geo.get("countryCode", "US")
-                    try:
-                        import pytz
-                        tz_obj = pytz.timezone(user_tz)
-                        local_dt = datetime.now(timezone.utc).astimezone(tz_obj)
-                        local_hour = local_dt.hour
-                        if user_city and user_state:
-                            location_context = f"{user_city}, {user_state}"
-                        elif user_state:
-                            location_context = user_state
-                    except Exception:
-                        pass
-        except Exception as _ge:
-            print(f"[GREETING] Geo error (non-fatal): {_ge}")
-
-        if local_hour < 12:   time_of_day = "morning"
-        elif local_hour < 17: time_of_day = "afternoon"
-        elif local_hour < 21: time_of_day = "evening"
-        else:                  time_of_day = "night"
-
         # ── Read all user data ──────────────────────────────────────────────
         profile_res = supabase.table("user_profiles").select(
             "first_name,glp1_status,last_dose_date,stop_reason,goal_weight_lbs,plan"
@@ -229,9 +184,6 @@ def phi_greeting():
         context_parts = []
         if first_name:
             context_parts.append(f"User's name: {first_name}")
-        if location_context:
-            context_parts.append(f"User's location: {location_context}")
-        context_parts.append(f"Time of day for user: {time_of_day} (local hour: {local_hour})")
         if cessation_ctx:
             context_parts.append(
                 f"Cessation: Day {cessation_ctx['days']} post-last-dose. "
@@ -331,20 +283,17 @@ Generate ONE opening message now:"""
 
         if is_new_user:
             # New users always get a template — fast and warm
-            _tod = time_of_day
-            _loc = f" from {location_context}" if location_context else ""
-            _name = f", {first_name}" if first_name else ""
             if cessation_ctx:
                 days = cessation_ctx["days"]
                 phase = cessation_ctx["phase"]
                 if phase == "peak":
-                    greeting = f"Good {_tod}{_name}{_loc}. You're day {days} post-cessation — your ghrelin is surging right now. PHI will help you stay ahead of the cliff. How are you feeling?"
+                    greeting = f"Welcome to Curabook{', ' + first_name if first_name else ''}. You're day {days} post-cessation — your ghrelin is starting to surge. PHI will help you stay ahead of the cliff. How are you feeling right now?"
                 elif phase == "rising":
-                    greeting = f"Good {_tod}{_name}. Day {days} post-cessation — the ghrelin rebound is starting. You're in the right place. What's your hunger level today?"
+                    greeting = f"Welcome{', ' + first_name if first_name else ''}. Day {days} post-cessation — the ghrelin rebound is starting. You're in exactly the right place. What's your hunger level today?"
                 else:
-                    greeting = f"Good {_tod}{_name}. Welcome to Curabook — day {days} since your last dose. Let's get your baseline labs on record so PHI can track your metabolic trajectory."
+                    greeting = f"Welcome to Curabook{', ' + first_name if first_name else ''}. Day {days} since your last dose — PHI is now watching your metabolic markers. Let's get a baseline blood panel ordered."
             else:
-                greeting = f"Good {_tod}{_name}. Welcome to Curabook PHI — I monitor your metabolic health after GLP-1 therapy, catching the cliff before the scale shows it. What brought you here today?"
+                greeting = f"Welcome to Curabook{', ' + first_name if first_name else ''}. PHI monitors your metabolic health after GLP-1 therapy — catching the cliff before the scale shows it. What brought you here today?"
         else:
             # Returning users with data — try LLM but with short timeout
             # Fall through to template if LLM is too slow
@@ -429,9 +378,6 @@ Generate ONE opening message now:"""
             "has_data":        has_data,
             "cessation_day":   cessation_ctx.get("days"),
             "phase":           cessation_ctx.get("phase"),
-            "user_timezone":   user_tz,
-            "user_location":   location_context,
-            "time_of_day":     time_of_day,
         })
 
     except Exception as e:
@@ -1472,16 +1418,7 @@ USER'S CURRENT PLAN: {user_plan}
     except Exception as e:
         print(f"[CHAT] Cessation context error (non-fatal): {e}")
 
-    # ── Date and timezone context ─────────────────────────────────────────────
-    from datetime import datetime as _dt, timezone as _tz
-    _now_utc = _dt.now(_tz.utc)
-    _date_block = (
-        f"CURRENT DATE/TIME: {_now_utc.strftime('%A, %B %d, %Y')} at {_now_utc.strftime('%H:%M')} UTC. "
-        f"When referencing lab reports, ALWAYS compare by upload date — clearly state which report is newer. "
-        f"Example: 'Your June 2 report showed HbA1c 5.4%. Your August 5 report showed 5.9% — that is a 0.5% rise over 9 weeks.' "
-        f"Never confuse the order of reports. The most recent report is what matters for current status."
-    )
-    messages.append({"role": "system", "content": _date_block})
+    has_health_data = bool(memories or markers or shield)
     if has_health_data:
         memory_block = _format_memory_block(memories, markers, shield)
         if memory_block:
