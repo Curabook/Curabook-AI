@@ -7,6 +7,7 @@ python-dotenv
 groq
 openai
 
+pytz
 # PDF extraction — REQUIRED for /analyze to work at all
 # Without pypdf, every document upload returns 500
 pypdf
