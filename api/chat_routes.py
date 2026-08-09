@@ -1657,19 +1657,34 @@ USER'S CURRENT PLAN: {user_plan}
                 messages.append({"role": "system", "content": _lab_reminder})
     except Exception as e:
         print(f"[CHAT] Lab reminder injection error (non-fatal): {e}")
-        messages.append({
-            "role": "system",
-            "content": (
-                "A medical document was just uploaded and markers have been extracted.\n"
-                "YOUR RESPONSE MUST:\n"
-                "1. Open with a 1-2 sentence plain-English summary of what this report shows overall\n"
-                "2. List ALL extracted markers — abnormal ones (HIGH/LOW) first, with their value, unit, and reference range\n"
-                "3. Explain in plain English what each ABNORMAL value means for the user's GLP-1 journey\n"
-                "4. Flag any cliff signals: glucose >15% above personal baseline, HbA1c rise ≥0.25%\n"
-                "5. End with 2-3 specific, actionable next steps based on these exact results\n"
-                "Use EXACT values from the [DOCUMENT UPLOADED] block — never guess, never round."
-            )
-        })
+
+    # ── Meal photo overlay — tell PHI how to respond to food photos ────────
+    if has_documents and document_text and str(document_text).strip().startswith("MEAL_PHOTO"):
+        messages.append({"role": "system", "content": (
+            "The user just uploaded a MEAL PHOTO. The vision analysis is in the document block.\n"
+            "YOUR RESPONSE MUST:\n"
+            "1. Identify the food clearly: 'I can see [description]'\n"
+            "2. Give the full macro breakdown: Protein: Xg | Calories: X kcal | Carbs: Xg | Fat: Xg | Fiber: Xg\n"
+            "3. Connect protein to their daily target: 'That adds Xg toward your [target]g daily goal — "
+            "you're now at [total]g for today'\n"
+            "4. One quick insight specific to post-GLP-1 users: e.g. whether this meal helps with "
+            "ghrelin management, muscle preservation, or metabolic stability\n"
+            "5. Ask if they want to log it: 'Want me to log the [X]g protein to your Shield?'\n"
+            "Keep it concise — 4-5 sentences total. Use exact values from the analysis."
+        )})
+
+    # ── Document overlay — lab report instructions ──────────────────────────
+    elif has_documents and document_text and not str(document_text).strip().startswith("MEAL_PHOTO"):
+        messages.append({"role": "system", "content": (
+            "A medical document was just uploaded and markers have been extracted.\n"
+            "YOUR RESPONSE MUST:\n"
+            "1. Open with a 1-2 sentence plain-English summary of what this report shows overall\n"
+            "2. List ALL extracted markers — abnormal ones (HIGH/LOW) first, with their value, unit, and reference range\n"
+            "3. Explain in plain English what each ABNORMAL value means for the user's GLP-1 journey\n"
+            "4. Flag any cliff signals: glucose >15% above personal baseline, HbA1c rise ≥0.25%\n"
+            "5. End with 2-3 specific, actionable next steps based on these exact results\n"
+            "Use EXACT values from the [DOCUMENT UPLOADED] block — never guess, never round."
+        )})
 
     # Conversation history
     try:
@@ -2347,10 +2362,14 @@ def _extract_text_from_base64_image(base64_data: str) -> str:
                         "Output only the extracted data, no commentary.\n\n"
                         "IF FOOD or MEAL PHOTO: respond with exactly this format:\n"
                         "MEAL_PHOTO\n"
-                        "Description: [describe what you see]\n"
+                        "Description: [describe what you see in detail]\n"
                         "Protein estimate: [X]g\n"
+                        "Calories estimate: [X] kcal\n"
+                        "Carbs estimate: [X]g\n"
+                        "Fat estimate: [X]g\n"
+                        "Fiber estimate: [X]g\n"
                         "Confidence: [high/medium/low]\n"
-                        "Note: [any relevant note about estimation accuracy]\n\n"
+                        "Note: [any relevant note about estimation accuracy, portion size assumptions]\n\n"
                         "IF WEARABLE/FITNESS SCREENSHOT: extract steps, sleep, protein, "
                         "heart rate, and other health metrics. Output only the data.\n\n"
                         "Output ONLY the relevant extracted data in the format above."
