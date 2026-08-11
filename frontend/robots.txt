@@ -1,12 +1,52 @@
+# robots.txt for curabook.com
+# Optimized for AI crawlers and search engines
+
 User-agent: *
 Allow: /
-Allow: /demo
-Allow: /ai-medical-analysis
-Allow: /health-ai
-Allow: /symptom-checker
 
-# Protect the secure application and API from being indexed
+# Explicitly allow AI crawlers
+User-agent: GPTBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: Claude-Web
+Allow: /
+
+User-agent: anthropic-ai
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Googlebot
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+User-agent: DuckDuckBot
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: cohere-ai
+Allow: /
+
+User-agent: Omgilibot
+Allow: /
+
+# Block sensitive pages from all crawlers
+User-agent: *
 Disallow: /app
 Disallow: /api/
+Disallow: /founder
+Disallow: /admin
 
-Sitemap: https://curabook.com/sitemap.xml
+# Sitemap location
+Sitemap: https://www.curabook.com/sitemap.xml

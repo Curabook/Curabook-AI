@@ -16,25 +16,34 @@
     }
   ],
   "rewrites": [
-    { "source": "/login", "destination": "/frontend/login.html" },
-    { "source": "/signup", "destination": "/frontend/signup.html" },
-    { "source": "/app", "destination": "/frontend/app.html" },
-    { "source": "/demo", "destination": "/frontend/demo.html" },
-    { "source": "/privacy", "destination": "/frontend/privacy.html" },
-    { "source": "/terms", "destination": "/frontend/terms.html" },
-    { "source": "/style.css", "destination": "/frontend/style.css" },
-    { "source": "/script.js", "destination": "/frontend/script.js" },
-    { "source": "/performance_patch.js", "destination": "/frontend/performance_patch.js" },
-    { "source": "/cockpit_upgrades.js", "destination": "/frontend/cockpit_upgrades.js" },
+    { "source": "/login",       "destination": "/frontend/login.html" },
+    { "source": "/signup",      "destination": "/frontend/signup.html" },
+    { "source": "/app",         "destination": "/frontend/app.html" },
+    { "source": "/privacy",     "destination": "/frontend/privacy.html" },
+    { "source": "/terms",       "destination": "/frontend/terms.html" },
+    { "source": "/appeal",      "destination": "/frontend/appeal.html" },
+
+    { "source": "/style.css",              "destination": "/frontend/style.css" },
+    { "source": "/script.js",             "destination": "/frontend/script.js" },
+    { "source": "/phi_fixes.js",          "destination": "/frontend/phi_fixes.js" },
+    { "source": "/performance_patch.js",  "destination": "/frontend/performance_patch.js" },
+    { "source": "/cockpit_upgrades.js",   "destination": "/frontend/cockpit_upgrades.js" },
+    { "source": "/food_noise_emergency.js","destination": "/frontend/food_noise_emergency.js" },
+    { "source": "/logo.png",              "destination": "/frontend/logo.png" },
+
     { "source": "/sitemap.xml", "destination": "/frontend/sitemap.xml" },
-    { "source": "/robots.txt", "destination": "/frontend/robots.txt" },
-    
-    { "source": "/symptom-checker", "destination": "/frontend/symptom-checker/index.html" },
-    { "source": "/health-ai", "destination": "/frontend/health-ai/index.html" },
-    { "source": "/ai-medical-analysis", "destination": "/frontend/ai-medical-analysis/index.html" },
-    
-    { "source": "/", "destination": "/frontend/index.html" },
-    
+    { "source": "/robots.txt",  "destination": "/frontend/robots.txt" },
+
+    { "source": "/about-curabook", "destination": "/frontend/about-curabook.html" },
+
+    { "source": "/blog/what-happens-after-stopping-glp1",    "destination": "/frontend/blog/what-happens-after-stopping-glp1.html" },
+    { "source": "/blog/how-to-appeal-glp1-insurance-denial", "destination": "/frontend/blog/how-to-appeal-glp1-insurance-denial.html" },
+    { "source": "/blog/lab-tests-after-stopping-glp1",       "destination": "/frontend/blog/lab-tests-after-stopping-glp1.html" },
+    { "source": "/blog/ghrelin-rebound-after-glp1",          "destination": "/frontend/blog/ghrelin-rebound-after-glp1.html" },
+    { "source": "/blog/glp1-metabolic-cliff",                "destination": "/frontend/blog/glp1-metabolic-cliff.html" },
+
+    { "source": "/",      "destination": "/frontend/index.html" },
+
     { "source": "/(.*)", "destination": "/app.py" }
   ]
 }
