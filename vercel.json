@@ -24,18 +24,18 @@
     { "source": "/terms",    "destination": "/frontend/terms.html" },
     { "source": "/appeal",   "destination": "/frontend/appeal.html" },
 
-    { "source": "/style.css",               "destination": "/frontend/style.css" },
-    { "source": "/script.js",              "destination": "/frontend/script.js" },
-    { "source": "/phi_fixes.js",           "destination": "/frontend/phi_fixes.js" },
-    { "source": "/performance_patch.js",   "destination": "/frontend/performance_patch.js" },
-    { "source": "/cockpit_upgrades.js",    "destination": "/frontend/cockpit_upgrades.js" },
-    { "source": "/food_noise_emergency.js","destination": "/frontend/food_noise_emergency.js" },
-    { "source": "/logo.png",               "destination": "/frontend/logo.png" },
+    { "source": "/style.css",                "destination": "/frontend/style.css" },
+    { "source": "/script.js",               "destination": "/frontend/script.js" },
+    { "source": "/phi_fixes.js",            "destination": "/frontend/phi_fixes.js" },
+    { "source": "/performance_patch.js",    "destination": "/frontend/performance_patch.js" },
+    { "source": "/cockpit_upgrades.js",     "destination": "/frontend/cockpit_upgrades.js" },
+    { "source": "/food_noise_emergency.js", "destination": "/frontend/food_noise_emergency.js" },
+    { "source": "/logo.png",                "destination": "/frontend/logo.png" },
 
     { "source": "/sitemap.xml", "destination": "/frontend/sitemap.xml" },
     { "source": "/robots.txt",  "destination": "/frontend/robots.txt" },
 
-    { "source": "/about-curabook", "destination": "/frontend/about-curabook.html" },
+    { "source": "/about-curabook",           "destination": "/frontend/about-curabook/index.html" },
 
     { "source": "/blog/what-happens-after-stopping-glp1",    "destination": "/frontend/blog/what-happens-after-stopping-glp1/index.html" },
     { "source": "/blog/how-to-appeal-glp1-insurance-denial", "destination": "/frontend/blog/how-to-appeal-glp1-insurance-denial/index.html" },
