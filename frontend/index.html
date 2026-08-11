@@ -338,12 +338,8 @@ footer { background:var(--surface); border-top:1px solid var(--border); padding:
 .footer-copy { font-size:.62rem; color:var(--text-3); width:100%; font-weight:300; }
 
 /* STICKY NUDGE */
-.sticky-bar { position:fixed; bottom:0; left:0; right:0; z-index:200; background:var(--signal); padding:12px max(16px,4vw); display:none; align-items:center; justify-content:space-between; gap:12px; box-shadow:0 -4px 24px rgba(0,0,0,.12); animation:slideUp .3s ease; }
 @keyframes slideUp { from{transform:translateY(100%)} to{transform:translateY(0)} }
-.sticky-bar.show { display:flex; }
-.sticky-bar-text { font-size:.8rem; font-weight:600; color:#0a0b0e; }
-.sticky-bar-text span { font-weight:400; font-size:.73rem; opacity:.75; }
-.sticky-bar-btn { padding:9px 18px; border-radius:99px; background:#0a0b0e; color:var(--signal); font-size:.78rem; font-weight:700; border:none; cursor:pointer; font-family:var(--sans); white-space:nowrap; }
+
 
 .fade-in { opacity:0; transform:translateY(16px); transition:opacity .6s ease,transform .6s ease; }
 .fade-in.visible { opacity:1; transform:translateY(0); }
@@ -573,18 +569,11 @@ footer { background:var(--surface); border-top:1px solid var(--border); padding:
   <p class="footer-copy">© 2026 Curabook · Educational wellness tool. Not a substitute for medical advice.</p>
 </footer>
 
-<!-- STICKY BAR -->
-<div class="sticky-bar" id="stickyBar">
-  <div class="sticky-bar-text">See exactly what's happening to your body. <span>Free, no card needed.</span></div>
-  <button class="sticky-bar-btn" onclick="location.href='/signup'">Show me →</button>
-</div>
-
 <script>
 // Nav scroll
 window.addEventListener('scroll',()=>{
   if(window.scrollY>10) document.querySelector('nav').style.boxShadow='0 2px 20px rgba(0,0,0,.08)';
   else document.querySelector('nav').style.boxShadow='none';
-  if(window.scrollY>500) document.getElementById('stickyBar').classList.add('show');
 },{passive:true});
 
 // Fade in observer
